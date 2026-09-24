@@ -291,7 +291,9 @@ them, both plain environment variables that reach the agent process:
 - **Per agent**: `custom_env` in the agent's settings, which Multica already
   supports for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` and
   `CLAUDE_CODE_USE_BEDROCK`. It travels with the claimed task into the per-task
-  Secret. Not exercised in a sandbox Pod yet.
+  Secret. It is set with `PUT /api/agents/{id}/env` (or at agent creation); the
+  ordinary agent update endpoint rejects it on purpose. When both are set, the
+  agent's value wins over the Pod-wide one.
 
 **Target setup: an API key and a gateway URL** (`ANTHROPIC_BASE_URL` plus
 `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`). Claude Code documents what the
@@ -312,12 +314,124 @@ subscription login. Set `DISABLE_AUTOUPDATER=1` and
 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` in the same Secret. Multica does not
 pass `--bare` and forwards the Pod environment to the Claude child process.
 
-**What was tested.** Only a subscription token (`CLAUDE_CODE_OAUTH_TOKEN` from
-`claude setup-token`, which needs a paid plan) was used, purely to run a real
-Claude in a Pod. It proves the environment reaches Claude and authenticates. A
-gateway URL and key use the same mechanism but were not run. Subscription use is
-not a deployment recommendation: every Pod would share one usage pool, and the
+**What was tested.** A subscription token (`CLAUDE_CODE_OAUTH_TOKEN`) was used
+once to run a real Claude in a Pod. Then the real Claude Code in a Pod was
+pointed at a fake Anthropic-format gateway with a URL and key, both Pod-wide
+(Secret) and per agent (`custom_env`): the gateway received the streamed
+`/v1/messages` request with the expected credential
+(`Authorization: Bearer` for `ANTHROPIC_AUTH_TOKEN`, `x-api-key` for
+`ANTHROPIC_API_KEY`), `anthropic-version` and `anthropic-beta`, and the task
+completed with the gateway's reply. The gateway was a stub, so nothing here says
+how a real internal gateway or model behaves. Subscription use is not a
+deployment recommendation: every Pod would share one usage pool, and the
 documentation does not say whether high-volume automation is allowed on a plan.
+
+## Second round of cluster tests: configuration, git, isolation, capacity
+
+Same setup as before (kind, its own Postgres and server, a stub gateway and a
+throwaway git server on the same private Docker network).
+
+**Git in a Pod.** `multica repo checkout` inside the Pod cloned the workspace
+repo from the git server through the Pod-local endpoint, created the task branch
+(`agent/<agent>/<id>`), and a commit was pushed to the server; `main` was
+untouched. Findings:
+
+- **A git identity must be provided.** Multica copies the identity from the
+  user's global or system git config into each worktree and, when there is none,
+  deliberately writes empty values so a commit fails instead of being attributed
+  to someone else. A Pod has no global git config, so every commit failed with
+  `empty ident name`. Providing `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`,
+  `GIT_COMMITTER_NAME` and `GIT_COMMITTER_EMAIL` in the Pod-wide Secret fixes it
+  (git's environment overrides keep their normal precedence).
+- The workspace repo list reaches the Pod through the relay, so the repo must be
+  registered on the workspace.
+- Egress to the git host must be allowed by the NetworkPolicy.
+- Only the transport was tested. The server did not require authentication, so
+  git credentials (`GH_TOKEN`, an HTTPS credential helper, SSH) are untested.
+
+**Attacking the relay from inside a Pod.** With its own task token, from a
+running sandbox: its own task status and its own workspace's repo list worked;
+another task's status, complete, fail and messages, another workspace's repo
+list, `register`, `heartbeat`, `tasks/claim`, `recover-orphans`, `deregister`,
+the daemon workspace list, `wait-local-directory`, plain and encoded path
+traversal and a double-slash bypass were all refused (403, 404 or 401); a
+missing or guessed credential got 401. The user API with the task token and the
+header of another workspace returned 200, but the result contained only the
+Pod's own workspace and a specific issue of the other workspace was 404 either
+way: the server ignores the workspace header for task tokens and binds the
+workspace to the token. Inside the Pod: uid 1000, no capabilities,
+`NoNewPrivs`, seccomp on, no service account token, no credential-named
+environment variables in the Pod's own environment, and the controller's PAT was
+found in no process environment and no file (a positive control confirmed the
+search finds the Pod's own task token). The task token is in the agent's
+environment by design. The kube-apiserver Service is still reachable at the TCP
+level (anonymous access returns `/version` only).
+
+**Capacity.**
+
+- A Pod that cannot be scheduled (requested more memory than the node has): the
+  prepare lease kept being extended, the task stayed `dispatched`, the controller
+  gave up after the configured `MULTICA_K8S_PENDING_TIMEOUT` with a retryable
+  `timeout`, the server retried once and the second attempt also timed out;
+  Pod and Secret were removed each time.
+- A Pod spec the API rejects (a memory request above its limit) makes the task
+  fail at once, both attempts within seconds, with `runtime_offline`.
+- **Defect found and fixed: namespace `ResourceQuota`.** With a quota allowing
+  two sandbox Pods and six tasks, the old controller completed two tasks and
+  permanently failed four (the 403 burned both attempts in seconds). Now a
+  create that fails for lack of capacity (`ErrNoCapacity`: quota exceeded, 429 or
+  a 5xx) keeps the claimed task, keeps extending its lease, retries the creation
+  every 3s, stops claiming more work while any task waits, honours cancellation,
+  and gives up with the same retryable timeout. Rerun: all six completed with one
+  attempt each and never more than two sandbox Pods. Other 403s, such as missing
+  RBAC, are still treated as permanent.
+
+`MULTICA_K8S_PENDING_TIMEOUT` and `MULTICA_K8S_MAX_RUN_DURATION` (durations such
+as `90s`) are now controller settings.
+
+## Verification still to do
+
+**5. Server unreachable.** Use `docker pause` (or disconnecting the container
+from the network) on the server container.
+
+- 5a, outage while a task runs: pause the server for about 30s in the middle of a
+  slow task. Expect no task failure, no `runtime_recovery`, the task completes
+  after the server returns, the controller logs heartbeat and claim warnings, and
+  nothing is cancelled (a status-poll error must not stop work).
+- 5b, outage at the moment the agent finishes: pause the server just before the
+  agent's result and release it inside the runner's retry window (the task
+  completes); then keep it down past the window. Expect the runner to exit with
+  "terminal report not delivered" within its 30s grace, the Pod to be `Failed`,
+  the controller to keep the task untouched while status is unreadable and then
+  fail it with `runtime_recovery` once the server is back, and the server to
+  retry. Measure how long the runner takes to exit with the server down; the
+  earlier smoke test suggests it is long.
+- 5c, outage longer than the 150s runtime liveness threshold: the runtime goes
+  offline. Predicted gap: the controller ignores the heartbeat acknowledgement,
+  so it never re-registers if the server no longer knows the runtime (the native
+  daemon handles `runtime_gone` by re-registering). Reproduce by deleting the
+  runtime row and watching whether the controller recovers; if not, add
+  re-registration.
+- Pass: no lost or duplicated task, no leaked Pod or Secret, no crash loop.
+
+**6. Supplements and Remote MCP.**
+
+- 6a, supplements (messages sent to a running task): needs a provider version
+  that supports them, so use the real Claude Code with the stub gateway made to
+  answer slowly so the run lasts a minute. Post a comment while the task is
+  `running`. Expect the `supplements/claim` and `ack` calls to pass through the
+  relay (a 5s poll, since there is no WebSocket hint), the supplement row to end
+  `delivered`, and the gateway to receive the text in a later request. Also test
+  the unsupported case (fake `claude`): the comment must start a normal
+  follow-up task instead.
+- 6b, Remote MCP and plugin hooks: read the `remotemcp` package and the
+  plugin-hook handlers first to find the API that creates an approved
+  connection. Then run a fake MCP server, have the stub gateway answer with a
+  scripted `tool_use` for its tool, and check that the in-Pod broker resolves the
+  credential through the relay (the per-claim token substituted there) and the
+  tool runs, that the real per-claim token is in no Pod file or environment, and
+  what happens after a controller restart (an adopted task loses that token, so
+  the call should be refused and follow the connection's failure policy).
 
 ## Running it in a restricted company environment
 
