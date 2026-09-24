@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -100,6 +101,9 @@ type fakeDriver struct {
 	inputs    map[string][]byte
 	createErr error
 	deleted   []string
+	// noCapacity makes the next N Create calls fail with ErrNoCapacity.
+	noCapacity int
+	creates    int
 }
 
 func newFakeDriver() *fakeDriver {
@@ -108,6 +112,11 @@ func newFakeDriver() *fakeDriver {
 func (d *fakeDriver) Create(_ context.Context, spec PodSpec) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.creates++
+	if d.noCapacity > 0 {
+		d.noCapacity--
+		return fmt.Errorf("create pod: %w: exceeded quota", ErrNoCapacity)
+	}
 	if d.createErr != nil {
 		return d.createErr
 	}
@@ -397,5 +406,92 @@ func TestAdoptionRebuildsStateWithoutRecoverOrphans(t *testing.T) {
 func TestNewValidatesConfig(t *testing.T) {
 	if _, err := New(Config{}, nil, nil, nil, nil); err == nil {
 		t.Fatal("empty config must be rejected")
+	}
+}
+
+func TestNoCapacityHoldsTheTaskInsteadOfFailingIt(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.MaxPods = 5 })
+	h.drv.noCapacity = 1000 // the quota never frees up in this test
+	h.srv.queue = []*daemon.Task{task("T1")}
+	h.c.Tick(context.Background())
+
+	if len(h.srv.fails) != 0 {
+		t.Fatalf("a task that cannot get a sandbox yet must not be failed (that burns its retries): %v", h.srv.fails)
+	}
+	if h.c.active() != 1 || !h.tok.has("mat_T1") {
+		t.Fatalf("the task must be held with its relay token: active=%d", h.c.active())
+	}
+	// While a task is waiting, no further task is claimed even though there is
+	// spare MaxPods headroom.
+	h.srv.queue = []*daemon.Task{task("T2")}
+	before := len(h.srv.claimed)
+	h.advance(3 * time.Second)
+	h.c.Tick(context.Background())
+	if len(h.srv.claimed) != before {
+		t.Fatal("must not claim more work while a task waits for capacity")
+	}
+	if h.c.active() != 1 {
+		t.Fatalf("T2 must stay in the queue, active=%d", h.c.active())
+	}
+}
+
+func TestWaitingTaskKeepsItsLeaseAndStartsWhenCapacityReturns(t *testing.T) {
+	h := newHarness(t, nil)
+	h.drv.noCapacity = 2 // the initial create and the first retry fail
+	h.srv.queue = []*daemon.Task{task("T1")}
+	h.c.Tick(context.Background())
+
+	h.advance(16 * time.Second)
+	h.srv.status["T1"] = "dispatched"
+	h.c.Tick(context.Background()) // lease refresh + retry #1 (fails)
+	if len(h.srv.leases) != 1 {
+		t.Fatalf("the prepare lease must be extended while waiting: %v", h.srv.leases)
+	}
+	h.advance(4 * time.Second)
+	h.c.Tick(context.Background()) // retry #2 succeeds
+	if _, ok := h.drv.pods[PodName("T1")]; !ok {
+		t.Fatal("the pod must be created once capacity returns")
+	}
+	if len(h.srv.fails) != 0 {
+		t.Fatalf("nothing should have failed: %v", h.srv.fails)
+	}
+	// It is now an ordinary pending pod, and claiming resumes.
+	h.srv.queue = []*daemon.Task{task("T2")}
+	h.advance(4 * time.Second)
+	h.c.Tick(context.Background())
+	if _, ok := h.drv.pods[PodName("T2")]; !ok {
+		t.Fatal("claiming must resume after the waiting task got its pod")
+	}
+}
+
+func TestWaitingTaskTimesOutRetryably(t *testing.T) {
+	h := newHarness(t, nil)
+	h.drv.noCapacity = 1000
+	h.srv.queue = []*daemon.Task{task("T1")}
+	h.c.Tick(context.Background())
+	h.advance(5 * time.Minute)
+	h.srv.status["T1"] = "dispatched"
+	h.c.Tick(context.Background())
+	if h.srv.fails["T1"] != "timeout" {
+		t.Fatalf("fails = %v, want a retryable timeout", h.srv.fails)
+	}
+	if h.c.active() != 0 || h.tok.has("mat_T1") {
+		t.Fatal("entry and relay token must be cleaned up")
+	}
+}
+
+func TestWaitingTaskCancelledBeforeItEverGotAPod(t *testing.T) {
+	h := newHarness(t, nil)
+	h.drv.noCapacity = 1000
+	h.srv.queue = []*daemon.Task{task("T1")}
+	h.c.Tick(context.Background())
+	h.advance(6 * time.Second)
+	h.srv.status["T1"] = "cancelled"
+	h.c.Tick(context.Background())
+	if h.c.active() != 0 {
+		t.Fatal("a cancelled waiting task must be dropped at once")
+	}
+	if len(h.srv.fails) != 0 {
+		t.Fatalf("a cancelled task must not be failed: %v", h.srv.fails)
 	}
 }

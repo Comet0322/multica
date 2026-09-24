@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -196,5 +197,36 @@ func TestInputRoundTripAndDelete(t *testing.T) {
 func TestNewRequiresCoreSettings(t *testing.T) {
 	if _, err := New(Config{}, "http://x", nil, nil); err == nil {
 		t.Fatal("missing settings must be rejected")
+	}
+}
+
+func TestCapacityErrorsAreClassified(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"exceeded quota", 403, `{"message":"pods \"x\" is forbidden: exceeded quota: podq, requested: pods=1, used: pods=3, limited: pods=3"}`, true},
+		{"missing RBAC is permanent", 403, `{"message":"pods is forbidden: User cannot create resource"}`, false},
+		{"throttled", 429, "", true},
+		{"api unavailable", 503, "", true},
+		{"invalid spec is permanent", 422, `{"message":"Invalid value"}`, false},
+	}
+	for _, c := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/secrets") {
+				w.WriteHeader(http.StatusCreated)
+				return
+			}
+			w.WriteHeader(c.status)
+			_, _ = w.Write([]byte(c.body))
+		}))
+		d, _ := New(Config{Namespace: "ns", DaemonID: "d1", Image: "i", RelayURL: "http://r"}, srv.URL, nil, nil)
+		err := d.Create(context.Background(), controller.PodSpec{Name: "p", Input: []byte("{}")})
+		srv.Close()
+		if got := errors.Is(err, controller.ErrNoCapacity); got != c.want {
+			t.Errorf("%s: ErrNoCapacity=%v, want %v (err=%v)", c.name, got, c.want, err)
+		}
 	}
 }

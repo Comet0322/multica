@@ -38,6 +38,13 @@ type Tokens interface {
 	Unregister(token string)
 }
 
+// ErrNoCapacity is returned by a Driver when a sandbox cannot be created right
+// now but may be later: a namespace quota is exhausted or the API is briefly
+// unavailable. The controller keeps the claimed task and retries instead of
+// failing it, because failing would burn the task's retry budget on a
+// condition that clears by itself.
+var ErrNoCapacity = errors.New("no capacity to create a sandbox")
+
 // Phase is a Pod lifecycle phase as far as the controller cares.
 type Phase string
 
@@ -154,7 +161,16 @@ type entry struct {
 	// stopAt is set once the server finalized the task; the Pod is removed
 	// after CancelGrace.
 	stopAt time.Time
+
+	// waiting is true while the task is claimed but its Pod could not be
+	// created yet (see ErrNoCapacity). spec and nextCreate drive the retries.
+	waiting    bool
+	spec       PodSpec
+	nextCreate time.Time
 }
+
+// createRetryInterval spaces the retries of a Pod creation that hit ErrNoCapacity.
+const createRetryInterval = 3 * time.Second
 
 // Controller is the sandbox runtime control loop.
 type Controller struct {
@@ -325,6 +341,11 @@ func (c *Controller) claim(ctx context.Context) {
 	if free <= 0 {
 		return
 	}
+	// A task is already waiting for the cluster to have room. Claiming more
+	// would only pile up tasks that cannot start.
+	if c.anyWaiting() {
+		return
+	}
 	tasks, err := c.server.ClaimTasks(ctx, c.cfg.DaemonID, c.runtimeIDs, free)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -356,11 +377,24 @@ func (c *Controller) launch(ctx context.Context, task *daemon.Task) {
 		TaskID: task.ID, RuntimeID: task.RuntimeID, WorkspaceID: task.WorkspaceID,
 		RemoteMCPToken: task.RemoteMCPDaemonToken,
 	})
-	if err := c.driver.Create(ctx, PodSpec{
+	spec := PodSpec{
 		Name:        name,
 		Annotations: map[string]string{AnnTaskID: task.ID, AnnRuntimeID: task.RuntimeID},
 		Input:       input,
-	}); err != nil {
+	}
+	if err := c.driver.Create(ctx, spec); err != nil {
+		if errors.Is(err, ErrNoCapacity) {
+			now := c.now()
+			c.mu.Lock()
+			c.entries[task.ID] = &entry{
+				taskID: task.ID, runtimeID: task.RuntimeID, podName: name, token: task.AuthToken,
+				createdAt: now, phase: PhasePending, lastLease: now, lastStatus: now,
+				waiting: true, spec: spec, nextCreate: now.Add(createRetryInterval),
+			}
+			c.mu.Unlock()
+			c.log.Warn("no capacity for a sandbox yet; holding the task", "task", task.ID, "error", err)
+			return
+		}
 		c.log.Error("create sandbox pod failed", "task", task.ID, "error", err)
 		c.tokens.Unregister(task.AuthToken)
 		_ = c.driver.Delete(ctx, name)
@@ -420,6 +454,10 @@ func (c *Controller) reconcile(ctx context.Context) {
 
 	now := c.now()
 	for _, e := range entries {
+		if e.waiting {
+			c.tendWaiting(ctx, e, now)
+			continue
+		}
 		pod, present := byName[e.podName]
 		switch {
 		case !present:
@@ -437,6 +475,58 @@ func (c *Controller) reconcile(ctx context.Context) {
 		default:
 			c.tendRunning(ctx, e, now)
 		}
+	}
+}
+
+func (c *Controller) anyWaiting() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, e := range c.entries {
+		if e.waiting {
+			return true
+		}
+	}
+	return false
+}
+
+// tendWaiting holds a claimed task whose Pod could not be created for lack of
+// capacity. It keeps the prepare lease alive, honours cancellation, retries the
+// creation, and gives up with the same timeout as a Pod that never starts.
+func (c *Controller) tendWaiting(ctx context.Context, e *entry, now time.Time) {
+	if now.Sub(e.createdAt) > c.cfg.PendingTimeout {
+		c.log.Warn("gave up waiting for capacity", "task", e.taskID)
+		c.failTask(ctx, e.taskID, "no capacity to start a sandbox in time", taskfailure.ReasonTimeout)
+		c.cleanup(ctx, e)
+		return
+	}
+	if now.Sub(e.lastLease) >= c.cfg.LeaseInterval {
+		e.lastLease = now
+		if err := c.server.ExtendTaskPrepareLease(ctx, e.runtimeID, e.taskID); err != nil {
+			c.log.Warn("extend prepare lease failed", "task", e.taskID, "error", err)
+		}
+	}
+	if now.Sub(e.lastStatus) >= c.cfg.StatusInterval {
+		e.lastStatus = now
+		status, err := c.server.GetTaskStatus(ctx, e.taskID)
+		if daemon.TaskShouldStop(status, err) {
+			c.cleanup(ctx, e) // cancelled while waiting: there is no Pod to drain
+			return
+		}
+	}
+	if now.Before(e.nextCreate) {
+		return
+	}
+	err := c.driver.Create(ctx, e.spec)
+	switch {
+	case err == nil:
+		e.waiting = false
+		c.log.Info("sandbox pod created after waiting for capacity", "task", e.taskID, "pod", e.podName)
+	case errors.Is(err, ErrNoCapacity):
+		e.nextCreate = now.Add(createRetryInterval)
+	default:
+		c.log.Error("create sandbox pod failed", "task", e.taskID, "error", err)
+		c.failTask(ctx, e.taskID, "could not start a sandbox for this task", taskfailure.ReasonRuntimeOffline)
+		c.cleanup(ctx, e)
 	}
 }
 

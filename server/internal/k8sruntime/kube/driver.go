@@ -113,6 +113,33 @@ func NewInCluster(cfg Config) (*Driver, error) {
 
 var errNotFound = errors.New("not found")
 
+// apiError is a non-success Kubernetes API response.
+type apiError struct {
+	status int
+	msg    string
+	body   string
+}
+
+func (e *apiError) Error() string { return e.msg }
+
+// isCapacity reports whether err means "cannot create a Pod right now, but it
+// may work later": an exhausted namespace quota, throttling, or a briefly
+// unavailable API. Other 403s (for example missing RBAC) are permanent.
+func isCapacity(err error) bool {
+	var ae *apiError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	switch ae.status {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway,
+		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	case http.StatusForbidden:
+		return strings.Contains(ae.body, "exceeded quota")
+	}
+	return false
+}
+
 func (d *Driver) do(ctx context.Context, method, path string, query url.Values, body any, out any) error {
 	var rdr io.Reader
 	if body != nil {
@@ -153,7 +180,8 @@ func (d *Driver) do(ctx context.Context, method, path string, query url.Values, 
 	case resp.StatusCode == http.StatusConflict:
 		return errConflict
 	case resp.StatusCode >= 300:
-		return fmt.Errorf("kube: %s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(data)))
+		body := strings.TrimSpace(string(data))
+		return &apiError{status: resp.StatusCode, body: body, msg: fmt.Sprintf("kube: %s %s: %s: %s", method, path, resp.Status, body)}
 	}
 	if out != nil {
 		return json.Unmarshal(data, out)
@@ -182,6 +210,10 @@ func (d *Driver) Create(ctx context.Context, spec controller.PodSpec) error {
 		return fmt.Errorf("create input secret: %w", err)
 	}
 	if err := d.do(ctx, http.MethodPost, d.podsPath(), nil, d.podManifest(spec), nil); err != nil && !errors.Is(err, errConflict) {
+		if isCapacity(err) {
+			// Keep the input Secret: the controller retries the same Create.
+			return fmt.Errorf("create pod: %w: %v", controller.ErrNoCapacity, err)
+		}
 		_ = d.do(ctx, http.MethodDelete, d.secretsPath()+"/"+spec.Name, nil, nil, nil)
 		return fmt.Errorf("create pod: %w", err)
 	}
