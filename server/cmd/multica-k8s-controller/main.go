@@ -38,6 +38,20 @@ func env(key, def string) string {
 	return def
 }
 
+// durationEnv parses an optional duration such as "90s"; unset means the
+// controller's default.
+func durationEnv(key string) (time.Duration, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return 0, fmt.Errorf("%s must be a duration like 90s: %q", key, v)
+	}
+	return d, nil
+}
+
 func list(key string) []string {
 	var out []string
 	for _, s := range strings.Split(os.Getenv(key), ",") {
@@ -68,6 +82,14 @@ func run(logger *slog.Logger) error {
 	hostname, _ := os.Hostname()
 	daemonID := env("MULTICA_DAEMON_ID", "k8s-"+hostname)
 	maxPods, _ := strconv.Atoi(env("MULTICA_K8S_MAX_PODS", "4"))
+	pendingTimeout, err := durationEnv("MULTICA_K8S_PENDING_TIMEOUT")
+	if err != nil {
+		return err
+	}
+	maxRun, err := durationEnv("MULTICA_K8S_MAX_RUN_DURATION")
+	if err != nil {
+		return err
+	}
 
 	base, err := daemon.NormalizeServerBaseURL(serverURL)
 	if err != nil {
@@ -111,6 +133,9 @@ func run(logger *slog.Logger) error {
 		Workspaces: workspaces,
 		Providers:  providers,
 		MaxPods:    maxPods,
+
+		PendingTimeout: pendingTimeout,
+		MaxRunDuration: maxRun,
 	}, client, rl, drv, logger)
 	if err != nil {
 		return err
