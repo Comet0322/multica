@@ -268,9 +268,56 @@ to the kube-apiserver Service even though the example NetworkPolicy excludes
 private ranges (see the comment in `deploy/k8s-sandbox/controller.yaml`). Not
 investigated further.
 
-Not run: gVisor/Kata, a real model call, a cluster other than kind, or the full
-repo suite (`make test` needs the database). Pod startup time here is not
-representative: the images were preloaded into the node.
+A second run used the real Claude Code (subscription auth, see below) instead of
+the fake. One issue assigned to an agent ran in a Pod as uid 1000; Claude ran
+shell commands, read the issue, posted a comment and moved the issue to
+`in_review` through the `multica` CLI (user-API calls pass through the relay
+with the task token), and the task completed in one attempt, about 20s from
+queue to done, with model `claude-sonnet-5`. No credential-like string appeared
+in the stored transcript, comments or result; no Pod or Secret was left behind;
+the controller logged no warnings.
+
+Not run: gVisor/Kata, a cluster other than kind, concurrent load with the real
+Claude, or the full repo suite (`make test` needs the database). Pod startup
+time here is not representative: the images were preloaded into the node.
+
+## Model access
+
+The Pod's agent CLI needs a model endpoint and a credential. Two ways to supply
+them, both plain environment variables that reach the agent process:
+
+- **Pod-wide**: a Secret named by `MULTICA_K8S_ENV_SECRETS`, exposed as
+  environment variables in every sandbox Pod.
+- **Per agent**: `custom_env` in the agent's settings, which Multica already
+  supports for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` and
+  `CLAUDE_CODE_USE_BEDROCK`. It travels with the claimed task into the per-task
+  Secret. Not exercised in a sandbox Pod yet.
+
+**Target setup: an API key and a gateway URL** (`ANTHROPIC_BASE_URL` plus
+`ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`). Claude Code documents what the
+gateway must provide: the Anthropic Messages format (`/v1/messages`), forwarding
+of `anthropic-beta` and `anthropic-version`, and streamed responses (a gateway
+that buffers whole responses stalls Claude Code). It is documented as an
+organization-run gateway in front of Anthropic or a cloud provider. Anthropic
+states that it does **not** support routing Claude Code to non-Claude models
+through any gateway, so an internal non-Claude model behind a protocol-translating
+gateway is outside what Claude Code guarantees. If the internal model is not
+Claude, evaluate the other agent CLIs Multica already runs, which may speak a
+different protocol, before committing to Claude Code. Not evaluated here.
+
+Credential precedence in Claude Code: cloud-provider variables, then
+`ANTHROPIC_AUTH_TOKEN`, then `ANTHROPIC_API_KEY`, then `apiKeyHelper`, then
+`CLAUDE_CODE_OAUTH_TOKEN`. Setting only `ANTHROPIC_BASE_URL` does not replace a
+subscription login. Set `DISABLE_AUTOUPDATER=1` and
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` in the same Secret. Multica does not
+pass `--bare` and forwards the Pod environment to the Claude child process.
+
+**What was tested.** Only a subscription token (`CLAUDE_CODE_OAUTH_TOKEN` from
+`claude setup-token`, which needs a paid plan) was used, purely to run a real
+Claude in a Pod. It proves the environment reaches Claude and authenticates. A
+gateway URL and key use the same mechanism but were not run. Subscription use is
+not a deployment recommendation: every Pod would share one usage pool, and the
+documentation does not say whether high-volume automation is allowed on a plan.
 
 ## Running it in a restricted company environment
 
