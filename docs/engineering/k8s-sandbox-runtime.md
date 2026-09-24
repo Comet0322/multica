@@ -14,16 +14,16 @@ Non-goals for the first version:
 
 - `local_directory` and local worktree tasks (they are bound to a user machine).
 - Changing the server protocol in a way that older desktop daemons cannot follow.
-- Replacing the existing StatefulSet runtime (`deploy/helm/multica/templates/runtime.yaml`).
+- Replacing the native `multica daemon`, which keeps working unchanged.
 
 ## Baseline: what already exists
 
-`runtime.yaml` already deploys a **StatefulSet of standard daemons**
-(`multica daemon start --foreground`, `MULTICA_DAEMON_ID=$(POD_NAME)`,
-`MULTICA_DAEMON_MAX_CONCURRENT_TASKS`, a config Secret seeded into
-`$HOME/.multica`). That is the "one long-lived daemon per Pod" model. It scales
-throughput but gives no per-task isolation, and agents run as child processes
-of the daemon. This design adds a second mode next to it, not a replacement.
+Today agents run under a native `multica daemon`: one long-lived process per
+machine that claims tasks and runs each agent CLI as a child process. It scales
+by adding machines, and it gives no per-task isolation. The Helm chart in
+`deploy/helm/multica/` deploys the backend, frontend and Postgres; it has no
+runtime workload. This design adds a second, per-task-Pod mode next to the
+native daemon, not a replacement.
 
 ## Constraints from the current protocol
 
