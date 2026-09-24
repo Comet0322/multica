@@ -1,0 +1,42 @@
+# Images for the Kubernetes sandbox runtime (docs/engineering/k8s-sandbox-runtime.md).
+#
+#   docker build -f Dockerfile.k8s-sandbox --target controller -t multica-k8s-controller .
+#   docker build -f Dockerfile.k8s-sandbox --target runner     -t multica-k8s-runner .
+#
+# The runner image must contain every agent CLI it should serve. This one
+# installs Claude Code; extend the runner stage for other providers.
+
+# --- Build stage ---
+FROM golang:1.26-alpine AS builder
+RUN apk add --no-cache git
+WORKDIR /src
+COPY server/go.mod server/go.sum ./server/
+RUN cd server && go mod download
+COPY server/ ./server/
+RUN cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/multica-k8s-controller ./cmd/multica-k8s-controller
+RUN cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/multica-k8s-runner ./cmd/multica-k8s-runner
+RUN cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/multica ./cmd/multica
+
+# --- Controller: holds the daemon credential, serves the relay ---
+FROM alpine:3.21 AS controller
+RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 1000 multica
+WORKDIR /app
+COPY --from=builder /src/server/bin/multica-k8s-controller .
+# Numeric, so `runAsNonRoot` can be verified by the kubelet.
+USER 1000
+EXPOSE 8081
+ENTRYPOINT ["/app/multica-k8s-controller"]
+
+# --- Runner: one task per Pod, no daemon credential ---
+FROM node:22-alpine AS runner
+RUN apk add --no-cache ca-certificates tzdata git openssh-client github-cli bash \
+    && npm install -g @anthropic-ai/claude-code
+WORKDIR /app
+COPY --from=builder /src/server/bin/multica-k8s-runner .
+# Agents call `multica repo checkout` and `multica issue ...`. The task
+# pipeline prepends the runner's own directory to the agent's PATH, so the CLI
+# must sit next to the runner binary.
+COPY --from=builder /src/server/bin/multica .
+# uid 1000 is the base image's built-in "node" user; the Pod also sets it.
+USER 1000
+ENTRYPOINT ["/app/multica-k8s-runner"]

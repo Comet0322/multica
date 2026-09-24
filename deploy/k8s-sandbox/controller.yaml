@@ -1,0 +1,135 @@
+# Example manifests for the Kubernetes sandbox runtime MVP.
+# See docs/engineering/k8s-sandbox-runtime.md.
+#
+# Two Secrets must exist in the namespace. Under GitOps, deliver them with
+# SealedSecrets / ExternalSecrets rather than kubectl:
+#   multica-controller   key: token  (PAT of a dedicated service user)
+#   multica-sandbox-env  keys exposed to every sandbox as env vars, for example
+#                        ANTHROPIC_API_KEY and GH_TOKEN (repo-scoped)
+#
+# Images: build them yourself with Dockerfile.k8s-sandbox and push to your
+# registry; set MULTICA_K8S_PULL_POLICY=IfNotPresent for tags other than
+# a moving `latest` when the nodes have the image preloaded.
+#
+# Sandbox Pods must be able to reach ONLY the relay Service and the model/git
+# hosts; see the NetworkPolicy at the bottom.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: multica-k8s-controller
+  namespace: multica
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: multica-k8s-controller
+  namespace: multica
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: multica-k8s-controller
+  namespace: multica
+subjects:
+  - kind: ServiceAccount
+    name: multica-k8s-controller
+    namespace: multica
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: multica-k8s-controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multica-k8s-controller
+  namespace: multica
+spec:
+  # One replica: the MVP has no leader election. Recreate avoids two
+  # controllers overlapping during a rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: multica-k8s-controller}
+  template:
+    metadata:
+      labels: {app: multica-k8s-controller}
+    spec:
+      serviceAccountName: multica-k8s-controller
+      containers:
+        - name: controller
+          image: multica-k8s-controller:latest
+          ports:
+            - containerPort: 8081
+          env:
+            - {name: MULTICA_SERVER_URL, value: "http://multica-backend:8080"}
+            - name: MULTICA_CONTROLLER_TOKEN
+              valueFrom: {secretKeyRef: {name: multica-controller, key: token}}
+            - {name: MULTICA_DAEMON_ID, value: "k8s-sandbox-1"}
+            - {name: MULTICA_K8S_WORKSPACES, value: "<workspace-uuid>[,<workspace-uuid>]"}
+            - {name: MULTICA_K8S_PROVIDERS, value: "claude"}
+            - {name: MULTICA_K8S_MAX_PODS, value: "10"}
+            - {name: MULTICA_K8S_RUNNER_IMAGE, value: "multica-k8s-runner:latest"}
+            - {name: MULTICA_K8S_RELAY_URL, value: "http://multica-k8s-relay:8081"}
+            - {name: MULTICA_K8S_RUNTIME_CLASS, value: ""}   # e.g. gvisor or kata
+            - {name: MULTICA_K8S_ENV_SECRETS, value: "multica-sandbox-env"}
+            - {name: MULTICA_K8S_CPU_LIMIT, value: "2"}
+            - {name: MULTICA_K8S_MEMORY_LIMIT, value: "4Gi"}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: multica-k8s-relay
+  namespace: multica
+spec:
+  selector: {app: multica-k8s-controller}
+  ports:
+    - {port: 8081, targetPort: 8081}
+---
+# Sandbox Pods: DNS, the relay, and public HTTPS (model API, git host).
+#
+# Tested on kind (kindnet): the policy IS enforced (direct access to the server,
+# plain HTTP and other private addresses were blocked; the relay worked), but a
+# labelled Pod could still open a TCP connection to the kube-apiserver Service
+# (10.96.0.1:443) despite the private-range exclusion. Anonymous access only
+# returned /version and sandbox Pods get no service account token, but do not
+# rely on this example for cluster isolation: write the equivalent rules in your
+# CNI (Cilium or Calico, which also support FQDN allow-lists) and verify them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: multica-sandbox-egress
+  namespace: multica
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: multica-k8s-controller
+  policyTypes: [Egress, Ingress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:
+        - podSelector:
+            matchLabels: {app: multica-k8s-controller}
+      ports: [{port: 8081}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{port: 443}]
