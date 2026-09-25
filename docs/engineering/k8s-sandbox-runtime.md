@@ -433,6 +433,52 @@ from the network) on the server container.
   what happens after a controller restart (an adopted task loses that token, so
   the call should be refused and follow the connection's failure policy).
 
+## Requests the web UI sends to a runtime
+
+The UI does not read a runtime's models, local skills or CLI version from the
+database. It asks the runtime: the server puts the request in the next heartbeat
+acknowledgement (`pending_model_list`, `pending_local_skills`,
+`pending_local_skill_import(s)`, `pending_update`) and waits for the runtime to
+report back, timing out after about a minute.
+
+**Defect found and fixed: no model picker.** The controller discarded the
+heartbeat acknowledgement, so it never answered. Every request sat `pending`,
+then `running`, then timed out, and the web UI showed no model option when
+creating an agent for the runtime. The controller now answers all of them:
+
+- **Model list**: the models named by `MULTICA_K8S_MODELS` (`id` or `id=Label`,
+  comma separated, the first is marked default) as an authoritative catalog. If
+  unset, the provider's built-in catalog, marked non-authoritative
+  (`fallback: true`) because the controller image has no agent CLI to
+  interrogate; for `claude` that is ten built-in model names.
+- **Local skills**: an empty inventory, not supported (a sandbox has none).
+- **Local skill import** and **CLI update**: a clear failure ("sandbox runtimes
+  have no local skills to import", "updated by rolling out a new image") instead
+  of a timeout.
+- A request the server repeats in the next heartbeat is answered once.
+
+Behaviour to know:
+
+- The answer arrives with the next heartbeat, so it takes up to
+  `MULTICA_K8S_HEARTBEAT_INTERVAL` (default 15s; 5s was used in the test). The
+  native daemon answers faster because the server nudges it over a WebSocket.
+- The server caches an **authoritative** catalog in memory for a day and
+  revalidates it in the background, so with `MULTICA_K8S_MODELS` set the picker
+  is instant after the first open. It never caches a non-authoritative catalog,
+  so with the built-in list every open waits for a heartbeat.
+- The server does not let a non-authoritative catalog overwrite a cached
+  authoritative one. After removing `MULTICA_K8S_MODELS`, the old list stays
+  until the cache expires, the server restarts, or an authoritative list
+  replaces it.
+- Set `MULTICA_K8S_MODELS` to the model names the gateway actually serves;
+  the value chosen for an agent is passed to the CLI as `--model`.
+- Verified on kind: the request that used to time out completed with the
+  built-in list; with `MULTICA_K8S_MODELS` set the UI's list showed those models
+  with the right default and label, and an agent could be created selecting one.
+  A run using such a name against a real model was not attempted.
+- `runtime_gone` in the acknowledgement is only logged. The controller does not
+  re-register (see the server-outage test plan).
+
 ## Running it in a restricted company environment
 
 The controller is an operator: GitOps manages its static resources (Deployment,

@@ -83,6 +83,12 @@ spec:
             - {name: MULTICA_K8S_MAX_PODS, value: "10"}   # keep <= the namespace pod quota
             # - {name: MULTICA_K8S_PENDING_TIMEOUT, value: "4m"}   # give up on a sandbox that cannot start
             # - {name: MULTICA_K8S_MAX_RUN_DURATION, value: "1h"}  # hard cap per task; unset = none
+            # Model names offered in the web UI's agent form ("id" or "id=Label", first = default).
+            # Set this to the names your gateway serves; unset shows the provider's built-in list.
+            # - {name: MULTICA_K8S_MODELS, value: "model-a=Model A,model-b"}
+            # How often the runtime heartbeats. It also bounds how long the UI waits for the
+            # model list, so 5s feels much faster than the 15s default.
+            # - {name: MULTICA_K8S_HEARTBEAT_INTERVAL, value: "5s"}
             - {name: MULTICA_K8S_RUNNER_IMAGE, value: "multica-k8s-runner:latest"}
             - {name: MULTICA_K8S_RELAY_URL, value: "http://multica-k8s-relay:8081"}
             - {name: MULTICA_K8S_RUNTIME_CLASS, value: ""}   # e.g. gvisor or kata
