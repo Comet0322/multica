@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -135,6 +136,16 @@ type Config struct {
 	// the provider's built-in catalog is offered instead, marked non-authoritative.
 	// Set it when a gateway serves model names the built-in list does not know.
 	Models []string
+	// ModelsURL, when Models is empty, makes the controller scan a gateway for
+	// its models (GET <ModelsURL>/v1/models). Use the same value as the agents'
+	// ANTHROPIC_BASE_URL. ModelsAPIKey authenticates that request; it gives the
+	// controller a read-only credential for the models endpoint, so use a key
+	// that can do nothing else if the gateway allows it.
+	ModelsURL    string
+	ModelsAPIKey string
+	// DefaultModel is the id to mark as the default of an explicit or scanned
+	// list; the first model is used when it is empty or not in the list.
+	DefaultModel string
 }
 
 func (c *Config) applyDefaults() {
@@ -199,6 +210,7 @@ type Controller struct {
 	// listModels discovers a provider's catalog. The controller image has no
 	// agent CLI, so for the built-in providers this yields their static catalog.
 	listModels func(ctx context.Context, provider string, cmd agent.Command) (agent.Catalog, error)
+	httpClient *http.Client
 
 	ackMu   sync.Mutex
 	ackBusy map[string]struct{} // request ids currently being answered
@@ -226,6 +238,7 @@ func New(cfg Config, server Server, tokens Tokens, driver Driver, log *slog.Logg
 		entries:  map[string]*entry{},
 
 		listModels: agent.ListModels,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
 		ackBusy:    map[string]struct{}{},
 	}, nil
 }
@@ -727,22 +740,26 @@ func (c *Controller) answerModelList(ctx context.Context, runtimeID, requestID s
 		return
 	}
 	result := map[string]any{"supported": agent.ModelSelectionSupported(rt.Provider)}
-	if len(c.cfg.Models) > 0 {
-		models := make([]agent.Model, 0, len(c.cfg.Models))
-		for i, spec := range c.cfg.Models {
-			id, label, _ := strings.Cut(spec, "=")
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			if strings.TrimSpace(label) == "" {
-				label = id
-			}
-			models = append(models, agent.Model{ID: id, Label: strings.TrimSpace(label), Default: i == 0})
-		}
+	switch {
+	case len(c.cfg.Models) > 0:
+		// An explicit list wins: the operator named exactly what to offer.
+		models := parseConfiguredModels(c.cfg.Models)
+		markDefault(models, c.cfg.DefaultModel)
 		result["status"], result["models"], result["fallback"] = "completed", models, false
 		result["unavailable_models"] = []any{}
-	} else {
+	case c.cfg.ModelsURL != "":
+		// Ask the gateway itself: the agent CLI cannot, it reports only its own
+		// built-in aliases regardless of what the gateway serves.
+		models, err := scanGatewayModels(ctx, c.httpClient, c.cfg.ModelsURL, c.cfg.ModelsAPIKey)
+		if err != nil {
+			c.log.Warn("model scan failed", "error", err)
+			result = map[string]any{"status": "failed", "error": err.Error()}
+			break
+		}
+		markDefault(models, c.cfg.DefaultModel)
+		result["status"], result["models"], result["fallback"] = "completed", models, false
+		result["unavailable_models"] = []any{}
+	default:
 		cat, err := c.listModels(ctx, rt.Provider, agent.NewCommand("", nil))
 		if err != nil {
 			result = map[string]any{"status": "failed", "error": err.Error()}

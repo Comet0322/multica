@@ -62,6 +62,40 @@ func list(key string) []string {
 	return out
 }
 
+// controllerConfig builds the controller settings from the environment. It is a
+// function of its own so a test can prove every variable is actually wired: a
+// setting that is documented but never read compiles fine and only fails in use.
+func controllerConfig(daemonID, hostname string, workspaces, providers []string, maxPods int) (controller.Config, error) {
+	pending, err := durationEnv("MULTICA_K8S_PENDING_TIMEOUT")
+	if err != nil {
+		return controller.Config{}, err
+	}
+	maxRun, err := durationEnv("MULTICA_K8S_MAX_RUN_DURATION")
+	if err != nil {
+		return controller.Config{}, err
+	}
+	heartbeat, err := durationEnv("MULTICA_K8S_HEARTBEAT_INTERVAL")
+	if err != nil {
+		return controller.Config{}, err
+	}
+	return controller.Config{
+		DaemonID:   daemonID,
+		DeviceName: env("MULTICA_DAEMON_DEVICE_NAME", hostname),
+		CLIVersion: env("MULTICA_CLI_VERSION", "k8s-controller"),
+		Workspaces: workspaces,
+		Providers:  providers,
+		MaxPods:    maxPods,
+
+		HeartbeatInterval: heartbeat,
+		PendingTimeout:    pending,
+		MaxRunDuration:    maxRun,
+		Models:            list("MULTICA_K8S_MODELS"),
+		ModelsURL:         env("MULTICA_K8S_MODELS_URL", ""),
+		ModelsAPIKey:      env("MULTICA_K8S_MODELS_API_KEY", ""),
+		DefaultModel:      env("MULTICA_K8S_DEFAULT_MODEL", ""),
+	}, nil
+}
+
 func run(logger *slog.Logger) error {
 	serverURL := env("MULTICA_SERVER_URL", "")
 	token := env("MULTICA_CONTROLLER_TOKEN", "") // daemon credential; never given to Pods
@@ -82,18 +116,6 @@ func run(logger *slog.Logger) error {
 	hostname, _ := os.Hostname()
 	daemonID := env("MULTICA_DAEMON_ID", "k8s-"+hostname)
 	maxPods, _ := strconv.Atoi(env("MULTICA_K8S_MAX_PODS", "4"))
-	pendingTimeout, err := durationEnv("MULTICA_K8S_PENDING_TIMEOUT")
-	if err != nil {
-		return err
-	}
-	maxRun, err := durationEnv("MULTICA_K8S_MAX_RUN_DURATION")
-	if err != nil {
-		return err
-	}
-	heartbeat, err := durationEnv("MULTICA_K8S_HEARTBEAT_INTERVAL")
-	if err != nil {
-		return err
-	}
 
 	base, err := daemon.NormalizeServerBaseURL(serverURL)
 	if err != nil {
@@ -130,19 +152,11 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	c, err := controller.New(controller.Config{
-		DaemonID:   daemonID,
-		DeviceName: env("MULTICA_DAEMON_DEVICE_NAME", hostname),
-		CLIVersion: env("MULTICA_CLI_VERSION", "k8s-controller"),
-		Workspaces: workspaces,
-		Providers:  providers,
-		MaxPods:    maxPods,
-
-		HeartbeatInterval: heartbeat,
-		PendingTimeout:    pendingTimeout,
-		MaxRunDuration:    maxRun,
-		Models:            list("MULTICA_K8S_MODELS"),
-	}, client, rl, drv, logger)
+	cfg, err := controllerConfig(daemonID, hostname, workspaces, providers, maxPods)
+	if err != nil {
+		return err
+	}
+	c, err := controller.New(cfg, client, rl, drv, logger)
 	if err != nil {
 		return err
 	}
