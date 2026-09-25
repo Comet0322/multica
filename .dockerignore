@@ -42,5 +42,6 @@ coverage
 
 # Repository-only tooling
 /.github/
-/deploy/
+/deploy/*
+!/deploy/k8s-sandbox/
 /scripts/

@@ -753,7 +753,29 @@ characters become `_`, so `qoder-cli` is `QODER_CLI`):
 | `MULTICA_K8S_ENV_SECRETS_<P>` | Secrets added only to that provider's Pods, so one provider's API key never reaches another's sandbox. |
 | `MULTICA_K8S_MODELS_<P>`, `_MODELS_URL_<P>`, `_MODELS_API_KEY_<P>`, `_DEFAULT_MODEL_<P>` | Model source for that provider. Setting a list or a URL replaces the global model settings as a group. |
 
-Not done: only the Claude image is built (`Dockerfile.k8s-sandbox`); an image
-per additional CLI has to be added. Gateway format is the gateway's concern:
-Claude Code needs the Anthropic Messages format, other CLIs their own. Only the
-routing was tested, with a fake driver and a fake API server, not a second real CLI.
+Images: `Dockerfile.k8s-sandbox` builds one runner per provider from a shared
+`runner-base` (`--target runner` for Claude, `--target runner-opencode` for
+opencode). The opencode image bakes `deploy/k8s-sandbox/opencode.json`, which
+reads `LLM_BASE_URL` and `LLM_API_KEY` from the environment, so the key comes
+from the provider's Secret and is not in the image. Add another CLI the same way.
+
+Tested on kind with opencode 1.18.32 and a local llama.cpp model behind a small
+proxy that demands a bearer key (a stand-in for a keyed gateway):
+
+- Both runtimes register and the model picker answers per provider.
+- With the right key an issue assigned to an opencode agent completed and the
+  agent's comment came from the local model (the proxy counted the requests).
+- With a wrong key the task failed with the gateway's own message,
+  `Incorrect API key provided`, and no key appeared in any log.
+- Moving the Claude token from the Pod-wide Secret to
+  `MULTICA_K8S_ENV_SECRETS_CLAUDE` keeps it out of opencode Pods.
+- The egress NetworkPolicy blocked the new gateway until it was allowed: a
+  sandbox could not reach it, and opencode waited silently instead of failing.
+  Each provider's gateway needs its own egress rule, and `MULTICA_K8S_MAX_RUN_DURATION`
+  is what bounds such a hang.
+
+Not tested: a second real CLI besides opencode, opencode's MCP path, and opencode
+fetching its `@ai-sdk/openai-compatible` package at run time (it downloads it on
+first use, so a restricted network must pre-install it in the image).
+Gateway format stays the gateway's concern: Claude Code needs the Anthropic
+Messages format, opencode here uses OpenAI-compatible chat completions.

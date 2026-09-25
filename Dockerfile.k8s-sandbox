@@ -2,9 +2,10 @@
 #
 #   docker build -f Dockerfile.k8s-sandbox --target controller -t multica-k8s-controller .
 #   docker build -f Dockerfile.k8s-sandbox --target runner     -t multica-k8s-runner .
+#   docker build -f Dockerfile.k8s-sandbox --target runner-opencode -t multica-k8s-runner-opencode .
 #
-# The runner image must contain every agent CLI it should serve. This one
-# installs Claude Code; extend the runner stage for other providers.
+# A runner image holds the CLI of one provider; the controller picks the image
+# per provider (MULTICA_K8S_RUNNER_IMAGE_<PROVIDER>).
 
 # --- Build stage ---
 FROM golang:1.26-alpine AS builder
@@ -27,16 +28,30 @@ USER 1000
 EXPOSE 8081
 ENTRYPOINT ["/app/multica-k8s-controller"]
 
-# --- Runner: one task per Pod, no daemon credential ---
-FROM node:22-alpine AS runner
-RUN apk add --no-cache ca-certificates tzdata git openssh-client github-cli bash \
-    && npm install -g @anthropic-ai/claude-code
+# --- Runner base: one task per Pod, no daemon credential, no agent CLI yet ---
+FROM node:22-alpine AS runner-base
+RUN apk add --no-cache ca-certificates tzdata git openssh-client github-cli bash
 WORKDIR /app
 COPY --from=builder /src/server/bin/multica-k8s-runner .
 # Agents call `multica repo checkout` and `multica issue ...`. The task
 # pipeline prepends the runner's own directory to the agent's PATH, so the CLI
 # must sit next to the runner binary.
 COPY --from=builder /src/server/bin/multica .
+
+# --- Runner for provider "claude" ---
+FROM runner-base AS runner
+RUN npm install -g @anthropic-ai/claude-code
 # uid 1000 is the base image's built-in "node" user; the Pod also sets it.
+USER 1000
+ENTRYPOINT ["/app/multica-k8s-runner"]
+
+# --- Runner for provider "opencode" ---
+# The provider config below reads its endpoint and key from the environment
+# (set by the controller's per-provider Secret), so the key is not in the image.
+# Multica layers its own OPENCODE_CONFIG_CONTENT (MCP servers) on top of it.
+FROM runner-base AS runner-opencode
+RUN npm install -g opencode-ai
+COPY deploy/k8s-sandbox/opencode.json /etc/opencode/opencode.json
+ENV OPENCODE_CONFIG=/etc/opencode/opencode.json
 USER 1000
 ENTRYPOINT ["/app/multica-k8s-runner"]
