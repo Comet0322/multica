@@ -19,6 +19,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/daemon"
 	"github.com/multica-ai/multica/server/internal/k8sruntime/relay"
+	"github.com/multica-ai/multica/server/pkg/agent"
 	"github.com/multica-ai/multica/server/pkg/taskfailure"
 )
 
@@ -30,6 +31,12 @@ type Server interface {
 	ExtendTaskPrepareLease(ctx context.Context, runtimeID, taskID string) error
 	GetTaskStatus(ctx context.Context, taskID string) (string, error)
 	FailTask(ctx context.Context, taskID, errMsg, sessionID, workDir, branchName, failureReason string, sessionRolloutMissing bool, retiredSessionID, durableWorkDir string) error
+
+	// Answers to requests the server hands out in a heartbeat acknowledgement.
+	ReportModelListResult(ctx context.Context, runtimeID, requestID string, result map[string]any) error
+	ReportLocalSkillListResult(ctx context.Context, runtimeID, requestID string, result map[string]any) error
+	ReportLocalSkillImportResult(ctx context.Context, runtimeID, requestID string, result map[string]any) error
+	ReportUpdateResult(ctx context.Context, runtimeID, updateID string, result map[string]any) error
 }
 
 // Tokens is the relay surface the controller drives.
@@ -123,6 +130,11 @@ type Config struct {
 	// CancelGrace is how long a Pod may keep running after the server finalizes
 	// its task, so the runner can send its own cancel-ack.
 	CancelGrace time.Duration
+	// Models is the model list the web UI offers for these runtimes, as "id" or
+	// "id=Label"; the first is marked default. It is authoritative. Empty means
+	// the provider's built-in catalog is offered instead, marked non-authoritative.
+	// Set it when a gateway serves model names the built-in list does not know.
+	Models []string
 }
 
 func (c *Config) applyDefaults() {
@@ -184,6 +196,13 @@ type Controller struct {
 	runtimes   map[string]daemon.Runtime // runtime id -> runtime
 	runtimeIDs []string
 
+	// listModels discovers a provider's catalog. The controller image has no
+	// agent CLI, so for the built-in providers this yields their static catalog.
+	listModels func(ctx context.Context, provider string, cmd agent.Command) (agent.Catalog, error)
+
+	ackMu   sync.Mutex
+	ackBusy map[string]struct{} // request ids currently being answered
+
 	mu      sync.Mutex
 	entries map[string]*entry // task id -> entry
 }
@@ -205,6 +224,9 @@ func New(cfg Config, server Server, tokens Tokens, driver Driver, log *slog.Logg
 		now:      time.Now,
 		runtimes: map[string]daemon.Runtime{},
 		entries:  map[string]*entry{},
+
+		listModels: agent.ListModels,
+		ackBusy:    map[string]struct{}{},
 	}, nil
 }
 
@@ -312,9 +334,14 @@ func (c *Controller) heartbeatLoop(ctx context.Context) {
 	defer t.Stop()
 	for {
 		for _, id := range c.runtimeIDs {
-			if _, err := c.server.SendHeartbeat(ctx, id); err != nil && ctx.Err() == nil {
-				c.log.Warn("heartbeat failed", "runtime", id, "error", err)
+			ack, err := c.server.SendHeartbeat(ctx, id)
+			if err != nil {
+				if ctx.Err() == nil {
+					c.log.Warn("heartbeat failed", "runtime", id, "error", err)
+				}
+				continue
 			}
+			c.handleAck(ctx, id, ack)
 		}
 		select {
 		case <-ctx.Done():
@@ -608,4 +635,123 @@ func (c *Controller) cleanup(ctx context.Context, e *entry) {
 	c.mu.Lock()
 	delete(c.entries, e.taskID)
 	c.mu.Unlock()
+}
+
+// handleAck answers the requests a heartbeat acknowledgement carries. The web
+// UI asks the runtime for its model list, its local skills and CLI updates
+// through these; a runtime that never answers leaves the UI waiting until the
+// server times the request out, which is why the model picker used to be empty.
+func (c *Controller) handleAck(ctx context.Context, runtimeID string, ack *daemon.HeartbeatResponse) {
+	if ack == nil {
+		return
+	}
+	if ack.RuntimeGone {
+		c.log.Warn("the server no longer knows this runtime", "runtime", runtimeID)
+	}
+	if ack.PendingModelList != nil {
+		c.answer(ack.PendingModelList.ID, func() { c.answerModelList(ctx, runtimeID, ack.PendingModelList.ID) })
+	}
+	if ack.PendingLocalSkills != nil {
+		id := ack.PendingLocalSkills.ID
+		c.answer(id, func() {
+			// A sandbox has no machine-local skills or MCP servers to inventory.
+			c.report("local skills", func() error {
+				return c.server.ReportLocalSkillListResult(ctx, runtimeID, id, map[string]any{
+					"status": "completed", "skills": []any{}, "supported": false,
+					"mcp_servers": []any{}, "mcp_supported": false,
+				})
+			})
+		})
+	}
+	imports := ack.PendingLocalSkillImports
+	if ack.PendingLocalSkillImport != nil {
+		imports = append(imports, *ack.PendingLocalSkillImport)
+	}
+	for _, imp := range imports {
+		id := imp.ID
+		c.answer(id, func() {
+			c.report("local skill import", func() error {
+				return c.server.ReportLocalSkillImportResult(ctx, runtimeID, id, map[string]any{
+					"status": "failed", "error": "sandbox runtimes have no local skills to import",
+				})
+			})
+		})
+	}
+	if ack.PendingUpdate != nil {
+		id := ack.PendingUpdate.ID
+		c.answer(id, func() {
+			c.report("update", func() error {
+				return c.server.ReportUpdateResult(ctx, runtimeID, id, map[string]any{
+					"status": "failed", "error": "a sandbox runtime is updated by rolling out a new image",
+				})
+			})
+		})
+	}
+}
+
+// answer runs fn in the background unless the same request is already being
+// answered (the server may repeat a request in the next heartbeat).
+func (c *Controller) answer(requestID string, fn func()) {
+	c.ackMu.Lock()
+	if _, busy := c.ackBusy[requestID]; busy {
+		c.ackMu.Unlock()
+		return
+	}
+	c.ackBusy[requestID] = struct{}{}
+	c.ackMu.Unlock()
+	go func() {
+		defer func() {
+			c.ackMu.Lock()
+			delete(c.ackBusy, requestID)
+			c.ackMu.Unlock()
+		}()
+		fn()
+	}()
+}
+
+func (c *Controller) report(what string, send func() error) {
+	// A few quick retries: an unanswered request leaves the UI waiting.
+	var err error
+	for _, wait := range []time.Duration{0, 500 * time.Millisecond, 2 * time.Second} {
+		time.Sleep(wait)
+		if err = send(); err == nil {
+			return
+		}
+	}
+	c.log.Warn("could not report a runtime request", "request", what, "error", err)
+}
+
+func (c *Controller) answerModelList(ctx context.Context, runtimeID, requestID string) {
+	rt, ok := c.runtimes[runtimeID]
+	if !ok {
+		return
+	}
+	result := map[string]any{"supported": agent.ModelSelectionSupported(rt.Provider)}
+	if len(c.cfg.Models) > 0 {
+		models := make([]agent.Model, 0, len(c.cfg.Models))
+		for i, spec := range c.cfg.Models {
+			id, label, _ := strings.Cut(spec, "=")
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if strings.TrimSpace(label) == "" {
+				label = id
+			}
+			models = append(models, agent.Model{ID: id, Label: strings.TrimSpace(label), Default: i == 0})
+		}
+		result["status"], result["models"], result["fallback"] = "completed", models, false
+		result["unavailable_models"] = []any{}
+	} else {
+		cat, err := c.listModels(ctx, rt.Provider, agent.NewCommand("", nil))
+		if err != nil {
+			result = map[string]any{"status": "failed", "error": err.Error()}
+		} else {
+			result["status"], result["models"], result["fallback"] = "completed", cat.Models, cat.Fallback
+			result["unavailable_models"] = cat.Unavailable
+		}
+	}
+	c.report("model list", func() error {
+		return c.server.ReportModelListResult(ctx, runtimeID, requestID, result)
+	})
 }

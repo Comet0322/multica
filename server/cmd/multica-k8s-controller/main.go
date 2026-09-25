@@ -90,6 +90,10 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	heartbeat, err := durationEnv("MULTICA_K8S_HEARTBEAT_INTERVAL")
+	if err != nil {
+		return err
+	}
 
 	base, err := daemon.NormalizeServerBaseURL(serverURL)
 	if err != nil {
@@ -134,8 +138,10 @@ func run(logger *slog.Logger) error {
 		Providers:  providers,
 		MaxPods:    maxPods,
 
-		PendingTimeout: pendingTimeout,
-		MaxRunDuration: maxRun,
+		HeartbeatInterval: heartbeat,
+		PendingTimeout:    pendingTimeout,
+		MaxRunDuration:    maxRun,
+		Models:            list("MULTICA_K8S_MODELS"),
 	}, client, rl, drv, logger)
 	if err != nil {
 		return err

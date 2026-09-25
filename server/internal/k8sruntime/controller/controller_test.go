@@ -12,6 +12,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/daemon"
 	"github.com/multica-ai/multica/server/internal/k8sruntime/relay"
+	"github.com/multica-ai/multica/server/pkg/agent"
 )
 
 type fakeServer struct {
@@ -23,6 +24,57 @@ type fakeServer struct {
 	leases    []string
 	fails     map[string]string // task id -> failure reason
 	registers int
+
+	// runtime-request answers, keyed by "<kind>:<request id>"
+	reported map[string]map[string]any
+	gate     chan struct{} // when set, ReportModelListResult waits on it
+	reportN  int
+}
+
+func (s *fakeServer) record(kind, id string, res map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reported == nil {
+		s.reported = map[string]map[string]any{}
+	}
+	s.reported[kind+":"+id] = res
+	s.reportN++
+}
+
+func (s *fakeServer) ReportModelListResult(_ context.Context, _, id string, res map[string]any) error {
+	if s.gate != nil {
+		<-s.gate
+	}
+	s.record("models", id, res)
+	return nil
+}
+func (s *fakeServer) ReportLocalSkillListResult(_ context.Context, _, id string, res map[string]any) error {
+	s.record("skills", id, res)
+	return nil
+}
+func (s *fakeServer) ReportLocalSkillImportResult(_ context.Context, _, id string, res map[string]any) error {
+	s.record("import", id, res)
+	return nil
+}
+func (s *fakeServer) ReportUpdateResult(_ context.Context, _, id string, res map[string]any) error {
+	s.record("update", id, res)
+	return nil
+}
+
+func (s *fakeServer) waitReport(t *testing.T, key string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		r, ok := s.reported[key]
+		s.mu.Unlock()
+		if ok {
+			return r
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("no answer reported for %s", key)
+	return nil
 }
 
 func (s *fakeServer) Register(_ context.Context, req map[string]any) (*daemon.RegisterResponse, error) {
@@ -493,5 +545,91 @@ func TestWaitingTaskCancelledBeforeItEverGotAPod(t *testing.T) {
 	}
 	if len(h.srv.fails) != 0 {
 		t.Fatalf("a cancelled task must not be failed: %v", h.srv.fails)
+	}
+}
+
+func modelsOf(t *testing.T, r map[string]any) []agent.Model {
+	t.Helper()
+	m, ok := r["models"].([]agent.Model)
+	if !ok {
+		t.Fatalf("models has type %T", r["models"])
+	}
+	return m
+}
+
+func TestModelListRequestIsAnsweredWithTheConfiguredModels(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.Models = []string{"gw-large=Gateway Large", " gw-small "} })
+	h.c.handleAck(context.Background(), "rt-1", &daemon.HeartbeatResponse{PendingModelList: &daemon.PendingModelList{ID: "r1"}})
+	r := h.srv.waitReport(t, "models:r1")
+
+	if r["status"] != "completed" || r["fallback"] != false || r["supported"] != true {
+		t.Fatalf("answer = %v", r)
+	}
+	m := modelsOf(t, r)
+	if len(m) != 2 || m[0].ID != "gw-large" || m[0].Label != "Gateway Large" || !m[0].Default || m[1].ID != "gw-small" || m[1].Label != "gw-small" || m[1].Default {
+		t.Fatalf("models = %+v", m)
+	}
+}
+
+func TestModelListFallsBackToTheBuiltInCatalogAndSaysSo(t *testing.T) {
+	h := newHarness(t, nil)
+	h.c.listModels = func(_ context.Context, provider string, _ agent.Command) (agent.Catalog, error) {
+		if provider != "claude" {
+			t.Errorf("asked about provider %q", provider)
+		}
+		return agent.Catalog{Models: []agent.Model{{ID: "built-in", Label: "Built in"}}, Fallback: true}, nil
+	}
+	h.c.handleAck(context.Background(), "rt-1", &daemon.HeartbeatResponse{PendingModelList: &daemon.PendingModelList{ID: "r2"}})
+	r := h.srv.waitReport(t, "models:r2")
+	if r["status"] != "completed" || r["fallback"] != true || len(modelsOf(t, r)) != 1 {
+		t.Fatalf("answer = %v", r)
+	}
+}
+
+func TestModelDiscoveryFailureIsReportedNotSwallowed(t *testing.T) {
+	h := newHarness(t, nil)
+	h.c.listModels = func(context.Context, string, agent.Command) (agent.Catalog, error) {
+		return agent.Catalog{}, errors.New("boom")
+	}
+	h.c.handleAck(context.Background(), "rt-1", &daemon.HeartbeatResponse{PendingModelList: &daemon.PendingModelList{ID: "r3"}})
+	r := h.srv.waitReport(t, "models:r3")
+	if r["status"] != "failed" || r["error"] != "boom" {
+		t.Fatalf("answer = %v", r)
+	}
+}
+
+func TestOtherRuntimeRequestsAreAnsweredSoTheUIDoesNotWait(t *testing.T) {
+	h := newHarness(t, nil)
+	h.c.handleAck(context.Background(), "rt-1", &daemon.HeartbeatResponse{
+		PendingLocalSkills:       &daemon.PendingLocalSkills{ID: "s1"},
+		PendingUpdate:            &daemon.PendingUpdate{ID: "u1", TargetVersion: "9.9.9"},
+		PendingLocalSkillImport:  &daemon.PendingLocalSkillImport{ID: "i1"},
+		PendingLocalSkillImports: []daemon.PendingLocalSkillImport{{ID: "i2"}},
+	})
+	if r := h.srv.waitReport(t, "skills:s1"); r["status"] != "completed" || r["supported"] != false {
+		t.Fatalf("skills answer = %v", r)
+	}
+	for _, key := range []string{"update:u1", "import:i1", "import:i2"} {
+		if r := h.srv.waitReport(t, key); r["status"] != "failed" || r["error"] == "" {
+			t.Fatalf("%s answer = %v", key, r)
+		}
+	}
+}
+
+func TestARepeatedRequestIsAnsweredOnce(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.Models = []string{"m"} })
+	h.srv.gate = make(chan struct{})
+	ack := &daemon.HeartbeatResponse{PendingModelList: &daemon.PendingModelList{ID: "dup"}}
+	h.c.handleAck(context.Background(), "rt-1", ack)
+	h.c.handleAck(context.Background(), "rt-1", ack) // next heartbeat repeats it while the first is in flight
+	time.Sleep(50 * time.Millisecond)
+	close(h.srv.gate)
+	h.srv.waitReport(t, "models:dup")
+	time.Sleep(50 * time.Millisecond)
+	h.srv.mu.Lock()
+	n := h.srv.reportN
+	h.srv.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("answered %d times, want once", n)
 	}
 }
