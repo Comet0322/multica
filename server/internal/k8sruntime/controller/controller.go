@@ -77,6 +77,10 @@ type PodSpec struct {
 	// Input is the runner input (RunnerInput as JSON). It contains the task
 	// token, so the driver must deliver it through a Secret, not the Pod spec.
 	Input []byte
+	// Image and EnvFromSecrets, when set, override the driver's settings for
+	// this Pod (per-provider images; extra Secrets are added to the shared ones).
+	Image          string
+	EnvFromSecrets []string
 }
 
 // PodInfo is the observed state of a sandbox Pod.
@@ -146,6 +150,34 @@ type Config struct {
 	// DefaultModel is the id to mark as the default of an explicit or scanned
 	// list; the first model is used when it is empty or not in the list.
 	DefaultModel string
+
+	// PerProvider overrides the image, secrets and model source for one
+	// provider (keyed by provider name, e.g. "codex"). Anything unset falls back
+	// to the Pod-wide setting, so a single-provider install needs none of it.
+	PerProvider map[string]ProviderSettings
+}
+
+// ProviderSettings are the per-provider overrides of Config.
+type ProviderSettings struct {
+	// Image runs this provider's tasks; empty uses the driver's image.
+	Image string
+	// EnvSecrets are extra Secrets exposed only to this provider's Pods, so one
+	// provider's API key never reaches another provider's sandbox.
+	EnvSecrets []string
+	// Models, ModelsURL, ModelsAPIKey and DefaultModel replace the global model
+	// source as a group when Models or ModelsURL is set.
+	Models       []string
+	ModelsURL    string
+	ModelsAPIKey string
+	DefaultModel string
+}
+
+// modelSource returns the model settings that apply to a provider.
+func (c Config) modelSource(provider string) (models []string, url, key, def string) {
+	if p, ok := c.PerProvider[provider]; ok && (len(p.Models) > 0 || p.ModelsURL != "") {
+		return p.Models, p.ModelsURL, p.ModelsAPIKey, p.DefaultModel
+	}
+	return c.Models, c.ModelsURL, c.ModelsAPIKey, c.DefaultModel
 }
 
 func (c *Config) applyDefaults() {
@@ -418,9 +450,11 @@ func (c *Controller) launch(ctx context.Context, task *daemon.Task) {
 		RemoteMCPToken: task.RemoteMCPDaemonToken,
 	})
 	spec := PodSpec{
-		Name:        name,
-		Annotations: map[string]string{AnnTaskID: task.ID, AnnRuntimeID: task.RuntimeID},
-		Input:       input,
+		Name:           name,
+		Annotations:    map[string]string{AnnTaskID: task.ID, AnnRuntimeID: task.RuntimeID},
+		Input:          input,
+		Image:          c.cfg.PerProvider[rt.Provider].Image,
+		EnvFromSecrets: c.cfg.PerProvider[rt.Provider].EnvSecrets,
 	}
 	if err := c.driver.Create(ctx, spec); err != nil {
 		if errors.Is(err, ErrNoCapacity) {
@@ -740,23 +774,24 @@ func (c *Controller) answerModelList(ctx context.Context, runtimeID, requestID s
 		return
 	}
 	result := map[string]any{"supported": agent.ModelSelectionSupported(rt.Provider)}
+	cfgModels, modelsURL, modelsKey, defaultModel := c.cfg.modelSource(rt.Provider)
 	switch {
-	case len(c.cfg.Models) > 0:
+	case len(cfgModels) > 0:
 		// An explicit list wins: the operator named exactly what to offer.
-		models := parseConfiguredModels(c.cfg.Models)
-		markDefault(models, c.cfg.DefaultModel)
+		models := parseConfiguredModels(cfgModels)
+		markDefault(models, defaultModel)
 		result["status"], result["models"], result["fallback"] = "completed", models, false
 		result["unavailable_models"] = []any{}
-	case c.cfg.ModelsURL != "":
+	case modelsURL != "":
 		// Ask the gateway itself: the agent CLI cannot, it reports only its own
 		// built-in aliases regardless of what the gateway serves.
-		models, err := scanGatewayModels(ctx, c.httpClient, c.cfg.ModelsURL, c.cfg.ModelsAPIKey)
+		models, err := scanGatewayModels(ctx, c.httpClient, modelsURL, modelsKey)
 		if err != nil {
 			c.log.Warn("model scan failed", "error", err)
 			result = map[string]any{"status": "failed", "error": err.Error()}
 			break
 		}
-		markDefault(models, c.cfg.DefaultModel)
+		markDefault(models, defaultModel)
 		result["status"], result["models"], result["fallback"] = "completed", models, false
 		result["unavailable_models"] = []any{}
 	default:

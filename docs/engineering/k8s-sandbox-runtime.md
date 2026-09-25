@@ -734,3 +734,26 @@ Add to `deploy/helm/multica/`, following existing conventions
 - Heartbeating from a healthy controller over dead Pods is the main correctness
   hazard; the Pod-watch to `fail` path is mandatory, not optional.
 - The PAT used by the controller is a broad credential; scope and rotate it.
+
+## Several coding agents
+
+The server protocol does not depend on the provider: a runtime carries a
+`provider`, and `claim`, `start`, `messages` and `complete` are the same for
+all of them. The runner reuses the native `handleTask`, which already knows how
+to start each CLI, so supporting another agent is configuration, not code.
+
+The controller registers one runtime per (workspace, provider) from
+`MULTICA_K8S_PROVIDERS`. Three settings can differ per provider; each is the
+global variable with the provider name appended in upper case (non-alphanumeric
+characters become `_`, so `qoder-cli` is `QODER_CLI`):
+
+| Variable | Effect |
+| --- | --- |
+| `MULTICA_K8S_RUNNER_IMAGE_<P>` | Image for that provider's Pods; unset uses `MULTICA_K8S_RUNNER_IMAGE`. |
+| `MULTICA_K8S_ENV_SECRETS_<P>` | Secrets added only to that provider's Pods, so one provider's API key never reaches another's sandbox. |
+| `MULTICA_K8S_MODELS_<P>`, `_MODELS_URL_<P>`, `_MODELS_API_KEY_<P>`, `_DEFAULT_MODEL_<P>` | Model source for that provider. Setting a list or a URL replaces the global model settings as a group. |
+
+Not done: only the Claude image is built (`Dockerfile.k8s-sandbox`); an image
+per additional CLI has to be added. Gateway format is the gateway's concern:
+Claude Code needs the Anthropic Messages format, other CLIs their own. Only the
+routing was tested, with a fake driver and a fake API server, not a second real CLI.

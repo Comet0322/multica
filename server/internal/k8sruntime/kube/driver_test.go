@@ -230,3 +230,20 @@ func TestCapacityErrorsAreClassified(t *testing.T) {
 		}
 	}
 }
+
+func TestPodImageAndSecretsCanBeOverriddenPerTask(t *testing.T) {
+	api := newFakeAPI()
+	d := newDriver(t, api, func(c *Config) { c.EnvFromSecrets = []string{"shared"} })
+	if err := d.Create(context.Background(), controller.PodSpec{Name: "multica-task-t2", Image: "runner-codex:1", EnvFromSecrets: []string{"codex-key"}, Input: []byte("{}")}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(api.pods["multica-task-t2"])
+	for _, want := range []string{`"image":"runner-codex:1"`, `"name":"shared"`, `"name":"codex-key"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("missing %s in %s", want, raw)
+		}
+	}
+	if strings.Contains(string(raw), `img:1`) {
+		t.Error("the driver default image must not be used when the task names one")
+	}
+}

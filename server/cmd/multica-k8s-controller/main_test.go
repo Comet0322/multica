@@ -44,3 +44,31 @@ func TestBadDurationIsRejected(t *testing.T) {
 		t.Fatal("an unparseable duration must be an error, not silently ignored")
 	}
 }
+
+func TestPerProviderSettingsReachTheControllerConfig(t *testing.T) {
+	for k, v := range map[string]string{
+		"MULTICA_K8S_RUNNER_IMAGE_QODER_CLI": "img-q",
+		"MULTICA_K8S_ENV_SECRETS_CODEX":      "a, b",
+		"MULTICA_K8S_MODELS_URL_CODEX":       "https://oai-gw/",
+		"MULTICA_K8S_MODELS_API_KEY_CODEX":   "k",
+		"MULTICA_K8S_MODELS_CODEX":           "m1",
+		"MULTICA_K8S_DEFAULT_MODEL_CODEX":    "m1",
+	} {
+		t.Setenv(k, v)
+	}
+	cfg, err := controllerConfig("d", "h", []string{"w"}, []string{"codex", "qoder-cli", "claude"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PerProvider["qoder-cli"].Image != "img-q" {
+		t.Errorf("hyphenated provider name not mapped: %+v", cfg.PerProvider["qoder-cli"])
+	}
+	c := cfg.PerProvider["codex"]
+	if !reflect.DeepEqual(c.EnvSecrets, []string{"a", "b"}) || c.ModelsURL != "https://oai-gw/" || c.ModelsAPIKey != "k" ||
+		!reflect.DeepEqual(c.Models, []string{"m1"}) || c.DefaultModel != "m1" {
+		t.Errorf("codex settings = %+v", c)
+	}
+	if got := cfg.PerProvider["claude"]; got.Image != "" || got.ModelsURL != "" {
+		t.Errorf("claude must stay on the global defaults: %+v", got)
+	}
+}

@@ -62,6 +62,20 @@ func list(key string) []string {
 	return out
 }
 
+// providerEnvKey turns a provider name into an environment variable suffix:
+// "codex" -> "CODEX", "qoder-cli" -> "QODER_CLI".
+func providerEnvKey(provider string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r - 32
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			return r
+		}
+		return '_'
+	}, provider)
+}
+
 // controllerConfig builds the controller settings from the environment. It is a
 // function of its own so a test can prove every variable is actually wired: a
 // setting that is documented but never read compiles fine and only fails in use.
@@ -78,13 +92,26 @@ func controllerConfig(daemonID, hostname string, workspaces, providers []string,
 	if err != nil {
 		return controller.Config{}, err
 	}
+	per := map[string]controller.ProviderSettings{}
+	for _, p := range providers {
+		k := providerEnvKey(p)
+		per[p] = controller.ProviderSettings{
+			Image:        env("MULTICA_K8S_RUNNER_IMAGE_"+k, ""),
+			EnvSecrets:   list("MULTICA_K8S_ENV_SECRETS_" + k),
+			Models:       list("MULTICA_K8S_MODELS_" + k),
+			ModelsURL:    env("MULTICA_K8S_MODELS_URL_"+k, ""),
+			ModelsAPIKey: env("MULTICA_K8S_MODELS_API_KEY_"+k, ""),
+			DefaultModel: env("MULTICA_K8S_DEFAULT_MODEL_"+k, ""),
+		}
+	}
 	return controller.Config{
-		DaemonID:   daemonID,
-		DeviceName: env("MULTICA_DAEMON_DEVICE_NAME", hostname),
-		CLIVersion: env("MULTICA_CLI_VERSION", "k8s-controller"),
-		Workspaces: workspaces,
-		Providers:  providers,
-		MaxPods:    maxPods,
+		PerProvider: per,
+		DaemonID:    daemonID,
+		DeviceName:  env("MULTICA_DAEMON_DEVICE_NAME", hostname),
+		CLIVersion:  env("MULTICA_CLI_VERSION", "k8s-controller"),
+		Workspaces:  workspaces,
+		Providers:   providers,
+		MaxPods:     maxPods,
 
 		HeartbeatInterval: heartbeat,
 		PendingTimeout:    pending,

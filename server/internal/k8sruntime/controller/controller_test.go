@@ -156,6 +156,7 @@ type fakeDriver struct {
 	// noCapacity makes the next N Create calls fail with ErrNoCapacity.
 	noCapacity int
 	creates    int
+	specs      map[string]PodSpec
 }
 
 func newFakeDriver() *fakeDriver {
@@ -174,6 +175,10 @@ func (d *fakeDriver) Create(_ context.Context, spec PodSpec) error {
 	}
 	d.pods[spec.Name] = &PodInfo{Name: spec.Name, Phase: PhasePending, Annotations: spec.Annotations}
 	d.inputs[spec.Name] = spec.Input
+	if d.specs == nil {
+		d.specs = map[string]PodSpec{}
+	}
+	d.specs[spec.Name] = spec
 	return nil
 }
 func (d *fakeDriver) List(context.Context) ([]PodInfo, error) {
@@ -631,5 +636,32 @@ func TestARepeatedRequestIsAnsweredOnce(t *testing.T) {
 	h.srv.mu.Unlock()
 	if n != 1 {
 		t.Fatalf("answered %d times, want once", n)
+	}
+}
+
+func TestProviderSettingsRouteImageAndSecretsToThatProvidersPod(t *testing.T) {
+	h := newHarness(t, func(c *Config) {
+		c.PerProvider = map[string]ProviderSettings{"claude": {Image: "runner-claude:1", EnvSecrets: []string{"claude-key"}}}
+	})
+	h.srv.queue = []*daemon.Task{task("T1")}
+	h.c.Tick(context.Background())
+	spec := h.drv.specs[PodName("T1")]
+	if spec.Image != "runner-claude:1" || len(spec.EnvFromSecrets) != 1 || spec.EnvFromSecrets[0] != "claude-key" {
+		t.Fatalf("spec = image %q secrets %v", spec.Image, spec.EnvFromSecrets)
+	}
+}
+
+func TestModelSourceIsPerProviderWithGlobalFallback(t *testing.T) {
+	cfg := Config{
+		Models: []string{"g"}, DefaultModel: "g",
+		PerProvider: map[string]ProviderSettings{"codex": {ModelsURL: "http://gw", ModelsAPIKey: "k", DefaultModel: "x"}},
+	}
+	if m, u, _, d := cfg.modelSource("claude"); len(m) != 1 || u != "" || d != "g" {
+		t.Errorf("claude should use the global source: %v %q %q", m, u, d)
+	}
+	// A provider that sets its own source replaces the global group entirely,
+	// so a global list never leaks into a provider that has a gateway.
+	if m, u, k, d := cfg.modelSource("codex"); len(m) != 0 || u != "http://gw" || k != "k" || d != "x" {
+		t.Errorf("codex should use its own source: %v %q %q %q", m, u, k, d)
 	}
 }

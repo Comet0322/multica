@@ -240,7 +240,7 @@ func (d *Driver) podManifest(spec controller.PodSpec) map[string]any {
 		env = append(env, map[string]any{"name": k, "value": v})
 	}
 	envFrom := make([]map[string]any, 0, len(c.EnvFromSecrets))
-	for _, s := range c.EnvFromSecrets {
+	for _, s := range append(append([]string{}, c.EnvFromSecrets...), spec.EnvFromSecrets...) {
 		envFrom = append(envFrom, map[string]any{"secretRef": map[string]any{"name": s}})
 	}
 
@@ -262,9 +262,13 @@ func (d *Driver) podManifest(spec controller.PodSpec) map[string]any {
 		resources["limits"] = lim
 	}
 
+	image := c.Image
+	if spec.Image != "" {
+		image = spec.Image
+	}
 	container := map[string]any{
 		"name":    "runner",
-		"image":   c.Image,
+		"image":   image,
 		"command": []string{"/app/multica-k8s-runner"},
 		"env":     env,
 		"envFrom": envFrom,
