@@ -86,6 +86,12 @@ spec:
             # Model names offered in the web UI's agent form ("id" or "id=Label", first = default).
             # Set this to the names your gateway serves; unset shows the provider's built-in list.
             # - {name: MULTICA_K8S_MODELS, value: "model-a=Model A,model-b"}
+            # ...or let the controller scan the gateway (GET <url>/v1/models) instead. Same URL as the agents'
+            # ANTHROPIC_BASE_URL; the key comes from a Secret, ideally one that can only list models.
+            # - {name: MULTICA_K8S_MODELS_URL, value: "https://gateway.internal"}
+            # - name: MULTICA_K8S_MODELS_API_KEY
+            #   valueFrom: {secretKeyRef: {name: multica-gateway-models, key: key}}
+            # - {name: MULTICA_K8S_DEFAULT_MODEL, value: "model-a"}
             # How often the runtime heartbeats. It also bounds how long the UI waits for the
             # model list, so 5s feels much faster than the 15s default.
             # - {name: MULTICA_K8S_HEARTBEAT_INTERVAL, value: "5s"}

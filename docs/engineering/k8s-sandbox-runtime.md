@@ -446,11 +446,32 @@ heartbeat acknowledgement, so it never answered. Every request sat `pending`,
 then `running`, then timed out, and the web UI showed no model option when
 creating an agent for the runtime. The controller now answers all of them:
 
-- **Model list**: the models named by `MULTICA_K8S_MODELS` (`id` or `id=Label`,
-  comma separated, the first is marked default) as an authoritative catalog. If
-  unset, the provider's built-in catalog, marked non-authoritative
-  (`fallback: true`) because the controller image has no agent CLI to
-  interrogate; for `claude` that is ten built-in model names.
+- **Model list**, first match wins:
+  1. `MULTICA_K8S_MODELS` (`id` or `id=Label`, comma separated): an explicit
+     list, authoritative.
+  2. `MULTICA_K8S_MODELS_URL`: the controller **scans the gateway**, `GET
+     <url>/v1/models` (follows pagination), authoritative. Use the same value as
+     the agents' `ANTHROPIC_BASE_URL`. Both the Anthropic Models API format and
+     an OpenAI-compatible `{"data":[{"id":...}]}` list are read.
+     `MULTICA_K8S_MODELS_API_KEY` authenticates it (sent as both a bearer token
+     and `x-api-key`). This gives the controller a credential for the models
+     endpoint, so use a key that can do nothing else if the gateway allows it.
+     A scan that fails (bad key, unreachable, not a list, empty) is reported as
+     a failure with the HTTP status, never with the key or the response body,
+     rather than showing a misleading list.
+  3. Otherwise the provider's built-in catalog, marked non-authoritative
+     (`fallback: true`); for `claude` that is ten built-in model names.
+  `MULTICA_K8S_DEFAULT_MODEL` picks which id of an explicit or scanned list is
+  marked default; otherwise the first is.
+
+  Why the agent CLI is not used to scan: the native daemon discovers models by
+  asking the Claude Code CLI itself, but that CLI answers from its own catalog.
+  Measured with the runner image: with a subscription token it reported five
+  models (`default`, `sonnet`, `fable`, `opus`, `haiku`); pointed at a gateway it
+  reported its own aliases (`default`, `opus[1m]`, `sonnet`, ...) and never
+  queried the gateway (the gateway saw only a connection probe). So it cannot
+  reveal the names an internal gateway serves, and the controller image does not
+  need the CLI.
 - **Local skills**: an empty inventory, not supported (a sandbox has none).
 - **Local skill import** and **CLI update**: a clear failure ("sandbox runtimes
   have no local skills to import", "updated by rolling out a new image") instead
@@ -470,12 +491,17 @@ Behaviour to know:
   authoritative one. After removing `MULTICA_K8S_MODELS`, the old list stays
   until the cache expires, the server restarts, or an authoritative list
   replaces it.
-- Set `MULTICA_K8S_MODELS` to the model names the gateway actually serves;
-  the value chosen for an agent is passed to the CLI as `--model`.
+- The value chosen for an agent is passed to the CLI as `--model`, so it must be
+  a name the gateway accepts.
 - Verified on kind: the request that used to time out completed with the
   built-in list; with `MULTICA_K8S_MODELS` set the UI's list showed those models
-  with the right default and label, and an agent could be created selecting one.
-  A run using such a name against a real model was not attempted.
+  with the right default and label, and an agent could be created selecting one;
+  with `MULTICA_K8S_MODELS_URL` pointed at a stub gateway that requires a key,
+  the list was the gateway's three models with the configured default, and a
+  wrong key produced a clear failure with the key in no log line. The gateway
+  was a stub: a real gateway's `/v1/models` was not tried, and a run using such a
+  name against a real model was not attempted. The controller trusts the system
+  CA bundle, so a gateway with a private CA needs its CA added to the image.
 - `runtime_gone` in the acknowledgement is only logged. The controller does not
   re-register (see the server-outage test plan).
 
