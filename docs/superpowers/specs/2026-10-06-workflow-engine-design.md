@@ -215,8 +215,8 @@ issues, parent notification is not needed because the engine owns completion).
 
 ## 12. Open questions for review
 
-1. **Command comments waking the agent.** Accept the one-line `comment.go` touch to
-   suppress agent triggering for `/accept`, `/reject`, `/retry`, or accept the extra wake-up?
+1. **Command comments waking the agent.** Resolved: accept the one-line `comment.go`
+   touch so `/accept`, `/reject`, `/retry` do not trigger agents (same mechanism as `/note`).
 2. **`agent_failed` detection** relies on the latest agent task status for the issue; the
    exact query is confirmed during planning.
 3. **Cadence** of 15s is a guess; adjust if too chatty.
