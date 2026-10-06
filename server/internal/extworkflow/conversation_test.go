@@ -2,6 +2,7 @@ package extworkflow
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -45,7 +46,8 @@ func TestMemberCommentWakesTheSupervisorOnce(t *testing.T) {
 		t.Fatal("no conversation task")
 	}
 	if task.AgentID != supervisor || task.IssueID != run.IssueID || task.ExtWorkflowRole.String != RoleSupervisor ||
-		task.ExtWorkflowRunID != run.ID || task.ExtWorkflowStepID.Valid || task.Status != "queued" {
+		task.ExtWorkflowRunID != run.ID || task.ExtWorkflowStepID.Valid || task.Status != "queued" ||
+		task.TriggerCommentID != comment {
 		t.Fatalf("conversation task = %+v", task)
 	}
 	if err := e.engine.OnMemberParentComment(context.Background(), run.IssueID, comment, e.user); err != nil {
@@ -107,4 +109,79 @@ func TestConversationRefusesAnUnpermittedMember(t *testing.T) {
 		t.Fatalf("refused decision: events=%d replies=%d, want 1/1", events, replies)
 	}
 	wantStepRow(t, e.step(t, run, "build"), StepAwaitingSupervisor, 1)
+}
+
+func TestConversationTaskIsStampedWithItsCommenter(t *testing.T) {
+	e := newEnv(t)
+	run, _, _ := e.reviewRun(t, e.user)
+	comment := e.memberSays(t, run.IssueID, e.user, "Looking good.")
+	var actor pgtype.UUID
+	e.fx.QueryRow(t, `SELECT originator_user_id FROM agent_task_queue WHERE trigger_comment_id = $1`, comment).Scan(&actor)
+	if actor != e.user {
+		t.Fatalf("actor_user_id = %v, want %v", actor, e.user)
+	}
+}
+
+func TestTwoMembersGetTheirOwnConversationTasks(t *testing.T) {
+	e := newEnv(t)
+	other := e.member(t, "member")
+	run, _, _ := e.reviewRun(t, e.user)
+	a := e.memberSays(t, run.IssueID, e.user, "First thought.")
+	b := e.memberSays(t, run.IssueID, other, "Second thought.")
+	for _, c := range []struct {
+		comment, member pgtype.UUID
+	}{{a, e.user}, {b, other}} {
+		task, ok := e.conversationTask(t, c.comment)
+		if !ok {
+			t.Fatalf("comment %v has no conversation task", c.comment)
+		}
+		var actor pgtype.UUID
+		e.fx.QueryRow(t, `SELECT originator_user_id FROM agent_task_queue WHERE id = $1`, task.ID).Scan(&actor)
+		if task.TriggerCommentID != c.comment || actor != c.member {
+			t.Fatalf("task for %v: trigger=%v actor=%v want member %v", c.comment, task.TriggerCommentID, actor, c.member)
+		}
+	}
+}
+
+func TestMemberCommentWithoutActiveRunWakesNothing(t *testing.T) {
+	e := newEnv(t)
+	run, _, _ := e.reviewRun(t, e.user)
+	if err := e.engine.CancelRun(context.Background(), run.ID, "member", e.user); err != nil {
+		t.Fatalf("CancelRun: %v", err)
+	}
+	comment := e.memberSays(t, run.IssueID, e.user, "Anyone?")
+	if _, ok := e.conversationTask(t, comment); ok {
+		t.Fatal("a conversation task was created without an active run")
+	}
+}
+
+func TestMemberCommentWithEngineDisabledWakesNothing(t *testing.T) {
+	e := newEnv(t)
+	run, _, _ := e.reviewRun(t, e.user)
+	off := NewEngine(Deps{Pool: e.pool, Queries: e.q, Issues: e.issues, Tasks: e.tasks, Access: e.access, Publisher: e.pub, Enabled: false})
+	id := util.MustParseUUID(e.fx.Comment(t, util.UUIDToString(run.IssueID), "Hello", testutil.Cols{"author_id": e.user}))
+	if err := off.OnMemberParentComment(context.Background(), run.IssueID, id, e.user); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := e.conversationTask(t, id); ok {
+		t.Fatal("a disabled engine woke the supervisor")
+	}
+}
+
+func TestConcurrentDeliveriesOfOneCommentWakeOnce(t *testing.T) {
+	e := newEnv(t)
+	run, _, _ := e.reviewRun(t, e.user)
+	id := util.MustParseUUID(e.fx.Comment(t, util.UUIDToString(run.IssueID), "Race me.", testutil.Cols{"author_id": e.user}))
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = e.engine.OnMemberParentComment(context.Background(), run.IssueID, id, e.user)
+		}()
+	}
+	wg.Wait()
+	if n := e.fx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE trigger_comment_id = $1`, id); n != 1 {
+		t.Fatalf("conversation tasks = %d, want 1", n)
+	}
 }

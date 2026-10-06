@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -47,14 +48,15 @@ func (e *Engine) OnMemberParentComment(ctx context.Context, issueID, commentID, 
 	if err != nil {
 		return nil
 	}
-	if e.access != nil {
-		ok, err := e.access.CanInvokeAgent(ctx, run.WorkspaceID, "member", memberID, supervisor)
-		if err != nil {
-			return fmt.Errorf("check supervisor access: %w", err)
-		}
-		if !ok {
-			return nil
-		}
+	if e.access == nil {
+		return nil
+	}
+	ok, err := e.access.CanInvokeAgent(ctx, run.WorkspaceID, "member", memberID, supervisor)
+	if err != nil {
+		return fmt.Errorf("check supervisor access: %w", err)
+	}
+	if !ok {
+		return nil
 	}
 	tx, err := e.pool.Begin(ctx)
 	if err != nil {
@@ -67,6 +69,8 @@ func (e *Engine) OnMemberParentComment(ctx context.Context, issueID, commentID, 
 		HandoffNote: "Workflow supervisor: a person commented on this workflow issue. Your instructions carry the run briefing.",
 	})
 	if errors.Is(err, service.ErrExtAgentUnavailable) || errors.Is(err, service.ErrExtTaskSlotBusy) {
+		slog.Warn("ext-workflow: conversation wake dropped", "run_id", util.UUIDToString(run.ID),
+			"comment_id", util.UUIDToString(commentID), "error", err)
 		return nil
 	}
 	if err != nil {
@@ -74,6 +78,13 @@ func (e *Engine) OnMemberParentComment(ctx context.Context, issueID, commentID, 
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
+	}
+	// Enqueue may hand back an existing task; announce only this comment's.
+	if task.TriggerCommentID != commentID {
+		slog.Warn("ext-workflow: conversation enqueue returned another comment's task",
+			"run_id", util.UUIDToString(run.ID), "comment_id", util.UUIDToString(commentID),
+			"task_id", util.UUIDToString(task.ID))
+		return nil
 	}
 	e.tasks.PublishExtWorkflowTaskQueued(ctx, task)
 	return nil
