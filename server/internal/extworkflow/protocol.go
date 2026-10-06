@@ -221,6 +221,7 @@ func (e *Engine) decideInput(ctx context.Context, call protocolCall, d Decision)
 	}
 	if key != "" {
 		in.StepID = snap.ByKey[key].ID
+		in.ExpectedStatus = StepStatus(snap.ByKey[key].Status)
 	}
 	return in, nil
 }

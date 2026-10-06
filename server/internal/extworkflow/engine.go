@@ -81,6 +81,10 @@ type AdvanceInput struct {
 	Event          Event
 	Actor          Actor
 	ExpectedStatus StepStatus // optional guard: ErrStatusMismatch when the step moved on
+	// RequireActiveTask, when valid, is the agent task a decision came from.
+	// Under the run lock it must still be in flight and, for step and focus
+	// supervisor tasks, still focused on StepKey; otherwise ErrStatusMismatch.
+	RequireActiveTask pgtype.UUID
 }
 
 // RunSnapshot is a run with its steps (in node order), its in-flight tasks and
@@ -178,9 +182,33 @@ func (e *Engine) Advance(ctx context.Context, runID pgtype.UUID, in AdvanceInput
 	if actor.Type == "" {
 		actor = EngineActor
 	}
-	return e.advance(ctx, nil, runID, func(context.Context, *db.Queries, *RunSnapshot) ([]stepEvent, error) {
+	return e.advance(ctx, nil, runID, func(_ context.Context, _ *db.Queries, snap *RunSnapshot) ([]stepEvent, error) {
+		if err := requireActiveTask(snap, in.RequireActiveTask, in.StepKey); err != nil {
+			return nil, err
+		}
 		return []stepEvent{{Key: in.StepKey, Event: in.Event, Actor: actor, Expected: in.ExpectedStatus}}, nil
 	})
+}
+
+// requireActiveTask re-checks, on the locked snapshot, that the task a
+// decision came from is still in flight and still bound to the step.
+func requireActiveTask(snap *RunSnapshot, taskID pgtype.UUID, stepKey string) error {
+	if !taskID.Valid {
+		return nil
+	}
+	for _, t := range snap.Active {
+		if t.ID != taskID {
+			continue
+		}
+		if t.ExtWorkflowKind.String == KindConversation {
+			return nil
+		}
+		if focus, _ := snap.KeyOf(t.ExtWorkflowStepID); focus != stepKey {
+			return fmt.Errorf("%w: the deciding task is now on step %q, not %q", ErrStatusMismatch, focus, stepKey)
+		}
+		return nil
+	}
+	return fmt.Errorf("%w: the deciding task is no longer running", ErrStatusMismatch)
 }
 
 type stepEvent struct {

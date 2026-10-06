@@ -2,6 +2,7 @@ package extworkflow
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -186,21 +187,68 @@ func TestOnCommentStepAgentBoundToItsOwnStep(t *testing.T) {
 	wantStepRow(t, e.step(t, run, "build"), StepRunning, 1)
 }
 
-// A supervisor whose task is no longer in flight, and one commenting with a
-// source task from another agent, decide nothing and get no reply.
+// A foreign agent citing the supervisor's task, and the supervisor citing its
+// OWN review task after that task was cancelled, decide nothing and get no
+// reply.
 func TestOnCommentIgnoresEndedAndForeignTasks(t *testing.T) {
 	e := newEnv(t)
 	run, build, supervisor := e.reviewRun(t, e.user)
 	review := e.latestTask(t, build, RoleSupervisor)
 	other := e.agent(t, "Other")
-	stepTask := e.latestTask(t, build, RoleStep) // completed attempt of the step agent
 
 	foreign := e.agentSays(t, build.IssueID, other, &review, block("action: approve"))
-	ended := e.agentSays(t, build.IssueID, supervisor, &stepTask, block("action: approve"))
-	for name, c := range map[string]pgtype.UUID{"foreign agent with supervisor task": foreign, "supervisor citing an ended task": ended} {
+	e.fx.Exec(t, `UPDATE agent_task_queue SET status = 'cancelled', completed_at = now() WHERE id = $1`, review.ID)
+	ended := e.agentSays(t, build.IssueID, supervisor, &review, block("action: approve"))
+	for name, c := range map[string]pgtype.UUID{"foreign agent with supervisor task": foreign, "supervisor citing its ended task": ended} {
 		if events, replies := e.protocolErrors(t, run, c); events != 0 || replies != 0 {
 			t.Errorf("%s: protocol_error events=%d replies=%d, want none", name, events, replies)
 		}
+	}
+	wantStepRow(t, e.step(t, run, "build"), StepAwaitingSupervisor, 1)
+}
+
+// A supervisor focused on step S posting on another step's child issue is a
+// participant error that points at S's child issue.
+func TestOnCommentSupervisorOnAnotherStepsChild(t *testing.T) {
+	e := newEnv(t)
+	supervisor, planner, coder := e.agent(t, "Supervisor"), e.agent(t, "Planner"), e.agent(t, "Coder")
+	wf := e.workflow(t, supervisor, 3,
+		wfNode{key: "spec", title: "Spec", agent: planner, review: true},
+		wfNode{key: "build", title: "Build", agent: coder})
+	parent := e.parentIssue(t, wf, "todo")
+	run := e.start(t, parent)
+	spec := e.step(t, run, "spec")
+	e.running(t, e.latestTask(t, spec, RoleStep))
+	e.childMoves(t, parent, spec.IssueID, "done")
+	review := e.running(t, e.latestTask(t, e.step(t, run, "spec"), RoleSupervisor))
+	build := e.step(t, run, "build")
+
+	comment := e.agentSays(t, build.IssueID, supervisor, &review, block("action: approve"))
+	if events, replies := e.protocolErrors(t, run, comment); events != 1 || replies != 1 {
+		t.Fatalf("protocol_error events=%d replies=%d, want 1/1", events, replies)
+	}
+	var reply, taskID string
+	e.fx.QueryRow(t, `SELECT content FROM comment WHERE parent_id = $1`, comment).Scan(&reply)
+	e.fx.QueryRow(t, `SELECT payload->>'task_id' FROM ext_workflow_run_event WHERE run_id = $1 AND kind = 'protocol_error' AND payload->>'comment_id' = $2`, run.ID, util.UUIDToString(comment)).Scan(&taskID)
+	if !strings.Contains(reply, "child issue of step \"Spec\"") || taskID != util.UUIDToString(review.ID) {
+		t.Errorf("reply %q, task_id %q", reply, taskID)
+	}
+	wantStepRow(t, e.step(t, run, "spec"), StepAwaitingSupervisor, 1)
+}
+
+// The deciding task is re-checked under the run lock: a decision from a task
+// that ended after authorization is refused and applies nothing.
+func TestDecideRefusesTaskThatEndedAfterAuthorization(t *testing.T) {
+	e := newEnv(t)
+	run, build, supervisor := e.reviewRun(t, e.user)
+	review := e.latestTask(t, build, RoleSupervisor)
+	in := DecideInput{
+		RunID: run.ID, StepID: build.ID, Decision: Decision{Action: ActionApprove},
+		ActorType: "agent", ActorID: supervisor, TaskID: review.ID, ExpectedStatus: StepAwaitingSupervisor,
+	}
+	e.fx.Exec(t, `UPDATE agent_task_queue SET status = 'cancelled', completed_at = now() WHERE id = $1`, review.ID)
+	if err := e.engine.Decide(context.Background(), in); !errors.Is(err, ErrStatusMismatch) {
+		t.Fatalf("Decide with an ended task = %v, want ErrStatusMismatch", err)
 	}
 	wantStepRow(t, e.step(t, run, "build"), StepAwaitingSupervisor, 1)
 }

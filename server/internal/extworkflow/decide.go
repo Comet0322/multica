@@ -100,12 +100,17 @@ func (e *Engine) Decide(ctx context.Context, in DecideInput) error {
 	}
 	d := in.Decision
 	d.Step = key
-	return e.Advance(ctx, in.RunID, AdvanceInput{
+	adv := AdvanceInput{
 		StepKey:        key,
 		Event:          Event{Kind: EvDecision, Decision: d},
 		Actor:          Actor{Type: in.ActorType, ID: in.ActorID, OnBehalfOf: in.OnBehalfOf, TaskID: in.TaskID},
 		ExpectedStatus: in.ExpectedStatus,
-	})
+	}
+	if in.ActorType == "agent" {
+		// Re-checked under the run lock: the task may have ended meanwhile.
+		adv.RequireActiveTask = in.TaskID
+	}
+	return e.Advance(ctx, in.RunID, adv)
 }
 
 // CancelRun stops an active run for a person (spec §5.6, §7.2).
