@@ -20,6 +20,7 @@ import (
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
+	"github.com/multica-ai/multica/server/internal/workflow"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -1992,14 +1993,15 @@ const noteCommentPrefix = "/note"
 // isNoteComment reports whether content opts out of agent triggering via the
 // reserved /note prefix. The prefix must be the comment's first token, so
 // "/note check expiry", "  /NOTE", and "/note" all match, while "/notes",
-// "/ note", and "see foo/note" do not.
+// "/ note", and "see foo/note" do not. The workflow engine's /accept, /reject
+// and /retry commands are treated the same way so they never wake an agent.
 func isNoteComment(content string) bool {
 	trimmed := strings.TrimLeft(content, " \t\r\n")
 	firstToken := trimmed
 	if i := strings.IndexFunc(trimmed, unicode.IsSpace); i >= 0 {
 		firstToken = trimmed[:i]
 	}
-	return strings.EqualFold(firstToken, noteCommentPrefix)
+	return strings.EqualFold(firstToken, noteCommentPrefix) || workflow.IsCommandToken(firstToken)
 }
 
 // triggerTasksForComment resolves and enqueues the comment's agent triggers and
