@@ -152,7 +152,26 @@ func newEnv(t *testing.T) *env {
 		bus: bus, tasks: tasks, issues: issues, access: &fakeAccess{}, pub: &recPublisher{},
 	}
 	e.engine = NewEngine(Deps{Pool: p, Queries: q, Issues: issues, Tasks: tasks, Access: e.access, Publisher: e.pub, Enabled: true})
+	tasks.ExtWorkflow = e.engine // the child-event hook reaches the engine through the task service
 	return e
+}
+
+// endTask moves a task to a terminal status the way a daemon report would,
+// then delivers the bus event the listener forwards.
+func (e *env) endTask(t *testing.T, task db.AgentTaskQueue, status string) {
+	t.Helper()
+	e.fx.Exec(t, `UPDATE agent_task_queue SET status = $2, started_at = COALESCE(started_at, now()), completed_at = now() WHERE id = $1`, task.ID, status)
+	if err := e.engine.OnTaskTerminal(context.Background(), task.ID); err != nil {
+		t.Fatalf("OnTaskTerminal: %v", err)
+	}
+}
+
+// setStatus writes an issue status directly (an agent or person moving it).
+func (e *env) setStatus(t *testing.T, issueID pgtype.UUID, status string) {
+	t.Helper()
+	if _, err := e.q.UpdateIssueStatus(context.Background(), db.UpdateIssueStatusParams{ID: issueID, Status: status, WorkspaceID: e.ws}); err != nil {
+		t.Fatalf("set status %s: %v", status, err)
+	}
 }
 
 func (e *env) agent(t *testing.T, name string) pgtype.UUID {
