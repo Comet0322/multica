@@ -129,8 +129,8 @@ func TestRejectRedispatchesWithFeedbackThenFails(t *testing.T) {
 
 	comment := commentID(t, e, def)
 	build := stepByNode(t, e, def, "build")
-	if ok, _ := e.engine.ApplyEvent(ctx, build, EventReject, comment); !ok {
-		t.Fatal("first reject should redo")
+	if ok, err := e.engine.ApplyEvent(ctx, build, EventReject, comment); err != nil || !ok {
+		t.Fatalf("first reject should redo: %v", err)
 	}
 	last := e.rec.enqueued[len(e.rec.enqueued)-1]
 	if !strings.HasPrefix(last, "mention:") {
@@ -139,8 +139,8 @@ func TestRejectRedispatchesWithFeedbackThenFails(t *testing.T) {
 	setStatus(t, e, stepByNode(t, e, def, "build"), "in_review")
 	tick(t, e)
 	build = stepByNode(t, e, def, "build")
-	if ok, _ := e.engine.ApplyEvent(ctx, build, EventReject, comment); !ok {
-		t.Fatal("second reject should be applied")
+	if ok, err := e.engine.ApplyEvent(ctx, build, EventReject, comment); err != nil || !ok {
+		t.Fatalf("second reject should be applied: %v", err)
 	}
 	if phaseOf(t, e, def, "build") != PhaseFailed {
 		t.Fatalf("with max_retries=1 the second reject must fail the step, phase=%s", phaseOf(t, e, def, "build"))
@@ -151,8 +151,8 @@ func TestRejectRedispatchesWithFeedbackThenFails(t *testing.T) {
 		t.Fatalf("definition state=%s status=%s, want blocked", dm.State, got.Status)
 	}
 	build = stepByNode(t, e, def, "build")
-	if ok, _ := e.engine.ApplyEvent(ctx, build, EventRetry, pgtypeUUIDZero()); !ok {
-		t.Fatal("retry should restart a failed step")
+	if ok, err := e.engine.ApplyEvent(ctx, build, EventRetry, pgtypeUUIDZero()); err != nil || !ok {
+		t.Fatalf("retry should restart a failed step: %v", err)
 	}
 	if m, _ := readStepMeta(stepByNode(t, e, def, "build")); m.Phase != PhaseRunning || m.Attempts != 0 {
 		t.Fatalf("after retry phase=%s attempts=%d", m.Phase, m.Attempts)
@@ -604,6 +604,13 @@ func TestClockSkewInFlightTaskIsNeverRedispatched(t *testing.T) {
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime})
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "running", "runtime_id": e.runtime})
 	tick(t, e)
+	// Discriminating variant: the stamp is past the grace window and the only
+	// task is running but was created before the stamp; without the in-flight
+	// check this would look like a lost dispatch.
+	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
+	e.fx.Exec(t, `DELETE FROM agent_task_queue WHERE issue_id = $1`, uuidStr(plan))
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "running", "runtime_id": e.runtime, "created_at": dbfx.Raw("now() - interval '1 hour'")})
+	tick(t, e)
 	if got, _ := readStepMeta(stepByNode(t, e, def, "plan")); got.Phase != PhaseRunning || got.Attempts != 0 || len(e.rec.enqueued) != 1 {
 		t.Fatalf("in-flight tasks must count regardless of since: phase=%s attempts=%d enqueued=%v", got.Phase, got.Attempts, e.rec.enqueued)
 	}
@@ -676,5 +683,52 @@ func TestConcurrentClosersConvergeStatusWithState(t *testing.T) {
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if m, _ := readDefMeta(got); m.State != RunBlocked || got.Status != "blocked" {
 		t.Fatalf("state=%s status=%s, want blocked/blocked", m.State, got.Status)
+	}
+}
+
+func TestParkedTaskOlderThanStampIsInFlight(t *testing.T) {
+	for _, status := range []string{"waiting_local_directory", "deferred"} {
+		t.Run(status, func(t *testing.T) {
+			e, def := expanded(t)
+			tick(t, e)
+			plan := stepByNode(t, e, def, "plan")
+			m, _ := readStepMeta(plan)
+			e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": status, "runtime_id": e.runtime, "created_at": dbfx.Raw("now() - interval '1 hour'")})
+			setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
+			tick(t, e)
+			if len(e.rec.enqueued) != 1 {
+				t.Fatalf("a %s task is in flight, got %v", status, e.rec.enqueued)
+			}
+		})
+	}
+}
+
+// A reopen that lands between the converge read and its write must not be
+// overwritten by the stale closer.
+func TestConvergeDoesNotOverwriteAReopen(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	dm, _ := readDefMeta(cur)
+	dm.State = RunBlocked
+	raw, _ := json.Marshal(dm)
+	e.engine.beforeClose = func() { // competitor closes as blocked and wins the fence
+		e.engine.beforeClose = nil
+		if _, err := e.q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: "running"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.engine.beforeConvergeWrite = func() { // a /retry reopens before the converge writes
+		e.engine.beforeConvergeWrite = nil
+		if err := e.engine.reopenDefinition(ctx, def); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.engine.closeDefinition(ctx, def, RunDone, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if m, _ := readDefMeta(got); m.State != RunRunning || got.Status != "in_progress" {
+		t.Fatalf("state=%s status=%s, want running/in_progress", m.State, got.Status)
 	}
 }

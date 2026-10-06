@@ -45,6 +45,8 @@ type Engine struct {
 	beforeStep func(node string)
 	// beforeClose is a test hook called between closeDefinition's status write and its fenced state write.
 	beforeClose func()
+	// beforeConvergeWrite is a test hook called between convergeStatus's read and write.
+	beforeConvergeWrite func()
 }
 
 func (e *Engine) now() time.Time {

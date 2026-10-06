@@ -129,10 +129,36 @@ RETURNING *;
 SELECT now()::timestamptz AS now;
 
 -- name: HasInFlightWorkflowTask :one
--- True while a queued, dispatched or running task exists for the issue and
--- agent, regardless of when it was created.
+-- True while any non-terminal task (queued, dispatched, running,
+-- waiting_local_directory, deferred) exists for the issue and agent,
+-- regardless of when it was created.
 SELECT EXISTS (
     SELECT 1 FROM agent_task_queue
     WHERE issue_id = sqlc.arg('issue_id') AND agent_id = sqlc.arg('agent_id')
-      AND status IN ('queued', 'dispatched', 'running')
+      AND status NOT IN ('completed', 'failed', 'cancelled')
 ) AS in_flight;
+
+-- name: SetWorkflowDefinitionStatusIfState :one
+-- UpdateIssueStatus (same repositioning and bookkeeping) applied only while the
+-- definition is still in want_state, so a close that lost a race with a reopen
+-- cannot overwrite the reopened status. No rows means the state moved on.
+WITH wakeup_source AS MATERIALIZED (SELECT set_config('multica.source_task_id', '', true))
+UPDATE issue AS i SET
+    status = sqlc.arg('status')::text,
+    duplicate_of_issue_id = CASE WHEN sqlc.arg('status')::text = 'cancelled' AND i.status = 'cancelled' THEN i.duplicate_of_issue_id ELSE NULL END,
+    position = CASE WHEN i.status IS DISTINCT FROM sqlc.arg('status')::text THEN (
+        SELECT COALESCE(MIN(target.position), 0) - 1
+        FROM issue AS target
+        WHERE target.workspace_id = i.workspace_id
+          AND target.status = sqlc.arg('status')::text
+    ) ELSE i.position END,
+    revision = i.revision + CASE WHEN i.status IS DISTINCT FROM sqlc.arg('status')::text THEN 1 ELSE 0 END,
+    last_activity_at = CASE WHEN i.status IS DISTINCT FROM sqlc.arg('status')::text
+        THEN GREATEST(COALESCE(i.last_activity_at, i.updated_at), now())
+        ELSE i.last_activity_at
+    END,
+    updated_at = now()
+FROM wakeup_source
+WHERE i.id = sqlc.arg('id') AND i.workspace_id = sqlc.arg('workspace_id')
+  AND i.metadata->'workflow'->>'state' = sqlc.arg('want_state')::text
+RETURNING i.*;

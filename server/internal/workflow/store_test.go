@@ -194,3 +194,36 @@ func TestLatestWorkflowTaskStatus(t *testing.T) {
 		t.Fatalf("since 30m ago: got %q, %v", got, err)
 	}
 }
+
+func TestHasInFlightWorkflowTask(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	issue := e.flowIssue(t, "inflight", "x")
+	agent := e.agent(t, "A")
+	agentUUID, _ := util.ParseUUID(agent)
+	params := db.HasInFlightWorkflowTaskParams{IssueID: issue.ID, AgentID: agentUUID}
+	has := func() bool {
+		v, err := e.q.HasInFlightWorkflowTask(ctx, params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	if has() {
+		t.Fatal("no rows must not be in flight")
+	}
+	iid := util.UUIDToString(issue.ID)
+	for _, c := range []struct {
+		status string
+		want   bool
+	}{
+		{"completed", false}, {"failed", false}, {"cancelled", false},
+		{"queued", true}, {"dispatched", true}, {"running", true}, {"waiting_local_directory", true}, {"deferred", true},
+	} {
+		e.fx.Exec(t, `DELETE FROM agent_task_queue WHERE issue_id = $1`, iid)
+		e.fx.Task(t, agent, dbfx.Cols{"issue_id": iid, "status": c.status, "runtime_id": e.runtime})
+		if got := has(); got != c.want {
+			t.Fatalf("status %s: in flight = %v, want %v", c.status, got, c.want)
+		}
+	}
+}

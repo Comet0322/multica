@@ -224,7 +224,7 @@ const hasInFlightWorkflowTask = `-- name: HasInFlightWorkflowTask :one
 SELECT EXISTS (
     SELECT 1 FROM agent_task_queue
     WHERE issue_id = $1 AND agent_id = $2
-      AND status IN ('queued', 'dispatched', 'running')
+      AND status NOT IN ('completed', 'failed', 'cancelled')
 ) AS in_flight
 `
 
@@ -233,8 +233,9 @@ type HasInFlightWorkflowTaskParams struct {
 	AgentID pgtype.UUID `json:"agent_id"`
 }
 
-// True while a queued, dispatched or running task exists for the issue and
-// agent, regardless of when it was created.
+// True while any non-terminal task (queued, dispatched, running,
+// waiting_local_directory, deferred) exists for the issue and agent,
+// regardless of when it was created.
 func (q *Queries) HasInFlightWorkflowTask(ctx context.Context, arg HasInFlightWorkflowTaskParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasInFlightWorkflowTask, arg.IssueID, arg.AgentID)
 	var in_flight bool
@@ -612,6 +613,82 @@ func (q *Queries) SetWorkflowDefinitionState(ctx context.Context, arg SetWorkflo
 		arg.ID,
 		arg.WorkspaceID,
 		arg.ExpectedState,
+	)
+	var i Issue
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeType,
+		&i.AssigneeID,
+		&i.CreatorType,
+		&i.CreatorID,
+		&i.ParentIssueID,
+		&i.AcceptanceCriteria,
+		&i.ContextRefs,
+		&i.Position,
+		&i.DueDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.ProjectID,
+		&i.OriginType,
+		&i.OriginID,
+		&i.FirstExecutedAt,
+		&i.StartDate,
+		&i.Metadata,
+		&i.Stage,
+		&i.Properties,
+		&i.Revision,
+		&i.LastActivityAt,
+		&i.TriageState,
+		&i.DuplicateOfIssueID,
+	)
+	return i, err
+}
+
+const setWorkflowDefinitionStatusIfState = `-- name: SetWorkflowDefinitionStatusIfState :one
+WITH wakeup_source AS MATERIALIZED (SELECT set_config('multica.source_task_id', '', true))
+UPDATE issue AS i SET
+    status = $1::text,
+    duplicate_of_issue_id = CASE WHEN $1::text = 'cancelled' AND i.status = 'cancelled' THEN i.duplicate_of_issue_id ELSE NULL END,
+    position = CASE WHEN i.status IS DISTINCT FROM $1::text THEN (
+        SELECT COALESCE(MIN(target.position), 0) - 1
+        FROM issue AS target
+        WHERE target.workspace_id = i.workspace_id
+          AND target.status = $1::text
+    ) ELSE i.position END,
+    revision = i.revision + CASE WHEN i.status IS DISTINCT FROM $1::text THEN 1 ELSE 0 END,
+    last_activity_at = CASE WHEN i.status IS DISTINCT FROM $1::text
+        THEN GREATEST(COALESCE(i.last_activity_at, i.updated_at), now())
+        ELSE i.last_activity_at
+    END,
+    updated_at = now()
+FROM wakeup_source
+WHERE i.id = $2 AND i.workspace_id = $3
+  AND i.metadata->'workflow'->>'state' = $4::text
+RETURNING i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.duplicate_of_issue_id
+`
+
+type SetWorkflowDefinitionStatusIfStateParams struct {
+	Status      string      `json:"status"`
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	WantState   string      `json:"want_state"`
+}
+
+// UpdateIssueStatus (same repositioning and bookkeeping) applied only while the
+// definition is still in want_state, so a close that lost a race with a reopen
+// cannot overwrite the reopened status. No rows means the state moved on.
+func (q *Queries) SetWorkflowDefinitionStatusIfState(ctx context.Context, arg SetWorkflowDefinitionStatusIfStateParams) (Issue, error) {
+	row := q.db.QueryRow(ctx, setWorkflowDefinitionStatusIfState,
+		arg.Status,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.WantState,
 	)
 	var i Issue
 	err := row.Scan(

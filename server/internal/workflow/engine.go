@@ -519,7 +519,17 @@ func (e *Engine) convergeStatus(ctx context.Context, def db.Issue) error {
 	if cur.Status == want {
 		return nil
 	}
-	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: want})
+	if e.beforeConvergeWrite != nil {
+		e.beforeConvergeWrite()
+	}
+	// Conditional on the state still being the one read, so a reopen that lands
+	// in between is not overwritten.
+	updated, err := e.Q.SetWorkflowDefinitionStatusIfState(ctx, db.SetWorkflowDefinitionStatusIfStateParams{
+		ID: def.ID, WorkspaceID: def.WorkspaceID, Status: want, WantState: string(dm.State),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
