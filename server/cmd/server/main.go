@@ -702,6 +702,8 @@ func main() {
 	// create a second wrapper around the same primary pool.
 	h.ReadSelector = dbreader.New(h.Queries, replicaQueries, readRecorder)
 	h.PRRefresh.SetReadSelector(h.ReadSelector)
+	// ext-workflow: build the workflow engine before the server accepts work.
+	extWorkflowEngine := setupExtWorkflow(context.Background(), pool, bus, h)
 
 	// Reconciled race recoveries in the batched scheduler reuse the same
 	// daemon:register refresh the sync transition path publishes. Wired before
@@ -833,6 +835,12 @@ func main() {
 	}
 	if err := schedulerMgr.Register(scheduler.ChildEventSweepJob(&service.IssueWakeupService{Tasks: taskSvc})); err != nil {
 		slog.Error("scheduler: register child-done sweep", "error", err)
+	}
+	// ext-workflow: safety net for active workflow runs (only with the engine on).
+	if extWorkflowEngine != nil {
+		if err := schedulerMgr.Register(scheduler.ExtWorkflowReconcileJob(extWorkflowEngine)); err != nil {
+			slog.Error("scheduler: register ext workflow reconcile", "error", err)
+		}
 	}
 	if err := schedulerMgr.Register(scheduler.AutopilotScheduleDispatchJob(pool, queries, autopilotSvc)); err != nil {
 		slog.Warn("scheduler: failed to register autopilot_schedule_dispatch job", "error", err)
