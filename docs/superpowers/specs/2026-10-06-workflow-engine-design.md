@@ -220,3 +220,33 @@ issues, parent notification is not needed because the engine owns completion).
 2. **`agent_failed` detection** relies on the latest agent task status for the issue; the
    exact query is confirmed during planning.
 3. **Cadence** of 15s is a guess; adjust if too chatty.
+
+## 13. Implementation notes
+
+1. Step metadata also stores `agent_id` (the resolved agent UUID) next to `agent` (the name), so dispatch never re-resolves names.
+2. Definition metadata also stores `claimed_at` (to reclaim a stale `expanding` claim) and `total` (number of nodes, to detect a deleted step issue).
+3. Step titles are `"<definition title> · <node id>"`. On resume after a crash between issue creation and its metadata write, an orphan child with that exact title and no `workflow` metadata is adopted instead of duplicated.
+4. Because `IssueCreateParams` has no metadata field, step metadata is written by `SetIssueMetadataKey` immediately after `Create`.
+5. The engine does not stop issue wakeups when it closes an issue (that logic lives only in `Handler.UpdateIssue`); a user-set wakeup on a step issue is out of scope for the prototype.
+6. Status keys are compared as built-in literals (`done`, `in_review`, `todo`), like the autopilot listener does. Custom statuses are not supported in the prototype.
+7. Steps are located by `metadata.workflow.run` (`ListWorkflowSteps`), not by `parent_issue_id`; the parent link is still set on creation and verified (a warning comment is posted if a step is not a direct child).
+8. `handler.WorkflowEvents` (new file `internal/handler/workflow_bridge.go`) is the adapter that lets the engine emit events in the exact shapes existing listeners and the UI expect, without `workflow` importing `handler`.
+
+### Decisions made during implementation
+
+- Steps are located by `metadata.workflow.run`; `parent_issue_id` is still set and verified, and a warning comment is posted when a step is not a direct child.
+- Expansion is fenced by a `claimed_at` token (renewed before every create and before the final write); `expanding` definitions are candidates so a crashed expansion resumes; an inconsistent expansion (duplicate or missing steps) blocks the definition with one explanatory comment.
+- Step transitions are claimed by a conditional UPDATE keyed on the caller-observed phase, attempts and `dispatched_at`; `dispatched_at` is stamped from the database clock.
+- Two extra events beyond the original table: `dispatch_lost` (no task row after a 90s grace) and `agent_cancelled` (the run was cancelled; step fails, `/retry` restarts it). A task that completed without moving the issue to done or in_review counts as a failed attempt.
+- A task in any non-terminal status counts as in flight; only terminal task statuses are bounded by the dispatch time.
+- Commands are accepted only from members and only from the definition creator; the listener ignores system and agent comments, runs each command in a goroutine with a recover and a 30s timeout; `isNoteComment` also treats `/accept`, `/reject` and `/retry` as non-triggering comments on every issue.
+- The claim query needs PostgreSQL 16 or newer (`pg_input_is_valid`).
+
+### Known limitations
+
+- The platform has its own retry for failed tasks; a tick can race it and dispatch a second run of the same step.
+- `/reject` sent while the previous task is still running enqueues a second concurrent task (duplicate protection only covers queued and dispatched tasks).
+- Status reconciliation resets a step issue's status to the phase's status, so a human cancelling a step issue by hand is undone.
+- `ListRunningWorkflowDefinitions` is global and capped at 200 per tick.
+- Tasks started on a step issue for another reason (for example a comment mention) can be mistaken for a step attempt.
+- Custom issue statuses are not supported; built-in keys are compared literally.
