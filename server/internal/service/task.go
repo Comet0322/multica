@@ -77,6 +77,10 @@ type TaskService struct {
 	// state for a self-hosted deployment with no MULTICA_LLM_* configuration.
 	// Wired in router.go from the same *llm.Client that backs chat auto-titling.
 	QuickActions ChatQuickActionsLLM
+	// ext-workflow: workflow engine hooks; nil when MULTICA_WORKFLOW_ENGINE is
+	// off. Lives here because every IssueWakeupService is built from a
+	// TaskService, and the child-event hook runs there.
+	ExtWorkflow ExtWorkflowHooks
 	// quickActionsInFlight (chat session id -> struct{}{}) and
 	// quickActionsRunning admit suggestion passes: one per session, and a
 	// process-wide ceiling. Both zero values are usable, so a TaskService built
