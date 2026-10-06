@@ -28,7 +28,7 @@ func TestExtWorkflowListenersForwardTerminalTasks(t *testing.T) {
 	bus := events.New()
 	obs := &recordingTaskObserver{}
 	registerExtWorkflowListeners(bus, obs)
-	completed, failed, retried := dbid.NewV7(), dbid.NewV7(), dbid.NewV7()
+	completed, failed, retried, cancelled := dbid.NewV7(), dbid.NewV7(), dbid.NewV7(), dbid.NewV7()
 	publish := func(eventType string, id pgtype.UUID, extra map[string]any) {
 		payload := map[string]any{"task_id": util.UUIDToString(id)}
 		for k, v := range extra {
@@ -39,8 +39,9 @@ func TestExtWorkflowListenersForwardTerminalTasks(t *testing.T) {
 	publish(protocol.EventTaskCompleted, completed, nil)
 	publish(protocol.EventTaskFailed, retried, map[string]any{"retry_pending": true})
 	publish(protocol.EventTaskFailed, failed, map[string]any{"retry_pending": false})
-	if len(obs.ids) != 2 || obs.ids[0] != completed || obs.ids[1] != failed {
-		t.Fatalf("forwarded %v, want completed then failed (retry pending skipped)", obs.ids)
+	publish(protocol.EventTaskCancelled, cancelled, nil)
+	if len(obs.ids) != 3 || obs.ids[0] != completed || obs.ids[1] != failed || obs.ids[2] != cancelled {
+		t.Fatalf("forwarded %v, want completed, failed, cancelled (retry pending skipped)", obs.ids)
 	}
 }
 
@@ -96,7 +97,7 @@ func TestSetupExtWorkflowStaysOffWhenConstraintLacksWorkflow(t *testing.T) {
 		t.Fatal("engine built although the constraint lacks 'workflow'")
 	}
 	assertExtWorkflowOff(t, h, bus)
-	if out := buf.String(); !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "issue_assignee_type_check") {
-		t.Fatalf("want an error log about the constraint, got %q", out)
+	if out := buf.String(); !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "issue_assignee_type_check") || strings.Contains(out, "error=") {
+		t.Fatalf("want an error log about the constraint without an error attr, got %q", out)
 	}
 }

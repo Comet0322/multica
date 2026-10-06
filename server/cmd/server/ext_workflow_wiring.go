@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -54,8 +55,12 @@ func setupExtWorkflow(ctx context.Context, pool *pgxpool.Pool, bus *events.Bus, 
 		return nil
 	}
 	ok, err := extWorkflowConstraintCheck(ctx, pool)
-	if err != nil || !ok {
-		slog.Error("ext-workflow: issue_assignee_type_check does not admit 'workflow'; engine disabled", "error", err)
+	if err != nil {
+		slog.Error("ext-workflow: constraint check failed; engine disabled", "error", err)
+		return nil
+	}
+	if !ok {
+		slog.Error("ext-workflow: issue_assignee_type_check does not admit 'workflow'; engine disabled")
 		return nil
 	}
 	bridge := handler.NewExtWorkflowBridge(h)
@@ -82,7 +87,6 @@ type extWorkflowTaskObserver interface {
 // A failure with a retry pending is skipped: the retry carries the same
 // workflow stamp and reports again.
 func registerExtWorkflowListeners(bus *events.Bus, engine extWorkflowTaskObserver) {
-	ctx := context.Background()
 	forward := func(e events.Event) {
 		payload, ok := e.Payload.(map[string]any)
 		if !ok {
@@ -96,6 +100,10 @@ func registerExtWorkflowListeners(bus *events.Bus, engine extWorkflowTaskObserve
 		if err != nil {
 			return
 		}
+		// bus.Publish is synchronous on the publisher's goroutine: bound the
+		// work. A dropped event is covered by the reconcile job.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
 		if err := engine.OnTaskTerminal(ctx, taskID); err != nil {
 			slog.Warn("ext-workflow: task terminal handling failed", "task_id", raw, "error", err)
 		}
