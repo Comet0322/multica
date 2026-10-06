@@ -48,7 +48,7 @@ func extWorkflowConstraintAdmitsWorkflow(ctx context.Context, pool *pgxpool.Pool
 
 // setupExtWorkflow builds the engine when it is enabled and the schema admits
 // it, wires it into the handler and the task service, and subscribes the
-// task-terminal listeners. It returns nil when the engine stays off.
+// task-terminal and comment listeners. It returns nil when the engine stays off.
 func setupExtWorkflow(ctx context.Context, pool *pgxpool.Pool, bus *events.Bus, h *handler.Handler) *extworkflow.Engine {
 	if !envBool(extWorkflowEngineEnv, true) {
 		slog.Info("ext-workflow: engine disabled by " + extWorkflowEngineEnv)
@@ -76,6 +76,7 @@ func setupExtWorkflow(ctx context.Context, pool *pgxpool.Pool, bus *events.Bus, 
 	// an enabled, non-nil engine so a typed nil never reads as "enabled".
 	h.TaskService.ExtWorkflow = engine
 	registerExtWorkflowListeners(bus, engine)
+	registerExtWorkflowCommentListener(bus, engine)
 	return engine
 }
 

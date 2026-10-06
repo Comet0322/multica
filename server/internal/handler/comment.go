@@ -2018,6 +2018,10 @@ const noteCommentPrefix = "/note"
 // "/note check expiry", "  /NOTE", and "/note" all match, while "/notes",
 // "/ note", and "see foo/note" do not.
 func isNoteComment(content string) bool {
+	// ext-workflow: a decision block is workflow protocol traffic; it wakes no agent.
+	if isExtWorkflowBlockComment(content) {
+		return true
+	}
 	trimmed := strings.TrimLeft(content, " \t\r\n")
 	firstToken := trimmed
 	if i := strings.IndexFunc(trimmed, unicode.IsSpace); i >= 0 {
@@ -2038,6 +2042,7 @@ func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, co
 	if isNoteComment(comment.Content) {
 		return nil
 	}
+	ctx = withExtWorkflowCommentTrigger(ctx, comment.ID) // ext-workflow: only this pass may wake a workflow supervisor
 	triggers, targets := h.computeCommentAgentTriggers(ctx, issue, comment.Content, parentComment, actorType, actorID, commentTriggerComputeOptions{
 		ExcludeTriggerCommentID: comment.ID,
 		AuthoringTaskID:         comment.SourceTaskID,
@@ -3062,6 +3067,10 @@ func (h *Handler) routeAssigneeFallback(ctx context.Context, issue db.Issue, aut
 		return commentAgentTrigger{Agent: agent, Source: commentTriggerSourceIssueAssignee, AlreadyPending: hasPending}, true
 	case "squad":
 		return h.routeAssignedSquadLeaderFallback(ctx, issue, authorType, authorID, opts)
+	case "workflow":
+		// ext-workflow: wake the supervisor with a conversation turn, not a platform run.
+		h.extWorkflowParentComment(ctx, issue, authorType, authorID)
+		return commentAgentTrigger{}, false
 	default:
 		return commentAgentTrigger{}, false
 	}
