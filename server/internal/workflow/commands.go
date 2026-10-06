@@ -4,7 +4,9 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"runtime/debug"
 	"strings"
 	"time"
 	"unicode"
@@ -118,39 +120,68 @@ func (e *Engine) HandleComment(ctx context.Context, c CommentEvent) error {
 		return err
 	case isStep && cmd == CommandRetry:
 		applied, err := e.ApplyEvent(ctx, issue, EventRetry, commentUUID)
-		if err != nil {
-			return err
-		}
 		if !applied {
-			_, err = e.systemComment(ctx, issue, "Only a failed step can be retried (phase: "+string(stepMeta.Phase)+").")
+			if err == nil {
+				_, err = e.systemComment(ctx, issue, "Only a failed step can be retried (phase: "+string(stepMeta.Phase)+").")
+			}
 			return err
 		}
-		return e.reopenDefinition(ctx, def)
+		// The claim succeeded even when a later write failed, so the step may
+		// be running: always reopen the definition so the tick can track it.
+		return errors.Join(err, e.reopenDefinition(ctx, def))
 	case isDef && cmd == CommandRetry:
 		steps, err := e.loadSteps(ctx, def)
 		if err != nil {
 			return err
 		}
+		var errs []error
 		retried := 0
 		for _, s := range steps {
 			if s.meta.Phase != PhaseFailed {
 				continue
 			}
-			if applied, err := e.ApplyEvent(ctx, s.issue, EventRetry, commentUUID); err != nil {
-				return err
-			} else if applied {
+			applied, aerr := e.ApplyEvent(ctx, s.issue, EventRetry, commentUUID)
+			if aerr != nil {
+				errs = append(errs, aerr)
+			}
+			if applied {
 				retried++
 			}
 		}
-		if retried == 0 {
-			_, err = e.systemComment(ctx, issue, "No failed steps to retry.")
+		if retried == 0 && len(errs) == 0 {
+			reopened, rerr := e.reopenIfBlocked(ctx, def)
+			if rerr != nil {
+				return rerr
+			}
+			msg := "No failed steps to retry."
+			if reopened {
+				msg = "No failed steps to retry; re-evaluating the workflow."
+			}
+			_, err = e.systemComment(ctx, issue, msg)
 			return err
 		}
-		return e.reopenDefinition(ctx, def)
+		if retried > 0 {
+			errs = append(errs, e.reopenDefinition(ctx, def))
+		}
+		return errors.Join(errs...)
 	default:
 		_, err := e.systemComment(ctx, issue, "`/"+string(cmd)+"` applies to a step issue. Open the step and comment there.")
 		return err
 	}
+}
+
+// reopenIfBlocked reopens a blocked definition and reports whether it did.
+func (e *Engine) reopenIfBlocked(ctx context.Context, def db.Issue) (bool, error) {
+	if err := e.reopenDefinition(ctx, def); err != nil {
+		return false, err
+	}
+	cur, err := e.Q.GetIssue(ctx, def.ID)
+	if err != nil {
+		return false, err
+	}
+	before, _ := readDefMeta(def)
+	after, _ := readDefMeta(cur)
+	return before.State == RunBlocked && after.State == RunRunning, nil
 }
 
 func isCreator(def db.Issue, c CommentEvent) bool {
@@ -174,17 +205,32 @@ func RegisterListeners(bus *events.Bus, e *Engine) {
 		if !ok {
 			return
 		}
+		// Workflow commands come from members only; engine and agent text
+		// must never trigger one.
+		if c.AuthorType != "member" {
+			return
+		}
 		if _, isCmd := ParseCommand(c.Content); !isCmd {
 			return
 		}
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := e.HandleComment(ctx, c); err != nil {
-				slog.Warn("workflow command failed", "issue_id", c.IssueID, "error", err)
-			}
-		}()
+		go runCommand(e, c)
 	})
+}
+
+// runCommand handles one command comment off the publishing goroutine. It
+// recovers panics: the bus only protects its own synchronous call, so a panic
+// here would otherwise take the whole server down.
+func runCommand(e *Engine, c CommentEvent) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("workflow command panicked", "issue_id", c.IssueID, "panic", r, "stack", string(debug.Stack()))
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := e.HandleComment(ctx, c); err != nil {
+		slog.Warn("workflow command failed", "issue_id", c.IssueID, "error", err)
+	}
 }
 
 func decodeCommentEvent(ev events.Event) (CommentEvent, bool) {
