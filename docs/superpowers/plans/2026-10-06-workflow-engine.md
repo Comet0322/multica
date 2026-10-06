@@ -18,7 +18,8 @@
 4. Because `IssueCreateParams` has no metadata field, step metadata is written by `SetIssueMetadataKey` immediately after `Create`.
 5. The engine does not stop issue wakeups when it closes an issue (that logic lives only in `Handler.UpdateIssue`); a user-set wakeup on a step issue is out of scope for the prototype.
 6. Status keys are compared as built-in literals (`done`, `in_review`, `todo`), like the autopilot listener does. Custom statuses are not supported in the prototype.
-7. `handler.WorkflowEvents` (new file `internal/handler/workflow_bridge.go`) is the adapter that lets the engine emit events in the exact shapes existing listeners and the UI expect, without `workflow` importing `handler`.
+7. Steps are located by `metadata.workflow.run` (`ListWorkflowSteps`), not by `parent_issue_id`; the parent link is still set on creation and verified (a warning comment is posted if a step is not a direct child).
+8. `handler.WorkflowEvents` (new file `internal/handler/workflow_bridge.go`) is the adapter that lets the engine emit events in the exact shapes existing listeners and the UI expect, without `workflow` importing `handler`.
 
 ## Global Constraints
 
@@ -41,6 +42,7 @@ Each line below has a pinned test in the task named in brackets.
 4. An invalid YAML that is later **edited into a valid one** is re-expanded; an unedited invalid one does not re-comment every tick. [Task 5]
 5. **Agent archived or missing at dispatch**: the step fails with a comment, the workflow blocks, `/retry` after fixing resumes it. [Task 6, Task 7]
 6. `/ACCEPT` matches, `/accepted` and `see /accept` do not; a command on an unrelated issue is silent. [Task 7]
+7. A step issue **without its parent link** (the failure seen in an earlier attempt at this feature, where the first sub-issue of a batch had no parent): it is still tracked and dispatched, never duplicated, never makes the run look broken, and the missing link is reported in a comment. Steps are found by `metadata.workflow.run`, not by `parent_issue_id`. [Task 5, Task 6]
 
 ---
 
@@ -682,7 +684,8 @@ git commit -m "feat(workflow): data-driven step transition table and run evaluat
   - `ListWorkflowDefinitionCandidates(ctx, rowLimit int32) ([]db.Issue, error)`
   - `ClaimWorkflowDefinition(ctx, db.ClaimWorkflowDefinitionParams{Value []byte, ID, WorkspaceID pgtype.UUID, StaleBefore pgtype.Timestamptz}) (db.Issue, error)` — `pgx.ErrNoRows` when not claimable
   - `ListRunningWorkflowDefinitions(ctx, rowLimit int32) ([]db.Issue, error)`
-  - `ListWorkflowChildren(ctx, db.ListWorkflowChildrenParams{WorkspaceID, ParentIssueID pgtype.UUID}) ([]db.Issue, error)`
+  - `ListWorkflowChildren(ctx, db.ListWorkflowChildrenParams{WorkspaceID, ParentIssueID pgtype.UUID}) ([]db.Issue, error)` — by parent; only for orphan adoption and parentage checks
+  - `ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID pgtype.UUID, Run string}) ([]db.Issue, error)` — **the way the engine finds a run's steps** (by `metadata.workflow.run`, never by parent)
   - `LatestWorkflowTaskStatus(ctx, db.LatestWorkflowTaskStatusParams{IssueID, AgentID pgtype.UUID}) (string, error)`
 - Produces in `store.go`: `readStepMeta(db.Issue) (StepMeta, bool)`, `readDefMeta(db.Issue) (DefMeta, bool)`, `(*Engine).writeMeta(ctx, db.Issue, any) error` (Engine is defined in Task 5; this task defines the `Engine` struct and interfaces too — see Step 3).
 - Test helper: `newEnv(t) *env` with fields `pool, q, fx, ws, user, userUUID, wsUUID`, plus `env.agent(name) string`, `env.flowIssue(title, desc string) db.Issue` (creates a `todo` issue with a `flow:test` label, creator = the member).
@@ -734,8 +737,19 @@ ORDER BY created_at ASC
 LIMIT sqlc.arg('row_limit')::int;
 
 -- name: ListWorkflowChildren :many
+-- Direct children by parent_issue_id. Used only to find orphaned steps (a step
+-- issue created but not yet stamped with metadata) and to verify parentage.
 SELECT * FROM issue
 WHERE workspace_id = sqlc.arg('workspace_id') AND parent_issue_id = sqlc.arg('parent_issue_id')
+ORDER BY created_at ASC, number ASC;
+
+-- name: ListWorkflowSteps :many
+-- The authoritative way to find a run's steps: by the run id stamped in
+-- metadata, not by parent_issue_id, so a step whose parent link is ever lost
+-- (or cleared by another flow) is still tracked. GIN-indexed via metadata.
+SELECT * FROM issue
+WHERE workspace_id = sqlc.arg('workspace_id')
+  AND metadata @> jsonb_build_object('workflow', jsonb_build_object('run', sqlc.arg('run')::text))
 ORDER BY created_at ASC, number ASC;
 
 -- name: LatestWorkflowTaskStatus :one
@@ -1300,6 +1314,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func flowDoc(agentA, agentB string) string {
@@ -1331,6 +1347,10 @@ func TestExpandCreatesBacklogStepsWithMetadata(t *testing.T) {
 		}
 		if k.CreatorID != def.CreatorID || k.CreatorType != def.CreatorType {
 			t.Fatalf("child creator must equal the definition creator")
+		}
+		// Every step, including the first one created, must hang off the definition.
+		if k.ParentIssueID != def.ID {
+			t.Fatalf("step %q: parent_issue_id = %v, want the definition issue", m.Node, k.ParentIssueID)
 		}
 		byNode[m.Node] = m
 	}
@@ -1398,6 +1418,35 @@ func TestExpandConcurrentClaimsCreateOneSet(t *testing.T) {
 	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
 	if len(kids) != 2 {
 		t.Fatalf("concurrent expansion created %d step issues, want 2", len(kids))
+	}
+}
+
+func TestExpandDoesNotDuplicateAStepThatLostItsParent(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Parentless", flowDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	// The first step loses its parent link, then the claim goes stale so the
+	// definition is expanded again.
+	e.fx.Exec(t, `UPDATE issue SET parent_issue_id = NULL WHERE id = $1`, uuidStr(kids[0]))
+	e.fx.Exec(t, `UPDATE issue SET metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	before := len(e.rec.comments)
+
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	if err := e.engine.Expand(ctx, cur); err != nil {
+		t.Fatal(err)
+	}
+	steps, _ := e.q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidStr(def)})
+	if len(steps) != 2 {
+		t.Fatalf("a parentless step must be recognised, not recreated: %d steps", len(steps))
+	}
+	if len(e.rec.comments) != before+1 || !strings.Contains(e.rec.comments[before].Content, "not linked") {
+		t.Fatal("the lost parent link must be surfaced in a comment")
 	}
 }
 
@@ -1535,15 +1584,22 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		return e.markInvalid(ctx, def, hash, errs)
 	}
 
-	existing, err := e.Q.ListWorkflowChildren(ctx, db.ListWorkflowChildrenParams{WorkspaceID: def.WorkspaceID, ParentIssueID: def.ID})
+	// Steps are found by the run id in metadata, never by parent_issue_id, so a
+	// step that lost its parent link is still recognised and not duplicated.
+	stamped, err := e.Q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidString(def.ID)})
 	if err != nil {
 		return err
 	}
 	byNode := map[string]db.Issue{}
-	for _, k := range existing {
+	for _, k := range stamped {
 		if m, ok := readStepMeta(k); ok {
 			byNode[m.Node] = k
 		}
+	}
+	// Orphans: children that were created but crashed before being stamped.
+	existing, err := e.Q.ListWorkflowChildren(ctx, db.ListWorkflowChildrenParams{WorkspaceID: def.WorkspaceID, ParentIssueID: def.ID})
+	if err != nil {
+		return err
 	}
 	for _, n := range parsed.Nodes {
 		agent := agents[strings.ToLower(n.Agent)]
@@ -1591,6 +1647,13 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		}
 	}
 
+	// Verify parentage before declaring the run started: every step must hang
+	// off the definition issue. A mismatch does not stop the run (steps are
+	// tracked by run id) but is surfaced so it is visible instead of silent.
+	if err := e.warnOnMissingParents(ctx, def); err != nil {
+		return err
+	}
+
 	prev := def
 	if err := e.writeMeta(ctx, def, DefMeta{State: RunRunning, Total: len(parsed.Nodes)}); err != nil {
 		return err
@@ -1601,6 +1664,28 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 	}
 	e.Events.IssueUpdated(ctx, prev, updated)
 	return nil
+}
+
+// warnOnMissingParents comments on def when any step issue of the run is not
+// its direct child.
+func (e *Engine) warnOnMissingParents(ctx context.Context, def db.Issue) error {
+	steps, err := e.Q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidString(def.ID)})
+	if err != nil {
+		return err
+	}
+	var bad []string
+	for _, s := range steps {
+		if s.ParentIssueID != def.ID {
+			if m, ok := readStepMeta(s); ok {
+				bad = append(bad, m.Node)
+			}
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	_, err = e.systemComment(ctx, def, "Warning: step issue(s) not linked to this issue as sub-issues: "+strings.Join(bad, ", ")+". The workflow still tracks them, but they will not show under this issue.")
+	return err
 }
 
 func (e *Engine) markInvalid(ctx context.Context, def db.Issue, hash string, errs []string) error {
@@ -1864,6 +1949,44 @@ func TestDeletedStepBlocksInsteadOfCompleting(t *testing.T) {
 	}
 }
 
+func TestStepWithoutParentIsStillTracked(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	plan := stepByNode(t, e, def, "plan")
+	e.fx.Exec(t, `UPDATE issue SET parent_issue_id = NULL WHERE id = $1`, uuidStr(plan))
+
+	_ = e.engine.Tick(ctx)
+	if phaseOf2(t, e, def, "plan") != PhaseRunning {
+		t.Fatal("a step that lost its parent must still be dispatched")
+	}
+	setStatus(t, e, plan, "done")
+	_ = e.engine.Tick(ctx)
+	_ = e.engine.Tick(ctx)
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State == RunBlocked {
+		t.Fatal("a parentless step must not make the run look broken")
+	}
+	if phaseOf2(t, e, def, "build") != PhaseRunning {
+		t.Fatal("the dependent step should run after the parentless one finishes")
+	}
+}
+
+// phaseOf2 finds the step by run id, so it works when the parent link is gone.
+func phaseOf2(t *testing.T, e *env, def db.Issue, node string) Phase {
+	t.Helper()
+	steps, err := e.q.ListWorkflowSteps(context.Background(), db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidStr(def)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range steps {
+		if m, ok := readStepMeta(s); ok && m.Node == node {
+			return m.Phase
+		}
+	}
+	t.Fatalf("no step %q", node)
+	return ""
+}
+
 func TestAgentTaskFailureRetriesThenFails(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
@@ -1963,14 +2086,16 @@ type stepRow struct {
 	meta  StepMeta
 }
 
+// loadSteps finds a run's steps by the run id in metadata, not by
+// parent_issue_id, so a step whose parent link is lost is still tracked.
 func (e *Engine) loadSteps(ctx context.Context, def db.Issue) ([]stepRow, error) {
-	kids, err := e.Q.ListWorkflowChildren(ctx, db.ListWorkflowChildrenParams{WorkspaceID: def.WorkspaceID, ParentIssueID: def.ID})
+	steps, err := e.Q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidString(def.ID)})
 	if err != nil {
 		return nil, err
 	}
 	var rows []stepRow
-	for _, k := range kids {
-		if m, ok := readStepMeta(k); ok && m.Run == uuidString(def.ID) {
+	for _, k := range steps {
+		if m, ok := readStepMeta(k); ok {
 			rows = append(rows, stepRow{k, m})
 		}
 	}
@@ -2762,7 +2887,7 @@ git commit -m "feat(workflow): run the engine from the DB-backed scheduler"
 
 **Files:**
 - Create: `server/internal/workflow/e2e_test.go`
-- Modify: `docs/superpowers/specs/2026-10-06-workflow-engine-design.md` (append "Implementation notes" listing the seven deviations from this plan's header)
+- Modify: `docs/superpowers/specs/2026-10-06-workflow-engine-design.md` (append "Implementation notes" listing the eight deviations from this plan's header)
 
 - [ ] **Step 1: Write the end-to-end test**
 
@@ -2834,7 +2959,7 @@ Expected: everything passes. Then run `make test` once for the Go backend to con
 
 - [ ] **Step 3: Update the spec with the implementation notes and commit**
 
-Append to the end of the spec file a section `## 13. Implementation notes` containing the seven bullets from this plan's "Deviations from the spec" header (verbatim), then:
+Append to the end of the spec file a section `## 13. Implementation notes` containing the eight bullets from this plan's "Deviations from the spec" header (verbatim), then:
 
 ```bash
 git add docs/superpowers/specs/2026-10-06-workflow-engine-design.md server/internal/workflow/e2e_test.go
