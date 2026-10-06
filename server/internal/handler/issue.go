@@ -1707,6 +1707,12 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
           AND a.workspace_id = $1
           AND a.owner_id     = %[1]s::uuid
     ))
+    -- ext-workflow: a workflow the user created involves them, like an agent they own.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+       SELECT w.id FROM ext_workflow w
+        WHERE w.workspace_id = $1
+          AND w.creator_id   = %[1]s::uuid
+    ))
 )`, ref))
 	}
 
@@ -1951,7 +1957,8 @@ func splitCommaParam(raw string) []string {
 }
 
 func isIssueActorType(s string) bool {
-	return s == "member" || s == "agent" || s == "squad"
+	// ext-workflow: workflow is an assignee type for filters and grouping.
+	return s == "member" || s == "agent" || s == "squad" || s == "workflow"
 }
 
 func parseUUIDParamList(w http.ResponseWriter, raw, fieldName string) ([]pgtype.UUID, bool) {
@@ -2164,6 +2171,12 @@ func (h *Handler) ListGroupedIssues(w http.ResponseWriter, r *http.Request) {
           AND sm.member_type = 'agent'
           AND a.workspace_id = $1
           AND a.owner_id     = %[1]s::uuid
+    ))
+    -- ext-workflow: a workflow the user created involves them, like an agent they own.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+       SELECT w.id FROM ext_workflow w
+        WHERE w.workspace_id = $1
+          AND w.creator_id   = %[1]s::uuid
     ))
 )`, ref))
 	}
@@ -3249,7 +3262,8 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		// found" rather than a 403 that leaks nothing about which input was wrong.
 		// The row itself is no longer needed: the assignee gate keys on the actor's
 		// originator, not on a scope bound to the parent (MUL-6951).
-		if assigneeType.Valid && (assigneeType.String == "agent" || assigneeType.String == "squad") {
+		// ext-workflow: a workflow assignee is gated like a squad.
+		if assigneeType.Valid && (assigneeType.String == "agent" || assigneeType.String == "squad" || assigneeType.String == "workflow") {
 			parent, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{
 				ID:          parentIssueID,
 				WorkspaceID: wsUUID,
@@ -4059,6 +4073,10 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// ext-workflow: a parent cancelled or reassigned away from its workflow
+	// stops its run, before any new assignee's run starts.
+	h.notifyExtWorkflowParentChanged(r.Context(), prevIssue, statusChanged, assigneeChanged)
+
 	// Reconcile the task queue. Whether this write starts an agent run — and
 	// for whom (agent assignee or squad leader) — is decided by the single
 	// WillEnqueueRun predicate, shared verbatim with the preview endpoint so
@@ -4183,6 +4201,9 @@ func (h *Handler) validateAssigneePair(ctx context.Context, r *http.Request, wor
 			return http.StatusForbidden, "you do not have permission to assign work to this squad"
 		}
 		return 0, ""
+	case "workflow":
+		// ext-workflow: assignment starts a run; the engine owns the checks.
+		return h.validateExtWorkflowAssignee(ctx, r, workspaceID, wsUUID, assigneeID)
 	default:
 		return http.StatusBadRequest, "assignee_type must be 'member', 'agent', or 'squad'"
 	}
@@ -4311,6 +4332,8 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ext-workflow: stop the issue's workflow run before its tasks are cancelled.
+	h.extWorkflowParentDeleting(r.Context(), issue)
 	h.TaskService.CancelTasksForIssue(r.Context(), issue.ID)
 	// Fail any linked autopilot runs before delete (ON DELETE SET NULL clears issue_id).
 	_ = h.AutopilotService.FailAutopilotRunsByIssue(r.Context(), issue.ID)
@@ -4800,6 +4823,9 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			"prev_duplicate_of_issue_id": liveDuplicateMark(prevIssue.Status, prevIssue.DuplicateOfIssueID),
 		})
 
+		// ext-workflow: mirrors UpdateIssue.
+		h.notifyExtWorkflowParentChanged(r.Context(), prevIssue, statusChanged, assigneeChanged)
+
 		// Reassignment does not cancel existing tasks (#4963 / MUL-4113) —
 		// mirrors UpdateIssue. See that handler for the rationale.
 		//
@@ -4886,6 +4912,7 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 		seenIssueIDs[issueUUID] = struct{}{}
 		issues = append(issues, issue)
 		excludedIDs = append(excludedIDs, issue.ID)
+		h.extWorkflowParentDeleting(r.Context(), issue) // ext-workflow
 		h.TaskService.CancelTasksForIssue(r.Context(), issue.ID)
 		_ = h.AutopilotService.FailAutopilotRunsByIssue(r.Context(), issue.ID)
 	}

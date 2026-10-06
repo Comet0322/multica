@@ -90,6 +90,9 @@ func (h *Handler) dispatchIssueRun(ctx context.Context, issue db.Issue, trigger 
 		_, _ = h.TaskService.EnqueueTaskForIssueWithHandoff(ctx, issue, handoffNote, memberActorUserID(actorType, actorID))
 	case "squad":
 		h.enqueueSquadLeaderTask(ctx, issue, pgtype.UUID{}, actorType, actorID, handoffNote)
+	case "workflow":
+		// ext-workflow: the engine starts the run (children and first steps).
+		h.startExtWorkflowRun(ctx, issue, actorType, actorID)
 	}
 }
 

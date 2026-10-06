@@ -217,6 +217,11 @@ func (h *Handler) RerunIssue(w http.ResponseWriter, r *http.Request) {
 		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonIssueInTriage)
 		return
 	}
+	// ext-workflow: a workflow issue reruns through its run's decisions.
+	if errors.Is(err, service.ErrRerunWorkflowIssue) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	// Not a dispatch refusal: the issue may well be runnable, and only the named
 	// source is ineligible. It falls through to the 400 below with the
 	// sentinel's own sentence, like the sibling "does not belong to this issue".

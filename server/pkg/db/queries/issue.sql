@@ -58,6 +58,12 @@ WHERE i.workspace_id = $1
              AND a.workspace_id = $1
              AND a.owner_id     = sqlc.narg('involves_user_id')::uuid
     ))
+    -- ext-workflow: a workflow the user created involves them.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+          SELECT w.id FROM ext_workflow w
+           WHERE w.workspace_id = $1
+             AND w.creator_id   = sqlc.narg('involves_user_id')::uuid
+    ))
   )
 ORDER BY i.position ASC, i.created_at DESC
 LIMIT $2 OFFSET $3;
@@ -609,6 +615,12 @@ WHERE i.workspace_id = $1
              AND a.workspace_id = $1
              AND a.owner_id     = sqlc.narg('involves_user_id')::uuid
     ))
+    -- ext-workflow: a workflow the user created involves them.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+          SELECT w.id FROM ext_workflow w
+           WHERE w.workspace_id = $1
+             AND w.creator_id   = sqlc.narg('involves_user_id')::uuid
+    ))
   )
 ORDER BY i.position ASC, i.created_at DESC;
 
@@ -654,6 +666,12 @@ WHERE i.workspace_id = $1
              AND sm.member_type = 'agent'
              AND a.workspace_id = $1
              AND a.owner_id     = sqlc.narg('involves_user_id')::uuid
+    ))
+    -- ext-workflow: a workflow the user created involves them.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+          SELECT w.id FROM ext_workflow w
+           WHERE w.workspace_id = $1
+             AND w.creator_id   = sqlc.narg('involves_user_id')::uuid
     ))
   );
 

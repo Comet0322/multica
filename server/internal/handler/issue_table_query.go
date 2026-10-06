@@ -425,6 +425,12 @@ func appendIssueTableInvolvedPredicate(where []string, addArg func(any) string, 
           AND a.workspace_id = $1
           AND a.owner_id     = %[1]s::uuid
     ))
+    -- ext-workflow: a workflow the user created involves them, like an agent they own.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+       SELECT w.id FROM ext_workflow w
+        WHERE w.workspace_id = $1
+          AND w.creator_id   = %[1]s::uuid
+    ))
 )`, ref))
 }
 

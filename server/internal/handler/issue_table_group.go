@@ -261,6 +261,7 @@ func (h *Handler) resolveIssueTableGroup(w http.ResponseWriter, r *http.Request,
   WHEN 'member' THEN (SELECT u.name FROM "user" u WHERE u.id = split_part(group_value, ':', 2)::uuid)
   WHEN 'agent' THEN (SELECT a.name FROM agent a WHERE a.workspace_id = $1 AND a.id = split_part(group_value, ':', 2)::uuid)
   WHEN 'squad' THEN (SELECT s.name FROM squad s WHERE s.workspace_id = $1 AND s.id = split_part(group_value, ':', 2)::uuid)
+  WHEN 'workflow' THEN (SELECT w.name FROM ext_workflow w WHERE w.workspace_id = $1 AND w.id = split_part(group_value, ':', 2)::uuid)
 END, ''))`,
 		}, true
 	case "project":

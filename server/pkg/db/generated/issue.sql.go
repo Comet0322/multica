@@ -212,6 +212,12 @@ WHERE i.workspace_id = $1
              AND a.workspace_id = $1
              AND a.owner_id     = $10::uuid
     ))
+    -- ext-workflow: a workflow the user created involves them.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+          SELECT w.id FROM ext_workflow w
+           WHERE w.workspace_id = $1
+             AND w.creator_id   = $10::uuid
+    ))
   )
 `
 
@@ -1432,6 +1438,12 @@ WHERE i.workspace_id = $1
              AND a.workspace_id = $1
              AND a.owner_id     = $12::uuid
     ))
+    -- ext-workflow: a workflow the user created involves them.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+          SELECT w.id FROM ext_workflow w
+           WHERE w.workspace_id = $1
+             AND w.creator_id   = $12::uuid
+    ))
   )
 ORDER BY i.position ASC, i.created_at DESC
 LIMIT $2 OFFSET $3
@@ -1645,6 +1657,12 @@ WHERE i.workspace_id = $1
              AND sm.member_type = 'agent'
              AND a.workspace_id = $1
              AND a.owner_id     = $10::uuid
+    ))
+    -- ext-workflow: a workflow the user created involves them.
+    OR (i.assignee_type = 'workflow' AND i.assignee_id IN (
+          SELECT w.id FROM ext_workflow w
+           WHERE w.workspace_id = $1
+             AND w.creator_id   = $10::uuid
     ))
   )
 ORDER BY i.position ASC, i.created_at DESC
