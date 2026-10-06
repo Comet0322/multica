@@ -1309,6 +1309,11 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			run:  func() error { return qtx.DeleteWorkspaceSquadsAndSkills(ctx, requester.WorkspaceID) },
 		},
 		{
+			// ext-workflow: no foreign keys, so the fork's workflow tables are swept explicitly.
+			name: "delete ext workflows",
+			run:  func() error { return qtx.DeleteExtWorkflowWorkspaceData(ctx, requester.WorkspaceID) },
+		},
+		{
 			name: "delete plugin data",
 			run:  func() error { return qtx.DeleteWorkspacePluginData(ctx, requester.WorkspaceID) },
 		},

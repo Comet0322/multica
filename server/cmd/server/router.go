@@ -2155,6 +2155,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// Squad leader evaluation (writes to activity_log)
 			r.Post("/api/issues/{id}/squad-evaluated", h.RecordSquadLeaderEvaluation)
 
+			// ext-workflow: fork-only routes (workflow CRUD, runs); see ext_routes.go.
+			registerExtRoutes(r, h)
+
 			// Autopilots
 			r.Route("/api/autopilots", func(r chi.Router) {
 				r.Get("/", h.ListAutopilots)

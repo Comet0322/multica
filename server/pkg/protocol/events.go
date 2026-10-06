@@ -142,6 +142,11 @@ const (
 	EventSquadUpdated = "squad:updated"
 	EventSquadDeleted = "squad:deleted"
 
+	// ext-workflow events (fork-only). Payload: {workflow_id}.
+	EventExtWorkflowCreated = "ext_workflow:created"
+	EventExtWorkflowUpdated = "ext_workflow:updated"
+	EventExtWorkflowDeleted = "ext_workflow:deleted"
+
 	// Daemon events
 	EventDaemonHeartbeat               = "daemon:heartbeat"
 	EventDaemonHeartbeatAck            = "daemon:heartbeat_ack"
