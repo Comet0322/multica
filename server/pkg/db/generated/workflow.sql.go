@@ -85,6 +85,70 @@ func (q *Queries) ClaimWorkflowDefinition(ctx context.Context, arg ClaimWorkflow
 	return i, err
 }
 
+const finishWorkflowExpansion = `-- name: FinishWorkflowExpansion :one
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = $2 AND workspace_id = $3
+  AND metadata->'workflow'->>'state' = 'expanding'
+  AND metadata->'workflow'->>'claimed_at' = $4::text
+RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
+`
+
+type FinishWorkflowExpansionParams struct {
+	Value             []byte      `json:"value"`
+	ID                pgtype.UUID `json:"id"`
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	ExpectedClaimedAt string      `json:"expected_claimed_at"`
+}
+
+// Writes the final workflow metadata only while the caller still holds the
+// expanding claim (claimed_at equals its token). No rows means the claim was lost.
+func (q *Queries) FinishWorkflowExpansion(ctx context.Context, arg FinishWorkflowExpansionParams) (Issue, error) {
+	row := q.db.QueryRow(ctx, finishWorkflowExpansion,
+		arg.Value,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExpectedClaimedAt,
+	)
+	var i Issue
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeType,
+		&i.AssigneeID,
+		&i.CreatorType,
+		&i.CreatorID,
+		&i.ParentIssueID,
+		&i.AcceptanceCriteria,
+		&i.ContextRefs,
+		&i.Position,
+		&i.DueDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.ProjectID,
+		&i.OriginType,
+		&i.OriginID,
+		&i.FirstExecutedAt,
+		&i.StartDate,
+		&i.Metadata,
+		&i.Stage,
+		&i.Properties,
+		&i.Revision,
+		&i.LastActivityAt,
+		&i.TriageState,
+		&i.DuplicateOfIssueID,
+	)
+	return i, err
+}
+
 const latestWorkflowTaskStatus = `-- name: LatestWorkflowTaskStatus :one
 SELECT status FROM agent_task_queue
 WHERE issue_id = $1 AND agent_id = $2
@@ -230,7 +294,7 @@ const listWorkflowDefinitionCandidates = `-- name: ListWorkflowDefinitionCandida
 
 SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.duplicate_of_issue_id FROM issue i
 WHERE i.status = 'todo'
-  AND (NOT (i.metadata ? 'workflow') OR i.metadata->'workflow'->>'state' = 'invalid')
+  AND (NOT (i.metadata ? 'workflow') OR i.metadata->'workflow'->>'state' IN ('invalid', 'expanding'))
   AND EXISTS (
       SELECT 1 FROM issue_to_label itl
       JOIN issue_label l ON l.id = itl.label_id
@@ -245,7 +309,9 @@ LIMIT $1::int
 
 // server/pkg/db/queries/workflow.sql
 // Todo issues carrying a flow:<name> label that have not been expanded yet
-// (no workflow metadata) or were previously marked invalid.
+// (no workflow metadata), were previously marked invalid, or are stuck in
+// 'expanding' (a crashed expander). ClaimWorkflowDefinition decides atomically
+// whether an expanding claim is stale, so listing a live one is harmless.
 func (q *Queries) ListWorkflowDefinitionCandidates(ctx context.Context, rowLimit int32) ([]Issue, error) {
 	rows, err := q.db.Query(ctx, listWorkflowDefinitionCandidates, rowLimit)
 	if err != nil {
@@ -361,4 +427,66 @@ func (q *Queries) ListWorkflowSteps(ctx context.Context, arg ListWorkflowStepsPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const refreshWorkflowClaim = `-- name: RefreshWorkflowClaim :one
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow,claimed_at}', to_jsonb($1::text))
+WHERE id = $2 AND workspace_id = $3
+  AND metadata->'workflow'->>'state' = 'expanding'
+  AND metadata->'workflow'->>'claimed_at' = $4::text
+RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
+`
+
+type RefreshWorkflowClaimParams struct {
+	NewClaimedAt      string      `json:"new_claimed_at"`
+	ID                pgtype.UUID `json:"id"`
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	ExpectedClaimedAt string      `json:"expected_claimed_at"`
+}
+
+// Fencing: renews the expanding claim only while the caller still holds it,
+// i.e. claimed_at still equals the token it last wrote. No rows means the
+// claim was lost to another expander.
+func (q *Queries) RefreshWorkflowClaim(ctx context.Context, arg RefreshWorkflowClaimParams) (Issue, error) {
+	row := q.db.QueryRow(ctx, refreshWorkflowClaim,
+		arg.NewClaimedAt,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExpectedClaimedAt,
+	)
+	var i Issue
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeType,
+		&i.AssigneeID,
+		&i.CreatorType,
+		&i.CreatorID,
+		&i.ParentIssueID,
+		&i.AcceptanceCriteria,
+		&i.ContextRefs,
+		&i.Position,
+		&i.DueDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.ProjectID,
+		&i.OriginType,
+		&i.OriginID,
+		&i.FirstExecutedAt,
+		&i.StartDate,
+		&i.Metadata,
+		&i.Stage,
+		&i.Properties,
+		&i.Revision,
+		&i.LastActivityAt,
+		&i.TriageState,
+		&i.DuplicateOfIssueID,
+	)
+	return i, err
 }

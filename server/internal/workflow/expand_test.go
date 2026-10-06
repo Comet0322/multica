@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -99,17 +100,99 @@ func TestExpandConcurrentClaimsCreateOneSet(t *testing.T) {
 	def := e.flowIssue(t, "Race", flowDoc("Planner", "Coder"))
 
 	var wg sync.WaitGroup
+	errs := make([]error, 4)
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			defer wg.Done()
-			_ = e.engine.Expand(ctx, def)
-		}()
+			errs[i] = e.engine.Expand(ctx, def)
+		}(i)
 	}
 	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("expander %d returned %v", i, err)
+		}
+	}
+	steps, _ := e.q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidStr(def)})
+	assertOneStepPerNode(t, steps, "plan", "build")
+}
+
+func assertOneStepPerNode(t *testing.T, steps []db.Issue, nodes ...string) {
+	t.Helper()
+	if len(steps) != len(nodes) {
+		t.Fatalf("got %d step issues, want %d", len(steps), len(nodes))
+	}
+	count := map[string]int{}
+	for _, s := range steps {
+		m, ok := readStepMeta(s)
+		if !ok {
+			t.Fatalf("step %q is not stamped", s.Title)
+		}
+		count[m.Node]++
+	}
+	for _, n := range nodes {
+		if count[n] != 1 {
+			t.Fatalf("node %q appears %d times, want 1 (%v)", n, count[n], count)
+		}
+	}
+}
+
+func TestExpandCandidatesResumesACrashedExpansion(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Crashed", flowDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
 	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
-	if len(kids) != 2 {
-		t.Fatalf("concurrent expansion created %d step issues, want 2", len(kids))
+	// Crash after the first step: second step missing, claim old, status todo.
+	e.fx.Exec(t, `DELETE FROM issue WHERE id = $1`, uuidStr(kids[1]))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+
+	if err := e.engine.ExpandCandidates(ctx); err != nil {
+		t.Fatal(err)
+	}
+	steps, _ := e.q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidStr(def)})
+	assertOneStepPerNode(t, steps, "plan", "build")
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunRunning || got.Status != "in_progress" {
+		t.Fatalf("definition state=%s status=%s, want running/in_progress", dm.State, got.Status)
+	}
+}
+
+func TestExpandStalledExpanderLosesItsClaim(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Slow", flowDoc("Planner", "Coder"))
+
+	later := time.Now().Add(3 * time.Minute)
+	b := &Engine{Q: e.engine.Q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec, Now: func() time.Time { return later }}
+	var bErr error
+	a := &Engine{Q: e.engine.Q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec}
+	a.beforeStep = func(node string) {
+		// A has created "plan" and stalls before "build"; B reclaims the stale
+		// claim and runs the whole expansion.
+		if node == "build" {
+			a.beforeStep = nil
+			bErr = b.Expand(ctx, def)
+		}
+	}
+	if err := a.Expand(ctx, def); err != nil {
+		t.Fatalf("stalled expander must stop quietly, got %v", err)
+	}
+	if bErr != nil {
+		t.Fatal(bErr)
+	}
+	steps, _ := e.q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidStr(def)})
+	assertOneStepPerNode(t, steps, "plan", "build")
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunRunning || got.Status != "in_progress" {
+		t.Fatalf("definition state=%s status=%s, want running/in_progress", dm.State, got.Status)
 	}
 }
 

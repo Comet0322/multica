@@ -44,12 +44,17 @@ func hashDescription(d pgtype.Text) string {
 
 // Expand claims def, validates its YAML, and creates one backlog step issue
 // per node. It is safe to call concurrently and to re-run after a crash.
+//
+// The claim is fenced: its claimed_at string is a token that is renewed before
+// every write. An expander that stalls past claimStaleAfter and is reclaimed by
+// another one fails its next renewal and stops without writing anything.
 func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 	hash := hashDescription(def.Description)
 	if dm, ok := readDefMeta(def); ok && dm.State == RunInvalid && dm.ErrorHash == hash {
 		return nil // unchanged since it was last found invalid
 	}
-	claim, _ := json.Marshal(DefMeta{State: RunExpanding, ClaimedAt: e.now().UTC().Format(time.RFC3339)})
+	token := e.now().UTC().Format(time.RFC3339Nano)
+	claim, _ := json.Marshal(DefMeta{State: RunExpanding, ClaimedAt: token})
 	claimed, err := e.Q.ClaimWorkflowDefinition(ctx, db.ClaimWorkflowDefinitionParams{
 		Value: claim, ID: def.ID, WorkspaceID: def.WorkspaceID,
 		StaleBefore: pgtype.Timestamptz{Time: e.now().Add(-claimStaleAfter), Valid: true},
@@ -61,6 +66,9 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		return err
 	}
 	def = claimed
+	// The description may have been edited between the snapshot and the claim;
+	// validate and hash the claimed row so error_hash matches the errors posted.
+	hash = hashDescription(def.Description)
 
 	parsed, errs := Parse(def.Description.String)
 	agents := map[string]db.Agent{}
@@ -100,15 +108,15 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		return err
 	}
 	for _, n := range parsed.Nodes {
+		if _, ok := byNode[n.ID]; ok {
+			continue
+		}
 		agent := agents[strings.ToLower(n.Agent)]
 		meta := StepMeta{
 			Run: uuidString(def.ID), Node: n.ID, Deps: nonNil(n.DependsOn), Agent: agent.Name,
 			AgentID: uuidString(agent.ID), Approval: n.Approval, MaxRetries: n.Retries(), Phase: PhasePending,
 		}
 		title := fmt.Sprintf("%s · %s", def.Title, n.ID)
-		if _, ok := byNode[n.ID]; ok {
-			continue
-		}
 		var orphan *db.Issue
 		for i := range existing {
 			if existing[i].Title == title {
@@ -116,6 +124,14 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 					orphan = &existing[i]
 				}
 			}
+		}
+
+		if e.beforeStep != nil {
+			e.beforeStep(n.ID)
+		}
+		// Fence: renew the claim before every write; losing it ends this run.
+		if token, err = e.renewClaim(ctx, def, token); err != nil || token == "" {
+			return err
 		}
 		if orphan != nil {
 			if err := e.writeMeta(ctx, *orphan, meta); err != nil {
@@ -145,6 +161,12 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		}
 	}
 
+	// Exactly one stamped step per node must exist before the run starts. On a
+	// mismatch the definition stays 'expanding' so the next resume repairs it.
+	if err := e.verifySteps(ctx, def, parsed); err != nil {
+		return err
+	}
+
 	// Verify parentage before declaring the run started: every step must hang
 	// off the definition issue. A mismatch does not stop the run (steps are
 	// tracked by run id) but is surfaced so it is visible instead of silent.
@@ -152,15 +174,65 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		return err
 	}
 
-	prev := def
-	if err := e.writeMeta(ctx, def, DefMeta{State: RunRunning, Total: len(parsed.Nodes)}); err != nil {
+	if token, err = e.renewClaim(ctx, def, token); err != nil || token == "" {
 		return err
 	}
+	running, _ := json.Marshal(DefMeta{State: RunRunning, Total: len(parsed.Nodes)})
+	prev, err := e.Q.FinishWorkflowExpansion(ctx, db.FinishWorkflowExpansionParams{
+		Value: running, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedClaimedAt: token,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // claim lost
+	}
+	if err != nil {
+		return err
+	}
+	// A crash between the running-meta write above and this status change leaves
+	// state=running with status=todo; the engine tick reconciles that.
 	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: "in_progress"})
 	if err != nil {
 		return err
 	}
 	e.Events.IssueUpdated(ctx, prev, updated)
+	return nil
+}
+
+// renewClaim moves the fencing token forward. It returns an empty token (and a
+// nil error) when the claim was lost to another expander.
+func (e *Engine) renewClaim(ctx context.Context, def db.Issue, token string) (string, error) {
+	next := e.now().UTC().Format(time.RFC3339Nano)
+	_, err := e.Q.RefreshWorkflowClaim(ctx, db.RefreshWorkflowClaimParams{
+		NewClaimedAt: next, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedClaimedAt: token,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return next, nil
+}
+
+// verifySteps checks that each node has exactly one stamped step issue.
+func (e *Engine) verifySteps(ctx context.Context, def db.Issue, parsed Definition) error {
+	steps, err := e.Q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidString(def.ID)})
+	if err != nil {
+		return err
+	}
+	seen := map[string]int{}
+	for _, s := range steps {
+		if m, ok := readStepMeta(s); ok {
+			seen[m.Node]++
+		}
+	}
+	for _, n := range parsed.Nodes {
+		if seen[n.ID] != 1 {
+			return fmt.Errorf("workflow %s: node %q has %d step issues, want 1", uuidString(def.ID), n.ID, seen[n.ID])
+		}
+	}
+	if len(steps) != len(parsed.Nodes) {
+		return fmt.Errorf("workflow %s: %d step issues, want %d", uuidString(def.ID), len(steps), len(parsed.Nodes))
+	}
 	return nil
 }
 

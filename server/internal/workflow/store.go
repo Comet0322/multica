@@ -41,6 +41,8 @@ type Engine struct {
 	Events EventPublisher
 	// Now is overridable in tests; nil means time.Now.
 	Now func() time.Time
+	// beforeStep is a test hook called before each step write.
+	beforeStep func(node string)
 }
 
 func (e *Engine) now() time.Time {

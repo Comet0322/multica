@@ -2,10 +2,12 @@
 
 -- name: ListWorkflowDefinitionCandidates :many
 -- Todo issues carrying a flow:<name> label that have not been expanded yet
--- (no workflow metadata) or were previously marked invalid.
+-- (no workflow metadata), were previously marked invalid, or are stuck in
+-- 'expanding' (a crashed expander). ClaimWorkflowDefinition decides atomically
+-- whether an expanding claim is stale, so listing a live one is harmless.
 SELECT i.* FROM issue i
 WHERE i.status = 'todo'
-  AND (NOT (i.metadata ? 'workflow') OR i.metadata->'workflow'->>'state' = 'invalid')
+  AND (NOT (i.metadata ? 'workflow') OR i.metadata->'workflow'->>'state' IN ('invalid', 'expanding'))
   AND EXISTS (
       SELECT 1 FROM issue_to_label itl
       JOIN issue_label l ON l.id = itl.label_id
@@ -38,6 +40,30 @@ WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
                     THEN (metadata->'workflow'->>'claimed_at')::timestamptz
                     ELSE '-infinity'::timestamptz END) < sqlc.arg('stale_before')::timestamptz)
   )
+RETURNING *;
+
+-- name: RefreshWorkflowClaim :one
+-- Fencing: renews the expanding claim only while the caller still holds it,
+-- i.e. claimed_at still equals the token it last wrote. No rows means the
+-- claim was lost to another expander.
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow,claimed_at}', to_jsonb(sqlc.arg('new_claimed_at')::text))
+WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
+  AND metadata->'workflow'->>'state' = 'expanding'
+  AND metadata->'workflow'->>'claimed_at' = sqlc.arg('expected_claimed_at')::text
+RETURNING *;
+
+-- name: FinishWorkflowExpansion :one
+-- Writes the final workflow metadata only while the caller still holds the
+-- expanding claim (claimed_at equals its token). No rows means the claim was lost.
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
+  AND metadata->'workflow'->>'state' = 'expanding'
+  AND metadata->'workflow'->>'claimed_at' = sqlc.arg('expected_claimed_at')::text
 RETURNING *;
 
 -- name: ListRunningWorkflowDefinitions :many
