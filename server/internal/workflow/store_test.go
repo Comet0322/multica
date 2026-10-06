@@ -4,6 +4,8 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -81,7 +83,7 @@ func TestMetaRoundTrip(t *testing.T) {
 	}
 }
 
-func claimParams(issue db.Issue, state string, stale time.Time) db.ClaimWorkflowDefinitionParams {
+func claimParams(issue db.Issue, stale time.Time) db.ClaimWorkflowDefinitionParams {
 	value, _ := json.Marshal(DefMeta{State: RunExpanding, ClaimedAt: time.Now().UTC().Format(time.RFC3339)})
 	return db.ClaimWorkflowDefinitionParams{
 		Value: value, ID: issue.ID, WorkspaceID: issue.WorkspaceID,
@@ -102,7 +104,7 @@ func TestClaimEligibility(t *testing.T) {
 		e := newEnv(t)
 		i := e.flowIssue(t, "inv", "x")
 		setWorkflowMeta(t, e, i, `{"state":"invalid"}`)
-		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, "", hourAgo)); err != nil {
+		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -110,23 +112,26 @@ func TestClaimEligibility(t *testing.T) {
 		e := newEnv(t)
 		i := e.flowIssue(t, "noclaim", "x")
 		setWorkflowMeta(t, e, i, `{"state":"expanding"}`)
-		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, "", hourAgo)); err != nil {
+		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != nil {
 			t.Fatal(err)
 		}
 	})
-	t.Run("expanding with malformed claimed_at is reclaimable", func(t *testing.T) {
-		e := newEnv(t)
-		i := e.flowIssue(t, "bad", "x")
-		setWorkflowMeta(t, e, i, `{"state":"expanding","claimed_at":"not-a-date"}`)
-		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, "", hourAgo)); err != nil {
-			t.Fatalf("malformed claimed_at must count as stale, got %v", err)
-		}
-	})
+	for _, bad := range []string{"not-a-date", "2026-13-45T25:61:61Z", "2026-02-30T00:00:00Z", "2026-01-01T00:00:00+99:99"} {
+		t.Run("expanding with malformed claimed_at "+bad, func(t *testing.T) {
+			e := newEnv(t)
+			i := e.flowIssue(t, "bad", "x")
+			setWorkflowMeta(t, e, i, `{"state":"expanding","claimed_at":"`+bad+`"}`)
+			if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != nil {
+				t.Fatalf("malformed claimed_at must count as stale, got %v", err)
+			}
+		})
+	}
 	t.Run("wrong workspace", func(t *testing.T) {
 		e := newEnv(t)
 		i := e.flowIssue(t, "ws", "x")
-		p := claimParams(i, "", hourAgo)
-		p.WorkspaceID = e.flowIssue(t, "other", "y").ID
+		p := claimParams(i, hourAgo)
+		other := e.fx.Workspace(t, "Other WS", fmt.Sprintf("flow-other-%d-%d", os.Getpid(), seq.Add(1)))
+		p.WorkspaceID, _ = util.ParseUUID(other)
 		if _, err := e.q.ClaimWorkflowDefinition(ctx, p); err != pgx.ErrNoRows {
 			t.Fatalf("got %v, want ErrNoRows", err)
 		}
@@ -135,7 +140,7 @@ func TestClaimEligibility(t *testing.T) {
 		e := newEnv(t)
 		i := e.flowIssue(t, "done", "x")
 		e.fx.Exec(t, `UPDATE issue SET status = 'done' WHERE id = $1`, util.UUIDToString(i.ID))
-		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, "", hourAgo)); err != pgx.ErrNoRows {
+		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != pgx.ErrNoRows {
 			t.Fatalf("got %v, want ErrNoRows", err)
 		}
 	})

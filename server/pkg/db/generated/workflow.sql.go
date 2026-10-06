@@ -23,7 +23,8 @@ WHERE id = $2 AND workspace_id = $3
       NOT (metadata ? 'workflow')
       OR metadata->'workflow'->>'state' = 'invalid'
       OR (metadata->'workflow'->>'state' = 'expanding'
-          AND (CASE WHEN metadata->'workflow'->>'claimed_at' ~ '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          AND (CASE WHEN COALESCE(metadata->'workflow'->>'claimed_at', '') <> ''
+                         AND pg_input_is_valid(metadata->'workflow'->>'claimed_at', 'timestamptz')
                     THEN (metadata->'workflow'->>'claimed_at')::timestamptz
                     ELSE '-infinity'::timestamptz END) < $4::timestamptz)
   )
@@ -39,7 +40,8 @@ type ClaimWorkflowDefinitionParams struct {
 
 // Atomically claims a definition for expansion. Only one caller wins: the issue
 // must have no workflow metadata, be marked invalid, or hold an expanding claim
-// older than stale_before.
+// older than stale_before. A missing, empty or invalid claimed_at counts as
+// stale. pg_input_is_valid requires PostgreSQL 16+.
 func (q *Queries) ClaimWorkflowDefinition(ctx context.Context, arg ClaimWorkflowDefinitionParams) (Issue, error) {
 	row := q.db.QueryRow(ctx, claimWorkflowDefinition,
 		arg.Value,

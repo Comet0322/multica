@@ -20,7 +20,8 @@ LIMIT sqlc.arg('row_limit')::int;
 -- name: ClaimWorkflowDefinition :one
 -- Atomically claims a definition for expansion. Only one caller wins: the issue
 -- must have no workflow metadata, be marked invalid, or hold an expanding claim
--- older than stale_before.
+-- older than stale_before. A missing, empty or invalid claimed_at counts as
+-- stale. pg_input_is_valid requires PostgreSQL 16+.
 UPDATE issue SET
     metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
     revision = revision + 1,
@@ -32,7 +33,8 @@ WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
       NOT (metadata ? 'workflow')
       OR metadata->'workflow'->>'state' = 'invalid'
       OR (metadata->'workflow'->>'state' = 'expanding'
-          AND (CASE WHEN metadata->'workflow'->>'claimed_at' ~ '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          AND (CASE WHEN COALESCE(metadata->'workflow'->>'claimed_at', '') <> ''
+                         AND pg_input_is_valid(metadata->'workflow'->>'claimed_at', 'timestamptz')
                     THEN (metadata->'workflow'->>'claimed_at')::timestamptz
                     ELSE '-infinity'::timestamptz END) < sqlc.arg('stale_before')::timestamptz)
   )
