@@ -58,6 +58,11 @@ func TestExpandCreatesBacklogStepsWithMetadata(t *testing.T) {
 	if len(e.rec.enqueued) != 0 {
 		t.Fatal("expansion must not dispatch anything")
 	}
+	for _, k := range kids {
+		assertMetadataContract(t, k.Metadata)
+	}
+	assertMetadataContract(t, got.Metadata)
+	assertWorkspaceMetadataContract(t, e)
 }
 
 func TestExpandInvalidYAMLCommentsOnceAndRecoversOnEdit(t *testing.T) {
@@ -79,6 +84,7 @@ func TestExpandInvalidYAMLCommentsOnceAndRecoversOnEdit(t *testing.T) {
 	if dm, _ := readDefMeta(got); dm.State != RunInvalid {
 		t.Fatalf("state = %s, want invalid", dm.State)
 	}
+	assertWorkspaceMetadataContract(t, e)
 
 	e.agent(t, "Ghost")
 	e.fx.Exec(t, `UPDATE issue SET description = $2 WHERE id = $1`, uuidStr(def), flowDoc("Ghost", "Coder")+" ")
@@ -90,6 +96,7 @@ func TestExpandInvalidYAMLCommentsOnceAndRecoversOnEdit(t *testing.T) {
 	if dm, _ := readDefMeta(got); dm.State != RunRunning {
 		t.Fatalf("after the edit state = %s, want running", dm.State)
 	}
+	assertWorkspaceMetadataContract(t, e)
 }
 
 func TestExpandConcurrentClaimsCreateOneSet(t *testing.T) {
@@ -150,7 +157,7 @@ func TestExpandCandidatesResumesACrashedExpansion(t *testing.T) {
 	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
 	// Crash after the first step: second step missing, claim old, status todo.
 	e.fx.Exec(t, `DELETE FROM issue WHERE id = $1`, uuidStr(kids[1]))
-	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"wf_state":"expanding","wf_error_hash":"","wf_claimed_at":"2000-01-01T00:00:00Z","wf_total":0}'::jsonb WHERE id = $1`, uuidStr(def))
 
 	if err := e.engine.ExpandCandidates(ctx); err != nil {
 		t.Fatal(err)
@@ -209,7 +216,7 @@ func TestExpandDoesNotDuplicateAStepThatLostItsParent(t *testing.T) {
 	// The first step loses its parent link, then the claim goes stale so the
 	// definition is expanded again.
 	e.fx.Exec(t, `UPDATE issue SET parent_issue_id = NULL WHERE id = $1`, uuidStr(kids[0]))
-	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"wf_state":"expanding","wf_error_hash":"","wf_claimed_at":"2000-01-01T00:00:00Z","wf_total":0}'::jsonb WHERE id = $1`, uuidStr(def))
 	before := len(e.rec.comments)
 
 	cur, _ := e.q.GetIssue(ctx, def.ID)
@@ -239,7 +246,7 @@ func TestExpandResumesAfterCrashAndAdoptsOrphans(t *testing.T) {
 	// and the claim is stale.
 	e.fx.Exec(t, `UPDATE issue SET metadata = '{}'::jsonb WHERE id = $1`, uuidStr(kids[0]))
 	e.fx.Exec(t, `DELETE FROM issue WHERE id = $1`, uuidStr(kids[1]))
-	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"wf_state":"expanding","wf_error_hash":"","wf_claimed_at":"2000-01-01T00:00:00Z","wf_total":0}'::jsonb WHERE id = $1`, uuidStr(def))
 
 	cur, _ := e.q.GetIssue(ctx, def.ID)
 	if err := e.engine.Expand(ctx, cur); err != nil {
@@ -268,7 +275,7 @@ func TestExpandBlocksADefinitionWithDuplicateSteps(t *testing.T) {
 	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
 	// Two stamped steps for the same node, claim stale, status todo.
 	e.fx.Exec(t, `UPDATE issue SET metadata = (SELECT metadata FROM issue WHERE id = $1) WHERE id = $2`, uuidStr(kids[0]), uuidStr(kids[1]))
-	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"wf_state":"expanding","wf_error_hash":"","wf_claimed_at":"2000-01-01T00:00:00Z","wf_total":0}'::jsonb WHERE id = $1`, uuidStr(def))
 	before := len(e.rec.comments)
 
 	for i := 0; i < 2; i++ {
@@ -295,7 +302,7 @@ func TestExpandLosingTheClaimAtFinishWritesNothing(t *testing.T) {
 	a.beforeStep = func(node string) {
 		if node == "finish" {
 			// Another expander takes over before A's final renewal.
-			e.fx.Exec(t, `UPDATE issue SET metadata = jsonb_set(metadata, '{workflow,claimed_at}', '"2001-01-01T00:00:00Z"') WHERE id = $1`, uuidStr(def))
+			e.fx.Exec(t, `UPDATE issue SET metadata = metadata || '{"wf_claimed_at":"2001-01-01T00:00:00Z"}'::jsonb WHERE id = $1`, uuidStr(def))
 		}
 	}
 	if err := a.Expand(ctx, def); err != nil {

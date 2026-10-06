@@ -58,6 +58,7 @@ func blockedBuild(t *testing.T) (*env, db.Issue, db.Issue) {
 	tick(t, e)
 	setStatus(t, e, stepByNode(t, e, def, "build"), "in_review")
 	tick(t, e)
+	assertWorkspaceMetadataContract(t, e)
 	return e, def, stepByNode(t, e, def, "build")
 }
 
@@ -213,6 +214,7 @@ func realComment(t *testing.T, e *env, issue db.Issue, content string) string {
 
 func stepMetaOf(t *testing.T, e *env, def db.Issue, node string) StepMeta {
 	t.Helper()
+	assertWorkspaceMetadataContract(t, e)
 	m, _ := readStepMeta(stepByNode(t, e, def, node))
 	return m
 }

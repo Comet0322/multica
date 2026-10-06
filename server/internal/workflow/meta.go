@@ -1,7 +1,30 @@
 package workflow
 
-// MetaKey is the issue.metadata key holding all workflow state.
-const MetaKey = "workflow"
+// Workflow state lives in issue.metadata as flat primitive keys prefixed with
+// wf_. The platform's metadata contract is a flat map of strings, numbers and
+// booleans (enforced by the metadata API and by the frontend issue schema), so
+// nested objects, arrays and nulls are never written.
+//
+// A step issue is recognised by KeyRun, a definition issue by KeyState.
+const (
+	// Step keys.
+	KeyRun          = "wf_run"
+	KeyNode         = "wf_node"
+	KeyDeps         = "wf_deps" // node ids joined by a comma; "" when none
+	KeyAgent        = "wf_agent"
+	KeyAgentID      = "wf_agent_id"
+	KeyApproval     = "wf_approval"
+	KeyMaxRetries   = "wf_max_retries"
+	KeyAttempts     = "wf_attempts"
+	KeyPhase        = "wf_phase"
+	KeyDispatchedAt = "wf_dispatched_at" // RFC3339Nano; "" when never dispatched
+
+	// Definition keys.
+	KeyState     = "wf_state"
+	KeyErrorHash = "wf_error_hash"
+	KeyClaimedAt = "wf_claimed_at"
+	KeyTotal     = "wf_total"
+)
 
 type Phase string
 

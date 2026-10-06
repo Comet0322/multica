@@ -3,7 +3,6 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -152,7 +151,7 @@ func (e *Engine) stopRun(ctx context.Context, def db.Issue, dm DefMeta) error {
 		return nil
 	}
 	cdm.State = RunStopped
-	raw, err := json.Marshal(cdm)
+	raw, err := defMetaJSON(cdm)
 	if err != nil {
 		return err
 	}
@@ -361,7 +360,7 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 	// step is still in the observed phase, attempt count and dispatch
 	// generation, so a concurrent instance cannot apply the same or a
 	// conflicting event.
-	raw, err := json.Marshal(next)
+	raw, err := stepMetaJSON(next)
 	if err != nil {
 		return false, err
 	}
@@ -433,7 +432,7 @@ func (e *Engine) dispatch(ctx context.Context, issue db.Issue, meta StepMeta, tr
 func (e *Engine) failDispatch(ctx context.Context, issue db.Issue, meta StepMeta, cause error) error {
 	failed := meta
 	failed.Phase = PhaseFailed
-	raw, err := json.Marshal(failed)
+	raw, err := stepMetaJSON(failed)
 	if err != nil {
 		return err
 	}
@@ -491,7 +490,7 @@ func (e *Engine) closeDefinition(ctx context.Context, def db.Issue, state RunSta
 		e.beforeClose()
 	}
 	dm.State = state
-	raw, err := json.Marshal(dm)
+	raw, err := defMetaJSON(dm)
 	if err != nil {
 		return err
 	}
@@ -531,7 +530,7 @@ func (e *Engine) reopenDefinition(ctx context.Context, def db.Issue) error {
 		return nil
 	}
 	dm.State = RunRunning
-	raw, err := json.Marshal(dm)
+	raw, err := defMetaJSON(dm)
 	if err != nil {
 		return err
 	}

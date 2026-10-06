@@ -2,18 +2,18 @@
 
 -- name: ListWorkflowDefinitionCandidates :many
 -- Todo issues carrying a flow:<name> label that have not been expanded yet
--- (no workflow metadata), were previously marked invalid, or are stuck in
+-- (no wf_state key), were previously marked invalid, or are stuck in
 -- 'expanding' (a crashed expander). ClaimWorkflowDefinition decides atomically
 -- whether an expanding claim is stale, so listing a live one is harmless.
 SELECT i.* FROM issue i
 WHERE i.status = 'todo'
   AND (
-      NOT (i.metadata ? 'workflow')
-      OR i.metadata->'workflow'->>'state' = 'expanding'
+      NOT (i.metadata ? 'wf_state')
+      OR i.metadata->>'wf_state' = 'expanding'
       -- An invalid definition is retried only after its description changed;
       -- the hash matches hashDescription in expand.go (sha256, first 8 bytes, hex).
-      OR (i.metadata->'workflow'->>'state' = 'invalid'
-          AND COALESCE(i.metadata->'workflow'->>'error_hash', '')
+      OR (i.metadata->>'wf_state' = 'invalid'
+          AND COALESCE(i.metadata->>'wf_error_hash', '')
               <> left(encode(sha256(convert_to(COALESCE(i.description, ''), 'UTF8')), 'hex'), 16))
   )
   AND EXISTS (
@@ -29,54 +29,69 @@ LIMIT sqlc.arg('row_limit')::int;
 
 -- name: ClaimWorkflowDefinition :one
 -- Atomically claims a definition for expansion. Only one caller wins: the issue
--- must have no workflow metadata, be marked invalid, or hold an expanding claim
--- older than stale_before. A missing, empty or invalid claimed_at counts as
--- stale. pg_input_is_valid requires PostgreSQL 16+.
+-- must have no wf_state key, be marked invalid, or hold an expanding claim
+-- older than stale_before. A missing, empty or invalid wf_claimed_at counts as
+-- stale. pg_input_is_valid requires PostgreSQL 16+. The previous wf_*
+-- definition keys are replaced, never merged with the new ones.
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    metadata = (metadata - 'wf_state' - 'wf_error_hash' - 'wf_claimed_at' - 'wf_total') || sqlc.arg('value')::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
   AND status = 'todo'
   AND (
-      NOT (metadata ? 'workflow')
-      OR metadata->'workflow'->>'state' = 'invalid'
-      OR (metadata->'workflow'->>'state' = 'expanding'
-          AND (CASE WHEN COALESCE(metadata->'workflow'->>'claimed_at', '') <> ''
-                         AND pg_input_is_valid(metadata->'workflow'->>'claimed_at', 'timestamptz')
-                    THEN (metadata->'workflow'->>'claimed_at')::timestamptz
+      NOT (metadata ? 'wf_state')
+      OR metadata->>'wf_state' = 'invalid'
+      OR (metadata->>'wf_state' = 'expanding'
+          AND (CASE WHEN COALESCE(metadata->>'wf_claimed_at', '') <> ''
+                         AND pg_input_is_valid(metadata->>'wf_claimed_at', 'timestamptz')
+                    THEN (metadata->>'wf_claimed_at')::timestamptz
                     ELSE '-infinity'::timestamptz END) < sqlc.arg('stale_before')::timestamptz)
   )
 RETURNING *;
 
 -- name: RefreshWorkflowClaim :one
 -- Fencing: renews the expanding claim only while the caller still holds it,
--- i.e. claimed_at still equals the token it last wrote. No rows means the
+-- i.e. wf_claimed_at still equals the token it last wrote. No rows means the
 -- claim was lost to another expander.
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow,claimed_at}', to_jsonb(sqlc.arg('new_claimed_at')::text))
+    metadata = metadata || jsonb_build_object('wf_claimed_at', sqlc.arg('new_claimed_at')::text)
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
-  AND metadata->'workflow'->>'state' = 'expanding'
-  AND metadata->'workflow'->>'claimed_at' = sqlc.arg('expected_claimed_at')::text
+  AND metadata->>'wf_state' = 'expanding'
+  AND metadata->>'wf_claimed_at' = sqlc.arg('expected_claimed_at')::text
 RETURNING *;
 
 -- name: FinishWorkflowExpansion :one
 -- Writes the final workflow metadata only while the caller still holds the
--- expanding claim (claimed_at equals its token). No rows means the claim was lost.
+-- expanding claim (wf_claimed_at equals its token). No rows means the claim was lost.
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    metadata = metadata || sqlc.arg('value')::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
-  AND metadata->'workflow'->>'state' = 'expanding'
-  AND metadata->'workflow'->>'claimed_at' = sqlc.arg('expected_claimed_at')::text
+  AND metadata->>'wf_state' = 'expanding'
+  AND metadata->>'wf_claimed_at' = sqlc.arg('expected_claimed_at')::text
+RETURNING *;
+
+-- name: MergeWorkflowMetadata :one
+-- Merges flat wf_* keys into the issue's metadata in one statement. The value
+-- must be a flat object of primitives (the platform metadata contract).
+-- Rewriting identical values is a no-op and returns no rows, like
+-- SetIssueMetadataKey.
+UPDATE issue SET
+    metadata = metadata || sqlc.arg('value')::jsonb,
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
+  AND NOT (metadata @> sqlc.arg('value')::jsonb)
 RETURNING *;
 
 -- name: ListRunningWorkflowDefinitions :many
 SELECT * FROM issue
-WHERE metadata @> '{"workflow": {"state": "running"}}'::jsonb
+WHERE metadata @> '{"wf_state": "running"}'::jsonb
 ORDER BY created_at ASC
 LIMIT sqlc.arg('row_limit')::int;
 
@@ -93,7 +108,7 @@ ORDER BY created_at ASC, number ASC;
 -- (or cleared by another flow) is still tracked. GIN-indexed via metadata.
 SELECT * FROM issue
 WHERE workspace_id = sqlc.arg('workspace_id')
-  AND metadata @> jsonb_build_object('workflow', jsonb_build_object('run', sqlc.arg('run')::text))
+  AND metadata @> jsonb_build_object('wf_run', sqlc.arg('run')::text)
 ORDER BY created_at ASC, number ASC;
 
 -- name: LatestWorkflowTaskStatus :one
@@ -109,26 +124,26 @@ LIMIT 1;
 -- observed. No rows
 -- means another instance already moved the step.
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    metadata = metadata || sqlc.arg('value')::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
-  AND metadata->'workflow'->>'phase' = sqlc.arg('expected_phase')::text
-  AND COALESCE((metadata->'workflow'->>'attempts')::int, 0) = sqlc.arg('expected_attempts')::int
-  AND COALESCE(metadata->'workflow'->>'dispatched_at', '') = sqlc.arg('expected_dispatched_at')::text
+  AND metadata->>'wf_phase' = sqlc.arg('expected_phase')::text
+  AND COALESCE((metadata->>'wf_attempts')::int, 0) = sqlc.arg('expected_attempts')::int
+  AND COALESCE(metadata->>'wf_dispatched_at', '') = sqlc.arg('expected_dispatched_at')::text
 RETURNING *;
 
 -- name: SetWorkflowDefinitionState :one
 -- Fenced definition state change: applies only while the definition is still in
 -- expected_state. No rows means another writer already moved it.
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    metadata = metadata || sqlc.arg('value')::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
-  AND metadata->'workflow'->>'state' = sqlc.arg('expected_state')::text
+  AND metadata->>'wf_state' = sqlc.arg('expected_state')::text
 RETURNING *;
 
 -- name: WorkflowDBNow :one
@@ -168,5 +183,5 @@ UPDATE issue AS i SET
     updated_at = now()
 FROM wakeup_source
 WHERE i.id = sqlc.arg('id') AND i.workspace_id = sqlc.arg('workspace_id')
-  AND i.metadata->'workflow'->>'state' = sqlc.arg('want_state')::text
+  AND i.metadata->>'wf_state' = sqlc.arg('want_state')::text
 RETURNING i.*;

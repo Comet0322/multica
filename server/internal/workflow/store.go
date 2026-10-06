@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -72,43 +74,125 @@ func (e *Engine) now() time.Time {
 	return time.Now()
 }
 
-func metaOf(issue db.Issue, v any) bool {
-	var bag map[string]json.RawMessage
-	if err := json.Unmarshal(issue.Metadata, &bag); err != nil {
-		return false
+// stepMetaToKeys flattens a step's metadata into wf_* primitive keys. Every
+// key is always present so a merge fully replaces the previous step state.
+func stepMetaToKeys(m StepMeta) map[string]any {
+	return map[string]any{
+		KeyRun:          m.Run,
+		KeyNode:         m.Node,
+		KeyDeps:         strings.Join(m.Deps, ","),
+		KeyAgent:        m.Agent,
+		KeyAgentID:      m.AgentID,
+		KeyApproval:     m.Approval,
+		KeyMaxRetries:   m.MaxRetries,
+		KeyAttempts:     m.Attempts,
+		KeyPhase:        string(m.Phase),
+		KeyDispatchedAt: m.DispatchedAt,
 	}
-	raw, ok := bag[MetaKey]
-	if !ok {
-		return false
-	}
-	return json.Unmarshal(raw, v) == nil
 }
 
+// defMetaToKeys flattens a definition's metadata into wf_* primitive keys.
+// Every key is always present so a merge fully replaces the previous state.
+func defMetaToKeys(m DefMeta) map[string]any {
+	return map[string]any{
+		KeyState:     string(m.State),
+		KeyErrorHash: m.ErrorHash,
+		KeyClaimedAt: m.ClaimedAt,
+		KeyTotal:     m.Total,
+	}
+}
+
+func stepMetaJSON(m StepMeta) ([]byte, error) { return json.Marshal(stepMetaToKeys(m)) }
+
+func defMetaJSON(m DefMeta) ([]byte, error) { return json.Marshal(defMetaToKeys(m)) }
+
+// metaBag decodes issue.metadata; nil when it is not a JSON object.
+func metaBag(issue db.Issue) map[string]any {
+	var bag map[string]any
+	if err := json.Unmarshal(issue.Metadata, &bag); err != nil {
+		return nil
+	}
+	return bag
+}
+
+func bagString(bag map[string]any, key string) string {
+	s, _ := bag[key].(string)
+	return s
+}
+
+func bagInt(bag map[string]any, key string) int {
+	f, _ := bag[key].(float64)
+	return int(f)
+}
+
+func bagBool(bag map[string]any, key string) bool {
+	b, _ := bag[key].(bool)
+	return b
+}
+
+// readStepMeta reads the wf_* step keys. Missing keys read as zero values; a
+// step requires a non-empty wf_run.
 func readStepMeta(i db.Issue) (StepMeta, bool) {
-	var m StepMeta
-	if !metaOf(i, &m) || m.Run == "" {
+	bag := metaBag(i)
+	run := bagString(bag, KeyRun)
+	if run == "" {
 		return StepMeta{}, false
 	}
-	return m, true
+	var deps []string
+	if d := bagString(bag, KeyDeps); d != "" {
+		deps = strings.Split(d, ",")
+	}
+	return StepMeta{
+		Run:          run,
+		Node:         bagString(bag, KeyNode),
+		Deps:         deps,
+		Agent:        bagString(bag, KeyAgent),
+		AgentID:      bagString(bag, KeyAgentID),
+		Approval:     bagBool(bag, KeyApproval),
+		MaxRetries:   bagInt(bag, KeyMaxRetries),
+		Attempts:     bagInt(bag, KeyAttempts),
+		Phase:        Phase(bagString(bag, KeyPhase)),
+		DispatchedAt: bagString(bag, KeyDispatchedAt),
+	}, true
 }
 
+// readDefMeta reads the wf_* definition keys. Missing keys read as zero
+// values; a definition requires a non-empty wf_state.
 func readDefMeta(i db.Issue) (DefMeta, bool) {
-	var m DefMeta
-	if !metaOf(i, &m) || m.State == "" {
+	bag := metaBag(i)
+	state := bagString(bag, KeyState)
+	if state == "" {
 		return DefMeta{}, false
 	}
-	return m, true
+	return DefMeta{
+		State:     RunState(state),
+		ErrorHash: bagString(bag, KeyErrorHash),
+		ClaimedAt: bagString(bag, KeyClaimedAt),
+		Total:     bagInt(bag, KeyTotal),
+	}, true
 }
 
-// writeMeta stores v under MetaKey. SetIssueMetadataKey returns no rows when
-// the value is unchanged, which is not an error here.
+// writeMeta merges every wf_* key of a StepMeta or DefMeta into the issue's
+// metadata in one statement. MergeWorkflowMetadata returns no rows when the
+// values are unchanged, which is not an error here.
 func (e *Engine) writeMeta(ctx context.Context, issue db.Issue, v any) error {
-	raw, err := json.Marshal(v)
+	var (
+		raw []byte
+		err error
+	)
+	switch m := v.(type) {
+	case StepMeta:
+		raw, err = stepMetaJSON(m)
+	case DefMeta:
+		raw, err = defMetaJSON(m)
+	default:
+		return fmt.Errorf("workflow: writeMeta: unsupported type %T", v)
+	}
 	if err != nil {
 		return err
 	}
-	_, err = e.Q.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
-		Key: MetaKey, Value: raw, ID: issue.ID, WorkspaceID: issue.WorkspaceID,
+	_, err = e.Q.MergeWorkflowMetadata(ctx, db.MergeWorkflowMetadataParams{
+		Value: raw, ID: issue.ID, WorkspaceID: issue.WorkspaceID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil

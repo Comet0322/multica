@@ -3,7 +3,6 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -41,7 +40,7 @@ func TestCandidatesAndAtomicClaim(t *testing.T) {
 		t.Fatal("labelled todo issue should be a candidate")
 	}
 
-	value, _ := json.Marshal(DefMeta{State: RunExpanding, ClaimedAt: time.Now().UTC().Format(time.RFC3339)})
+	value, _ := defMetaJSON(DefMeta{State: RunExpanding, ClaimedAt: time.Now().UTC().Format(time.RFC3339)})
 	params := db.ClaimWorkflowDefinitionParams{
 		Value: value, ID: def.ID, WorkspaceID: def.WorkspaceID,
 		StaleBefore: pgtype.Timestamptz{Time: time.Now().Add(-time.Hour), Valid: true},
@@ -84,7 +83,7 @@ func TestMetaRoundTrip(t *testing.T) {
 }
 
 func claimParams(issue db.Issue, stale time.Time) db.ClaimWorkflowDefinitionParams {
-	value, _ := json.Marshal(DefMeta{State: RunExpanding, ClaimedAt: time.Now().UTC().Format(time.RFC3339)})
+	value, _ := defMetaJSON(DefMeta{State: RunExpanding, ClaimedAt: time.Now().UTC().Format(time.RFC3339)})
 	return db.ClaimWorkflowDefinitionParams{
 		Value: value, ID: issue.ID, WorkspaceID: issue.WorkspaceID,
 		StaleBefore: pgtype.Timestamptz{Time: stale, Valid: true},
@@ -93,7 +92,7 @@ func claimParams(issue db.Issue, stale time.Time) db.ClaimWorkflowDefinitionPara
 
 func setWorkflowMeta(t *testing.T, e *env, issue db.Issue, raw string) {
 	t.Helper()
-	e.fx.Exec(t, `UPDATE issue SET metadata = jsonb_build_object('workflow', $2::jsonb) WHERE id = $1`, util.UUIDToString(issue.ID), raw)
+	e.fx.Exec(t, `UPDATE issue SET metadata = $2::jsonb WHERE id = $1`, util.UUIDToString(issue.ID), raw)
 }
 
 func TestClaimEligibility(t *testing.T) {
@@ -103,7 +102,7 @@ func TestClaimEligibility(t *testing.T) {
 	t.Run("invalid row is claimable", func(t *testing.T) {
 		e := newEnv(t)
 		i := e.flowIssue(t, "inv", "x")
-		setWorkflowMeta(t, e, i, `{"state":"invalid"}`)
+		setWorkflowMeta(t, e, i, `{"wf_state":"invalid"}`)
 		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != nil {
 			t.Fatal(err)
 		}
@@ -111,7 +110,7 @@ func TestClaimEligibility(t *testing.T) {
 	t.Run("expanding without claimed_at is reclaimable", func(t *testing.T) {
 		e := newEnv(t)
 		i := e.flowIssue(t, "noclaim", "x")
-		setWorkflowMeta(t, e, i, `{"state":"expanding"}`)
+		setWorkflowMeta(t, e, i, `{"wf_state":"expanding"}`)
 		if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +119,7 @@ func TestClaimEligibility(t *testing.T) {
 		t.Run("expanding with malformed claimed_at "+bad, func(t *testing.T) {
 			e := newEnv(t)
 			i := e.flowIssue(t, "bad", "x")
-			setWorkflowMeta(t, e, i, `{"state":"expanding","claimed_at":"`+bad+`"}`)
+			setWorkflowMeta(t, e, i, `{"wf_state":"expanding","wf_claimed_at":"`+bad+`"}`)
 			if _, err := e.q.ClaimWorkflowDefinition(ctx, claimParams(i, hourAgo)); err != nil {
 				t.Fatalf("malformed claimed_at must count as stale, got %v", err)
 			}
@@ -151,7 +150,7 @@ func TestListWorkflowStepsByRunIgnoresParent(t *testing.T) {
 	e := newEnv(t)
 	def := e.flowIssue(t, "def", "x")
 	step := e.fx.Issue(t, "step", dbfx.Cols{"parent_issue_id": nil})
-	e.fx.Exec(t, `UPDATE issue SET metadata = jsonb_build_object('workflow', jsonb_build_object('run','run-xyz','node','a')) WHERE id = $1`, step)
+	e.fx.Exec(t, `UPDATE issue SET metadata = jsonb_build_object('wf_run','run-xyz','wf_node','a') WHERE id = $1`, step)
 	steps, err := e.q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: e.wsUUID, Run: "run-xyz"})
 	if err != nil {
 		t.Fatal(err)

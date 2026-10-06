@@ -63,31 +63,41 @@ nodes:
 Validation (all errors are collected and posted as one comment on the definition issue;
 nothing is expanded): duplicate ids, unknown `depends_on`, dependency cycles, unknown or
 archived agents, missing required fields, malformed YAML. The definition issue stays in
-`todo` with `workflow.state = "invalid"` recorded so it is not re-validated every tick
+`todo` with `wf_state = "invalid"` recorded so it is not re-validated every tick
 until its description or labels change.
 
 ## 4. State lives in `issue.metadata` (no new tables)
 
-Definition issue, key `workflow`:
+All workflow state is stored as **flat primitive keys prefixed with `wf_`** (strings, numbers
+and booleans only; never nested objects, arrays or nulls), so it obeys the platform's metadata
+contract. Every key below is always written.
+
+Definition issue (recognised by the presence of `wf_state`):
 
 ```json
-{"state": "expanding | running | invalid | blocked | done", "error_hash": "…"}
+{"wf_state": "expanding | running | invalid | blocked | done | stopped",
+ "wf_error_hash": "", "wf_claimed_at": "", "wf_total": 0}
 ```
 
-Step issue, key `workflow`:
+Step issue (recognised by the presence of `wf_run`):
 
 ```json
-{"run": "<definition issue id>", "node": "implement", "deps": ["plan"],
- "agent": "Coder", "approval": false, "max_retries": 2,
- "attempts": 0, "phase": "pending"}
+{"wf_run": "<definition issue id>", "wf_node": "implement", "wf_deps": "plan,lint",
+ "wf_agent": "Coder", "wf_agent_id": "<agent uuid>", "wf_approval": false,
+ "wf_max_retries": 2, "wf_attempts": 0, "wf_phase": "pending", "wf_dispatched_at": ""}
 ```
 
+- `wf_deps` is the node ids joined by commas (`""` when none); node ids match `[a-z0-9_-]+`,
+  so the join is lossless. Empty strings and `0` stand for "none" (`wf_error_hash`,
+  `wf_claimed_at`, `wf_dispatched_at`, `wf_total`).
 - A step issue also has `parent_issue_id` = the definition issue, an assignee = the agent,
   and the node `prompt` as description. **The step issues are the snapshot**: later edits to
   the definition description do not affect a running workflow.
-- Queries use `metadata @> '{"workflow": {...}}'` (GIN-indexed) via a new sqlc file
-  `server/pkg/db/queries/workflow.sql`; writes use the existing atomic
-  `SetIssueMetadataKey`.
+- Queries use `metadata @> '{"wf_state": "running"}'` / `metadata @> '{"wf_run": "…"}'`
+  (GIN-indexed) and `metadata->>'wf_…'` via a new sqlc file
+  `server/pkg/db/queries/workflow.sql`; every write merges all keys of one object in a
+  single atomic statement (`metadata || value`, `MergeWorkflowMetadata` or the fenced
+  claim/CAS queries).
 - Metadata is user-writable through the API. Each tick reconciles: if a step's `phase`
   contradicts its issue status per the mapping in section 5, the engine rewrites the
   phase it can justify and leaves a comment. Size is well under the 8KB metadata cap.
@@ -137,7 +147,7 @@ command listener (`accept`, `reject`, `retry`). The transition function is pure
 | `expand.go` | Create step issues in `backlog` via `IssueService.Create` (creator = definition creator, parent, assignee, metadata). |
 | `dispatch.go` | Move a step to its running status and enqueue the agent task. |
 | `commands.go` | Bus listener on `comment:created`; parse `/accept`, `/reject`, `/retry`; authorize; emit events. |
-| `store.go` | Thin wrappers over the new sqlc queries and `SetIssueMetadataKey`. |
+| `store.go` | Thin wrappers over the new sqlc queries; flat `wf_*` metadata (de)serialization. |
 
 Reused as-is: `IssueService.Create` (labels, parent, duplicate guard, `issue:created`
 event), `TaskService.EnqueueTaskForIssue` / `EnqueueTaskForMention`, the event bus, the DB
@@ -149,7 +159,7 @@ scheduler (`internal/scheduler`, multi-instance safe via `sys_cron_executions`).
 `scheduler/jobs_issue_wakeup.go`) calling `Engine.Tick`:
 
 1. **Expand.** For each eligible definition issue: claim it by conditionally setting
-   `workflow.state = "expanding"` (only one instance wins). Parse and validate; on error
+   `wf_state = "expanding"` (only one instance wins). Parse and validate; on error
    comment and mark `invalid`. Otherwise create one backlog step issue per node, skipping
    nodes that already exist (matched on `run` + `node`) so a crash mid-expansion resumes
    cleanly. Then set `state = "running"` and move the definition issue to `in_progress`.
@@ -223,20 +233,21 @@ issues, parent notification is not needed because the engine owns completion).
 
 ## 13. Implementation notes
 
-1. Step metadata also stores `agent_id` (the resolved agent UUID) next to `agent` (the name), so dispatch never re-resolves names.
-2. Definition metadata also stores `claimed_at` (to reclaim a stale `expanding` claim) and `total` (number of nodes, to detect a deleted step issue).
-3. Step titles are `"<definition title> · <node id>"`. On resume after a crash between issue creation and its metadata write, an orphan child with that exact title and no `workflow` metadata is adopted instead of duplicated.
-4. Because `IssueCreateParams` has no metadata field, step metadata is written by `SetIssueMetadataKey` immediately after `Create`.
+1. Step metadata also stores `wf_agent_id` (the resolved agent UUID) next to `wf_agent` (the name), so dispatch never re-resolves names.
+2. Definition metadata also stores `wf_claimed_at` (to reclaim a stale `expanding` claim) and `wf_total` (number of nodes, to detect a deleted step issue).
+3. Step titles are `"<definition title> · <node id>"`. On resume after a crash between issue creation and its metadata write, an orphan child with that exact title and no `wf_run` key is adopted instead of duplicated.
+4. Because `IssueCreateParams` has no metadata field, step metadata is written by `MergeWorkflowMetadata` (all `wf_*` keys in one statement) immediately after `Create`.
 5. The engine does not stop issue wakeups when it closes an issue (that logic lives only in `Handler.UpdateIssue`); a user-set wakeup on a step issue is out of scope for the prototype.
 6. Status keys are compared as built-in literals (`done`, `in_review`, `todo`), like the autopilot listener does. Custom statuses are not supported in the prototype.
-7. Steps are located by `metadata.workflow.run` (`ListWorkflowSteps`), not by `parent_issue_id`; the parent link is still set on creation and verified (a warning comment is posted if a step is not a direct child).
+7. Steps are located by the `wf_run` metadata key (`ListWorkflowSteps`), not by `parent_issue_id`; the parent link is still set on creation and verified (a warning comment is posted if a step is not a direct child).
 8. `handler.WorkflowEvents` (new file `internal/handler/workflow_bridge.go`) is the adapter that lets the engine emit events in the exact shapes existing listeners and the UI expect, without `workflow` importing `handler`.
 
 ### Decisions made during implementation
 
-- Steps are located by `metadata.workflow.run`; `parent_issue_id` is still set and verified, and a warning comment is posted when a step is not a direct child.
-- Expansion is fenced by a `claimed_at` token (renewed before every create and before the final write); `expanding` definitions are candidates so a crashed expansion resumes; an inconsistent expansion (duplicate or missing steps) blocks the definition with one explanatory comment.
-- Step transitions are claimed by a conditional UPDATE keyed on the caller-observed phase, attempts and `dispatched_at`; `dispatched_at` is stamped from the database clock.
+- Workflow state is stored as flat `wf_*` primitive keys, not a nested `workflow` object. The platform's `issue.metadata` contract is a flat map of strings, numbers and booleans (no null, arrays or objects; at most 50 keys, 8KB), enforced by the metadata API (`validateIssueMetadataValue`) and by the frontend's `IssueMetadataSchema`; `parseWithFallback` discards the whole issue list response when a single issue fails it, so a nested object made the web UI show no issues at all. Tests assert this contract for every issue in the workspace after each step of the end-to-end paths.
+- Steps are located by the `wf_run` metadata key; `parent_issue_id` is still set and verified, and a warning comment is posted when a step is not a direct child.
+- Expansion is fenced by a `wf_claimed_at` token (renewed before every create and before the final write); `expanding` definitions are candidates so a crashed expansion resumes; an inconsistent expansion (duplicate or missing steps) blocks the definition with one explanatory comment.
+- Step transitions are claimed by a conditional UPDATE keyed on the caller-observed phase, attempts and `wf_dispatched_at`; `wf_dispatched_at` is stamped from the database clock.
 - Two extra events beyond the original table: `dispatch_lost` (no task row after a 90s grace) and `agent_cancelled` (the run was cancelled; step fails, `/retry` restarts it). A task that completed without moving the issue to done or in_review counts as a failed attempt.
 - A task in any non-terminal status counts as in flight; only terminal task statuses are bounded by the dispatch time.
 - Commands are accepted only from members and only from the definition creator; the listener ignores system and agent comments, runs each command in a goroutine with a recover and a 30s timeout; `isNoteComment` also treats `/accept`, `/reject` and `/retry` as non-triggering comments on every issue.
@@ -245,7 +256,7 @@ issues, parent notification is not needed because the engine owns completion).
 - Stopped state: closing the definition issue (cancelled, or done by hand) while the run is `running` moves the run to `stopped` with one comment; nothing is observed or dispatched afterwards. A run that has actually completed is closed as `done` instead.
 - Size caps: at most 50 nodes, 20000 bytes per prompt, 100000 bytes for the YAML block.
 - Approval steps need a member-created definition, because only members can `/accept`; an agent-created definition with an approval step is marked invalid.
-- Invalid definitions are excluded from the candidate list in SQL while their stored `error_hash` equals the hash of the current description, so abandoned definitions cannot occupy candidate slots.
+- Invalid definitions are excluded from the candidate list in SQL while their stored `wf_error_hash` equals the hash of the current description, so abandoned definitions cannot occupy candidate slots.
 - `MULTICA_WORKFLOW_ENGINE` (default on; `false` or `0` disables) controls whether the engine, its comment listener and its scheduler job are started.
 
 ### Known limitations

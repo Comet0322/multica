@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -58,7 +57,7 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		return nil // unchanged since it was last found invalid
 	}
 	token := e.now().UTC().Format(time.RFC3339Nano)
-	claim, _ := json.Marshal(DefMeta{State: RunExpanding, ClaimedAt: token})
+	claim, _ := defMetaJSON(DefMeta{State: RunExpanding, ClaimedAt: token})
 	claimed, err := e.Q.ClaimWorkflowDefinition(ctx, db.ClaimWorkflowDefinitionParams{
 		Value: claim, ID: def.ID, WorkspaceID: def.WorkspaceID,
 		StaleBefore: pgtype.Timestamptz{Time: e.now().Add(-claimStaleAfter), Valid: true},
@@ -286,7 +285,10 @@ func (e *Engine) warnOnMissingParents(ctx context.Context, def db.Issue) error {
 // finishFenced writes terminal-for-now metadata only while the claim is still
 // held. It reports false when the claim was lost.
 func (e *Engine) finishFenced(ctx context.Context, def db.Issue, token string, m DefMeta) (db.Issue, bool, error) {
-	raw, _ := json.Marshal(m)
+	raw, err := defMetaJSON(m)
+	if err != nil {
+		return db.Issue{}, false, err
+	}
 	row, err := e.Q.FinishWorkflowExpansion(ctx, db.FinishWorkflowExpansionParams{
 		Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedClaimedAt: token,
 	})

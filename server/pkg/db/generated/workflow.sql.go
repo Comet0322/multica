@@ -13,19 +13,19 @@ import (
 
 const claimWorkflowDefinition = `-- name: ClaimWorkflowDefinition :one
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    metadata = (metadata - 'wf_state' - 'wf_error_hash' - 'wf_claimed_at' - 'wf_total') || $1::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = $2 AND workspace_id = $3
   AND status = 'todo'
   AND (
-      NOT (metadata ? 'workflow')
-      OR metadata->'workflow'->>'state' = 'invalid'
-      OR (metadata->'workflow'->>'state' = 'expanding'
-          AND (CASE WHEN COALESCE(metadata->'workflow'->>'claimed_at', '') <> ''
-                         AND pg_input_is_valid(metadata->'workflow'->>'claimed_at', 'timestamptz')
-                    THEN (metadata->'workflow'->>'claimed_at')::timestamptz
+      NOT (metadata ? 'wf_state')
+      OR metadata->>'wf_state' = 'invalid'
+      OR (metadata->>'wf_state' = 'expanding'
+          AND (CASE WHEN COALESCE(metadata->>'wf_claimed_at', '') <> ''
+                         AND pg_input_is_valid(metadata->>'wf_claimed_at', 'timestamptz')
+                    THEN (metadata->>'wf_claimed_at')::timestamptz
                     ELSE '-infinity'::timestamptz END) < $4::timestamptz)
   )
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
@@ -39,9 +39,10 @@ type ClaimWorkflowDefinitionParams struct {
 }
 
 // Atomically claims a definition for expansion. Only one caller wins: the issue
-// must have no workflow metadata, be marked invalid, or hold an expanding claim
-// older than stale_before. A missing, empty or invalid claimed_at counts as
-// stale. pg_input_is_valid requires PostgreSQL 16+.
+// must have no wf_state key, be marked invalid, or hold an expanding claim
+// older than stale_before. A missing, empty or invalid wf_claimed_at counts as
+// stale. pg_input_is_valid requires PostgreSQL 16+. The previous wf_*
+// definition keys are replaced, never merged with the new ones.
 func (q *Queries) ClaimWorkflowDefinition(ctx context.Context, arg ClaimWorkflowDefinitionParams) (Issue, error) {
 	row := q.db.QueryRow(ctx, claimWorkflowDefinition,
 		arg.Value,
@@ -87,14 +88,14 @@ func (q *Queries) ClaimWorkflowDefinition(ctx context.Context, arg ClaimWorkflow
 
 const claimWorkflowStepTransition = `-- name: ClaimWorkflowStepTransition :one
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    metadata = metadata || $1::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = $2 AND workspace_id = $3
-  AND metadata->'workflow'->>'phase' = $4::text
-  AND COALESCE((metadata->'workflow'->>'attempts')::int, 0) = $5::int
-  AND COALESCE(metadata->'workflow'->>'dispatched_at', '') = $6::text
+  AND metadata->>'wf_phase' = $4::text
+  AND COALESCE((metadata->>'wf_attempts')::int, 0) = $5::int
+  AND COALESCE(metadata->>'wf_dispatched_at', '') = $6::text
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
 `
 
@@ -158,13 +159,13 @@ func (q *Queries) ClaimWorkflowStepTransition(ctx context.Context, arg ClaimWork
 
 const finishWorkflowExpansion = `-- name: FinishWorkflowExpansion :one
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    metadata = metadata || $1::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = $2 AND workspace_id = $3
-  AND metadata->'workflow'->>'state' = 'expanding'
-  AND metadata->'workflow'->>'claimed_at' = $4::text
+  AND metadata->>'wf_state' = 'expanding'
+  AND metadata->>'wf_claimed_at' = $4::text
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
 `
 
@@ -176,7 +177,7 @@ type FinishWorkflowExpansionParams struct {
 }
 
 // Writes the final workflow metadata only while the caller still holds the
-// expanding claim (claimed_at equals its token). No rows means the claim was lost.
+// expanding claim (wf_claimed_at equals its token). No rows means the claim was lost.
 func (q *Queries) FinishWorkflowExpansion(ctx context.Context, arg FinishWorkflowExpansionParams) (Issue, error) {
 	row := q.db.QueryRow(ctx, finishWorkflowExpansion,
 		arg.Value,
@@ -266,7 +267,7 @@ func (q *Queries) LatestWorkflowTaskStatus(ctx context.Context, arg LatestWorkfl
 
 const listRunningWorkflowDefinitions = `-- name: ListRunningWorkflowDefinitions :many
 SELECT id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id FROM issue
-WHERE metadata @> '{"workflow": {"state": "running"}}'::jsonb
+WHERE metadata @> '{"wf_state": "running"}'::jsonb
 ORDER BY created_at ASC
 LIMIT $1::int
 `
@@ -391,12 +392,12 @@ const listWorkflowDefinitionCandidates = `-- name: ListWorkflowDefinitionCandida
 SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.duplicate_of_issue_id FROM issue i
 WHERE i.status = 'todo'
   AND (
-      NOT (i.metadata ? 'workflow')
-      OR i.metadata->'workflow'->>'state' = 'expanding'
+      NOT (i.metadata ? 'wf_state')
+      OR i.metadata->>'wf_state' = 'expanding'
       -- An invalid definition is retried only after its description changed;
       -- the hash matches hashDescription in expand.go (sha256, first 8 bytes, hex).
-      OR (i.metadata->'workflow'->>'state' = 'invalid'
-          AND COALESCE(i.metadata->'workflow'->>'error_hash', '')
+      OR (i.metadata->>'wf_state' = 'invalid'
+          AND COALESCE(i.metadata->>'wf_error_hash', '')
               <> left(encode(sha256(convert_to(COALESCE(i.description, ''), 'UTF8')), 'hex'), 16))
   )
   AND EXISTS (
@@ -413,7 +414,7 @@ LIMIT $1::int
 
 // server/pkg/db/queries/workflow.sql
 // Todo issues carrying a flow:<name> label that have not been expanded yet
-// (no workflow metadata), were previously marked invalid, or are stuck in
+// (no wf_state key), were previously marked invalid, or are stuck in
 // 'expanding' (a crashed expander). ClaimWorkflowDefinition decides atomically
 // whether an expanding claim is stale, so listing a live one is harmless.
 func (q *Queries) ListWorkflowDefinitionCandidates(ctx context.Context, rowLimit int32) ([]Issue, error) {
@@ -470,7 +471,7 @@ func (q *Queries) ListWorkflowDefinitionCandidates(ctx context.Context, rowLimit
 const listWorkflowSteps = `-- name: ListWorkflowSteps :many
 SELECT id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id FROM issue
 WHERE workspace_id = $1
-  AND metadata @> jsonb_build_object('workflow', jsonb_build_object('run', $2::text))
+  AND metadata @> jsonb_build_object('wf_run', $2::text)
 ORDER BY created_at ASC, number ASC
 `
 
@@ -533,12 +534,71 @@ func (q *Queries) ListWorkflowSteps(ctx context.Context, arg ListWorkflowStepsPa
 	return items, nil
 }
 
+const mergeWorkflowMetadata = `-- name: MergeWorkflowMetadata :one
+UPDATE issue SET
+    metadata = metadata || $1::jsonb,
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = $2 AND workspace_id = $3
+  AND NOT (metadata @> $1::jsonb)
+RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
+`
+
+type MergeWorkflowMetadataParams struct {
+	Value       []byte      `json:"value"`
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Merges flat wf_* keys into the issue's metadata in one statement. The value
+// must be a flat object of primitives (the platform metadata contract).
+// Rewriting identical values is a no-op and returns no rows, like
+// SetIssueMetadataKey.
+func (q *Queries) MergeWorkflowMetadata(ctx context.Context, arg MergeWorkflowMetadataParams) (Issue, error) {
+	row := q.db.QueryRow(ctx, mergeWorkflowMetadata, arg.Value, arg.ID, arg.WorkspaceID)
+	var i Issue
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeType,
+		&i.AssigneeID,
+		&i.CreatorType,
+		&i.CreatorID,
+		&i.ParentIssueID,
+		&i.AcceptanceCriteria,
+		&i.ContextRefs,
+		&i.Position,
+		&i.DueDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.ProjectID,
+		&i.OriginType,
+		&i.OriginID,
+		&i.FirstExecutedAt,
+		&i.StartDate,
+		&i.Metadata,
+		&i.Stage,
+		&i.Properties,
+		&i.Revision,
+		&i.LastActivityAt,
+		&i.TriageState,
+		&i.DuplicateOfIssueID,
+	)
+	return i, err
+}
+
 const refreshWorkflowClaim = `-- name: RefreshWorkflowClaim :one
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow,claimed_at}', to_jsonb($1::text))
+    metadata = metadata || jsonb_build_object('wf_claimed_at', $1::text)
 WHERE id = $2 AND workspace_id = $3
-  AND metadata->'workflow'->>'state' = 'expanding'
-  AND metadata->'workflow'->>'claimed_at' = $4::text
+  AND metadata->>'wf_state' = 'expanding'
+  AND metadata->>'wf_claimed_at' = $4::text
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
 `
 
@@ -550,7 +610,7 @@ type RefreshWorkflowClaimParams struct {
 }
 
 // Fencing: renews the expanding claim only while the caller still holds it,
-// i.e. claimed_at still equals the token it last wrote. No rows means the
+// i.e. wf_claimed_at still equals the token it last wrote. No rows means the
 // claim was lost to another expander.
 func (q *Queries) RefreshWorkflowClaim(ctx context.Context, arg RefreshWorkflowClaimParams) (Issue, error) {
 	row := q.db.QueryRow(ctx, refreshWorkflowClaim,
@@ -597,12 +657,12 @@ func (q *Queries) RefreshWorkflowClaim(ctx context.Context, arg RefreshWorkflowC
 
 const setWorkflowDefinitionState = `-- name: SetWorkflowDefinitionState :one
 UPDATE issue SET
-    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    metadata = metadata || $1::jsonb,
     revision = revision + 1,
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = $2 AND workspace_id = $3
-  AND metadata->'workflow'->>'state' = $4::text
+  AND metadata->>'wf_state' = $4::text
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
 `
 
@@ -677,7 +737,7 @@ UPDATE issue AS i SET
     updated_at = now()
 FROM wakeup_source
 WHERE i.id = $2 AND i.workspace_id = $3
-  AND i.metadata->'workflow'->>'state' = $4::text
+  AND i.metadata->>'wf_state' = $4::text
 RETURNING i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.duplicate_of_issue_id
 `
 

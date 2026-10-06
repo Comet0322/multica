@@ -3,7 +3,6 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -24,6 +23,7 @@ func expanded(t *testing.T) (*env, db.Issue) {
 	if err := e.engine.Expand(context.Background(), def); err != nil {
 		t.Fatal(err)
 	}
+	assertWorkspaceMetadataContract(t, e)
 	return e, def
 }
 
@@ -570,7 +570,7 @@ func TestCloseLostFenceLeavesStatusAlone(t *testing.T) {
 	cur, _ := e.q.GetIssue(ctx, def.ID)
 	dm, _ := readDefMeta(cur)
 	dm.State = RunBlocked
-	raw, _ := json.Marshal(dm)
+	raw, _ := defMetaJSON(dm)
 	// Simulate the competing writer landing after the status write, before the fence.
 	e.engine.beforeClose = func() {
 		e.engine.beforeClose = nil
@@ -593,6 +593,7 @@ func tick(t *testing.T, e *env) {
 	if err := e.engine.Tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
+	checkWorkspaceMetadata(t, e, false)
 }
 
 func TestClockSkewInFlightTaskIsNeverRedispatched(t *testing.T) {
@@ -670,7 +671,7 @@ func TestConcurrentClosersConvergeStatusWithState(t *testing.T) {
 	cur, _ := e.q.GetIssue(ctx, def.ID)
 	dm, _ := readDefMeta(cur)
 	dm.State = RunBlocked
-	raw, _ := json.Marshal(dm)
+	raw, _ := defMetaJSON(dm)
 	e.engine.beforeClose = func() {
 		e.engine.beforeClose = nil
 		if _, err := e.q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: "running"}); err != nil {
@@ -712,7 +713,7 @@ func TestConvergeDoesNotOverwriteAReopen(t *testing.T) {
 	cur, _ := e.q.GetIssue(ctx, def.ID)
 	dm, _ := readDefMeta(cur)
 	dm.State = RunBlocked
-	raw, _ := json.Marshal(dm)
+	raw, _ := defMetaJSON(dm)
 	e.engine.beforeClose = func() { // competitor closes as blocked and wins the fence
 		e.engine.beforeClose = nil
 		if _, err := e.q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: "running"}); err != nil {

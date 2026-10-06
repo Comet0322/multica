@@ -53,11 +53,13 @@ func runToReview(t *testing.T) (*env, db.Issue) {
 	if m, _ := readStepMeta(build); m.Phase != PhaseBlocked || build.Status != "blocked" {
 		t.Fatalf("build phase=%s status=%s, want blocked/blocked", m.Phase, build.Status)
 	}
+	assertWorkspaceMetadataContract(t, e)
 	return e, def
 }
 
 func assertDefinitionDone(t *testing.T, e *env, def db.Issue) {
 	t.Helper()
+	assertWorkspaceMetadataContract(t, e)
 	got, err := e.q.GetIssue(context.Background(), def.ID)
 	if err != nil {
 		t.Fatal(err)
