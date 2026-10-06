@@ -17,6 +17,15 @@ func registerExtRoutes(r chi.Router, h *handler.Handler) {
 			r.Get("/", h.GetExtWorkflow)
 			r.Put("/", h.UpdateExtWorkflow)
 			r.Delete("/", h.DeleteExtWorkflow)
+			r.Get("/runs", h.ListExtWorkflowRunsForWorkflow)
+		})
+	})
+	r.Route("/api/ext/workflow-runs", func(r chi.Router) {
+		r.Get("/", h.ListExtWorkflowRunsForIssue)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", h.GetExtWorkflowRun)
+			r.Post("/cancel", h.CancelExtWorkflowRun)
+			r.Post("/steps/{stepId}/decision", h.DecideExtWorkflowStep)
 		})
 	})
 }
