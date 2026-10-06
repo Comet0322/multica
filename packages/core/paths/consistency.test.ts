@@ -24,6 +24,7 @@ describe("paths.workspace() shape", () => {
       ["newAgentAi", "agents/new/ai"],
       ["chat", "chat"],
       ["squads", "squads"],
+      ["workflows", "workflows"],
       ["inbox", "inbox"],
       ["myIssues", "my-issues"],
       ["runtimes", "runtimes"],

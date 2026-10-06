@@ -8,8 +8,9 @@ import type { ReactNode } from "react";
 import { setApiInstance } from "../api";
 import type { ApiClient } from "../api/client";
 import type { Workspace } from "../types";
+import { extWorkflowKeys } from "../ext-workflows/queries";
 import { workspaceKeys } from "./queries";
-import { useActorName, useWorkspaceList } from "./hooks";
+import { buildActorNameResolver, useActorName, useWorkspaceList } from "./hooks";
 
 // useActorName reads the current workspace from the core WorkspaceId provider;
 // the directory-name resolution under test does not depend on the real id.
@@ -161,5 +162,56 @@ describe("useActorName", () => {
     expect(result.current.getActorName("squad", "squad-1")).toBe("Core");
     expect(result.current.hasActor("member", "user-1")).toBe(true);
     expect(result.current.hasActor("member", "departed-user")).toBe(false);
+  });
+
+  // ext-workflow: issues can be assigned to a workflow, so the actor helpers
+  // resolve its name, avatar and existence like they do for squads.
+  it("resolves workflow names, avatars and existence", () => {
+    const workflows = [{ id: "wf-1", name: "Release train", avatar_url: "/uploads/wf.png" }];
+    setApiInstance({
+      getBaseUrl: () => "https://api.example.test",
+      listMembers: () => Promise.resolve([]),
+      listAgents: () => Promise.resolve([]),
+      listSquads: () => Promise.resolve([]),
+      listExtWorkflows: () => Promise.resolve(workflows),
+    } as unknown as ApiClient);
+    qc.setQueryData(workspaceKeys.members("ws-1"), []);
+    qc.setQueryData(workspaceKeys.agents("ws-1"), []);
+    qc.setQueryData(workspaceKeys.squads("ws-1"), []);
+    qc.setQueryData(extWorkflowKeys.list("ws-1"), workflows);
+
+    const { result } = renderHook(() => useActorName(), {
+      wrapper: createWrapper(qc),
+    });
+
+    expect(result.current.getActorName("workflow", "wf-1")).toBe("Release train");
+    expect(result.current.getActorName("workflow", "gone")).toBe("Unknown Workflow");
+    expect(result.current.getActorAvatarUrl("workflow", "wf-1")).toBe("https://api.example.test/uploads/wf.png");
+    expect(result.current.getActorAvatarUrl("workflow", "gone")).toBeNull();
+    expect(result.current.hasActor("workflow", "wf-1")).toBe(true);
+    expect(result.current.hasActor("workflow", "gone")).toBe(false);
+  });
+
+  it("does not call a workflow missing before its directory has loaded", () => {
+    const pending = () => new Promise<never>(() => {});
+    setApiInstance({
+      listMembers: pending,
+      listAgents: pending,
+      listSquads: pending,
+      listExtWorkflows: pending,
+    } as unknown as ApiClient);
+
+    const { result } = renderHook(() => useActorName(), {
+      wrapper: createWrapper(qc),
+    });
+
+    expect(result.current.hasActor("workflow", "wf-1")).toBeUndefined();
+  });
+});
+
+describe("buildActorNameResolver", () => {
+  it("falls back to a generic name when no workflow directory is supplied", () => {
+    const resolve = buildActorNameResolver({ members: [], agents: [], squads: [] });
+    expect(resolve("workflow", "wf-1")).toBe("Unknown Workflow");
   });
 });

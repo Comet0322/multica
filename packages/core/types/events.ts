@@ -70,6 +70,10 @@ export type WSEventType =
   | "squad:created"
   | "squad:updated"
   | "squad:deleted"
+  | "ext_workflow:created"
+  | "ext_workflow:updated"
+  | "ext_workflow:deleted"
+  | "ext_workflow_run:updated"
   | "label:created"
   | "label:updated"
   | "label:deleted"
@@ -568,6 +572,16 @@ export interface ChatSessionCreatedPayload {
  * here. TS will compile-error every WSClient.on("new:event", …) site that
  * forgets the payload shape — that's the whole point.
  */
+export interface ExtWorkflowEventPayload {
+  workflow_id: string;
+}
+
+export interface ExtWorkflowRunUpdatedPayload {
+  run_id: string;
+  issue_id: string;
+  workflow_id: string;
+}
+
 export interface WSEventPayloadMap {
   "issue:created": IssueCreatedPayload;
   "issue:updated": IssueUpdatedPayload;
@@ -640,6 +654,11 @@ export interface WSEventPayloadMap {
   "squad:created": unknown;
   "squad:updated": unknown;
   "squad:deleted": unknown;
+  // ext-workflow: payload {workflow_id}; run events {run_id, issue_id, workflow_id}.
+  "ext_workflow:created": ExtWorkflowEventPayload;
+  "ext_workflow:updated": ExtWorkflowEventPayload;
+  "ext_workflow:deleted": ExtWorkflowEventPayload;
+  "ext_workflow_run:updated": ExtWorkflowRunUpdatedPayload;
   "label:created": unknown;
   "label:updated": unknown;
   "label:deleted": unknown;

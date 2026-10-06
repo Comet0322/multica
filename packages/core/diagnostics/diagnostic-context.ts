@@ -68,6 +68,9 @@ const WORKSPACE_ROUTES: readonly RoutePattern[] = [
   ["members", ":id"],
   ["squads"],
   ["squads", ":id"],
+  // ext-workflow
+  ["workflows"],
+  ["workflows", ":id"],
   ["inbox"],
   ["chat"],
   ["my-issues"],

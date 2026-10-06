@@ -14,6 +14,7 @@ import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
+import { extWorkflowKeys } from "../ext-workflows/queries";
 import { runtimeKeys } from "../runtimes/queries";
 import { labelKeys } from "../labels/queries";
 import { propertyKeys } from "../properties/queries";
@@ -82,6 +83,7 @@ import type {
   IssueUpdatedPayload,
   IssueCreatedPayload,
   IssueDeletedPayload,
+  ExtWorkflowRunUpdatedPayload,
   IssueAttachmentsChangedPayload,
   IssueLabelsChangedPayload,
   IssueMetadataChangedPayload,
@@ -657,6 +659,9 @@ function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
     qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: autopilotKeys.all(wsId) });
+    // ext-workflow: templates and run caches (separate roots, see extWorkflowKeys).
+    qc.invalidateQueries({ queryKey: extWorkflowKeys.all(wsId) });
+    qc.invalidateQueries({ queryKey: extWorkflowKeys.runsAll(wsId) });
     qc.invalidateQueries({ queryKey: agentTaskSnapshotKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: workspaceWorkingAgentsKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentActivityKeys.all(wsId) });
@@ -842,6 +847,13 @@ export function useRealtimeSync(
           // squad:deleted triggers assignee transfer — refresh issues too.
           qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
         }
+      },
+      // ext-workflow: ext_workflow:created/updated/deleted (template CRUD).
+      // ext_workflow_run:updated is handled by its own ws.on handler below
+      // because it needs the payload's issue_id.
+      ext_workflow: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: extWorkflowKeys.all(wsId) });
       },
       label: () => {
         // Label catalogs are independently scoped to issues, agents, and
@@ -1037,6 +1049,7 @@ export function useRealtimeSync(
       "issue:updated", "issue:created", "issue:deleted", "issue_attachments:changed", "issue_labels:changed", "issue_metadata:changed", "issue_properties:changed", "property:created", "property:updated", "inbox:new",
       "comment:created", "comment:updated", "comment:deleted",
       "comment:resolved", "comment:unresolved",
+      "ext_workflow_run:updated",
       "activity:created",
       "reaction:added", "reaction:removed",
       "issue_reaction:added", "issue_reaction:removed",
@@ -1111,6 +1124,21 @@ export function useRealtimeSync(
       if (wsId) {
         onIssueDeleted(qc, wsId, issue_id);
         void onInboxIssueDeleted(qc, wsId, issue_id);
+      }
+    });
+
+    // ext-workflow: a run changed. Refresh run caches and the parent issue's
+    // detail/children so the issue sidebar and child list repaint. The
+    // issue:updated events the engine also publishes cover status changes.
+    const unsubExtWorkflowRunUpdated = ws.on("ext_workflow_run:updated", (p) => {
+      const payload = p as ExtWorkflowRunUpdatedPayload;
+      const wsId = getCurrentWsId();
+      if (!wsId) return;
+      qc.invalidateQueries({ queryKey: extWorkflowKeys.runsAll(wsId) });
+      qc.invalidateQueries({ queryKey: extWorkflowKeys.all(wsId) });
+      if (payload?.issue_id) {
+        qc.invalidateQueries({ queryKey: issueKeys.detail(wsId, payload.issue_id) });
+        qc.invalidateQueries({ queryKey: issueKeys.children(wsId, payload.issue_id) });
       }
     });
 
@@ -1813,6 +1841,7 @@ export function useRealtimeSync(
       unsubIssueUpdated();
       unsubIssueCreated();
       unsubIssueDeleted();
+      unsubExtWorkflowRunUpdated();
       unsubIssueAttachmentsChanged();
       unsubIssueLabelsChanged();
       unsubIssueMetadataChanged();

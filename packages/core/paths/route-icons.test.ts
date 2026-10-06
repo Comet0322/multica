@@ -46,6 +46,7 @@ describe("pageForSegment", () => {
     expect(pageForSegment("projects")).toBe("projects");
     expect(pageForSegment("my-issues")).toBe("myIssues");
     expect(pageForSegment("settings")).toBe("settings");
+    expect(pageForSegment("workflows")).toBe("workflows");
   });
 
   it("returns null for an unknown segment", () => {
@@ -60,6 +61,8 @@ describe("resolveRouteIconName", () => {
     expect(resolveRouteIconName("/acme/autopilots")).toBe("Zap");
     expect(resolveRouteIconName("/acme/chat")).toBe("MessageSquare");
     expect(resolveRouteIconName("/acme/squads")).toBe("Users");
+    expect(resolveRouteIconName("/acme/workflows")).toBe("Workflow");
+    expect(resolveRouteIconName("/acme/workflows/wf-1")).toBe("Workflow");
     expect(resolveRouteIconName("/acme/usage")).toBe("BarChart3");
     expect(resolveRouteIconName("/acme/my-issues")).toBe("CircleUser");
   });

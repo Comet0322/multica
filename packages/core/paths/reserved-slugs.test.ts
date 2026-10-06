@@ -6,6 +6,10 @@ describe("reserved slugs", () => {
     expect(isReservedSlug("login")).toBe(true);
   });
 
+  it("reserves the ext-workflow route segment so a workspace cannot shadow /workflows", () => {
+    expect(isReservedSlug("workflows")).toBe(true);
+  });
+
   it("returns false for an unreserved slug", () => {
     expect(isReservedSlug("my-cool-workspace")).toBe(false);
   });

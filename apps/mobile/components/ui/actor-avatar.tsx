@@ -34,7 +34,8 @@ import { THEME } from "@/lib/theme";
 // a squad has an avatar_url we render it; otherwise fall back to a generic
 // group glyph so squad-assigned issues from web never render blank.
 interface Props {
-  type: "member" | "agent" | "system" | "squad" | null | undefined;
+  // ext-workflow: "workflow" renders a generic glyph; mobile has no workflow directory.
+  type: "member" | "agent" | "system" | "squad" | "workflow" | null | undefined;
   id: string | null | undefined;
   /** Timeline-provided identity for actors no longer in the live directory. */
   name?: string;
@@ -100,7 +101,7 @@ function BareAvatar({
   // Squad gets a soft-square tile (matches web actor-avatar.tsx:42 which uses
   // rounded-md) so a group never reads as a single person at a glance.
   // Everyone else stays round.
-  const radius = type === "squad" ? Math.round(size * 0.22) : size / 2;
+  const radius = type === "squad" || type === "workflow" ? Math.round(size * 0.22) : size / 2;
 
   // URL lookup runs BEFORE the squad/system icon fallbacks so a squad with
   // an avatar_url renders its image instead of the generic group glyph.
@@ -170,6 +171,17 @@ function BareAvatar({
         className="items-center justify-center bg-muted"
       >
         <Ionicons name="people" size={Math.round(size * 0.55)} color={iconColor} />
+      </View>
+    );
+  }
+
+  if (type === "workflow") {
+    return (
+      <View
+        style={{ width: size, height: size, borderRadius: radius }}
+        className="items-center justify-center bg-muted"
+      >
+        <Ionicons name="git-network" size={Math.round(size * 0.55)} color={iconColor} />
       </View>
     );
   }

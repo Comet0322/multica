@@ -3,6 +3,8 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, MemberWithUser, Squad, Workspace } from "../types";
+import type { ExtWorkflow } from "../ext-workflows/types";
+import { extWorkflowListOptions } from "../ext-workflows/queries";
 import { useWorkspaceId } from "../hooks";
 import {
   memberListOptions,
@@ -28,6 +30,7 @@ import { pluginInstallationsOptions } from "../plugins";
 const EMPTY_MEMBERS: MemberWithUser[] = [];
 const EMPTY_AGENTS: Agent[] = [];
 const EMPTY_SQUADS: Squad[] = [];
+const EMPTY_EXT_WORKFLOWS: ExtWorkflow[] = [];
 const EMPTY_WORKSPACES: Workspace[] = [];
 
 /**
@@ -66,6 +69,8 @@ export function buildActorNameResolver(directories: {
   members: readonly { user_id: string; name: string }[];
   agents: readonly { id: string; name: string }[];
   squads: readonly { id: string; name: string }[];
+  /** ext-workflow: optional so callers that never name a workflow stay unchanged. */
+  workflows?: readonly { id: string; name: string }[];
   /**
    * Installed plugins. Optional because most callers have no reason to load
    * them, and an event-written row then falls back to a generic "Plugin" —
@@ -76,11 +81,13 @@ export function buildActorNameResolver(directories: {
   const memberNames = new Map(directories.members.map((m) => [m.user_id, m.name]));
   const agentNames = new Map(directories.agents.map((a) => [a.id, a.name]));
   const squadNames = new Map(directories.squads.map((s) => [s.id, s.name]));
+  const workflowNames = new Map((directories.workflows ?? []).map((w) => [w.id, w.name]));
   const pluginNames = new Map((directories.plugins ?? []).map((p) => [p.id, p.name]));
   return (type: string, id: string) => {
     if (type === "member") return memberNames.get(id) ?? "Unknown";
     if (type === "agent") return agentNames.get(id) ?? "Unknown Agent";
     if (type === "squad") return squadNames.get(id) ?? "Unknown Squad";
+    if (type === "workflow") return workflowNames.get(id) ?? "Unknown Workflow";
     // An event-triggered hook writes as the installation itself: there is no
     // person behind it, and borrowing the last member who touched the issue
     // would be a lie the audit trail cannot undo. An id that no longer
@@ -96,9 +103,11 @@ export function useActorName() {
   const { data: memberData } = useQuery(memberListOptions(wsId));
   const { data: agentData } = useQuery(agentListOptions(wsId));
   const { data: squadData } = useQuery(squadListOptions(wsId));
+  const { data: workflowData } = useQuery(extWorkflowListOptions(wsId));
   const members = memberData ?? EMPTY_MEMBERS;
   const agents = agentData ?? EMPTY_AGENTS;
   const squads = squadData ?? EMPTY_SQUADS;
+  const workflows = workflowData ?? EMPTY_EXT_WORKFLOWS;
   // Only for naming a plugin-authored row. Gated on the flag so a workspace
   // without plugins does not fetch a list it can never render an author from.
   const pluginsEnabled = useFeatureEnabled(PLUGINS_V1_FLAG, false);
@@ -123,8 +132,8 @@ export function useActorName() {
   }, [squads]);
 
   const getActorName = useMemo(
-    () => buildActorNameResolver({ members, agents, squads, plugins: pluginData?.plugins }),
-    [agents, members, squads, pluginData],
+    () => buildActorNameResolver({ members, agents, squads, workflows, plugins: pluginData?.plugins }),
+    [agents, members, squads, workflows, pluginData],
   );
 
   const getActorInitials = useCallback(
@@ -144,8 +153,9 @@ export function useActorName() {
     if (type === "member") return resolvePublicFileUrl(members.find((m) => m.user_id === id)?.avatar_url);
     if (type === "agent") return resolvePublicFileUrl(agents.find((a) => a.id === id)?.avatar_url);
     if (type === "squad") return resolvePublicFileUrl(squads.find((s) => s.id === id)?.avatar_url);
+    if (type === "workflow") return resolvePublicFileUrl(workflows.find((w) => w.id === id)?.avatar_url);
     return null;
-  }, [agents, members, squads]);
+  }, [agents, members, squads, workflows]);
 
   const hasActor = useCallback(
     (type: string, id: string): boolean | undefined => {
@@ -166,12 +176,17 @@ export function useActorName() {
           ? undefined
           : squads.some((s) => s.id === id);
       }
+      if (type === "workflow") {
+        return workflowData === undefined
+          ? undefined
+          : workflows.some((w) => w.id === id);
+      }
       if (type === "plugin") {
         return pluginData?.plugins.some((p) => p.id === id);
       }
       return type === "system";
     },
-    [agentData, agents, memberData, members, pluginData, squadData, squads],
+    [agentData, agents, memberData, members, pluginData, squadData, squads, workflowData, workflows],
   );
 
   return useMemo(

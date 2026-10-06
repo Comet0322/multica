@@ -19,10 +19,12 @@ export function useActorLookup() {
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
 
   const getName = (
-    type: "member" | "agent" | "squad" | null | undefined,
+    type: "member" | "agent" | "squad" | "workflow" | null | undefined,
     id: string | null | undefined,
   ): string => {
     if (!type || !id) return "System";
+    // ext-workflow: mobile has no workflow directory; show a generic name.
+    if (type === "workflow") return "Workflow";
     if (type === "member") {
       const m = members.find((m) => m.user_id === id);
       return m?.name ?? "Unknown";
@@ -35,10 +37,11 @@ export function useActorLookup() {
   };
 
   const getAvatarUrl = (
-    type: "member" | "agent" | "squad" | null | undefined,
+    type: "member" | "agent" | "squad" | "workflow" | null | undefined,
     id: string | null | undefined,
   ): string | null => {
     if (!type || !id) return null;
+    if (type === "workflow") return null;
     if (type === "member") {
       return members.find((m) => m.user_id === id)?.avatar_url ?? null;
     }

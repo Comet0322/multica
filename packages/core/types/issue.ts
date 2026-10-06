@@ -32,7 +32,8 @@ export type IssueStatus = BuiltInIssueStatus | (string & {});
 
 export type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";
 
-export type IssueAssigneeType = "member" | "agent" | "squad";
+// ext-workflow: "workflow" assigns an issue to a workflow template (starts a run).
+export type IssueAssigneeType = "member" | "agent" | "squad" | "workflow";
 
 export interface IssueReaction {
   id: string;
