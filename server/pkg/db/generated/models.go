@@ -746,6 +746,7 @@ type ExtWorkflowRunStep struct {
 	StartedAt        pgtype.Timestamptz `json:"started_at"`
 	FinishedAt       pgtype.Timestamptz `json:"finished_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	SupervisorWakes  int32              `json:"supervisor_wakes"`
 }
 
 type Feedback struct {

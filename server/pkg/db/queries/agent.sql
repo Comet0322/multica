@@ -544,7 +544,10 @@ INSERT INTO agent_task_queue (
     originator_source, delegated_from_task_id, rule_version_id,
     trigger_evidence_kind, trigger_evidence_ref_id, retry_of_task_id,
     chat_input_task_id, fire_at,
-    channel_context_revision, handoff_note, id
+    channel_context_revision, handoff_note,
+    -- ext-workflow: a retry keeps its workflow stamp, so the engine counts it as the same attempt.
+    ext_workflow_run_id, ext_workflow_step_id, ext_workflow_role, ext_workflow_kind,
+    id
 )
 SELECT
     p.agent_id, p.runtime_id, p.issue_id, p.chat_session_id, p.autopilot_run_id,
@@ -566,6 +569,7 @@ SELECT
     p.chat_input_task_id, sqlc.narg(fire_at),
     p.channel_context_revision,
     CASE WHEN p.context->>'wakeup_id' IS NOT NULL THEN p.handoff_note END,
+    p.ext_workflow_run_id, p.ext_workflow_step_id, p.ext_workflow_role, p.ext_workflow_kind,
     -- Named new_task_id, not id: $1 above is the PARENT task's id.
     COALESCE(sqlc.narg('new_task_id')::uuid, gen_random_uuid())
 FROM agent_task_queue p
