@@ -153,3 +153,18 @@ func uuidStr(i db.Issue) string { return util.UUIDToString(i.ID) }
 func dbListChildren(def db.Issue) db.ListWorkflowChildrenParams {
 	return db.ListWorkflowChildrenParams{WorkspaceID: def.WorkspaceID, ParentIssueID: def.ID}
 }
+
+type errString string
+
+func (s errString) Error() string { return string(s) }
+
+func pgtypeUUIDZero() pgtype.UUID { return pgtype.UUID{} }
+
+// commentID inserts a real comment on the definition and returns its id,
+// standing in for the reviewer's /reject comment.
+func commentID(t *testing.T, e *env, def db.Issue) pgtype.UUID {
+	t.Helper()
+	id := e.fx.Comment(t, uuidStr(def), "/reject please add tests")
+	u, _ := util.ParseUUID(id)
+	return u
+}
