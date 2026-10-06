@@ -56,6 +56,10 @@ func TestMemberCanDecide(t *testing.T) {
 			t.Errorf("%s: MemberCanDecide = %v, %v; want %v", name, got, err, tc.want)
 		}
 	}
+	e.fx.Exec(t, `DELETE FROM member WHERE workspace_id = $1 AND user_id = $2`, e.ws, trigger)
+	if got, err := e.engine.MemberCanDecide(context.Background(), run, trigger); err != nil || got {
+		t.Errorf("removed trigger: MemberCanDecide = %v, %v; want false", got, err)
+	}
 }
 
 func TestDecideChecksPermissionStatusAndAction(t *testing.T) {
@@ -110,6 +114,35 @@ func TestDecideChecksPermissionStatusAndAction(t *testing.T) {
 	}
 	if err := member(e.user, approve, ""); !errors.Is(err, ErrStatusMismatch) {
 		t.Fatalf("second approve: %v, want ErrStatusMismatch", err)
+	}
+}
+
+func TestDecideOnBehalfOfRecordsCommenter(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	admin := e.member(t, "admin")
+	run, build, supervisor := e.reviewRun(t, e.user)
+	err := e.engine.Decide(ctx, DecideInput{RunID: run.ID, StepID: build.ID, Decision: Decision{Action: ActionApprove}, ActorType: "agent", ActorID: supervisor, OnBehalfOf: admin})
+	if err != nil {
+		t.Fatalf("approve on behalf of admin: %v", err)
+	}
+	wantStepRow(t, e.step(t, run, "build"), StepDone, 1)
+	events, err := e.q.ListExtWorkflowRunEvents(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ev := range events {
+		if ev.Kind != RunEventDecision {
+			continue
+		}
+		if ev.ActorType != "agent" || ev.OnBehalfOf != admin {
+			t.Fatalf("decision event = %+v", ev)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("no decision event")
 	}
 }
 

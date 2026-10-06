@@ -18,6 +18,13 @@ import (
 var ErrStepNotFound = errors.New("workflow run step not found")
 
 // DecideInput is one decision on a run step.
+//
+// Authorization: member actors are authorized inside Decide through
+// MemberCanDecide (current workspace membership plus trigger, creator or
+// admin). Decide is a low-level gate for agent actors: a caller passing
+// ActorType "agent" must already have bound that agent to this run, meaning it
+// is the run's supervisor or the step's agent with an in-flight ext task (the
+// comment protocol in OnComment enforces this). Only OnBehalfOf is checked here.
 type DecideInput struct {
 	RunID pgtype.UUID
 	// StepID may be invalid only for abort.
@@ -143,15 +150,15 @@ func (e *Engine) MemberCanDecide(ctx context.Context, run db.ExtWorkflowRun, use
 	if !userID.Valid {
 		return false, nil
 	}
-	if run.TriggeredByType == "member" && run.TriggeredByID == userID {
-		return true, nil
-	}
 	member, err := e.q.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: userID, WorkspaceID: run.WorkspaceID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("load member: %w", err)
+	}
+	if run.TriggeredByType == "member" && run.TriggeredByID == userID {
+		return true, nil
 	}
 	if member.Role == "owner" || member.Role == "admin" {
 		return true, nil
