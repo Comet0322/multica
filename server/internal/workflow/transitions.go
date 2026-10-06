@@ -12,6 +12,11 @@ const (
 	EventAccept        Event = "accept"
 	EventReject        Event = "reject"
 	EventRetry         Event = "retry"
+	// EventDispatchLost: a running step has no agent task at all (a crash
+	// between claiming the step and queueing its task).
+	EventDispatchLost Event = "dispatch_lost"
+	// EventAgentCancelled: the step's latest agent task was cancelled.
+	EventAgentCancelled Event = "agent_cancelled"
 )
 
 type Action string
@@ -46,6 +51,8 @@ var Rules = []Rule{
 	{From: PhaseRunning, Event: EventAgentFinished, Guard: approvalStep, To: PhaseBlocked, Actions: []Action{ActionRequestReview}},
 	{From: PhaseRunning, Event: EventAgentFailed, Guard: canRetry, To: PhaseRunning, Actions: []Action{actionBumpAttempts, ActionDispatch}},
 	{From: PhaseRunning, Event: EventAgentFailed, Guard: noRetriesLeft, To: PhaseFailed, Actions: []Action{ActionCommentFailure}},
+	{From: PhaseRunning, Event: EventDispatchLost, To: PhaseRunning, Actions: []Action{ActionDispatch}},
+	{From: PhaseRunning, Event: EventAgentCancelled, To: PhaseFailed, Actions: []Action{ActionCommentFailure}},
 	{From: PhaseBlocked, Event: EventAccept, To: PhaseDone},
 	{From: PhaseBlocked, Event: EventReject, Guard: canRetry, To: PhaseRunning, Actions: []Action{actionBumpAttempts, ActionDispatchWithFeedback}},
 	{From: PhaseBlocked, Event: EventReject, Guard: noRetriesLeft, To: PhaseFailed, Actions: []Action{ActionCommentFailure}},

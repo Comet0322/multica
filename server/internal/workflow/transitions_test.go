@@ -24,6 +24,8 @@ func TestNextTable(t *testing.T) {
 		{"reject with retries left redoes", step(PhaseBlocked, true, 0, 2), EventReject, true, PhaseRunning, 1},
 		{"reject with none left fails", step(PhaseBlocked, true, 2, 2), EventReject, true, PhaseFailed, 2},
 		{"retry resets attempts", step(PhaseFailed, false, 3, 1), EventRetry, true, PhaseRunning, 0},
+		{"lost dispatch redispatches without an attempt", step(PhaseRunning, false, 0, 1), EventDispatchLost, true, PhaseRunning, 0},
+		{"cancelled task fails the step", step(PhaseRunning, false, 0, 1), EventAgentCancelled, true, PhaseFailed, 0},
 		{"accept on a running step is ignored", step(PhaseRunning, true, 0, 1), EventAccept, false, "", 0},
 		{"zero max_retries never retries", step(PhaseRunning, false, 0, 0), EventAgentFailed, true, PhaseFailed, 0},
 	}
@@ -45,9 +47,34 @@ func TestNextTable(t *testing.T) {
 }
 
 func TestPhaseStatusCoversEveryPhase(t *testing.T) {
-	for _, p := range []Phase{PhasePending, PhaseRunning, PhaseBlocked, PhaseDone, PhaseFailed} {
-		if PhaseStatus[p] == "" {
-			t.Fatalf("no status for phase %s", p)
+	want := map[Phase]string{
+		PhasePending: "backlog", PhaseRunning: "in_progress", PhaseBlocked: "blocked",
+		PhaseDone: "done", PhaseFailed: "blocked",
+	}
+	if len(PhaseStatus) != len(want) {
+		t.Fatalf("PhaseStatus has %d entries, want %d", len(PhaseStatus), len(want))
+	}
+	for p, s := range want {
+		if PhaseStatus[p] != s {
+			t.Fatalf("PhaseStatus[%s] = %q, want %q", p, PhaseStatus[p], s)
+		}
+	}
+}
+
+func TestNewRulesActions(t *testing.T) {
+	r, ok := Next(step(PhaseRunning, false, 0, 1), EventDispatchLost)
+	if !ok || len(r.Actions) != 1 || r.Actions[0] != ActionDispatch {
+		t.Fatalf("dispatch_lost rule = %+v, %v", r, ok)
+	}
+	r, ok = Next(step(PhaseRunning, true, 0, 1), EventAgentCancelled)
+	if !ok || len(r.Actions) != 1 || r.Actions[0] != ActionCommentFailure {
+		t.Fatalf("agent_cancelled rule = %+v, %v", r, ok)
+	}
+	for _, ev := range []Event{EventDispatchLost, EventAgentCancelled} {
+		for _, p := range []Phase{PhasePending, PhaseBlocked, PhaseDone, PhaseFailed} {
+			if _, ok := Next(step(p, false, 0, 1), ev); ok {
+				t.Fatalf("%s must only apply to running steps, matched %s", ev, p)
+			}
 		}
 	}
 }

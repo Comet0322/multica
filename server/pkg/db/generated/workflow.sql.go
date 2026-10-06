@@ -85,6 +85,73 @@ func (q *Queries) ClaimWorkflowDefinition(ctx context.Context, arg ClaimWorkflow
 	return i, err
 }
 
+const claimWorkflowStepTransition = `-- name: ClaimWorkflowStepTransition :one
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = $2 AND workspace_id = $3
+  AND metadata->'workflow'->>'phase' = $4::text
+  AND COALESCE((metadata->'workflow'->>'attempts')::int, 0) = $5::int
+RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
+`
+
+type ClaimWorkflowStepTransitionParams struct {
+	Value            []byte      `json:"value"`
+	ID               pgtype.UUID `json:"id"`
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	ExpectedPhase    string      `json:"expected_phase"`
+	ExpectedAttempts int32       `json:"expected_attempts"`
+}
+
+// Compare-and-set for a step: writes the new workflow metadata only while the
+// step is still in the phase and attempt count the caller observed. No rows
+// means another instance already moved the step.
+func (q *Queries) ClaimWorkflowStepTransition(ctx context.Context, arg ClaimWorkflowStepTransitionParams) (Issue, error) {
+	row := q.db.QueryRow(ctx, claimWorkflowStepTransition,
+		arg.Value,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExpectedPhase,
+		arg.ExpectedAttempts,
+	)
+	var i Issue
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeType,
+		&i.AssigneeID,
+		&i.CreatorType,
+		&i.CreatorID,
+		&i.ParentIssueID,
+		&i.AcceptanceCriteria,
+		&i.ContextRefs,
+		&i.Position,
+		&i.DueDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.ProjectID,
+		&i.OriginType,
+		&i.OriginID,
+		&i.FirstExecutedAt,
+		&i.StartDate,
+		&i.Metadata,
+		&i.Stage,
+		&i.Properties,
+		&i.Revision,
+		&i.LastActivityAt,
+		&i.TriageState,
+		&i.DuplicateOfIssueID,
+	)
+	return i, err
+}
+
 const finishWorkflowExpansion = `-- name: FinishWorkflowExpansion :one
 UPDATE issue SET
     metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
@@ -454,6 +521,69 @@ func (q *Queries) RefreshWorkflowClaim(ctx context.Context, arg RefreshWorkflowC
 		arg.ID,
 		arg.WorkspaceID,
 		arg.ExpectedClaimedAt,
+	)
+	var i Issue
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.Priority,
+		&i.AssigneeType,
+		&i.AssigneeID,
+		&i.CreatorType,
+		&i.CreatorID,
+		&i.ParentIssueID,
+		&i.AcceptanceCriteria,
+		&i.ContextRefs,
+		&i.Position,
+		&i.DueDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.ProjectID,
+		&i.OriginType,
+		&i.OriginID,
+		&i.FirstExecutedAt,
+		&i.StartDate,
+		&i.Metadata,
+		&i.Stage,
+		&i.Properties,
+		&i.Revision,
+		&i.LastActivityAt,
+		&i.TriageState,
+		&i.DuplicateOfIssueID,
+	)
+	return i, err
+}
+
+const setWorkflowDefinitionState = `-- name: SetWorkflowDefinitionState :one
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow}', $1::jsonb),
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = $2 AND workspace_id = $3
+  AND metadata->'workflow'->>'state' = $4::text
+RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
+`
+
+type SetWorkflowDefinitionStateParams struct {
+	Value         []byte      `json:"value"`
+	ID            pgtype.UUID `json:"id"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	ExpectedState string      `json:"expected_state"`
+}
+
+// Fenced definition state change: applies only while the definition is still in
+// expected_state. No rows means another writer already moved it.
+func (q *Queries) SetWorkflowDefinitionState(ctx context.Context, arg SetWorkflowDefinitionStateParams) (Issue, error) {
+	row := q.db.QueryRow(ctx, setWorkflowDefinitionState,
+		arg.Value,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExpectedState,
 	)
 	var i Issue
 	err := row.Scan(

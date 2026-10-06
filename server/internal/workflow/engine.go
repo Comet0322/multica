@@ -3,6 +3,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -89,27 +90,46 @@ func (e *Engine) advance(ctx context.Context, def db.Issue) error {
 			return err
 		}
 	}
-	steps, err = e.loadSteps(ctx, def)
+	out, steps, err := e.evaluate(ctx, def, dm)
 	if err != nil {
 		return err
 	}
-	metas := make([]StepMeta, len(steps))
-	for i, s := range steps {
-		metas[i] = s.meta
-	}
-	switch Evaluate(metas, dm.Total) {
+	switch out {
 	case OutcomeDone:
 		return e.closeDefinition(ctx, def, RunDone, "done", "")
-	case OutcomeBlocked:
-		return e.closeDefinition(ctx, def, RunBlocked, "blocked", failureSummary(steps))
-	case OutcomeBroken:
+	case OutcomeBlocked, OutcomeBroken:
+		// Re-read the steps right before closing: a /retry or a late event may
+		// have changed the picture since the first evaluation.
+		again, steps2, err := e.evaluate(ctx, def, dm)
+		if err != nil {
+			return err
+		}
+		if again != out {
+			return nil
+		}
+		if out == OutcomeBlocked {
+			return e.closeDefinition(ctx, def, RunBlocked, "blocked", failureSummary(steps2))
+		}
 		return e.closeDefinition(ctx, def, RunBlocked, "blocked",
 			"Workflow stopped: a step issue is missing (it may have been deleted). Restore it or recreate the workflow.")
 	}
 	return nil
 }
 
+func (e *Engine) evaluate(ctx context.Context, def db.Issue, dm DefMeta) (Outcome, []stepRow, error) {
+	steps, err := e.loadSteps(ctx, def)
+	if err != nil {
+		return "", nil, err
+	}
+	metas := make([]StepMeta, len(steps))
+	for i, s := range steps {
+		metas[i] = s.meta
+	}
+	return Evaluate(metas, dm.Total), steps, nil
+}
+
 // observe derives at most one event for a step from the world and applies it.
+// When no event applies it puts the issue status back in line with the phase.
 func (e *Engine) observe(ctx context.Context, s stepRow, all []stepRow) error {
 	switch s.meta.Phase {
 	case PhasePending:
@@ -119,36 +139,54 @@ func (e *Engine) observe(ctx context.Context, s stepRow, all []stepRow) error {
 				done[o.meta.Node] = true
 			}
 		}
+		ready := true
 		for _, d := range s.meta.Deps {
 			if !done[d] {
-				return nil
+				ready = false
 			}
 		}
-		_, err := e.ApplyEvent(ctx, s.issue, EventDepsMet, pgtype.UUID{})
-		return err
+		if ready {
+			_, err := e.ApplyEvent(ctx, s.issue, EventDepsMet, pgtype.UUID{})
+			return err
+		}
 	case PhaseRunning:
 		if s.issue.Status == "done" || s.issue.Status == "in_review" {
 			_, err := e.ApplyEvent(ctx, s.issue, EventAgentFinished, pgtype.UUID{})
 			return err
 		}
-		agentID, perr := util.ParseUUID(s.meta.AgentID)
-		if perr != nil {
-			return nil
-		}
-		status, err := e.Q.LatestWorkflowTaskStatus(ctx, db.LatestWorkflowTaskStatusParams{IssueID: s.issue.ID, AgentID: agentID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
+		ev, err := e.runningEvent(ctx, s)
 		if err != nil {
 			return err
 		}
-		if status == "failed" {
-			_, err := e.ApplyEvent(ctx, s.issue, EventAgentFailed, pgtype.UUID{})
+		if ev != "" {
+			_, err := e.ApplyEvent(ctx, s.issue, ev, pgtype.UUID{})
 			return err
 		}
-		return e.reconcileStatus(ctx, s.issue, s.meta.Phase)
 	}
-	return nil
+	return e.reconcileStatus(ctx, s.issue, s.meta.Phase)
+}
+
+// runningEvent maps the latest agent task of a running step to an event, or
+// "" while the task is still queued or in flight.
+func (e *Engine) runningEvent(ctx context.Context, s stepRow) (Event, error) {
+	agentID, perr := util.ParseUUID(s.meta.AgentID)
+	if perr != nil {
+		return "", nil
+	}
+	status, err := e.Q.LatestWorkflowTaskStatus(ctx, db.LatestWorkflowTaskStatusParams{IssueID: s.issue.ID, AgentID: agentID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EventDispatchLost, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	switch status {
+	case "failed", "completed": // completed without reaching done/in_review is a failed attempt
+		return EventAgentFailed, nil
+	case "cancelled":
+		return EventAgentCancelled, nil
+	}
+	return "", nil
 }
 
 // reconcileStatus puts the issue back on the status its phase maps to when
@@ -186,16 +224,30 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 	}
 	next := meta.Apply(rule)
 
-	cur := step
-	if want := PhaseStatus[next.Phase]; step.Status != want {
+	// Claim the transition first: the metadata write only succeeds while the
+	// step is still in the phase and attempt count just observed, so a
+	// concurrent instance cannot apply the same or a conflicting event.
+	raw, err := json.Marshal(next)
+	if err != nil {
+		return false, err
+	}
+	cur, err := e.Q.ClaimWorkflowStepTransition(ctx, db.ClaimWorkflowStepTransitionParams{
+		Value: raw, ID: step.ID, WorkspaceID: step.WorkspaceID,
+		ExpectedPhase: string(meta.Phase), ExpectedAttempts: int32(meta.Attempts),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if want := PhaseStatus[next.Phase]; cur.Status != want {
+		prev := cur
 		cur, err = e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: step.ID, WorkspaceID: step.WorkspaceID, Status: want})
 		if err != nil {
-			return false, err
+			return true, err
 		}
-		e.Events.IssueUpdated(ctx, step, cur)
-	}
-	if err := e.writeMeta(ctx, cur, next); err != nil {
-		return false, err
+		e.Events.IssueUpdated(ctx, prev, cur)
 	}
 	for _, a := range rule.Actions {
 		switch a {
@@ -212,7 +264,7 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 				return true, err
 			}
 		case ActionCommentFailure:
-			if _, err := e.systemComment(ctx, cur, fmt.Sprintf("Step failed after %d attempt(s). Reply `/retry` to run it again.", next.Attempts+1)); err != nil {
+			if _, err := e.systemComment(ctx, cur, fmt.Sprintf("Step ended without finishing after %d attempt(s). Reply `/retry` to run it again.", next.Attempts+1)); err != nil {
 				return true, err
 			}
 		}
@@ -240,13 +292,25 @@ func (e *Engine) dispatch(ctx context.Context, issue db.Issue, meta StepMeta, tr
 // failDispatch marks a step failed when its agent task could not be queued
 // (for example the agent was archived) and says why on the issue.
 func (e *Engine) failDispatch(ctx context.Context, issue db.Issue, meta StepMeta, cause error) error {
-	meta.Phase = PhaseFailed
-	if err := e.writeMeta(ctx, issue, meta); err != nil {
+	failed := meta
+	failed.Phase = PhaseFailed
+	raw, err := json.Marshal(failed)
+	if err != nil {
+		return err
+	}
+	cur, err := e.Q.ClaimWorkflowStepTransition(ctx, db.ClaimWorkflowStepTransitionParams{
+		Value: raw, ID: issue.ID, WorkspaceID: issue.WorkspaceID,
+		ExpectedPhase: string(meta.Phase), ExpectedAttempts: int32(meta.Attempts),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // another instance already moved the step
+	}
+	if err != nil {
 		return err
 	}
 	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: issue.ID, WorkspaceID: issue.WorkspaceID, Status: PhaseStatus[PhaseFailed]})
 	if err == nil {
-		e.Events.IssueUpdated(ctx, issue, updated)
+		e.Events.IssueUpdated(ctx, cur, updated)
 	}
 	_, cerr := e.systemComment(ctx, issue, fmt.Sprintf("Could not start this step: %v. Fix the cause, then reply `/retry`.", cause))
 	return errors.Join(err, cerr)
@@ -263,25 +327,57 @@ func failureSummary(steps []stepRow) string {
 	return "Workflow blocked: failed step(s): " + strings.Join(failed, ", ") + ". Reply `/retry` here to rerun them."
 }
 
-// closeDefinition records the run's end state on the definition issue.
+// closeDefinition records the run's end state on the definition issue. The
+// issue status is written first, then the state through a write that only
+// applies while the definition is still running, so a stale close (for example
+// racing a /retry) changes nothing.
 func (e *Engine) closeDefinition(ctx context.Context, def db.Issue, state RunState, status, comment string) error {
-	dm, _ := readDefMeta(def)
-	dm.State = state
-	if err := e.writeMeta(ctx, def, dm); err != nil {
-		return err
-	}
-	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: status})
+	fresh, err := e.Q.GetIssue(ctx, def.ID)
 	if err != nil {
 		return err
 	}
-	e.Events.IssueUpdated(ctx, def, updated)
+	dm, ok := readDefMeta(fresh)
+	if !ok || dm.State != RunRunning {
+		return nil
+	}
+	updated := fresh
+	if fresh.Status != status {
+		updated, err = e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: status})
+		if err != nil {
+			return err
+		}
+	}
+	dm.State = state
+	raw, err := json.Marshal(dm)
+	if err != nil {
+		return err
+	}
+	_, err = e.Q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{
+		Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: string(RunRunning),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Lost the race after the status write: put the status back.
+		if updated.Status != fresh.Status {
+			if back, rerr := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: fresh.Status}); rerr == nil {
+				e.Events.IssueUpdated(ctx, updated, back)
+			}
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if updated.Status != fresh.Status {
+		e.Events.IssueUpdated(ctx, fresh, updated)
+	}
 	if comment != "" {
 		_, err = e.systemComment(ctx, updated, comment)
 	}
 	return err
 }
 
-// reopenDefinition returns a blocked workflow to running after a retry.
+// reopenDefinition returns a blocked workflow to running after a retry. It
+// never overwrites a state that is already running.
 func (e *Engine) reopenDefinition(ctx context.Context, def db.Issue) error {
 	cur, err := e.Q.GetIssue(ctx, def.ID)
 	if err != nil {
@@ -292,7 +388,16 @@ func (e *Engine) reopenDefinition(ctx context.Context, def db.Issue) error {
 		return nil
 	}
 	dm.State = RunRunning
-	if err := e.writeMeta(ctx, cur, dm); err != nil {
+	raw, err := json.Marshal(dm)
+	if err != nil {
+		return err
+	}
+	if _, err := e.Q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{
+		Value: raw, ID: cur.ID, WorkspaceID: cur.WorkspaceID, ExpectedState: string(RunBlocked),
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
 	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: cur.ID, WorkspaceID: cur.WorkspaceID, Status: "in_progress"})

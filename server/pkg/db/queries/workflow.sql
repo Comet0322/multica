@@ -93,3 +93,29 @@ SELECT status FROM agent_task_queue
 WHERE issue_id = sqlc.arg('issue_id') AND agent_id = sqlc.arg('agent_id')
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: ClaimWorkflowStepTransition :one
+-- Compare-and-set for a step: writes the new workflow metadata only while the
+-- step is still in the phase and attempt count the caller observed. No rows
+-- means another instance already moved the step.
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
+  AND metadata->'workflow'->>'phase' = sqlc.arg('expected_phase')::text
+  AND COALESCE((metadata->'workflow'->>'attempts')::int, 0) = sqlc.arg('expected_attempts')::int
+RETURNING *;
+
+-- name: SetWorkflowDefinitionState :one
+-- Fenced definition state change: applies only while the definition is still in
+-- expected_state. No rows means another writer already moved it.
+UPDATE issue SET
+    metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
+  AND metadata->'workflow'->>'state' = sqlc.arg('expected_state')::text
+RETURNING *;
