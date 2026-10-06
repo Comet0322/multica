@@ -173,7 +173,7 @@ func TestLatestWorkflowTaskStatus(t *testing.T) {
 	issue := e.flowIssue(t, "tasks", "x")
 	agent := e.agent(t, "A")
 	agentUUID, _ := util.ParseUUID(agent)
-	params := db.LatestWorkflowTaskStatusParams{IssueID: issue.ID, AgentID: agentUUID}
+	params := db.LatestWorkflowTaskStatusParams{IssueID: issue.ID, AgentID: agentUUID, Since: pgtype.Timestamptz{Time: time.Unix(0, 0), Valid: true}}
 	if _, err := e.q.LatestWorkflowTaskStatus(ctx, params); err != pgx.ErrNoRows {
 		t.Fatalf("got %v, want ErrNoRows", err)
 	}
@@ -183,5 +183,14 @@ func TestLatestWorkflowTaskStatus(t *testing.T) {
 	got, err := e.q.LatestWorkflowTaskStatus(ctx, params)
 	if err != nil || got != "completed" {
 		t.Fatalf("got %q, %v; want completed", got, err)
+	}
+	// Tasks created before `since` are ignored.
+	params.Since = pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}
+	if _, err := e.q.LatestWorkflowTaskStatus(ctx, params); err != pgx.ErrNoRows {
+		t.Fatalf("with a future since: got %v, want ErrNoRows", err)
+	}
+	params.Since = pgtype.Timestamptz{Time: time.Now().Add(-30 * time.Minute), Valid: true}
+	if got, err := e.q.LatestWorkflowTaskStatus(ctx, params); err != nil || got != "completed" {
+		t.Fatalf("since 30m ago: got %q, %v", got, err)
 	}
 }

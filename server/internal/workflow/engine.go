@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -166,27 +167,58 @@ func (e *Engine) observe(ctx context.Context, s stepRow, all []stepRow) error {
 	return e.reconcileStatus(ctx, s.issue, s.meta.Phase)
 }
 
-// runningEvent maps the latest agent task of a running step to an event, or
-// "" while the task is still queued or in flight.
+// dispatchGrace is how long a step may sit in running with no agent task
+// before the dispatch is considered lost (a crash between claim and enqueue).
+const dispatchGrace = 90 * time.Second
+
+// runningEvent maps the latest agent task of a running step (created since its
+// latest dispatch) to an event, or "" while the task is queued or in flight.
 func (e *Engine) runningEvent(ctx context.Context, s stepRow) (Event, error) {
-	agentID, perr := util.ParseUUID(s.meta.AgentID)
-	if perr != nil {
+	agentID := s.issue.AssigneeID
+	if s.issue.AssigneeType.String != "agent" || !agentID.Valid {
+		var perr error
+		if agentID, perr = util.ParseUUID(s.meta.AgentID); perr != nil {
+			return "", nil
+		}
+	}
+	since := pgtype.Timestamptz{Time: time.Unix(0, 0), Valid: true}
+	var dispatched time.Time
+	if s.meta.DispatchedAt != "" {
+		if t, err := time.Parse(time.RFC3339Nano, s.meta.DispatchedAt); err == nil {
+			dispatched = t
+			since.Time = t
+		}
+	}
+	var ev Event
+	status, err := e.Q.LatestWorkflowTaskStatus(ctx, db.LatestWorkflowTaskStatusParams{IssueID: s.issue.ID, AgentID: agentID, Since: since})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		ref := dispatched
+		if ref.IsZero() { // legacy step without a stamp: use the last issue write
+			ref = s.issue.UpdatedAt.Time
+		}
+		if e.now().Sub(ref) <= dispatchGrace {
+			return "", nil // dispatch still in flight
+		}
+		ev = EventDispatchLost
+	case err != nil:
+		return "", err
+	case status == "failed" || status == "completed": // completed without done/in_review is a failed attempt
+		ev = EventAgentFailed
+	case status == "cancelled":
+		ev = EventAgentCancelled
+	default:
 		return "", nil
 	}
-	status, err := e.Q.LatestWorkflowTaskStatus(ctx, db.LatestWorkflowTaskStatusParams{IssueID: s.issue.ID, AgentID: agentID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return EventDispatchLost, nil
-	}
+	// The agent may have finished the issue while we were looking.
+	fresh, err := e.Q.GetIssue(ctx, s.issue.ID)
 	if err != nil {
 		return "", err
 	}
-	switch status {
-	case "failed", "completed": // completed without reaching done/in_review is a failed attempt
-		return EventAgentFailed, nil
-	case "cancelled":
-		return EventAgentCancelled, nil
+	if fresh.Status == "done" || fresh.Status == "in_review" {
+		return EventAgentFinished, nil
 	}
-	return "", nil
+	return ev, nil
 }
 
 // reconcileStatus puts the issue back on the status its phase maps to when
@@ -209,24 +241,38 @@ func (e *Engine) reconcileStatus(ctx context.Context, issue db.Issue, phase Phas
 // returns false when no rule matches the step's current phase. trigger, when
 // valid, is the reviewer's comment passed to the agent on a redo.
 func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigger pgtype.UUID) (bool, error) {
-	fresh, err := e.Q.GetIssue(ctx, step.ID)
-	if err != nil {
-		return false, err
-	}
-	step = fresh
+	// The expected phase/attempts/dispatch generation come from the step as the
+	// caller observed it, never from a re-read, so a stale observation loses.
 	meta, ok := readStepMeta(step)
 	if !ok {
 		return false, nil
+	}
+	if ev == EventDispatchLost || ev == EventAgentFailed || ev == EventAgentCancelled {
+		// The agent moves the issue status itself before its task ends; do not
+		// overwrite a finished step with a failure or a re-run.
+		fresh, err := e.Q.GetIssue(ctx, step.ID)
+		if err != nil {
+			return false, err
+		}
+		if fresh.Status == "done" || fresh.Status == "in_review" {
+			ev = EventAgentFinished
+		}
 	}
 	rule, ok := Next(meta, ev)
 	if !ok {
 		return false, nil
 	}
 	next := meta.Apply(rule)
+	for _, a := range rule.Actions {
+		if a == ActionDispatch || a == ActionDispatchWithFeedback {
+			next.DispatchedAt = e.now().UTC().Format(time.RFC3339Nano)
+		}
+	}
 
 	// Claim the transition first: the metadata write only succeeds while the
-	// step is still in the phase and attempt count just observed, so a
-	// concurrent instance cannot apply the same or a conflicting event.
+	// step is still in the observed phase, attempt count and dispatch
+	// generation, so a concurrent instance cannot apply the same or a
+	// conflicting event.
 	raw, err := json.Marshal(next)
 	if err != nil {
 		return false, err
@@ -234,6 +280,7 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 	cur, err := e.Q.ClaimWorkflowStepTransition(ctx, db.ClaimWorkflowStepTransitionParams{
 		Value: raw, ID: step.ID, WorkspaceID: step.WorkspaceID,
 		ExpectedPhase: string(meta.Phase), ExpectedAttempts: int32(meta.Attempts),
+		ExpectedDispatchedAt: meta.DispatchedAt,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -301,6 +348,7 @@ func (e *Engine) failDispatch(ctx context.Context, issue db.Issue, meta StepMeta
 	cur, err := e.Q.ClaimWorkflowStepTransition(ctx, db.ClaimWorkflowStepTransitionParams{
 		Value: raw, ID: issue.ID, WorkspaceID: issue.WorkspaceID,
 		ExpectedPhase: string(meta.Phase), ExpectedAttempts: int32(meta.Attempts),
+		ExpectedDispatchedAt: meta.DispatchedAt,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil // another instance already moved the step
@@ -347,6 +395,9 @@ func (e *Engine) closeDefinition(ctx context.Context, def db.Issue, state RunSta
 			return err
 		}
 	}
+	if e.beforeClose != nil {
+		e.beforeClose()
+	}
 	dm.State = state
 	raw, err := json.Marshal(dm)
 	if err != nil {
@@ -356,12 +407,8 @@ func (e *Engine) closeDefinition(ctx context.Context, def db.Issue, state RunSta
 		Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: string(RunRunning),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		// Lost the race after the status write: put the status back.
-		if updated.Status != fresh.Status {
-			if back, rerr := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: fresh.Status}); rerr == nil {
-				e.Events.IssueUpdated(ctx, updated, back)
-			}
-		}
+		// Fence lost: whoever changed the state also wrote the status that
+		// matches it, so restoring or overwriting anything here would be wrong.
 		return nil
 	}
 	if err != nil {

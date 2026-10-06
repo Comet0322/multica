@@ -34,6 +34,9 @@ type StepMeta struct {
 	MaxRetries int      `json:"max_retries"`
 	Attempts   int      `json:"attempts"`
 	Phase      Phase    `json:"phase"`
+	// DispatchedAt (RFC3339Nano UTC) stamps the latest dispatch generation; only
+	// agent tasks created at or after it count for this step.
+	DispatchedAt string `json:"dispatched_at,omitempty"`
 }
 
 // DefMeta is the metadata of a definition issue.

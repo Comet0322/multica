@@ -3,9 +3,11 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	dbfx "github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -65,9 +67,6 @@ func TestTickRunsStepsInDependencyOrder(t *testing.T) {
 		t.Fatalf("plan status=%s enqueued=%v", plan.Status, e.rec.enqueued)
 	}
 
-	// The recorder queues no task row; add the one a real enqueue would create.
-	pm, _ := readStepMeta(plan)
-	e.fx.Task(t, pm.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime})
 	if err := e.engine.Tick(ctx); err != nil { // nothing changed: idempotent
 		t.Fatal(err)
 	}
@@ -338,24 +337,147 @@ func TestConcurrentAcceptAndRejectApplyExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestConcurrentAgentFailedBumpsAttemptsOnce(t *testing.T) {
+// setDispatchedAt rewrites a step's dispatch stamp ("" clears it).
+func setDispatchedAt(t *testing.T, e *env, step db.Issue, at time.Time) db.Issue {
+	t.Helper()
+	got, _ := e.q.GetIssue(context.Background(), step.ID)
+	m, _ := readStepMeta(got)
+	m.DispatchedAt = ""
+	if !at.IsZero() {
+		m.DispatchedAt = at.UTC().Format(time.RFC3339Nano)
+	}
+	if err := e.engine.writeMeta(context.Background(), got, m); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = e.q.GetIssue(context.Background(), step.ID)
+	return got
+}
+
+func TestStaleAgentFailedSnapshotAppliesOnce(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
+	_ = e.engine.Tick(ctx)
+	snap := stepByNode(t, e, def, "plan") // running, attempts 0, max_retries 1
+	if ok, err := e.engine.ApplyEvent(ctx, snap, EventAgentFailed, pgtypeUUIDZero()); err != nil || !ok {
+		t.Fatalf("first = %v, %v", ok, err)
+	}
+	if ok, err := e.engine.ApplyEvent(ctx, snap, EventAgentFailed, pgtypeUUIDZero()); err != nil || ok {
+		t.Fatalf("second with the stale snapshot = %v, %v; want false", ok, err)
+	}
+	m, _ := readStepMeta(stepByNode(t, e, def, "plan"))
+	if m.Attempts != 1 || m.Phase != PhaseRunning || len(e.rec.enqueued) != 2 {
+		t.Fatalf("attempts=%d phase=%s enqueued=%v, want 1/running/2", m.Attempts, m.Phase, e.rec.enqueued)
+	}
+}
+
+func TestStaleDispatchLostSnapshotDispatchesOnce(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	_ = e.engine.Tick(ctx)
+	snap := stepByNode(t, e, def, "plan")
+	before := len(e.rec.enqueued)
+	for i, want := range []bool{true, false} {
+		if ok, err := e.engine.ApplyEvent(ctx, snap, EventDispatchLost, pgtypeUUIDZero()); err != nil || ok != want {
+			t.Fatalf("call %d = %v, %v; want %v", i, ok, err, want)
+		}
+	}
+	if len(e.rec.enqueued)-before != 1 {
+		t.Fatalf("dispatches = %d, want 1", len(e.rec.enqueued)-before)
+	}
+}
+
+func TestOldTerminalTaskBeforeDispatchIsIgnored(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	_ = e.engine.Tick(ctx)
 	plan := stepByNode(t, e, def, "plan")
-	for i := 0; i < 20; i++ {
-		plan = setStep(t, e, plan, PhaseRunning, 0, "in_progress")
-		var a, b bool
-		var ea, eb error
-		race(
-			func() { a, ea = e.engine.ApplyEvent(ctx, plan, EventAgentFailed, pgtypeUUIDZero()) },
-			func() { b, eb = e.engine.ApplyEvent(ctx, plan, EventAgentFailed, pgtypeUUIDZero()) },
-		)
-		if ea != nil || eb != nil || a == b {
-			t.Fatalf("iter %d: applied %v/%v errs %v/%v, want exactly one", i, a, b, ea, eb)
-		}
-		if m, _ := readStepMeta(stepByNode(t, e, def, "plan")); m.Attempts != 1 || m.Phase != PhaseRunning {
-			t.Fatalf("iter %d: attempts=%d phase=%s, want 1/running", i, m.Attempts, m.Phase)
-		}
+	m, _ := readStepMeta(plan)
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "failed", "runtime_id": e.runtime, "created_at": dbfx.Raw("now() - interval '1 hour'")})
+	_ = e.engine.Tick(ctx)
+	if got, _ := readStepMeta(stepByNode(t, e, def, "plan")); got.Phase != PhaseRunning || got.Attempts != 0 || len(e.rec.enqueued) != 1 {
+		t.Fatalf("old failed task misread: phase=%s attempts=%d enqueued=%v", got.Phase, got.Attempts, e.rec.enqueued)
+	}
+}
+
+func TestDispatchLostAfterGrace(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	_ = e.engine.Tick(ctx)
+	plan := stepByNode(t, e, def, "plan")
+	_ = e.engine.Tick(ctx)
+	if len(e.rec.enqueued) != 1 {
+		t.Fatalf("inside the grace window nothing is re-dispatched: %v", e.rec.enqueued)
+	}
+	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
+	_ = e.engine.Tick(ctx)
+	if len(e.rec.enqueued) != 2 {
+		t.Fatalf("enqueued = %v, want one re-dispatch after the grace", e.rec.enqueued)
+	}
+	_ = e.engine.Tick(ctx) // fresh stamp again: grace window
+	if len(e.rec.enqueued) != 2 {
+		t.Fatalf("re-dispatch loop: %v", e.rec.enqueued)
+	}
+}
+
+func TestAgentFinishedDuringTickIsNotRerun(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	_ = e.engine.Tick(ctx)
+	plan := stepByNode(t, e, def, "plan")
+	stale := plan // observed while still running
+	m, _ := readStepMeta(plan)
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "completed", "runtime_id": e.runtime})
+	setStatus(t, e, plan, "done")
+	if ok, err := e.engine.ApplyEvent(ctx, stale, EventAgentFailed, pgtypeUUIDZero()); err != nil || !ok {
+		t.Fatalf("apply = %v, %v", ok, err)
+	}
+	got := stepByNode(t, e, def, "plan")
+	if gm, _ := readStepMeta(got); gm.Phase != PhaseDone || gm.Attempts != 0 || got.Status != "done" || len(e.rec.enqueued) != 1 {
+		t.Fatalf("phase=%s attempts=%d status=%s enqueued=%v, want done/0/done/1", gm.Phase, gm.Attempts, got.Status, e.rec.enqueued)
+	}
+}
+
+func TestAgentFinishedTickPath(t *testing.T) {
+	ctx := context.Background()
+	e2, def2 := expanded(t)
+	_ = e2.engine.Tick(ctx)
+	p2 := stepByNode(t, e2, def2, "plan")
+	m2, _ := readStepMeta(p2)
+	e2.fx.Task(t, m2.AgentID, dbfx.Cols{"issue_id": uuidStr(p2), "status": "completed", "runtime_id": e2.runtime})
+	setStatus(t, e2, p2, "done")
+	_ = e2.engine.Tick(ctx)
+	if phaseOf(t, e2, def2, "plan") != PhaseDone || len(e2.rec.enqueued) != 1 {
+		t.Fatalf("tick path: phase=%s enqueued=%v", phaseOf(t, e2, def2, "plan"), e2.rec.enqueued)
+	}
+}
+
+func TestReassignedStepDoesNotRunAway(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	_ = e.engine.Tick(ctx)
+	plan := stepByNode(t, e, def, "plan")
+	other := e.agent(t, "Other")
+	e.fx.Exec(t, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, uuidStr(plan), other)
+	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
+	e.fx.Task(t, other, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime})
+	for i := 0; i < 3; i++ {
+		_ = e.engine.Tick(ctx)
+	}
+	if len(e.rec.enqueued) != 1 {
+		t.Fatalf("a queued task by the new assignee must stop re-dispatch: %v", e.rec.enqueued)
+	}
+
+	// With no task rows for either agent and a stale stamp: exactly one dispatch.
+	e3, def3 := expanded(t)
+	_ = e3.engine.Tick(ctx)
+	p3 := stepByNode(t, e3, def3, "plan")
+	o3 := e3.agent(t, "Other")
+	e3.fx.Exec(t, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, uuidStr(p3), o3)
+	setDispatchedAt(t, e3, p3, time.Now().Add(-10*time.Minute))
+	_ = e3.engine.Tick(ctx)
+	_ = e3.engine.Tick(ctx)
+	if len(e3.rec.enqueued) != 2 {
+		t.Fatalf("enqueued = %v, want the initial dispatch plus exactly one", e3.rec.enqueued)
 	}
 }
 
@@ -363,7 +485,8 @@ func TestLostDispatchIsRedispatchedOnce(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
 	plan := stepByNode(t, e, def, "plan")
-	setStep(t, e, plan, PhaseRunning, 0, "in_progress") // claimed, but no task row and no enqueue
+	plan = setStep(t, e, plan, PhaseRunning, 0, "in_progress") // claimed, but no task row and no enqueue
+	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
 	_ = e.engine.Tick(ctx)
 	if len(e.rec.enqueued) != 1 {
 		t.Fatalf("enqueued = %v, want one re-dispatch", e.rec.enqueued)
@@ -444,5 +567,31 @@ func TestStaleCloseWritesNothing(t *testing.T) {
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if m, _ := readDefMeta(got); m.State != RunBlocked || got.Status == "done" || len(e.rec.comments) != before {
 		t.Fatalf("stale close wrote state=%s status=%s comments=%d", m.State, got.Status, len(e.rec.comments))
+	}
+}
+
+// A close that passes the pre-check but loses the fenced write must leave the
+// status exactly as the competing writer set it.
+func TestCloseLostFenceLeavesStatusAlone(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	dm, _ := readDefMeta(cur)
+	dm.State = RunBlocked
+	raw, _ := json.Marshal(dm)
+	// Simulate the competing writer landing after the status write, before the fence.
+	e.engine.beforeClose = func() {
+		e.engine.beforeClose = nil
+		if _, err := e.q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: "running"}); err != nil {
+			t.Fatal(err)
+		}
+		setStatus(t, e, def, "blocked")
+	}
+	if err := e.engine.closeDefinition(ctx, def, RunDone, "done", "x"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if m, _ := readDefMeta(got); m.State != RunBlocked || got.Status != "blocked" {
+		t.Fatalf("state=%s status=%s, want the competing writer's blocked/blocked", m.State, got.Status)
 	}
 }

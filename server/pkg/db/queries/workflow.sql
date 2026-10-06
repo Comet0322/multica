@@ -91,12 +91,14 @@ ORDER BY created_at ASC, number ASC;
 -- name: LatestWorkflowTaskStatus :one
 SELECT status FROM agent_task_queue
 WHERE issue_id = sqlc.arg('issue_id') AND agent_id = sqlc.arg('agent_id')
+  AND created_at >= sqlc.arg('since')::timestamptz
 ORDER BY created_at DESC
 LIMIT 1;
 
 -- name: ClaimWorkflowStepTransition :one
 -- Compare-and-set for a step: writes the new workflow metadata only while the
--- step is still in the phase and attempt count the caller observed. No rows
+-- step is still in the phase, attempt count and dispatch generation the caller
+-- observed. No rows
 -- means another instance already moved the step.
 UPDATE issue SET
     metadata = jsonb_set(metadata, '{workflow}', sqlc.arg('value')::jsonb),
@@ -106,6 +108,7 @@ UPDATE issue SET
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
   AND metadata->'workflow'->>'phase' = sqlc.arg('expected_phase')::text
   AND COALESCE((metadata->'workflow'->>'attempts')::int, 0) = sqlc.arg('expected_attempts')::int
+  AND COALESCE(metadata->'workflow'->>'dispatched_at', '') = sqlc.arg('expected_dispatched_at')::text
 RETURNING *;
 
 -- name: SetWorkflowDefinitionState :one

@@ -94,19 +94,22 @@ UPDATE issue SET
 WHERE id = $2 AND workspace_id = $3
   AND metadata->'workflow'->>'phase' = $4::text
   AND COALESCE((metadata->'workflow'->>'attempts')::int, 0) = $5::int
+  AND COALESCE(metadata->'workflow'->>'dispatched_at', '') = $6::text
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
 `
 
 type ClaimWorkflowStepTransitionParams struct {
-	Value            []byte      `json:"value"`
-	ID               pgtype.UUID `json:"id"`
-	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-	ExpectedPhase    string      `json:"expected_phase"`
-	ExpectedAttempts int32       `json:"expected_attempts"`
+	Value                []byte      `json:"value"`
+	ID                   pgtype.UUID `json:"id"`
+	WorkspaceID          pgtype.UUID `json:"workspace_id"`
+	ExpectedPhase        string      `json:"expected_phase"`
+	ExpectedAttempts     int32       `json:"expected_attempts"`
+	ExpectedDispatchedAt string      `json:"expected_dispatched_at"`
 }
 
 // Compare-and-set for a step: writes the new workflow metadata only while the
-// step is still in the phase and attempt count the caller observed. No rows
+// step is still in the phase, attempt count and dispatch generation the caller
+// observed. No rows
 // means another instance already moved the step.
 func (q *Queries) ClaimWorkflowStepTransition(ctx context.Context, arg ClaimWorkflowStepTransitionParams) (Issue, error) {
 	row := q.db.QueryRow(ctx, claimWorkflowStepTransition,
@@ -115,6 +118,7 @@ func (q *Queries) ClaimWorkflowStepTransition(ctx context.Context, arg ClaimWork
 		arg.WorkspaceID,
 		arg.ExpectedPhase,
 		arg.ExpectedAttempts,
+		arg.ExpectedDispatchedAt,
 	)
 	var i Issue
 	err := row.Scan(
@@ -219,17 +223,19 @@ func (q *Queries) FinishWorkflowExpansion(ctx context.Context, arg FinishWorkflo
 const latestWorkflowTaskStatus = `-- name: LatestWorkflowTaskStatus :one
 SELECT status FROM agent_task_queue
 WHERE issue_id = $1 AND agent_id = $2
+  AND created_at >= $3::timestamptz
 ORDER BY created_at DESC
 LIMIT 1
 `
 
 type LatestWorkflowTaskStatusParams struct {
-	IssueID pgtype.UUID `json:"issue_id"`
-	AgentID pgtype.UUID `json:"agent_id"`
+	IssueID pgtype.UUID        `json:"issue_id"`
+	AgentID pgtype.UUID        `json:"agent_id"`
+	Since   pgtype.Timestamptz `json:"since"`
 }
 
 func (q *Queries) LatestWorkflowTaskStatus(ctx context.Context, arg LatestWorkflowTaskStatusParams) (string, error) {
-	row := q.db.QueryRow(ctx, latestWorkflowTaskStatus, arg.IssueID, arg.AgentID)
+	row := q.db.QueryRow(ctx, latestWorkflowTaskStatus, arg.IssueID, arg.AgentID, arg.Since)
 	var status string
 	err := row.Scan(&status)
 	return status, err
