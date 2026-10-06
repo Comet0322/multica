@@ -197,3 +197,116 @@ func TestOnTaskTerminalIgnoresEngineCancelledTask(t *testing.T) {
 		t.Fatalf("run events %d -> %d, want no change", events, got)
 	}
 }
+
+func TestNoDecisionOfASerializedSupervisorIsAppliedOnce(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	supervisor, planner := e.agent(t, "Supervisor"), e.agent(t, "Planner")
+	wf := e.workflow(t, supervisor, 3,
+		wfNode{key: "a", title: "A", agent: planner},
+		wfNode{key: "b", title: "B", agent: planner})
+	parent := e.parentIssue(t, wf, "todo")
+	run := e.start(t, parent)
+
+	e.endTask(t, e.latestTask(t, e.step(t, run, "b"), RoleStep), "failed")
+	bSup := e.latestTask(t, e.step(t, run, "b"), RoleSupervisor)
+	e.endTask(t, e.latestTask(t, e.step(t, run, "a"), RoleStep), "failed")
+	// a waits behind b's supervisor turn; b's turn now ends silently, so a is woken.
+	e.endTask(t, bSup, "completed")
+	wantStepRow(t, e.step(t, run, "a"), StepAwaitingSupervisor, 1)
+	if got := e.step(t, run, "a").SupervisorWakes; got != 1 {
+		t.Fatalf("a wakes = %d, want 1", got)
+	}
+
+	events, aTasks, bTasks := len(e.runEvents(t, run)), e.countTasks(t, e.step(t, run, "a"), RoleSupervisor), e.countTasks(t, e.step(t, run, "b"), RoleSupervisor)
+	for i := 0; i < 3; i++ {
+		if err := e.engine.Reconcile(ctx); err != nil {
+			t.Fatalf("Reconcile: %v", err)
+		}
+		if got := len(e.runEvents(t, run)); got != events {
+			t.Fatalf("after reconcile %d: run events %d -> %d", i+1, events, got)
+		}
+		if a, b := e.countTasks(t, e.step(t, run, "a"), RoleSupervisor), e.countTasks(t, e.step(t, run, "b"), RoleSupervisor); a != aTasks || b != bTasks {
+			t.Fatalf("after reconcile %d: supervisor tasks a %d->%d b %d->%d", i+1, aTasks, a, bTasks, b)
+		}
+	}
+}
+
+func TestReconcileRecoversADroppedTaskCompletion(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	supervisor, planner := e.agent(t, "Supervisor"), e.agent(t, "Planner")
+	wf := e.workflow(t, supervisor, 3, wfNode{key: "spec", title: "Spec", agent: planner})
+	parent := e.parentIssue(t, wf, "todo")
+	run := e.start(t, parent)
+	task := e.latestTask(t, e.step(t, run, "spec"), RoleStep)
+	e.fx.Exec(t, `UPDATE agent_task_queue SET status = 'completed', started_at = now(), completed_at = now() WHERE id = $1`, task.ID)
+
+	if err := e.engine.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	spec := e.step(t, run, "spec")
+	wantStepRow(t, spec, StepAwaitingSupervisor, 1)
+	events, tasks := len(e.runEvents(t, run)), e.countTasks(t, spec, RoleSupervisor)
+	if err := e.engine.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(e.runEvents(t, run)); got != events {
+		t.Fatalf("second reconcile: run events %d -> %d", events, got)
+	}
+	if got := e.countTasks(t, e.step(t, run, "spec"), RoleSupervisor); got != tasks {
+		t.Fatalf("second reconcile: supervisor tasks %d -> %d", tasks, got)
+	}
+}
+
+func TestOnParentChangedCancelsTheRun(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+	}{
+		{"cancelled"},
+		{"reassigned"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			supervisor, planner := e.agent(t, "Supervisor"), e.agent(t, "Planner")
+			wf := e.workflow(t, supervisor, 3, wfNode{key: "spec", title: "Spec", agent: planner})
+			parent := e.parentIssue(t, wf, "todo")
+			run := e.start(t, parent)
+			task := e.latestTask(t, e.step(t, run, "spec"), RoleStep)
+			switch tc.name {
+			case "cancelled":
+				e.setStatus(t, parent, "cancelled")
+			default:
+				e.fx.Exec(t, `UPDATE issue SET assignee_type = NULL, assignee_id = NULL WHERE id = $1`, parent)
+			}
+
+			if err := e.engine.OnParentChanged(context.Background(), parent); err != nil {
+				t.Fatalf("OnParentChanged: %v", err)
+			}
+			if got := RunStatus(e.run(t, parent).Status); got != RunCancelled {
+				t.Fatalf("run = %s, want cancelled", got)
+			}
+			got := e.latestTask(t, e.step(t, run, "spec"), RoleStep)
+			if got.ID != task.ID || got.Status != "cancelled" || got.FailureReason.String != service.ExtWorkflowEngineCancelReason {
+				t.Fatalf("task = %s (%q)", got.Status, got.FailureReason.String)
+			}
+		})
+	}
+}
+
+func TestOnTaskTerminalIgnoresFailedTaskWithRetry(t *testing.T) {
+	e := newEnv(t)
+	supervisor, planner := e.agent(t, "Supervisor"), e.agent(t, "Planner")
+	wf := e.workflow(t, supervisor, 3, wfNode{key: "spec", title: "Spec", agent: planner})
+	parent := e.parentIssue(t, wf, "todo")
+	run := e.start(t, parent)
+	task := e.latestTask(t, e.step(t, run, "spec"), RoleStep)
+	e.fx.Exec(t, `INSERT INTO agent_task_queue (agent_id, runtime_id, issue_id, status, priority, parent_task_id, ext_workflow_run_id, ext_workflow_step_id, ext_workflow_role, ext_workflow_kind)
+		SELECT agent_id, runtime_id, issue_id, 'running', priority, id, ext_workflow_run_id, ext_workflow_step_id, ext_workflow_role, ext_workflow_kind FROM agent_task_queue WHERE id = $1`, task.ID)
+	events := len(e.runEvents(t, run))
+	e.endTask(t, task, "failed")
+	wantStepRow(t, e.step(t, run, "spec"), StepRunning, 1)
+	if got := len(e.runEvents(t, run)); got != events {
+		t.Fatalf("run events %d -> %d, want no step_failed", events, got)
+	}
+}

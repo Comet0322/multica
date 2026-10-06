@@ -2,6 +2,7 @@ package extworkflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -284,9 +285,37 @@ func deriveStep(ctx context.Context, q *db.Queries, snap *RunSnapshot, key strin
 		if task.CreatedAt.Time.Before(row.UpdatedAt.Time) {
 			return none()
 		}
+		// A turn's no-decision is applied once: the first one only records a
+		// protocol error and leaves the step row (and updated_at) untouched,
+		// so the task id in that event is what marks the turn as handled.
+		if handled, err := noDecisionRecorded(ctx, q, snap.Run.ID, task.ID); err != nil || handled {
+			return stepEvent{}, false, err
+		}
 		return observed(Event{Kind: EvSupervisorNoDecision, Reason: describeSupervisorEnd(task), Detail: map[string]any{"task_id": task.ID.String()}})
 	}
 	return none()
+}
+
+// noDecisionRecorded reports whether a timeline event already carries this
+// supervisor task as the turn that ended without a decision.
+func noDecisionRecorded(ctx context.Context, q *db.Queries, runID, taskID pgtype.UUID) (bool, error) {
+	rows, err := q.ListExtWorkflowRunEvents(ctx, runID)
+	if err != nil {
+		return false, fmt.Errorf("list run events: %w", err)
+	}
+	want := taskID.String()
+	for _, r := range rows {
+		if r.Kind != RunEventProtocolError && r.Kind != RunEventEscalated {
+			continue
+		}
+		var p struct {
+			TaskID string `json:"task_id"`
+		}
+		if json.Unmarshal(r.Payload, &p) == nil && p.TaskID == want {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // deriveSummary: the summary task ended, whether it completed or not.
