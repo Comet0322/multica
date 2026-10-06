@@ -96,6 +96,7 @@ type env struct {
 	runtime string
 	rec     *recorder
 	engine  *Engine
+	label   string // cached flow:test label id
 }
 
 func newEnv(t *testing.T) *env {
@@ -128,7 +129,10 @@ func (e *env) agent(t *testing.T, name string) string {
 func (e *env) flowIssue(t *testing.T, title, desc string) db.Issue {
 	t.Helper()
 	id := e.fx.Issue(t, title, dbfx.Cols{"description": desc, "status": "todo"})
-	label := e.fx.Insert(t, "issue_label", dbfx.Cols{"workspace_id": e.ws, "name": "flow:test", "resource_type": "issue", "color": "#888888"})
+	if e.label == "" {
+		e.label = e.fx.Insert(t, "issue_label", dbfx.Cols{"workspace_id": e.ws, "name": "flow:test", "resource_type": "issue", "color": "#888888"})
+	}
+	label := e.label
 	e.fx.Exec(t, `INSERT INTO issue_to_label (issue_id, label_id) VALUES ($1, $2)`, id, label)
 	e.fx.Cleanup(t, `DELETE FROM issue_to_label WHERE issue_id = $1`, id)
 	uid, _ := util.ParseUUID(id)

@@ -18,11 +18,14 @@ UPDATE issue SET
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = $2 AND workspace_id = $3
+  AND status = 'todo'
   AND (
       NOT (metadata ? 'workflow')
       OR metadata->'workflow'->>'state' = 'invalid'
       OR (metadata->'workflow'->>'state' = 'expanding'
-          AND (metadata->'workflow'->>'claimed_at')::timestamptz < $4::timestamptz)
+          AND (CASE WHEN metadata->'workflow'->>'claimed_at' ~ '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+                    THEN (metadata->'workflow'->>'claimed_at')::timestamptz
+                    ELSE '-infinity'::timestamptz END) < $4::timestamptz)
   )
 RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id
 `

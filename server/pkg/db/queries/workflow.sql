@@ -27,11 +27,14 @@ UPDATE issue SET
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
+  AND status = 'todo'
   AND (
       NOT (metadata ? 'workflow')
       OR metadata->'workflow'->>'state' = 'invalid'
       OR (metadata->'workflow'->>'state' = 'expanding'
-          AND (metadata->'workflow'->>'claimed_at')::timestamptz < sqlc.arg('stale_before')::timestamptz)
+          AND (CASE WHEN metadata->'workflow'->>'claimed_at' ~ '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+                    THEN (metadata->'workflow'->>'claimed_at')::timestamptz
+                    ELSE '-infinity'::timestamptz END) < sqlc.arg('stale_before')::timestamptz)
   )
 RETURNING *;
 
