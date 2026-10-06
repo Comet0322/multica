@@ -143,6 +143,13 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"workspace":                          workspaceDelete,
 	"workspace_invitation":               workspaceDelete,
 	"workspace_share_link":               workspaceDelete,
+
+	// ext-workflow: fork-only tables, swept by DeleteExtWorkflowWorkspaceData.
+	"ext_workflow":           workspaceDelete,
+	"ext_workflow_node":      workspaceDelete,
+	"ext_workflow_run":       workspaceDelete,
+	"ext_workflow_run_event": workspaceDelete,
+	"ext_workflow_run_step":  workspaceDelete,
 }
 
 func TestWorkspaceDeletionManifestCoversPublicSchema(t *testing.T) {

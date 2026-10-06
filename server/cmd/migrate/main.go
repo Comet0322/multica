@@ -348,6 +348,20 @@ var concurrentIndexCleanups = map[string]string{
 	"482_agent_task_queue_telemetry_started_index":              "idx_agent_task_queue_telemetry_started",
 	"484_issue_triage_state_index":                              "idx_issue_triage_state",
 	"537_issue_duplicate_of_index":                              "idx_issue_duplicate_of",
+
+	// ext-workflow: indexes for the fork's workflow tables (docs/superpowers/specs/2026-10-07-ext-workflow-design.md).
+	// Kept as a contiguous block at the end so upstream merges touch no other line.
+	"ext_0004_workflow_workspace_index":             "idx_ext_workflow_workspace",
+	"ext_0005_workflow_node_workflow_index":         "idx_ext_workflow_node_workflow",
+	"ext_0006_workflow_node_key_unique_index":       "uidx_ext_workflow_node_key",
+	"ext_0007_workflow_node_agent_index":            "idx_ext_workflow_node_agent",
+	"ext_0008_workflow_run_active_issue_index":      "uidx_ext_workflow_run_active_issue",
+	"ext_0009_workflow_run_workflow_created_index":  "idx_ext_workflow_run_workflow_created",
+	"ext_0010_workflow_run_active_status_index":     "idx_ext_workflow_run_active_status",
+	"ext_0011_workflow_run_step_node_unique_index":  "uidx_ext_workflow_run_step_node",
+	"ext_0012_workflow_run_step_issue_index":        "idx_ext_workflow_run_step_issue",
+	"ext_0013_workflow_run_event_run_created_index": "idx_ext_workflow_run_event_run_created",
+	"ext_0014_task_ext_workflow_run_index":          "idx_agent_task_queue_ext_workflow_run",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction

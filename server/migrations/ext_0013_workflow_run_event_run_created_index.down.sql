@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS idx_ext_workflow_run_event_run_created;

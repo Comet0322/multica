@@ -178,6 +178,10 @@ type AgentTaskQueue struct {
 	CancelledByID             pgtype.UUID `json:"cancelled_by_id"`
 	CancelledByName           pgtype.Text `json:"cancelled_by_name"`
 	IssueSnapshot             []byte      `json:"issue_snapshot"`
+	ExtWorkflowRunID          pgtype.UUID `json:"ext_workflow_run_id"`
+	ExtWorkflowStepID         pgtype.UUID `json:"ext_workflow_step_id"`
+	ExtWorkflowRole           pgtype.Text `json:"ext_workflow_role"`
+	ExtWorkflowKind           pgtype.Text `json:"ext_workflow_kind"`
 }
 
 type AgentToLabel struct {
@@ -667,6 +671,81 @@ type DingtalkGroupRoute struct {
 	Revision          int64              `json:"revision"`
 	DiscoveredAt      pgtype.Timestamptz `json:"discovered_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ExtWorkflow struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	Name              string             `json:"name"`
+	Description       string             `json:"description"`
+	SupervisorAgentID pgtype.UUID        `json:"supervisor_agent_id"`
+	MaxRewinds        int32              `json:"max_rewinds"`
+	CreatorID         pgtype.UUID        `json:"creator_id"`
+	AvatarUrl         pgtype.Text        `json:"avatar_url"`
+	ArchivedAt        pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy        pgtype.UUID        `json:"archived_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ExtWorkflowNode struct {
+	ID             pgtype.UUID `json:"id"`
+	WorkflowID     pgtype.UUID `json:"workflow_id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	Key            string      `json:"key"`
+	Title          string      `json:"title"`
+	AgentID        pgtype.UUID `json:"agent_id"`
+	Prompt         string      `json:"prompt"`
+	RequiresReview bool        `json:"requires_review"`
+	MaxAttempts    int32       `json:"max_attempts"`
+	DependsOn      []string    `json:"depends_on"`
+	Position       int32       `json:"position"`
+}
+
+type ExtWorkflowRun struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	WorkflowID      pgtype.UUID        `json:"workflow_id"`
+	IssueID         pgtype.UUID        `json:"issue_id"`
+	TriggeredByType string             `json:"triggered_by_type"`
+	TriggeredByID   pgtype.UUID        `json:"triggered_by_id"`
+	Status          string             `json:"status"`
+	Definition      []byte             `json:"definition"`
+	RewindsUsed     int32              `json:"rewinds_used"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ExtWorkflowRunEvent struct {
+	ID          pgtype.UUID        `json:"id"`
+	RunID       pgtype.UUID        `json:"run_id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	StepID      pgtype.UUID        `json:"step_id"`
+	Kind        string             `json:"kind"`
+	ActorType   string             `json:"actor_type"`
+	ActorID     pgtype.UUID        `json:"actor_id"`
+	OnBehalfOf  pgtype.UUID        `json:"on_behalf_of"`
+	Payload     []byte             `json:"payload"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type ExtWorkflowRunStep struct {
+	ID               pgtype.UUID        `json:"id"`
+	RunID            pgtype.UUID        `json:"run_id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	NodeKey          string             `json:"node_key"`
+	AgentID          pgtype.UUID        `json:"agent_id"`
+	IssueID          pgtype.UUID        `json:"issue_id"`
+	Status           string             `json:"status"`
+	Attempts         int32              `json:"attempts"`
+	PendingReason    pgtype.Text        `json:"pending_reason"`
+	LastFeedback     pgtype.Text        `json:"last_feedback"`
+	EscalationReason pgtype.Text        `json:"escalation_reason"`
+	StartedAt        pgtype.Timestamptz `json:"started_at"`
+	FinishedAt       pgtype.Timestamptz `json:"finished_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Feedback struct {
