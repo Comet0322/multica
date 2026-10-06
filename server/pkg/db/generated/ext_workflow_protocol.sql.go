@@ -11,6 +11,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getLatestAgentCommentOnIssue = `-- name: GetLatestAgentCommentOnIssue :one
+SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, quick_action_id, via_plugin_id, revision, recovery_settled_at, deleted_at, suppressed_agent_ids FROM comment
+WHERE issue_id = $1 AND author_type = 'agent' AND author_id = $2 AND deleted_at IS NULL
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetLatestAgentCommentOnIssueParams struct {
+	IssueID pgtype.UUID `json:"issue_id"`
+	AgentID pgtype.UUID `json:"agent_id"`
+}
+
+// The newest comment an agent wrote on an issue: a step's output, as the
+// briefing hands it to downstream steps and to the supervisor.
+func (q *Queries) GetLatestAgentCommentOnIssue(ctx context.Context, arg GetLatestAgentCommentOnIssueParams) (Comment, error) {
+	row := q.db.QueryRow(ctx, getLatestAgentCommentOnIssue, arg.IssueID, arg.AgentID)
+	var i Comment
+	err := row.Scan(
+		&i.ID,
+		&i.IssueID,
+		&i.AuthorType,
+		&i.AuthorID,
+		&i.Content,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ParentID,
+		&i.WorkspaceID,
+		&i.ResolvedAt,
+		&i.ResolvedByType,
+		&i.ResolvedByID,
+		&i.SourceTaskID,
+		&i.QuickActionID,
+		&i.ViaPluginID,
+		&i.Revision,
+		&i.RecoverySettledAt,
+		&i.DeletedAt,
+		&i.SuppressedAgentIds,
+	)
+	return i, err
+}
+
 const hasExtWorkflowConversationTaskForComment = `-- name: HasExtWorkflowConversationTaskForComment :one
 
 SELECT EXISTS (

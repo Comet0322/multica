@@ -2737,6 +2737,8 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				)
 			}
 		}
+		// ext-workflow: a workflow task carries its run briefing (spec §6.2).
+		h.appendExtWorkflowBriefing(r.Context(), task, &resp)
 
 		projectCtx, projectErr := h.resolveClaimProjectContext(r.Context(), issue.ProjectID, issue.WorkspaceID)
 		if projectErr != nil {
