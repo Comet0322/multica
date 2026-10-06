@@ -188,17 +188,29 @@ func (s *IssueWakeupService) processChildEvents(ctx context.Context, parentID pg
 			allSourced = false
 		}
 	}
+	// ext-workflow: what a workflow engine produced in this transaction is
+	// published only after the commit.
+	extAfterCommit := func() {}
 	finish := func() error {
 		if err := q.FinishChildEvents(ctx, ids); err != nil {
 			return err
 		}
-		return tx.Commit(ctx)
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		extAfterCommit() // ext-workflow
+		return nil
 	}
 	parent, err := q.GetIssue(ctx, parentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return finish()
 	}
 	if err != nil {
+		return err
+	}
+	// ext-workflow: a workflow parent's engine consumes the claimed changes in
+	// this transaction; resolveWakeTarget already wakes nobody for it.
+	if extAfterCommit, err = s.Tasks.runExtWorkflowChildEvents(ctx, tx, parent, events); err != nil {
 		return err
 	}
 	active, err := wakeupIssueActive(ctx, q, parent)

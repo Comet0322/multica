@@ -5659,6 +5659,10 @@ func (s *TaskService) RerunIssue(ctx context.Context, issueID pgtype.UUID, sourc
 	if err != nil {
 		return nil, fmt.Errorf("load issue: %w", err)
 	}
+	// ext-workflow: a workflow issue is rerun through its run's decisions.
+	if extWorkflowRerunRefused(issue, sourceTaskID, nil) {
+		return nil, ErrRerunWorkflowIssue
+	}
 	// In Triage a rerun follows its source, and the decision is made here —
 	// before anything is cancelled. The queue door would refuse a derived rerun
 	// anyway, but this path cancels the prior run on its way there, so a late
@@ -5686,6 +5690,10 @@ func (s *TaskService) RerunIssue(ctx context.Context, issueID pgtype.UUID, sourc
 		sourceTask, err := s.Queries.GetAgentTask(ctx, sourceTaskID)
 		if err != nil {
 			return nil, fmt.Errorf("load source task: %w", err)
+		}
+		// ext-workflow: a workflow task is rerun through its run's decisions.
+		if extWorkflowRerunRefused(issue, sourceTaskID, &sourceTask) {
+			return nil, ErrRerunWorkflowIssue
 		}
 		if !sourceTask.IssueID.Valid || util.UUIDToString(sourceTask.IssueID) != util.UUIDToString(issueID) {
 			return nil, fmt.Errorf("source task does not belong to this issue")

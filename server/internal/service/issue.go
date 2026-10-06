@@ -839,6 +839,11 @@ func (s *IssueService) maybeEnqueueOnAssign(ctx context.Context, issue db.Issue,
 	if issue.TriageState.Valid || issuestatus.Effective(ctx, s.Queries, issue.WorkspaceID, issue.Status) == "backlog" {
 		return pgtype.UUID{}
 	}
+	// ext-workflow: a workflow assignee starts an engine run, not an agent task.
+	if issue.AssigneeType.String == "workflow" {
+		s.extWorkflowStartOnAssign(ctx, issue, creatorType, actorID)
+		return pgtype.UUID{}
+	}
 	verdict, admitted := agentAssigneeVerdict(ctx, s.runtimeLookup(s.Queries), issue)
 	if !admitted && RuntimeBlockedNeedsNotice(verdict.Reason) {
 		// Assignment has no response the assigner reads for this outcome, so the

@@ -199,6 +199,10 @@ func (s *IssueService) WillEnqueueRun(ctx context.Context, in IssueTriggerInput,
 			AssigneeType: "squad",
 			Source:       source,
 		}, true
+
+	case "workflow":
+		// ext-workflow: a workflow assignee starts an engine-owned run.
+		return s.extWorkflowRunTrigger(ctx, issue, source, canAccess)
 	}
 	return IssueRunTrigger{}, false
 }
