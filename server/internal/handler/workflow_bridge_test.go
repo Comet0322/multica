@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -62,5 +63,37 @@ func TestWorkflowEventsCommentCreated(t *testing.T) {
 	case <-got:
 	case <-time.After(time.Second):
 		t.Fatal("comment:created was not published with a CommentResponse payload")
+	}
+}
+
+func TestWorkflowCanInvokeAgent(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	runtimeID, ownerID, memberID := runtimeVisibilityFixture(t)
+	privateID := dbfx.Agent(t, "wf-private-agent", runtimeID, testutil.Cols{"permission_mode": "private", "owner_id": ownerID})
+	publicID := dbfx.Agent(t, "wf-public-agent", runtimeID, testutil.Cols{"permission_mode": "public_to", "owner_id": ownerID})
+	dbfx.Insert(t, "agent_invocation_target", testutil.Cols{"agent_id": publicID, "target_type": "workspace", "target_id": testWorkspaceID})
+
+	get := func(id string) db.Agent {
+		a, err := testHandler.Queries.GetAgent(ctx, parseUUID(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	w := testHandler.WorkflowEvents()
+	if w.CanInvokeAgent(ctx, get(privateID), "member", memberID) {
+		t.Fatal("a member must not invoke a private agent owned by someone else")
+	}
+	if !w.CanInvokeAgent(ctx, get(privateID), "member", ownerID) {
+		t.Fatal("the owner must invoke their private agent")
+	}
+	if !w.CanInvokeAgent(ctx, get(publicID), "member", memberID) {
+		t.Fatal("a member may invoke a workspace-public agent")
+	}
+	if w.CanInvokeAgent(ctx, get(privateID), "agent", ownerID) {
+		t.Fatal("an agent creator carries no human originator and must be denied a private agent")
 	}
 }

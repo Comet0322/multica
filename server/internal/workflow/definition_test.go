@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -62,5 +63,32 @@ func TestParseCollectsAllErrors(t *testing.T) {
 	_, errs := Parse("```yaml\nnodes:\n  - id: a\n    prompt: p\n  - id: b\n    agent: A\n```")
 	if len(errs) != 2 {
 		t.Fatalf("want 2 errors, got %v", errs)
+	}
+}
+
+func TestParseEnforcesSizeCaps(t *testing.T) {
+	var many strings.Builder
+	many.WriteString("```yaml\nnodes:\n")
+	for i := 0; i < maxNodes+1; i++ {
+		fmt.Fprintf(&many, "  - id: n%d\n    agent: A\n    prompt: p\n", i)
+	}
+	many.WriteString("```")
+	if _, errs := Parse(many.String()); len(errs) != 1 || !strings.Contains(errs[0], "limit is 50 nodes") {
+		t.Fatalf("node cap errors = %v", errs)
+	}
+
+	longPrompt := "```yaml\nnodes:\n  - id: a\n    agent: A\n    prompt: " + strings.Repeat("x", maxPromptBytes+1) + "\n```"
+	if _, errs := Parse(longPrompt); len(errs) != 1 || !strings.Contains(errs[0], "limit is 20000 bytes") {
+		t.Fatalf("prompt cap errors = %v", errs)
+	}
+
+	bigYAML := "```yaml\n# " + strings.Repeat("y", maxYAMLBytes) + "\nnodes:\n  - id: a\n    agent: A\n    prompt: p\n```"
+	if _, errs := Parse(bigYAML); len(errs) != 1 || !strings.Contains(errs[0], "limit is 100000 bytes") {
+		t.Fatalf("yaml cap errors = %v", errs)
+	}
+
+	ok := "```yaml\nnodes:\n  - id: a\n    agent: A\n    prompt: " + strings.Repeat("x", maxPromptBytes) + "\n```"
+	if _, errs := Parse(ok); len(errs) != 0 {
+		t.Fatalf("a prompt at the cap must pass: %v", errs)
 	}
 }

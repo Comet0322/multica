@@ -70,3 +70,15 @@ func (w *WorkflowEvents) CommentCreated(ctx context.Context, issue db.Issue, c d
 		"issue_revision":      issue.Revision,
 	})
 }
+
+// CanInvokeAgent is the workflow.AgentInvokeChecker: it runs the platform's
+// agent invoke gate for the workflow creator. A member creator is both actor
+// and originator; any other creator has no human originator, so private and
+// member-scoped agents are denied.
+func (w *WorkflowEvents) CanInvokeAgent(ctx context.Context, agent db.Agent, creatorType, creatorID string) bool {
+	originator := ""
+	if creatorType == "member" {
+		originator = creatorID
+	}
+	return w.h.canInvokeAgent(ctx, agent, creatorType, creatorID, originator, uuidToString(agent.WorkspaceID))
+}

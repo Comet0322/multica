@@ -241,6 +241,12 @@ issues, parent notification is not needed because the engine owns completion).
 - A task in any non-terminal status counts as in flight; only terminal task statuses are bounded by the dispatch time.
 - Commands are accepted only from members and only from the definition creator; the listener ignores system and agent comments, runs each command in a goroutine with a recover and a 30s timeout; `isNoteComment` also treats `/accept`, `/reject` and `/retry` as non-triggering comments on every issue.
 - The claim query needs PostgreSQL 16 or newer (`pg_input_is_valid`).
+- Agent invoke check: the engine runs the platform's invoke gate (`canInvokeAgent`) for the definition creator through `AgentInvokeChecker`, implemented by `handler.WorkflowEvents`. A nil checker denies every agent. At expansion an agent the creator cannot invoke gets the same `unknown agent "X"` error as a missing one, so private agents are not disclosed. The check is repeated right before each dispatch; a denial fails the step visibly.
+- Stopped state: closing the definition issue (cancelled, or done by hand) while the run is `running` moves the run to `stopped` with one comment; nothing is observed or dispatched afterwards. A run that has actually completed is closed as `done` instead.
+- Size caps: at most 50 nodes, 20000 bytes per prompt, 100000 bytes for the YAML block.
+- Approval steps need a member-created definition, because only members can `/accept`; an agent-created definition with an approval step is marked invalid.
+- Invalid definitions are excluded from the candidate list in SQL while their stored `error_hash` equals the hash of the current description, so abandoned definitions cannot occupy candidate slots.
+- `MULTICA_WORKFLOW_ENGINE` (default on; `false` or `0` disables) controls whether the engine, its comment listener and its scheduler job are started.
 
 ### Known limitations
 
@@ -250,3 +256,6 @@ issues, parent notification is not needed because the engine owns completion).
 - `ListRunningWorkflowDefinitions` is global and capped at 200 per tick.
 - Tasks started on a step issue for another reason (for example a comment mention) can be mistaken for a step attempt.
 - Custom issue statuses are not supported; built-in keys are compared literally.
+- Review requests and failure summaries are system comments, so they do not create an inbox notification; the creator only gets the generic status-change notification.
+- Expansion does not check that the agent's runtime is online; an offline runtime leaves the step queued.
+- Stopping a definition does not stop the tasks of its step issues.

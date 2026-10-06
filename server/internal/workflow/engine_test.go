@@ -4,6 +4,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -730,5 +731,168 @@ func TestConvergeDoesNotOverwriteAReopen(t *testing.T) {
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if m, _ := readDefMeta(got); m.State != RunRunning || got.Status != "in_progress" {
 		t.Fatalf("state=%s status=%s, want running/in_progress", m.State, got.Status)
+	}
+}
+
+func indepDoc(a, b string) string {
+	return "```yaml\nnodes:\n  - id: a\n    agent: " + a + "\n    prompt: do a\n  - id: b\n    agent: " + b + "\n    prompt: do b\n```"
+}
+
+func TestNilInvokeCheckerFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	e.engine.Invoke = nil
+	def := e.flowIssue(t, "Ship", flowDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunInvalid {
+		t.Fatalf("state = %s, want invalid", dm.State)
+	}
+	if !hasComment(e, `unknown agent "Planner"`) {
+		t.Fatal("a denied agent must look like an unknown one")
+	}
+}
+
+func TestExpandHidesAgentsTheCreatorCannotInvoke(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	other := e.fx.User(t, "Other Owner", fmt.Sprintf("other-%d@example.test", time.Now().UnixNano()))
+	e.fx.Member(t, e.ws, other, "member")
+	private := e.fx.Agent(t, "Secret", e.runtime, dbfx.Cols{"owner_id": other})
+	e.agent(t, "Coder")
+	e.rec.deny(private)
+	def := e.flowIssue(t, "Ship", flowDoc("Secret", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunInvalid {
+		t.Fatalf("state = %s, want invalid", dm.State)
+	}
+	if !hasComment(e, `unknown agent "Secret"`) {
+		t.Fatal("expected the same message as an unknown agent")
+	}
+	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	if len(kids) != 0 {
+		t.Fatalf("no steps may be created, got %d", len(kids))
+	}
+}
+
+func TestPermissionRevokedMidRunFailsStepAtDispatch(t *testing.T) {
+	e, def := expanded(t)
+	plan := stepByNode(t, e, def, "plan")
+	m, _ := readStepMeta(plan)
+	e.rec.deny(m.AgentID)
+	tick(t, e)
+	if phaseOf(t, e, def, "plan") != PhaseFailed {
+		t.Fatalf("plan phase = %s, want failed", phaseOf(t, e, def, "plan"))
+	}
+	if !hasComment(e, "not available to the workflow creator") {
+		t.Fatal("the denial must be visible on the step")
+	}
+	if len(e.rec.enqueued) != 0 {
+		t.Fatalf("nothing may be enqueued: %v", e.rec.enqueued)
+	}
+}
+
+func TestCancelledDefinitionStopsRunOnce(t *testing.T) {
+	ctx := context.Background()
+	for _, status := range []string{"cancelled", "done"} {
+		t.Run(status, func(t *testing.T) {
+			e, def := expanded(t)
+			tick(t, e)
+			before := len(e.rec.enqueued)
+			setStatus(t, e, def, status)
+			tick(t, e)
+			tick(t, e)
+			got, _ := e.q.GetIssue(ctx, def.ID)
+			if dm, _ := readDefMeta(got); dm.State != RunStopped {
+				t.Fatalf("state = %s, want stopped", dm.State)
+			}
+			n := 0
+			e.rec.mu.Lock()
+			for _, c := range e.rec.comments {
+				if strings.Contains(c.Content, "Workflow stopped because this issue was closed") {
+					n++
+				}
+			}
+			e.rec.mu.Unlock()
+			if n != 1 || len(e.rec.enqueued) != before {
+				t.Fatalf("stop comments=%d, extra dispatches=%d, want 1/0", n, len(e.rec.enqueued)-before)
+			}
+		})
+	}
+}
+
+func TestEngineDrivenDoneIsNotStopped(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	tick(t, e)
+	setStatus(t, e, stepByNode(t, e, def, "plan"), "done")
+	tick(t, e)
+	tick(t, e)
+	setStatus(t, e, stepByNode(t, e, def, "build"), "in_review")
+	tick(t, e)
+	if ok, err := e.engine.ApplyEvent(ctx, stepByNode(t, e, def, "build"), EventAccept, pgtypeUUIDZero()); err != nil || !ok {
+		t.Fatalf("accept = %v, %v", ok, err)
+	}
+	tick(t, e)
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunDone || got.Status != "done" {
+		t.Fatalf("state=%s status=%s, want done/done", dm.State, got.Status)
+	}
+	if hasComment(e, "stopped because") {
+		t.Fatal("a normal completion must not be reported as stopped")
+	}
+}
+
+func TestOneFailingStepDoesNotBlockItsSibling(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Ship", indepDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	e.engine.beforeObserve = func(node string) error {
+		if node == "a" {
+			return errString("boom")
+		}
+		return nil
+	}
+	if err := e.engine.Tick(ctx); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("tick error = %v, want the step error", err)
+	}
+	if phaseOf2(t, e, def, "b") != PhaseRunning || phaseOf2(t, e, def, "a") != PhasePending {
+		t.Fatal("the healthy sibling must be observed even though step a failed")
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunRunning {
+		t.Fatalf("a run with an unobserved step must not be closed, state=%s", dm.State)
+	}
+}
+
+func TestAgentCreatedDefinitionRejectsApprovalSteps(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	agent := e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Ship", flowDoc("Planner", "Coder"))
+	e.fx.Exec(t, `UPDATE issue SET creator_type = 'agent', creator_id = $2 WHERE id = $1`, uuidStr(def), agent)
+	def, _ = e.q.GetIssue(ctx, def.ID)
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunInvalid {
+		t.Fatalf("state = %s, want invalid", dm.State)
+	}
+	if !hasComment(e, "agents cannot /accept") {
+		t.Fatal("expected the approval explanation")
 	}
 }

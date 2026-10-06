@@ -7,7 +7,15 @@
 -- whether an expanding claim is stale, so listing a live one is harmless.
 SELECT i.* FROM issue i
 WHERE i.status = 'todo'
-  AND (NOT (i.metadata ? 'workflow') OR i.metadata->'workflow'->>'state' IN ('invalid', 'expanding'))
+  AND (
+      NOT (i.metadata ? 'workflow')
+      OR i.metadata->'workflow'->>'state' = 'expanding'
+      -- An invalid definition is retried only after its description changed;
+      -- the hash matches hashDescription in expand.go (sha256, first 8 bytes, hex).
+      OR (i.metadata->'workflow'->>'state' = 'invalid'
+          AND COALESCE(i.metadata->'workflow'->>'error_hash', '')
+              <> left(encode(sha256(convert_to(COALESCE(i.description, ''), 'UTF8')), 'hex'), 16))
+  )
   AND EXISTS (
       SELECT 1 FROM issue_to_label itl
       JOIN issue_label l ON l.id = itl.label_id

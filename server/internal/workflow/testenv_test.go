@@ -51,7 +51,8 @@ type recorder struct {
 	failNext      error
 	updated       int
 	comments      []db.Comment
-	mentionAgents []string // agent ids passed to EnqueueTaskForMention
+	denied        map[string]bool // agent ids CanInvokeAgent refuses
+	mentionAgents []string        // agent ids passed to EnqueueTaskForMention
 }
 
 func (r *recorder) EnqueueTaskForIssue(_ context.Context, issue db.Issue, _ ...pgtype.UUID) (db.AgentTaskQueue, error) {
@@ -88,6 +89,22 @@ func (r *recorder) CommentCreated(_ context.Context, _ db.Issue, c db.Comment) {
 	r.mu.Unlock()
 }
 
+// CanInvokeAgent allows every agent except those listed in denied.
+func (r *recorder) CanInvokeAgent(_ context.Context, agent db.Agent, _, _ string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return !r.denied[util.UUIDToString(agent.ID)]
+}
+
+func (r *recorder) deny(agentID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.denied == nil {
+		r.denied = map[string]bool{}
+	}
+	r.denied[agentID] = true
+}
+
 type env struct {
 	pool    *pgxpool.Pool
 	q       *db.Queries
@@ -114,12 +131,14 @@ func newEnv(t *testing.T) *env {
 	// Registered after the workspace fixture, so it runs before the workspace
 	// is deleted and removes the issues the engine creates.
 	fx.Cleanup(t, `DELETE FROM issue WHERE workspace_id = $1`, ws)
+	// Registered later, so it runs first: the engine's system comments go before their issues.
+	fx.Cleanup(t, `DELETE FROM comment WHERE workspace_id = $1`, ws)
 	q := db.New(p)
 	rec := &recorder{}
 	issues := service.NewIssueService(q, p, events.New(), analytics.NoopClient{}, nil)
 	wsUUID, _ := util.ParseUUID(ws)
 	return &env{pool: p, q: q, fx: fx, ws: ws, user: user, wsUUID: wsUUID, runtime: rt, rec: rec,
-		engine: &Engine{Q: q, Issues: issues, Tasks: rec, Events: rec}}
+		engine: &Engine{Q: q, Issues: issues, Tasks: rec, Events: rec, Invoke: rec}}
 }
 
 func (e *env) agent(t *testing.T, name string) string {

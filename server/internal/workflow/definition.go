@@ -9,6 +9,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Size caps keep one definition from creating an unbounded number of issues or
+// storing unbounded prompts.
+const (
+	maxNodes       = 50
+	maxPromptBytes = 20000
+	maxYAMLBytes   = 100000
+)
+
 var nodeIDPattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // Node is one step of a workflow, modelled on Archon's `nodes:` entries.
@@ -62,6 +70,9 @@ func Parse(description string) (Definition, []string) {
 	if !ok {
 		return Definition{}, []string{"no ```yaml block found in the description"}
 	}
+	if len(raw) > maxYAMLBytes {
+		return Definition{}, []string{fmt.Sprintf("the yaml block is %d bytes; the limit is %d bytes", len(raw), maxYAMLBytes)}
+	}
 	var def Definition
 	dec := yaml.NewDecoder(strings.NewReader(raw))
 	dec.KnownFields(true)
@@ -78,6 +89,9 @@ func validate(def Definition) []string {
 	var errs []string
 	if len(def.Nodes) == 0 {
 		return []string{"workflow needs at least one node"}
+	}
+	if len(def.Nodes) > maxNodes {
+		return []string{fmt.Sprintf("workflow has %d nodes; the limit is %d nodes", len(def.Nodes), maxNodes)}
 	}
 	known := map[string]bool{}
 	for _, n := range def.Nodes {
@@ -99,6 +113,9 @@ func validate(def Definition) []string {
 		}
 		if strings.TrimSpace(n.Prompt) == "" {
 			errs = append(errs, fmt.Sprintf("node %q: prompt is required", n.ID))
+		}
+		if len(n.Prompt) > maxPromptBytes {
+			errs = append(errs, fmt.Sprintf("node %q: prompt is %d bytes; the limit is %d bytes", n.ID, len(n.Prompt), maxPromptBytes))
 		}
 		if n.MaxRetries != nil && *n.MaxRetries < 0 {
 			errs = append(errs, fmt.Sprintf("node %q: max_retries must be >= 0", n.ID))

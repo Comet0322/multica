@@ -76,13 +76,25 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 
 	parsed, errs := Parse(def.Description.String)
 	agents := map[string]db.Agent{}
+	if len(errs) == 0 && def.CreatorType != "member" {
+		for _, n := range parsed.Nodes {
+			if n.Approval {
+				errs = append(errs, "approval steps need a workflow created by a member (agents cannot /accept)")
+				break
+			}
+		}
+	}
 	if len(errs) == 0 {
 		list, err := e.Q.ListAgents(ctx, def.WorkspaceID)
 		if err != nil {
 			return err
 		}
 		for _, a := range list {
-			agents[strings.ToLower(a.Name)] = a
+			// An agent the creator cannot invoke is treated exactly like an
+			// unknown one, so its existence is not disclosed.
+			if e.canInvoke(ctx, a, def.CreatorType, def.CreatorID) {
+				agents[strings.ToLower(a.Name)] = a
+			}
 		}
 		for _, n := range parsed.Nodes {
 			if _, ok := agents[strings.ToLower(n.Agent)]; !ok {

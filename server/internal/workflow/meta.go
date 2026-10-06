@@ -21,6 +21,8 @@ const (
 	RunInvalid   RunState = "invalid"
 	RunBlocked   RunState = "blocked"
 	RunDone      RunState = "done"
+	// RunStopped: the definition issue was closed by a person mid-run.
+	RunStopped RunState = "stopped"
 )
 
 // StepMeta is the metadata of one step issue.

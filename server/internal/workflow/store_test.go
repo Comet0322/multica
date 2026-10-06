@@ -227,3 +227,50 @@ func TestHasInFlightWorkflowTask(t *testing.T) {
 		}
 	}
 }
+
+func TestInvalidCandidatesDoNotStarveNewDefinitions(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	for i := 0; i < 60; i++ {
+		d := e.flowIssue(t, fmt.Sprintf("abandoned %d", i), "no yaml here")
+		if err := e.engine.writeMeta(ctx, d, DefMeta{State: RunInvalid, ErrorHash: hashDescription(d.Description)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fresh := e.flowIssue(t, "fresh", flowDoc("A", "B"))
+	edited := e.flowIssue(t, "edited", "old text")
+	if err := e.engine.writeMeta(ctx, edited, DefMeta{State: RunInvalid, ErrorHash: hashDescription(edited.Description)}); err != nil {
+		t.Fatal(err)
+	}
+	e.fx.Exec(t, `UPDATE issue SET description = 'new text' WHERE id = $1`, uuidStr(edited))
+
+	cands, err := e.q.ListWorkflowDefinitionCandidates(ctx, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, c := range cands {
+		got[uuidStr(c)] = true
+	}
+	if !got[uuidStr(fresh)] || !got[uuidStr(edited)] {
+		t.Fatalf("fresh=%v edited=%v among %d candidates", got[uuidStr(fresh)], got[uuidStr(edited)], len(cands))
+	}
+	if len(cands) > 5 { // other tests clean up; only this test's two are expected
+		t.Fatalf("unchanged invalid definitions occupy candidate slots: %d candidates", len(cands))
+	}
+}
+
+func TestSQLAndGoDescriptionHashesAgree(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	for _, desc := range []string{"", "plain", "unicode \u00e9 \u4e2d\u6587 \U0001f600", "```yaml\nnodes: []\n```"} {
+		var sqlHash string
+		err := e.pool.QueryRow(ctx, `SELECT left(encode(sha256(convert_to(COALESCE($1::text, ''), 'UTF8')), 'hex'), 16)`, desc).Scan(&sqlHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if goHash := hashDescription(pgtype.Text{String: desc, Valid: true}); goHash != sqlHash {
+			t.Fatalf("desc %q: go %s != sql %s", desc, goHash, sqlHash)
+		}
+	}
+}

@@ -171,9 +171,9 @@ func TestExpandStalledExpanderLosesItsClaim(t *testing.T) {
 	def := e.flowIssue(t, "Slow", flowDoc("Planner", "Coder"))
 
 	later := time.Now().Add(3 * time.Minute)
-	b := &Engine{Q: e.engine.Q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec, Now: func() time.Time { return later }}
+	b := &Engine{Q: e.engine.Q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec, Invoke: e.rec, Now: func() time.Time { return later }}
 	var bErr error
-	a := &Engine{Q: e.engine.Q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec}
+	a := &Engine{Q: e.engine.Q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec, Invoke: e.rec}
 	a.beforeStep = func(node string) {
 		// A has created "plan" and stalls before "build"; B reclaims the stale
 		// claim and runs the whole expansion.
@@ -291,7 +291,7 @@ func TestExpandLosingTheClaimAtFinishWritesNothing(t *testing.T) {
 	e.agent(t, "Planner")
 	e.agent(t, "Coder")
 	def := e.flowIssue(t, "LateLoss", flowDoc("Planner", "Coder"))
-	a := &Engine{Q: e.q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec}
+	a := &Engine{Q: e.q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec, Invoke: e.rec}
 	a.beforeStep = func(node string) {
 		if node == "finish" {
 			// Another expander takes over before A's final renewal.

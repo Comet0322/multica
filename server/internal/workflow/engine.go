@@ -82,14 +82,29 @@ func (e *Engine) advance(ctx context.Context, def db.Issue) error {
 		e.Events.IssueUpdated(ctx, def, updated)
 		def = updated
 	}
+	if def.Status == "cancelled" || def.Status == "done" {
+		return e.stopRun(ctx, def, dm)
+	}
 	steps, err := e.loadSteps(ctx, def)
 	if err != nil {
 		return err
 	}
+	// One failing step must not hide the others; but when any step could not be
+	// observed the run is not evaluated or closed this tick.
+	var stepErrs []error
 	for _, s := range steps {
-		if err := e.observe(ctx, s, steps); err != nil {
-			return err
+		if e.beforeObserve != nil {
+			if err := e.beforeObserve(s.meta.Node); err != nil {
+				stepErrs = append(stepErrs, err)
+				continue
+			}
 		}
+		if err := e.observe(ctx, s, steps); err != nil {
+			stepErrs = append(stepErrs, fmt.Errorf("step %s: %w", s.meta.Node, err))
+		}
+	}
+	if len(stepErrs) > 0 {
+		return errors.Join(stepErrs...)
 	}
 	out, steps, err := e.evaluate(ctx, def, dm)
 	if err != nil {
@@ -115,6 +130,42 @@ func (e *Engine) advance(ctx context.Context, def db.Issue) error {
 			"Workflow stopped: a step issue is missing (it may have been deleted). Restore it or recreate the workflow.")
 	}
 	return nil
+}
+
+// stopRun ends a run whose definition issue a person closed (cancelled, or
+// done by hand) while it was still running. Step issues and tasks are left
+// alone. A run that has in fact completed is closed normally instead.
+func (e *Engine) stopRun(ctx context.Context, def db.Issue, dm DefMeta) error {
+	out, _, err := e.evaluate(ctx, def, dm)
+	if err != nil {
+		return err
+	}
+	if out == OutcomeDone {
+		return e.closeDefinition(ctx, def, RunDone, "done", "")
+	}
+	cur, err := e.Q.GetIssue(ctx, def.ID)
+	if err != nil {
+		return err
+	}
+	cdm, ok := readDefMeta(cur)
+	if !ok || cdm.State != RunRunning {
+		return nil
+	}
+	cdm.State = RunStopped
+	raw, err := json.Marshal(cdm)
+	if err != nil {
+		return err
+	}
+	if _, err := e.Q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{
+		Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: string(RunRunning),
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	_, err = e.systemComment(ctx, cur, "Workflow stopped because this issue was closed.")
+	return err
 }
 
 func (e *Engine) evaluate(ctx context.Context, def db.Issue, dm DefMeta) (Outcome, []stepRow, error) {
@@ -357,13 +408,17 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 }
 
 func (e *Engine) dispatch(ctx context.Context, issue db.Issue, meta StepMeta, trigger pgtype.UUID) error {
-	var err error
+	// Re-check at dispatch: the creator's access may have changed since expansion.
+	target, ok := targetAgent(issue, meta)
+	if !ok {
+		return fmt.Errorf("step %s has no valid agent", meta.Node)
+	}
+	agent, err := e.Q.GetAgent(ctx, target)
+	if err != nil || !e.canInvoke(ctx, agent, issue.CreatorType, issue.CreatorID) {
+		return errors.New("this agent is not available to the workflow creator")
+	}
 	if trigger.Valid {
-		agentID, ok := targetAgent(issue, meta)
-		if !ok {
-			return fmt.Errorf("step %s has no valid agent", meta.Node)
-		}
-		_, err = e.Tasks.EnqueueTaskForMention(ctx, issue, agentID, trigger, service.OriginDerived)
+		_, err = e.Tasks.EnqueueTaskForMention(ctx, issue, target, trigger, service.OriginDerived)
 	} else {
 		_, err = e.Tasks.EnqueueTaskForIssue(ctx, issue)
 	}

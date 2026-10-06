@@ -34,19 +34,35 @@ type EventPublisher interface {
 	CommentCreated(ctx context.Context, issue db.Issue, c db.Comment)
 }
 
+// AgentInvokeChecker is the platform's agent invoke gate (handler.canInvokeAgent),
+// judged for the workflow creator. A nil checker denies every agent, so a
+// missing wiring can never let a workflow run an agent it should not.
+type AgentInvokeChecker interface {
+	CanInvokeAgent(ctx context.Context, agent db.Agent, creatorType, creatorID string) bool
+}
+
 type Engine struct {
 	Q      *db.Queries
 	Issues IssueCreator
 	Tasks  TaskEnqueuer
 	Events EventPublisher
+	// Invoke gates which agents the workflow creator may run; nil denies all.
+	Invoke AgentInvokeChecker
 	// Now is overridable in tests; nil means time.Now.
 	Now func() time.Time
-	// beforeStep is a test hook called before each step write.
+	// beforeStep is a test-only hook called before each step write. It is nil in
+	// production and exists only for deterministic race tests.
 	beforeStep func(node string)
-	// beforeClose is a test hook called between closeDefinition's status write and its fenced state write.
+	// beforeClose is a test-only hook called between closeDefinition's status
+	// write and its fenced state write. Nil in production; exists only for
+	// deterministic race tests.
 	beforeClose func()
-	// beforeConvergeWrite is a test hook called between convergeStatus's read and write.
+	// beforeConvergeWrite is a test-only hook called between convergeStatus's
+	// read and write. Nil in production; exists only for deterministic race tests.
 	beforeConvergeWrite func()
+	// beforeObserve is a test-only hook called before each step is observed; an
+	// error fails that step's observation. Nil in production.
+	beforeObserve func(node string) error
 }
 
 func (e *Engine) now() time.Time {
@@ -101,3 +117,11 @@ func (e *Engine) writeMeta(ctx context.Context, issue db.Issue, v any) error {
 }
 
 func uuidString(u pgtype.UUID) string { return util.UUIDToString(u) }
+
+// canInvoke reports whether the workflow creator may run agent.
+func (e *Engine) canInvoke(ctx context.Context, agent db.Agent, creatorType string, creatorID pgtype.UUID) bool {
+	if e.Invoke == nil {
+		return false
+	}
+	return e.Invoke.CanInvokeAgent(ctx, agent, creatorType, uuidString(creatorID))
+}
