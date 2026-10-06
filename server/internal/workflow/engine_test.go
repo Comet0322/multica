@@ -92,13 +92,13 @@ func TestTickRunsStepsInDependencyOrder(t *testing.T) {
 func TestApprovalGateAcceptCompletesWorkflow(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	setStatus(t, e, stepByNode(t, e, def, "plan"), "done")
-	_ = e.engine.Tick(ctx)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
+	tick(t, e)
 	build := stepByNode(t, e, def, "build")
 	setStatus(t, e, build, "in_review") // agent finished, approval required
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if !hasComment(e, "Waiting for review") {
 		t.Fatal("blocking for approval must post the review-request comment")
 	}
@@ -110,7 +110,7 @@ func TestApprovalGateAcceptCompletesWorkflow(t *testing.T) {
 	if ok, err := e.engine.ApplyEvent(ctx, build, EventAccept, pgtypeUUIDZero()); err != nil || !ok {
 		t.Fatalf("accept = %v, %v", ok, err)
 	}
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if dm, _ := readDefMeta(got); dm.State != RunDone || got.Status != "done" {
 		t.Fatalf("definition state=%s status=%s, want done/done", dm.State, got.Status)
@@ -120,12 +120,12 @@ func TestApprovalGateAcceptCompletesWorkflow(t *testing.T) {
 func TestRejectRedispatchesWithFeedbackThenFails(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	setStatus(t, e, stepByNode(t, e, def, "plan"), "done")
-	_ = e.engine.Tick(ctx)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
+	tick(t, e)
 	setStatus(t, e, stepByNode(t, e, def, "build"), "in_review")
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 
 	comment := commentID(t, e, def)
 	build := stepByNode(t, e, def, "build")
@@ -137,7 +137,7 @@ func TestRejectRedispatchesWithFeedbackThenFails(t *testing.T) {
 		t.Fatalf("redo must carry the reject comment as trigger, got %q", last)
 	}
 	setStatus(t, e, stepByNode(t, e, def, "build"), "in_review")
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	build = stepByNode(t, e, def, "build")
 	if ok, _ := e.engine.ApplyEvent(ctx, build, EventReject, comment); !ok {
 		t.Fatal("second reject should be applied")
@@ -145,7 +145,7 @@ func TestRejectRedispatchesWithFeedbackThenFails(t *testing.T) {
 	if phaseOf(t, e, def, "build") != PhaseFailed {
 		t.Fatalf("with max_retries=1 the second reject must fail the step, phase=%s", phaseOf(t, e, def, "build"))
 	}
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if dm, _ := readDefMeta(got); dm.State != RunBlocked || got.Status != "blocked" {
 		t.Fatalf("definition state=%s status=%s, want blocked", dm.State, got.Status)
@@ -163,7 +163,7 @@ func TestDispatchErrorFailsStepWithComment(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
 	e.rec.failNext = errString("agent is archived")
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if phaseOf(t, e, def, "plan") != PhaseFailed {
 		t.Fatalf("plan phase = %s, want failed", phaseOf(t, e, def, "plan"))
 	}
@@ -173,7 +173,7 @@ func TestDispatchErrorFailsStepWithComment(t *testing.T) {
 	if s := stepByNode(t, e, def, "plan"); s.Status != "blocked" {
 		t.Fatalf("failed step issue status = %s, want blocked", s.Status)
 	}
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if dm, _ := readDefMeta(got); dm.State != RunBlocked {
 		t.Fatalf("workflow state = %s, want blocked", dm.State)
@@ -184,9 +184,9 @@ func TestDeletedStepBlocksInsteadOfCompleting(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
 	e.fx.Exec(t, `DELETE FROM issue WHERE id = $1`, uuidStr(stepByNode(t, e, def, "build")))
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	setStatus(t, e, stepByNode(t, e, def, "plan"), "done")
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	dm, _ := readDefMeta(got)
 	if !hasComment(e, "a step issue is missing") {
@@ -203,13 +203,13 @@ func TestStepWithoutParentIsStillTracked(t *testing.T) {
 	plan := stepByNode(t, e, def, "plan")
 	e.fx.Exec(t, `UPDATE issue SET parent_issue_id = NULL WHERE id = $1`, uuidStr(plan))
 
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if phaseOf2(t, e, def, "plan") != PhaseRunning {
 		t.Fatal("a step that lost its parent must still be dispatched")
 	}
 	setStatus(t, e, plan, "done")
-	_ = e.engine.Tick(ctx)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
+	tick(t, e)
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if dm, _ := readDefMeta(got); dm.State == RunBlocked {
 		t.Fatal("a parentless step must not make the run look broken")
@@ -236,14 +236,13 @@ func phaseOf2(t *testing.T, e *env, def db.Issue, node string) Phase {
 }
 
 func TestAgentTaskFailureRetriesThenFails(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
 	m, _ := readStepMeta(plan)
 	for i := 0; i < 2; i++ {
 		e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "failed", "runtime_id": e.runtime})
-		_ = e.engine.Tick(ctx)
+		tick(t, e)
 	}
 	if phaseOf(t, e, def, "plan") != PhaseFailed {
 		t.Fatalf("plan phase = %s, want failed after retries are exhausted", phaseOf(t, e, def, "plan"))
@@ -356,7 +355,7 @@ func setDispatchedAt(t *testing.T, e *env, step db.Issue, at time.Time) db.Issue
 func TestStaleAgentFailedSnapshotAppliesOnce(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	snap := stepByNode(t, e, def, "plan") // running, attempts 0, max_retries 1
 	if ok, err := e.engine.ApplyEvent(ctx, snap, EventAgentFailed, pgtypeUUIDZero()); err != nil || !ok {
 		t.Fatalf("first = %v, %v", ok, err)
@@ -373,7 +372,7 @@ func TestStaleAgentFailedSnapshotAppliesOnce(t *testing.T) {
 func TestStaleDispatchLostSnapshotDispatchesOnce(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	snap := stepByNode(t, e, def, "plan")
 	before := len(e.rec.enqueued)
 	for i, want := range []bool{true, false} {
@@ -387,33 +386,31 @@ func TestStaleDispatchLostSnapshotDispatchesOnce(t *testing.T) {
 }
 
 func TestOldTerminalTaskBeforeDispatchIsIgnored(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
 	m, _ := readStepMeta(plan)
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "failed", "runtime_id": e.runtime, "created_at": dbfx.Raw("now() - interval '1 hour'")})
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if got, _ := readStepMeta(stepByNode(t, e, def, "plan")); got.Phase != PhaseRunning || got.Attempts != 0 || len(e.rec.enqueued) != 1 {
 		t.Fatalf("old failed task misread: phase=%s attempts=%d enqueued=%v", got.Phase, got.Attempts, e.rec.enqueued)
 	}
 }
 
 func TestDispatchLostAfterGrace(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if len(e.rec.enqueued) != 1 {
 		t.Fatalf("inside the grace window nothing is re-dispatched: %v", e.rec.enqueued)
 	}
 	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if len(e.rec.enqueued) != 2 {
 		t.Fatalf("enqueued = %v, want one re-dispatch after the grace", e.rec.enqueued)
 	}
-	_ = e.engine.Tick(ctx) // fresh stamp again: grace window
+	tick(t, e) // fresh stamp again: grace window
 	if len(e.rec.enqueued) != 2 {
 		t.Fatalf("re-dispatch loop: %v", e.rec.enqueued)
 	}
@@ -422,7 +419,7 @@ func TestDispatchLostAfterGrace(t *testing.T) {
 func TestAgentFinishedDuringTickIsNotRerun(t *testing.T) {
 	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
 	stale := plan // observed while still running
 	m, _ := readStepMeta(plan)
@@ -438,30 +435,28 @@ func TestAgentFinishedDuringTickIsNotRerun(t *testing.T) {
 }
 
 func TestAgentFinishedTickPath(t *testing.T) {
-	ctx := context.Background()
 	e2, def2 := expanded(t)
-	_ = e2.engine.Tick(ctx)
+	tick(t, e2)
 	p2 := stepByNode(t, e2, def2, "plan")
 	m2, _ := readStepMeta(p2)
 	e2.fx.Task(t, m2.AgentID, dbfx.Cols{"issue_id": uuidStr(p2), "status": "completed", "runtime_id": e2.runtime})
 	setStatus(t, e2, p2, "done")
-	_ = e2.engine.Tick(ctx)
+	tick(t, e2)
 	if phaseOf(t, e2, def2, "plan") != PhaseDone || len(e2.rec.enqueued) != 1 {
 		t.Fatalf("tick path: phase=%s enqueued=%v", phaseOf(t, e2, def2, "plan"), e2.rec.enqueued)
 	}
 }
 
 func TestReassignedStepDoesNotRunAway(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
 	other := e.agent(t, "Other")
 	e.fx.Exec(t, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, uuidStr(plan), other)
 	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
 	e.fx.Task(t, other, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime})
 	for i := 0; i < 3; i++ {
-		_ = e.engine.Tick(ctx)
+		tick(t, e)
 	}
 	if len(e.rec.enqueued) != 1 {
 		t.Fatalf("a queued task by the new assignee must stop re-dispatch: %v", e.rec.enqueued)
@@ -469,25 +464,24 @@ func TestReassignedStepDoesNotRunAway(t *testing.T) {
 
 	// With no task rows for either agent and a stale stamp: exactly one dispatch.
 	e3, def3 := expanded(t)
-	_ = e3.engine.Tick(ctx)
+	tick(t, e3)
 	p3 := stepByNode(t, e3, def3, "plan")
 	o3 := e3.agent(t, "Other")
 	e3.fx.Exec(t, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, uuidStr(p3), o3)
 	setDispatchedAt(t, e3, p3, time.Now().Add(-10*time.Minute))
-	_ = e3.engine.Tick(ctx)
-	_ = e3.engine.Tick(ctx)
+	tick(t, e3)
+	tick(t, e3)
 	if len(e3.rec.enqueued) != 2 {
 		t.Fatalf("enqueued = %v, want the initial dispatch plus exactly one", e3.rec.enqueued)
 	}
 }
 
 func TestLostDispatchIsRedispatchedOnce(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
 	plan := stepByNode(t, e, def, "plan")
 	plan = setStep(t, e, plan, PhaseRunning, 0, "in_progress") // claimed, but no task row and no enqueue
 	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if len(e.rec.enqueued) != 1 {
 		t.Fatalf("enqueued = %v, want one re-dispatch", e.rec.enqueued)
 	}
@@ -496,20 +490,19 @@ func TestLostDispatchIsRedispatchedOnce(t *testing.T) {
 	}
 	m, _ := readStepMeta(plan)
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime})
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if len(e.rec.enqueued) != 1 {
 		t.Fatalf("re-dispatched despite a queued task: %v", e.rec.enqueued)
 	}
 }
 
 func TestCancelledTaskFailsStepWithComment(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
 	m, _ := readStepMeta(plan)
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "cancelled", "runtime_id": e.runtime})
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if phaseOf(t, e, def, "plan") != PhaseFailed {
 		t.Fatalf("plan phase = %s, want failed", phaseOf(t, e, def, "plan"))
 	}
@@ -522,29 +515,27 @@ func TestCancelledTaskFailsStepWithComment(t *testing.T) {
 }
 
 func TestCompletedTaskWithoutFinishingCountsAsFailedAttempt(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	plan := stepByNode(t, e, def, "plan")
 	m, _ := readStepMeta(plan)
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "completed", "runtime_id": e.runtime})
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if got, _ := readStepMeta(stepByNode(t, e, def, "plan")); got.Phase != PhaseRunning || got.Attempts != 1 || len(e.rec.enqueued) != 2 {
 		t.Fatalf("first completed-without-finish: phase=%s attempts=%d enqueued=%v", got.Phase, got.Attempts, e.rec.enqueued)
 	}
 	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "completed", "runtime_id": e.runtime, "created_at": dbfx.Raw("now() + interval '1 minute'")})
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if phaseOf(t, e, def, "plan") != PhaseFailed || !hasComment(e, "Reply `/retry`") {
 		t.Fatalf("second completed-without-finish must fail visibly, phase=%s", phaseOf(t, e, def, "plan"))
 	}
 }
 
 func TestStatusReconciledForNonRunningPhase(t *testing.T) {
-	ctx := context.Background()
 	e, def := expanded(t)
 	build := stepByNode(t, e, def, "build")
 	setStep(t, e, build, PhaseBlocked, 0, "in_review")
-	_ = e.engine.Tick(ctx)
+	tick(t, e)
 	if got := stepByNode(t, e, def, "build"); got.Status != "blocked" {
 		t.Fatalf("status = %s, want blocked", got.Status)
 	}
@@ -593,5 +584,97 @@ func TestCloseLostFenceLeavesStatusAlone(t *testing.T) {
 	got, _ := e.q.GetIssue(ctx, def.ID)
 	if m, _ := readDefMeta(got); m.State != RunBlocked || got.Status != "blocked" {
 		t.Fatalf("state=%s status=%s, want the competing writer's blocked/blocked", m.State, got.Status)
+	}
+}
+
+func tick(t *testing.T, e *env) {
+	t.Helper()
+	if err := e.engine.Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+}
+
+func TestClockSkewInFlightTaskIsNeverRedispatched(t *testing.T) {
+	e, def := expanded(t)
+	tick(t, e)
+	plan := stepByNode(t, e, def, "plan")
+	m, _ := readStepMeta(plan)
+	// The stamp is an hour ahead of every task row (a DB clock behind the app's).
+	setDispatchedAt(t, e, plan, time.Now().Add(time.Hour))
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime})
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "running", "runtime_id": e.runtime})
+	tick(t, e)
+	if got, _ := readStepMeta(stepByNode(t, e, def, "plan")); got.Phase != PhaseRunning || got.Attempts != 0 || len(e.rec.enqueued) != 1 {
+		t.Fatalf("in-flight tasks must count regardless of since: phase=%s attempts=%d enqueued=%v", got.Phase, got.Attempts, e.rec.enqueued)
+	}
+}
+
+func TestTerminalTaskOlderThanStampIsIgnoredEvenWithSkew(t *testing.T) {
+	e, def := expanded(t)
+	tick(t, e)
+	plan := stepByNode(t, e, def, "plan")
+	m, _ := readStepMeta(plan)
+	setDispatchedAt(t, e, plan, time.Now().Add(time.Hour))
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "failed", "runtime_id": e.runtime})
+	tick(t, e)
+	if got, _ := readStepMeta(stepByNode(t, e, def, "plan")); got.Phase != PhaseRunning || got.Attempts != 0 || len(e.rec.enqueued) != 1 {
+		t.Fatalf("older failed task misread: phase=%s attempts=%d enqueued=%v", got.Phase, got.Attempts, e.rec.enqueued)
+	}
+}
+
+func TestQueuedTaskOlderThanStampIsInFlight(t *testing.T) {
+	e, def := expanded(t)
+	tick(t, e)
+	plan := stepByNode(t, e, def, "plan")
+	m, _ := readStepMeta(plan)
+	// A duplicate-pending dispatch leaves an older queued task; the stamp is past the grace.
+	e.fx.Task(t, m.AgentID, dbfx.Cols{"issue_id": uuidStr(plan), "status": "queued", "runtime_id": e.runtime, "created_at": dbfx.Raw("now() - interval '1 hour'")})
+	setDispatchedAt(t, e, plan, time.Now().Add(-10*time.Minute))
+	tick(t, e)
+	tick(t, e)
+	if len(e.rec.enqueued) != 1 {
+		t.Fatalf("an older queued task is in flight, got %v", e.rec.enqueued)
+	}
+}
+
+func TestRejectAfterReassignmentTargetsCurrentAssignee(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	build := stepByNode(t, e, def, "build")
+	build = setStep(t, e, build, PhaseBlocked, 0, "blocked")
+	other := e.agent(t, "Other")
+	e.fx.Exec(t, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, uuidStr(build), other)
+	build, _ = e.q.GetIssue(ctx, build.ID)
+	if ok, err := e.engine.ApplyEvent(ctx, build, EventReject, commentID(t, e, def)); err != nil || !ok {
+		t.Fatalf("reject = %v, %v", ok, err)
+	}
+	if len(e.rec.mentionAgents) != 1 || e.rec.mentionAgents[0] != other {
+		t.Fatalf("mention targets %v, want the current assignee %s", e.rec.mentionAgents, other)
+	}
+}
+
+// Two closers with different outcomes: ours (done) writes its status first, a
+// competitor closes the run as blocked and wins the fence. State and status
+// must still agree.
+func TestConcurrentClosersConvergeStatusWithState(t *testing.T) {
+	ctx := context.Background()
+	e, def := expanded(t)
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	dm, _ := readDefMeta(cur)
+	dm.State = RunBlocked
+	raw, _ := json.Marshal(dm)
+	e.engine.beforeClose = func() {
+		e.engine.beforeClose = nil
+		if _, err := e.q.SetWorkflowDefinitionState(ctx, db.SetWorkflowDefinitionStateParams{Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: "running"}); err != nil {
+			t.Fatal(err)
+		}
+		// The competitor's own status write lost to ours, so status is still done.
+	}
+	if err := e.engine.closeDefinition(ctx, def, RunDone, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if m, _ := readDefMeta(got); m.State != RunBlocked || got.Status != "blocked" {
+		t.Fatalf("state=%s status=%s, want blocked/blocked", m.State, got.Status)
 	}
 }

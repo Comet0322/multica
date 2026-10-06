@@ -46,11 +46,12 @@ func testPool(t *testing.T) *pgxpool.Pool {
 
 // recorder is a fake TaskEnqueuer and EventPublisher.
 type recorder struct {
-	mu       sync.Mutex
-	enqueued []string // "issue:<id>" or "mention:<id>:<comment>"
-	failNext error
-	updated  int
-	comments []db.Comment
+	mu            sync.Mutex
+	enqueued      []string // "issue:<id>" or "mention:<id>:<comment>"
+	failNext      error
+	updated       int
+	comments      []db.Comment
+	mentionAgents []string // agent ids passed to EnqueueTaskForMention
 }
 
 func (r *recorder) EnqueueTaskForIssue(_ context.Context, issue db.Issue, _ ...pgtype.UUID) (db.AgentTaskQueue, error) {
@@ -65,9 +66,10 @@ func (r *recorder) EnqueueTaskForIssue(_ context.Context, issue db.Issue, _ ...p
 	return db.AgentTaskQueue{}, nil
 }
 
-func (r *recorder) EnqueueTaskForMention(_ context.Context, issue db.Issue, _ pgtype.UUID, comment pgtype.UUID, _ service.RunOrigin) (db.AgentTaskQueue, error) {
+func (r *recorder) EnqueueTaskForMention(_ context.Context, issue db.Issue, agent pgtype.UUID, comment pgtype.UUID, _ service.RunOrigin) (db.AgentTaskQueue, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.mentionAgents = append(r.mentionAgents, util.UUIDToString(agent))
 	r.enqueued = append(r.enqueued, "mention:"+util.UUIDToString(issue.ID)+":"+util.UUIDToString(comment))
 	return db.AgentTaskQueue{}, nil
 }

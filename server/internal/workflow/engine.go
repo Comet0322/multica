@@ -167,6 +167,30 @@ func (e *Engine) observe(ctx context.Context, s stepRow, all []stepRow) error {
 	return e.reconcileStatus(ctx, s.issue, s.meta.Phase)
 }
 
+// clock returns the time used to stamp and age dispatches: the injected Now in
+// tests, otherwise the database clock, so stamps compare against task
+// created_at on one clock.
+func (e *Engine) clock(ctx context.Context) (time.Time, error) {
+	if e.Now != nil {
+		return e.Now(), nil
+	}
+	t, err := e.Q.WorkflowDBNow(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.Time, nil
+}
+
+// targetAgent is the agent a step's tasks belong to: the issue's current agent
+// assignee, else the agent recorded in the step metadata.
+func targetAgent(issue db.Issue, meta StepMeta) (pgtype.UUID, bool) {
+	if issue.AssigneeType.String == "agent" && issue.AssigneeID.Valid {
+		return issue.AssigneeID, true
+	}
+	id, err := util.ParseUUID(meta.AgentID)
+	return id, err == nil
+}
+
 // dispatchGrace is how long a step may sit in running with no agent task
 // before the dispatch is considered lost (a crash between claim and enqueue).
 const dispatchGrace = 90 * time.Second
@@ -174,12 +198,17 @@ const dispatchGrace = 90 * time.Second
 // runningEvent maps the latest agent task of a running step (created since its
 // latest dispatch) to an event, or "" while the task is queued or in flight.
 func (e *Engine) runningEvent(ctx context.Context, s stepRow) (Event, error) {
-	agentID := s.issue.AssigneeID
-	if s.issue.AssigneeType.String != "agent" || !agentID.Valid {
-		var perr error
-		if agentID, perr = util.ParseUUID(s.meta.AgentID); perr != nil {
-			return "", nil
-		}
+	agentID, ok := targetAgent(s.issue, s.meta)
+	if !ok {
+		return "", nil
+	}
+	// A pending or running task is in flight whenever it was created.
+	inFlight, err := e.Q.HasInFlightWorkflowTask(ctx, db.HasInFlightWorkflowTaskParams{IssueID: s.issue.ID, AgentID: agentID})
+	if err != nil {
+		return "", err
+	}
+	if inFlight {
+		return "", nil
 	}
 	since := pgtype.Timestamptz{Time: time.Unix(0, 0), Valid: true}
 	var dispatched time.Time
@@ -197,7 +226,11 @@ func (e *Engine) runningEvent(ctx context.Context, s stepRow) (Event, error) {
 		if ref.IsZero() { // legacy step without a stamp: use the last issue write
 			ref = s.issue.UpdatedAt.Time
 		}
-		if e.now().Sub(ref) <= dispatchGrace {
+		now, cerr := e.clock(ctx)
+		if cerr != nil {
+			return "", cerr
+		}
+		if now.Sub(ref) <= dispatchGrace {
 			return "", nil // dispatch still in flight
 		}
 		ev = EventDispatchLost
@@ -265,7 +298,11 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 	next := meta.Apply(rule)
 	for _, a := range rule.Actions {
 		if a == ActionDispatch || a == ActionDispatchWithFeedback {
-			next.DispatchedAt = e.now().UTC().Format(time.RFC3339Nano)
+			now, cerr := e.clock(ctx)
+			if cerr != nil {
+				return false, cerr
+			}
+			next.DispatchedAt = now.UTC().Format(time.RFC3339Nano)
 		}
 	}
 
@@ -322,9 +359,9 @@ func (e *Engine) ApplyEvent(ctx context.Context, step db.Issue, ev Event, trigge
 func (e *Engine) dispatch(ctx context.Context, issue db.Issue, meta StepMeta, trigger pgtype.UUID) error {
 	var err error
 	if trigger.Valid {
-		agentID, perr := util.ParseUUID(meta.AgentID)
-		if perr != nil {
-			return perr
+		agentID, ok := targetAgent(issue, meta)
+		if !ok {
+			return fmt.Errorf("step %s has no valid agent", meta.Node)
 		}
 		_, err = e.Tasks.EnqueueTaskForMention(ctx, issue, agentID, trigger, service.OriginDerived)
 	} else {
@@ -407,11 +444,15 @@ func (e *Engine) closeDefinition(ctx context.Context, def db.Issue, state RunSta
 		Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedState: string(RunRunning),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		// Fence lost: whoever changed the state also wrote the status that
-		// matches it, so restoring or overwriting anything here would be wrong.
-		return nil
+		// Fence lost: never restore an old status. Converge on the winner's
+		// state below, which also repairs a status a concurrent closer with a
+		// different outcome wrote.
+		return e.convergeStatus(ctx, def)
 	}
 	if err != nil {
+		return err
+	}
+	if err := e.convergeStatus(ctx, def); err != nil {
 		return err
 	}
 	if updated.Status != fresh.Status {
@@ -448,6 +489,37 @@ func (e *Engine) reopenDefinition(ctx context.Context, def db.Issue) error {
 		return err
 	}
 	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: cur.ID, WorkspaceID: cur.WorkspaceID, Status: "in_progress"})
+	if err != nil {
+		return err
+	}
+	e.Events.IssueUpdated(ctx, cur, updated)
+	return nil
+}
+
+// convergeStatus makes a closed definition's issue status match its state
+// (done => done, blocked => blocked).
+func (e *Engine) convergeStatus(ctx context.Context, def db.Issue) error {
+	cur, err := e.Q.GetIssue(ctx, def.ID)
+	if err != nil {
+		return err
+	}
+	dm, ok := readDefMeta(cur)
+	if !ok {
+		return nil
+	}
+	want := ""
+	switch dm.State {
+	case RunDone:
+		want = "done"
+	case RunBlocked:
+		want = "blocked"
+	default:
+		return nil
+	}
+	if cur.Status == want {
+		return nil
+	}
+	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: want})
 	if err != nil {
 		return err
 	}

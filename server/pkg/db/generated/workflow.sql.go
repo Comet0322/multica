@@ -220,6 +220,28 @@ func (q *Queries) FinishWorkflowExpansion(ctx context.Context, arg FinishWorkflo
 	return i, err
 }
 
+const hasInFlightWorkflowTask = `-- name: HasInFlightWorkflowTask :one
+SELECT EXISTS (
+    SELECT 1 FROM agent_task_queue
+    WHERE issue_id = $1 AND agent_id = $2
+      AND status IN ('queued', 'dispatched', 'running')
+) AS in_flight
+`
+
+type HasInFlightWorkflowTaskParams struct {
+	IssueID pgtype.UUID `json:"issue_id"`
+	AgentID pgtype.UUID `json:"agent_id"`
+}
+
+// True while a queued, dispatched or running task exists for the issue and
+// agent, regardless of when it was created.
+func (q *Queries) HasInFlightWorkflowTask(ctx context.Context, arg HasInFlightWorkflowTaskParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasInFlightWorkflowTask, arg.IssueID, arg.AgentID)
+	var in_flight bool
+	err := row.Scan(&in_flight)
+	return in_flight, err
+}
+
 const latestWorkflowTaskStatus = `-- name: LatestWorkflowTaskStatus :one
 SELECT status FROM agent_task_queue
 WHERE issue_id = $1 AND agent_id = $2
@@ -625,4 +647,17 @@ func (q *Queries) SetWorkflowDefinitionState(ctx context.Context, arg SetWorkflo
 		&i.DuplicateOfIssueID,
 	)
 	return i, err
+}
+
+const workflowDBNow = `-- name: WorkflowDBNow :one
+SELECT now()::timestamptz AS now
+`
+
+// The database clock, used to stamp dispatches so they compare against
+// agent_task_queue.created_at on the same clock.
+func (q *Queries) WorkflowDBNow(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, workflowDBNow)
+	var now pgtype.Timestamptz
+	err := row.Scan(&now)
+	return now, err
 }

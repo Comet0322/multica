@@ -122,3 +122,17 @@ UPDATE issue SET
 WHERE id = sqlc.arg('id') AND workspace_id = sqlc.arg('workspace_id')
   AND metadata->'workflow'->>'state' = sqlc.arg('expected_state')::text
 RETURNING *;
+
+-- name: WorkflowDBNow :one
+-- The database clock, used to stamp dispatches so they compare against
+-- agent_task_queue.created_at on the same clock.
+SELECT now()::timestamptz AS now;
+
+-- name: HasInFlightWorkflowTask :one
+-- True while a queued, dispatched or running task exists for the issue and
+-- agent, regardless of when it was created.
+SELECT EXISTS (
+    SELECT 1 FROM agent_task_queue
+    WHERE issue_id = sqlc.arg('issue_id') AND agent_id = sqlc.arg('agent_id')
+      AND status IN ('queued', 'dispatched', 'running')
+) AS in_flight;
