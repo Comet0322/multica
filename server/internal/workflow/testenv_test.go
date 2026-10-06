@@ -129,6 +129,9 @@ func (e *env) agent(t *testing.T, name string) string {
 func (e *env) flowIssue(t *testing.T, title, desc string) db.Issue {
 	t.Helper()
 	id := e.fx.Issue(t, title, dbfx.Cols{"description": desc, "status": "todo"})
+	// The raw fixture insert bypasses the workspace issue counter that
+	// IssueService.Create draws from; keep it ahead of the numbers in use.
+	e.fx.Exec(t, `UPDATE workspace SET issue_counter = GREATEST(issue_counter, (SELECT COALESCE(MAX(number), 0) FROM issue WHERE workspace_id = $1)) WHERE id = $1`, e.ws)
 	if e.label == "" {
 		e.label = e.fx.Insert(t, "issue_label", dbfx.Cols{"workspace_id": e.ws, "name": "flow:test", "resource_type": "issue", "color": "#888888"})
 	}
@@ -144,3 +147,9 @@ func (e *env) flowIssue(t *testing.T, title, desc string) db.Issue {
 }
 
 func dbfxCols(status string) dbfx.Cols { return dbfx.Cols{"status": status} }
+
+func uuidStr(i db.Issue) string { return util.UUIDToString(i.ID) }
+
+func dbListChildren(def db.Issue) db.ListWorkflowChildrenParams {
+	return db.ListWorkflowChildrenParams{WorkspaceID: def.WorkspaceID, ParentIssueID: def.ID}
+}

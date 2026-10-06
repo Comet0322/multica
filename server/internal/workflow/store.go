@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -92,3 +93,5 @@ func (e *Engine) writeMeta(ctx context.Context, issue db.Issue, v any) error {
 	}
 	return err
 }
+
+func uuidString(u pgtype.UUID) string { return util.UUIDToString(u) }

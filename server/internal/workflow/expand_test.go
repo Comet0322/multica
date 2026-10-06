@@ -1,0 +1,174 @@
+// server/internal/workflow/expand_test.go
+package workflow
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"testing"
+
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
+)
+
+func flowDoc(agentA, agentB string) string {
+	return "```yaml\nnodes:\n  - id: plan\n    agent: " + agentA + "\n    prompt: make a plan\n  - id: build\n    depends_on: [plan]\n    agent: " + agentB + "\n    prompt: build it\n    approval: true\n```"
+}
+
+func TestExpandCreatesBacklogStepsWithMetadata(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Ship it", flowDoc("Planner", "Coder"))
+
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	kids, err := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	if err != nil || len(kids) != 2 {
+		t.Fatalf("children = %d, err %v", len(kids), err)
+	}
+	byNode := map[string]StepMeta{}
+	for _, k := range kids {
+		m, ok := readStepMeta(k)
+		if !ok {
+			t.Fatalf("child %q has no workflow metadata", k.Title)
+		}
+		if k.Status != "backlog" || m.Phase != PhasePending || !k.AssigneeID.Valid {
+			t.Fatalf("child %q: status=%s phase=%s assignee valid=%v", k.Title, k.Status, m.Phase, k.AssigneeID.Valid)
+		}
+		if k.CreatorID != def.CreatorID || k.CreatorType != def.CreatorType {
+			t.Fatalf("child creator must equal the definition creator")
+		}
+		// Every step, including the first one created, must hang off the definition.
+		if k.ParentIssueID != def.ID {
+			t.Fatalf("step %q: parent_issue_id = %v, want the definition issue", m.Node, k.ParentIssueID)
+		}
+		byNode[m.Node] = m
+	}
+	if byNode["build"].Deps[0] != "plan" || !byNode["build"].Approval || byNode["plan"].MaxRetries != 1 {
+		t.Fatalf("metadata = %+v", byNode)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	dm, ok := readDefMeta(got)
+	if !ok || dm.State != RunRunning || dm.Total != 2 || got.Status != "in_progress" {
+		t.Fatalf("definition meta = %+v status=%s", dm, got.Status)
+	}
+	if len(e.rec.enqueued) != 0 {
+		t.Fatal("expansion must not dispatch anything")
+	}
+}
+
+func TestExpandInvalidYAMLCommentsOnceAndRecoversOnEdit(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Bad", flowDoc("Ghost", "Coder")) // Ghost does not exist
+
+	for i := 0; i < 3; i++ {
+		cur, _ := e.q.GetIssue(ctx, def.ID)
+		if err := e.engine.Expand(ctx, cur); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.rec.comments) != 1 || !strings.Contains(e.rec.comments[0].Content, `unknown agent "Ghost"`) {
+		t.Fatalf("want exactly one error comment naming the agent, got %d: %+v", len(e.rec.comments), e.rec.comments)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunInvalid {
+		t.Fatalf("state = %s, want invalid", dm.State)
+	}
+
+	e.agent(t, "Ghost")
+	e.fx.Exec(t, `UPDATE issue SET description = $2 WHERE id = $1`, uuidStr(def), flowDoc("Ghost", "Coder")+" ")
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	if err := e.engine.Expand(ctx, cur); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunRunning {
+		t.Fatalf("after the edit state = %s, want running", dm.State)
+	}
+}
+
+func TestExpandConcurrentClaimsCreateOneSet(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Race", flowDoc("Planner", "Coder"))
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = e.engine.Expand(ctx, def)
+		}()
+	}
+	wg.Wait()
+	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	if len(kids) != 2 {
+		t.Fatalf("concurrent expansion created %d step issues, want 2", len(kids))
+	}
+}
+
+func TestExpandDoesNotDuplicateAStepThatLostItsParent(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Parentless", flowDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	// The first step loses its parent link, then the claim goes stale so the
+	// definition is expanded again.
+	e.fx.Exec(t, `UPDATE issue SET parent_issue_id = NULL WHERE id = $1`, uuidStr(kids[0]))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	before := len(e.rec.comments)
+
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	if err := e.engine.Expand(ctx, cur); err != nil {
+		t.Fatal(err)
+	}
+	steps, _ := e.q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidStr(def)})
+	if len(steps) != 2 {
+		t.Fatalf("a parentless step must be recognised, not recreated: %d steps", len(steps))
+	}
+	if len(e.rec.comments) != before+1 || !strings.Contains(e.rec.comments[before].Content, "not linked") {
+		t.Fatal("the lost parent link must be surfaced in a comment")
+	}
+}
+
+func TestExpandResumesAfterCrashAndAdoptsOrphans(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Resume", flowDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	// Simulate a crash: first step lost its metadata, second step never created,
+	// and the claim is stale.
+	e.fx.Exec(t, `UPDATE issue SET metadata = '{}'::jsonb WHERE id = $1`, uuidStr(kids[0]))
+	e.fx.Exec(t, `DELETE FROM issue WHERE id = $1`, uuidStr(kids[1]))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+
+	cur, _ := e.q.GetIssue(ctx, def.ID)
+	if err := e.engine.Expand(ctx, cur); err != nil {
+		t.Fatal(err)
+	}
+	kids, _ = e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	if len(kids) != 2 {
+		t.Fatalf("after resume %d step issues, want 2 (orphan adopted, missing created)", len(kids))
+	}
+	for _, k := range kids {
+		if _, ok := readStepMeta(k); !ok {
+			t.Fatalf("step %q still lacks metadata", k.Title)
+		}
+	}
+}
