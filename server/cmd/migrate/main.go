@@ -362,6 +362,8 @@ var concurrentIndexCleanups = map[string]string{
 	"ext_0012_workflow_run_step_issue_index":        "idx_ext_workflow_run_step_issue",
 	"ext_0013_workflow_run_event_run_created_index": "idx_ext_workflow_run_event_run_created",
 	"ext_0014_task_ext_workflow_run_index":          "idx_agent_task_queue_ext_workflow_run",
+	// ext-workflow: serves GetLatestExtWorkflowTaskForStep and CancelExtWorkflowStepTasks.
+	"ext_0016_task_ext_workflow_step_index": "idx_agent_task_queue_ext_workflow_step",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction
