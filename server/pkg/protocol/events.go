@@ -222,3 +222,9 @@ const (
 	EventTelegramInstallationCreated = "telegram_installation:created"
 	EventTelegramInstallationRevoked = "telegram_installation:revoked"
 )
+
+// ext-workflow: run lifecycle event (fork namespace). Payload: {run_id,
+// issue_id, workflow_id}. Clients refetch the run and the parent issue.
+const (
+	EventExtWorkflowRunUpdated = "ext_workflow_run:updated"
+)
