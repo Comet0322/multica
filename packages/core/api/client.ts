@@ -2,6 +2,30 @@ import type { ZodType } from "zod";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
 import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSchema, PausedWakeupSchema, SystemWakeupSchema, WakeupRunSchema, WorkspaceSystemWakeupSchema } from "./schemas";
+// ext-workflow: workflow client imports (block marked at the end of the class).
+import type {
+  CreateExtWorkflowRequest,
+  DecideExtWorkflowStepRequest,
+  ExtWorkflow,
+  ExtWorkflowIssueRuns,
+  ExtWorkflowRun,
+  ExtWorkflowRunList,
+  UpdateExtWorkflowRequest,
+} from "../ext-workflows/types";
+import { ExtWorkflowValidationFailed } from "../ext-workflows/errors";
+import {
+  EMPTY_EXT_WORKFLOW,
+  EMPTY_EXT_WORKFLOW_ISSUE_RUNS,
+  EMPTY_EXT_WORKFLOW_LIST,
+  EMPTY_EXT_WORKFLOW_RUN,
+  EMPTY_EXT_WORKFLOW_RUN_LIST,
+  ExtWorkflowIssueRunsSchema,
+  ExtWorkflowListSchema,
+  ExtWorkflowRunListSchema,
+  ExtWorkflowRunSchema,
+  ExtWorkflowSchema,
+  ExtWorkflowValidationBodySchema,
+} from "../ext-workflows/schemas";
 import type { InboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { configStore } from "../config";
@@ -5227,4 +5251,97 @@ export class ApiClient {
       { endpoint: "POST /api/telegram/binding/redeem" },
     );
   }
+
+  // ext-workflow: workflow templates and runs (fork-only /api/ext/* endpoints).
+  async listExtWorkflows(): Promise<ExtWorkflow[]> {
+    const raw = await this.fetch<unknown>("/api/ext/workflows");
+    return parseWithFallback(raw, ExtWorkflowListSchema, EMPTY_EXT_WORKFLOW_LIST, {
+      endpoint: "GET /api/ext/workflows",
+    }).workflows as ExtWorkflow[];
+  }
+
+  async getExtWorkflow(id: string): Promise<ExtWorkflow> {
+    const raw = await this.fetch<unknown>(`/api/ext/workflows/${id}`);
+    return parseWithFallback(raw, ExtWorkflowSchema, EMPTY_EXT_WORKFLOW, {
+      endpoint: "GET /api/ext/workflows/:id",
+    }) as ExtWorkflow;
+  }
+
+  async createExtWorkflow(data: CreateExtWorkflowRequest): Promise<ExtWorkflow> {
+    const raw = await this.fetch<unknown>("/api/ext/workflows", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return parseWithFallback(raw, ExtWorkflowSchema, EMPTY_EXT_WORKFLOW, {
+      endpoint: "POST /api/ext/workflows",
+    }) as ExtWorkflow;
+  }
+
+  /** Throws ExtWorkflowValidationFailed on a 422 so the editor can map `errors` onto rows. */
+  async updateExtWorkflow(id: string, data: UpdateExtWorkflowRequest): Promise<ExtWorkflow> {
+    let raw: unknown;
+    try {
+      raw = await this.fetch<unknown>(`/api/ext/workflows/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        const parsed = ExtWorkflowValidationBodySchema.safeParse(err.body);
+        if (parsed.success) throw new ExtWorkflowValidationFailed(parsed.data.errors);
+      }
+      throw err;
+    }
+    return parseWithFallback(raw, ExtWorkflowSchema, EMPTY_EXT_WORKFLOW, {
+      endpoint: "PUT /api/ext/workflows/:id",
+    }) as ExtWorkflow;
+  }
+
+  async archiveExtWorkflow(id: string): Promise<void> {
+    await this.fetch(`/api/ext/workflows/${id}`, { method: "DELETE" });
+  }
+
+  async listExtWorkflowRuns(id: string, params?: { limit?: number; offset?: number }): Promise<ExtWorkflowRunList> {
+    const search = new URLSearchParams();
+    if (params?.limit !== undefined) search.set("limit", String(params.limit));
+    if (params?.offset !== undefined) search.set("offset", String(params.offset));
+    const qs = search.toString();
+    const raw = await this.fetch<unknown>(`/api/ext/workflows/${id}/runs${qs ? `?${qs}` : ""}`);
+    return parseWithFallback(raw, ExtWorkflowRunListSchema, EMPTY_EXT_WORKFLOW_RUN_LIST, {
+      endpoint: "GET /api/ext/workflows/:id/runs",
+    }) as ExtWorkflowRunList;
+  }
+
+  async getIssueExtWorkflowRuns(issueId: string): Promise<ExtWorkflowIssueRuns> {
+    const raw = await this.fetch<unknown>(`/api/ext/workflow-runs?issue_id=${encodeURIComponent(issueId)}`);
+    return parseWithFallback(raw, ExtWorkflowIssueRunsSchema, EMPTY_EXT_WORKFLOW_ISSUE_RUNS, {
+      endpoint: "GET /api/ext/workflow-runs",
+    }) as ExtWorkflowIssueRuns;
+  }
+
+  async getExtWorkflowRun(runId: string): Promise<ExtWorkflowRun> {
+    const raw = await this.fetch<unknown>(`/api/ext/workflow-runs/${runId}`);
+    return parseWithFallback(raw, ExtWorkflowRunSchema, EMPTY_EXT_WORKFLOW_RUN, {
+      endpoint: "GET /api/ext/workflow-runs/:id",
+    }) as ExtWorkflowRun;
+  }
+
+  async cancelExtWorkflowRun(runId: string): Promise<void> {
+    await this.fetch(`/api/ext/workflow-runs/${runId}/cancel`, { method: "POST" });
+  }
+
+  async decideExtWorkflowStep(
+    runId: string,
+    stepId: string,
+    body: DecideExtWorkflowStepRequest,
+  ): Promise<ExtWorkflowRun> {
+    const raw = await this.fetch<unknown>(`/api/ext/workflow-runs/${runId}/steps/${stepId}/decision`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, ExtWorkflowRunSchema, EMPTY_EXT_WORKFLOW_RUN, {
+      endpoint: "POST /api/ext/workflow-runs/:id/steps/:stepId/decision",
+    }) as ExtWorkflowRun;
+  }
+  // ext-workflow: end of block.
 }
