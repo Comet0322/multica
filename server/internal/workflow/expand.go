@@ -45,9 +45,13 @@ func hashDescription(d pgtype.Text) string {
 // Expand claims def, validates its YAML, and creates one backlog step issue
 // per node. It is safe to call concurrently and to re-run after a crash.
 //
-// The claim is fenced: its claimed_at string is a token that is renewed before
-// every write. An expander that stalls past claimStaleAfter and is reclaimed by
-// another one fails its next renewal and stops without writing anything.
+// The claim is fenced with a token (its claimed_at string) that is renewed
+// before each write, including immediately before a step is stamped. An
+// expander that stalls past claimStaleAfter and is reclaimed fails its next
+// renewal and stops. The fence is best effort, not a lock: a stall longer than
+// claimStaleAfter between the last renewal and the write it guards can still
+// leave a stray unstamped child or, in the worst case, a duplicate stamped
+// step. verifySteps rejects duplicates before the run starts.
 func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 	hash := hashDescription(def.Description)
 	if dm, ok := readDefMeta(def); ok && dm.State == RunInvalid && dm.ErrorHash == hash {
@@ -87,7 +91,7 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		}
 	}
 	if len(errs) > 0 {
-		return e.markInvalid(ctx, def, hash, errs)
+		return e.markInvalid(ctx, def, token, hash, errs)
 	}
 
 	// Steps are found by the run id in metadata, never by parent_issue_id, so a
@@ -156,15 +160,25 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		if err != nil {
 			return fmt.Errorf("create step %q: %w", n.ID, err)
 		}
+		// Renew again so a stall inside Create cannot stamp a node that another
+		// expander has already claimed and created. A lost claim leaves this
+		// child unstamped for the new owner to adopt or ignore.
+		if token, err = e.renewClaim(ctx, def, token); err != nil || token == "" {
+			return err
+		}
 		if err := e.writeMeta(ctx, res.Issue, meta); err != nil {
 			return err
 		}
 	}
 
-	// Exactly one stamped step per node must exist before the run starts. On a
-	// mismatch the definition stays 'expanding' so the next resume repairs it.
-	if err := e.verifySteps(ctx, def, parsed); err != nil {
+	// Exactly one stamped step per node must exist before the run starts. A
+	// mismatch cannot heal by retrying, so the definition is blocked visibly.
+	problem, err := e.verifySteps(ctx, def, parsed)
+	if err != nil {
 		return err
+	}
+	if problem != "" {
+		return e.markBlocked(ctx, def, token, problem)
 	}
 
 	// Verify parentage before declaring the run started: every step must hang
@@ -174,18 +188,15 @@ func (e *Engine) Expand(ctx context.Context, def db.Issue) error {
 		return err
 	}
 
+	if e.beforeStep != nil {
+		e.beforeStep("finish")
+	}
 	if token, err = e.renewClaim(ctx, def, token); err != nil || token == "" {
 		return err
 	}
-	running, _ := json.Marshal(DefMeta{State: RunRunning, Total: len(parsed.Nodes)})
-	prev, err := e.Q.FinishWorkflowExpansion(ctx, db.FinishWorkflowExpansionParams{
-		Value: running, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedClaimedAt: token,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // claim lost
-	}
-	if err != nil {
-		return err
+	prev, ok, err := e.finishFenced(ctx, def, token, DefMeta{State: RunRunning, Total: len(parsed.Nodes)})
+	if err != nil || !ok {
+		return err // ok=false: claim lost
 	}
 	// A crash between the running-meta write above and this status change leaves
 	// state=running with status=todo; the engine tick reconciles that.
@@ -213,11 +224,12 @@ func (e *Engine) renewClaim(ctx context.Context, def db.Issue, token string) (st
 	return next, nil
 }
 
-// verifySteps checks that each node has exactly one stamped step issue.
-func (e *Engine) verifySteps(ctx context.Context, def db.Issue, parsed Definition) error {
+// verifySteps checks that each node has exactly one stamped step issue and
+// returns a description of the inconsistency, or "" when the steps are sound.
+func (e *Engine) verifySteps(ctx context.Context, def db.Issue, parsed Definition) (string, error) {
 	steps, err := e.Q.ListWorkflowSteps(ctx, db.ListWorkflowStepsParams{WorkspaceID: def.WorkspaceID, Run: uuidString(def.ID)})
 	if err != nil {
-		return err
+		return "", err
 	}
 	seen := map[string]int{}
 	for _, s := range steps {
@@ -225,15 +237,16 @@ func (e *Engine) verifySteps(ctx context.Context, def db.Issue, parsed Definitio
 			seen[m.Node]++
 		}
 	}
+	var problems []string
 	for _, n := range parsed.Nodes {
 		if seen[n.ID] != 1 {
-			return fmt.Errorf("workflow %s: node %q has %d step issues, want 1", uuidString(def.ID), n.ID, seen[n.ID])
+			problems = append(problems, fmt.Sprintf("node %q has %d step issues (expected 1)", n.ID, seen[n.ID]))
 		}
 	}
 	if len(steps) != len(parsed.Nodes) {
-		return fmt.Errorf("workflow %s: %d step issues, want %d", uuidString(def.ID), len(steps), len(parsed.Nodes))
+		problems = append(problems, fmt.Sprintf("found %d step issues for %d nodes", len(steps), len(parsed.Nodes)))
 	}
-	return nil
+	return strings.Join(problems, "; "), nil
 }
 
 // warnOnMissingParents comments on def when any step issue of the run is not
@@ -258,11 +271,48 @@ func (e *Engine) warnOnMissingParents(ctx context.Context, def db.Issue) error {
 	return err
 }
 
-func (e *Engine) markInvalid(ctx context.Context, def db.Issue, hash string, errs []string) error {
-	if err := e.writeMeta(ctx, def, DefMeta{State: RunInvalid, ErrorHash: hash}); err != nil {
+// finishFenced writes terminal-for-now metadata only while the claim is still
+// held. It reports false when the claim was lost.
+func (e *Engine) finishFenced(ctx context.Context, def db.Issue, token string, m DefMeta) (db.Issue, bool, error) {
+	raw, _ := json.Marshal(m)
+	row, err := e.Q.FinishWorkflowExpansion(ctx, db.FinishWorkflowExpansionParams{
+		Value: raw, ID: def.ID, WorkspaceID: def.WorkspaceID, ExpectedClaimedAt: token,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return db.Issue{}, false, nil
+	}
+	return row, err == nil, err
+}
+
+func (e *Engine) markInvalid(ctx context.Context, def db.Issue, token, hash string, errs []string) error {
+	token, err := e.renewClaim(ctx, def, token)
+	if err != nil || token == "" {
 		return err
 	}
-	_, err := e.systemComment(ctx, def, "Workflow not started. Fix these problems, then edit the description:\n- "+strings.Join(errs, "\n- "))
+	if _, ok, err := e.finishFenced(ctx, def, token, DefMeta{State: RunInvalid, ErrorHash: hash}); err != nil || !ok {
+		return err
+	}
+	_, err = e.systemComment(ctx, def, "Workflow not started. Fix these problems, then edit the description:\n- "+strings.Join(errs, "\n- "))
+	return err
+}
+
+// markBlocked takes an inconsistent definition out of the retry loop: it stores
+// state=blocked, moves the issue to blocked and explains why in one comment.
+func (e *Engine) markBlocked(ctx context.Context, def db.Issue, token, problem string) error {
+	token, err := e.renewClaim(ctx, def, token)
+	if err != nil || token == "" {
+		return err
+	}
+	prev, ok, err := e.finishFenced(ctx, def, token, DefMeta{State: RunBlocked})
+	if err != nil || !ok {
+		return err
+	}
+	updated, err := e.Q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: def.ID, WorkspaceID: def.WorkspaceID, Status: "blocked"})
+	if err != nil {
+		return err
+	}
+	e.Events.IssueUpdated(ctx, prev, updated)
+	_, err = e.systemComment(ctx, def, "Workflow blocked: its step issues are inconsistent ("+problem+"). Delete the stray step issues or recreate the workflow.")
 	return err
 }
 

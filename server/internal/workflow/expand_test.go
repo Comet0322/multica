@@ -255,3 +255,54 @@ func TestExpandResumesAfterCrashAndAdoptsOrphans(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandBlocksADefinitionWithDuplicateSteps(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "Dupes", flowDoc("Planner", "Coder"))
+	if err := e.engine.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	kids, _ := e.q.ListWorkflowChildren(ctx, dbListChildren(def))
+	// Two stamped steps for the same node, claim stale, status todo.
+	e.fx.Exec(t, `UPDATE issue SET metadata = (SELECT metadata FROM issue WHERE id = $1) WHERE id = $2`, uuidStr(kids[0]), uuidStr(kids[1]))
+	e.fx.Exec(t, `UPDATE issue SET status = 'todo', metadata = '{"workflow":{"state":"expanding","claimed_at":"2000-01-01T00:00:00Z"}}'::jsonb WHERE id = $1`, uuidStr(def))
+	before := len(e.rec.comments)
+
+	for i := 0; i < 2; i++ {
+		if err := e.engine.ExpandCandidates(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunBlocked || got.Status != "blocked" {
+		t.Fatalf("state=%s status=%s, want blocked/blocked", dm.State, got.Status)
+	}
+	if n := len(e.rec.comments) - before; n != 1 {
+		t.Fatalf("want exactly one explanatory comment, got %d", n)
+	}
+}
+
+func TestExpandLosingTheClaimAtFinishWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.agent(t, "Planner")
+	e.agent(t, "Coder")
+	def := e.flowIssue(t, "LateLoss", flowDoc("Planner", "Coder"))
+	a := &Engine{Q: e.q, Issues: e.engine.Issues, Tasks: e.rec, Events: e.rec}
+	a.beforeStep = func(node string) {
+		if node == "finish" {
+			// Another expander takes over before A's final renewal.
+			e.fx.Exec(t, `UPDATE issue SET metadata = jsonb_set(metadata, '{workflow,claimed_at}', '"2001-01-01T00:00:00Z"') WHERE id = $1`, uuidStr(def))
+		}
+	}
+	if err := a.Expand(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.q.GetIssue(ctx, def.ID)
+	if dm, _ := readDefMeta(got); dm.State != RunExpanding || got.Status != "todo" {
+		t.Fatalf("state=%s status=%s, want untouched expanding/todo", dm.State, got.Status)
+	}
+}
