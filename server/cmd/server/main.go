@@ -31,6 +31,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/scheduler"
 	"github.com/multica-ai/multica/server/internal/selfhosttelemetry"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/workflow"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/featureflag"
 	"github.com/multica-ai/multica/server/pkg/llm"
@@ -726,6 +727,10 @@ func main() {
 	// claim until the cache TTL expires.
 	taskSvc, autopilotSvc := backgroundServices(h)
 	registerAutopilotListeners(bus, autopilotSvc)
+	// The workflow engine reuses the router's shared TaskService for the same
+	// reason as above: enqueue must bump the EmptyClaim cache version.
+	workflowEngine := &workflow.Engine{Q: queries, Issues: h.IssueService, Tasks: taskSvc, Events: h.WorkflowEvents()}
+	workflow.RegisterListeners(bus, workflowEngine)
 
 	// Construct a LivenessStore that mirrors the one wired into the HTTP
 	// handler. Both the heartbeat write path (handler) and the sweeper read
@@ -830,6 +835,9 @@ func main() {
 	}
 	if err := schedulerMgr.Register(scheduler.AutopilotScheduleDispatchJob(pool, queries, autopilotSvc)); err != nil {
 		slog.Warn("scheduler: failed to register autopilot_schedule_dispatch job", "error", err)
+	}
+	if err := schedulerMgr.Register(scheduler.WorkflowTickJob(workflowEngine)); err != nil {
+		slog.Warn("scheduler: failed to register workflow_tick job", "error", err)
 	}
 	// Manifest-declared Plugin schedules share the same durable lease and retry
 	// machinery. The job is inert while plugins_v1 is disabled.
