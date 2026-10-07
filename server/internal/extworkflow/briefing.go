@@ -307,8 +307,11 @@ func (e *Engine) onBehalfNames(ctx context.Context, events []db.ExtWorkflowRunEv
 func timeline(snap *RunSnapshot, people map[pgtype.UUID]string, events []db.ExtWorkflowRunEvent) []string {
 	var out []string
 	for i, ev := range events {
-		if ev.Kind == RunEventEscalated && i > 0 && escalateDecision(events[i-1], ev.StepID) {
+		if ev.Kind == RunEventEscalated && i > 0 && decisionOf(events[i-1], ev.StepID, ActionEscalate) {
 			continue // the decision line already names the escalation and its reason
+		}
+		if ev.Kind == RunEventRewind && i > 0 && decisionOf(events[i-1], ev.StepID, ActionRewind) {
+			continue // the decision line already names the target and what was reset
 		}
 		key, _ := snap.KeyOf(ev.StepID)
 		p := eventPayload(ev)
@@ -316,6 +319,18 @@ func timeline(snap *RunSnapshot, people map[pgtype.UUID]string, events []db.ExtW
 		switch ev.Kind {
 		case RunEventDecision:
 			line = fmt.Sprintf("%s decided `%s`", ev.ActorType, str(p["action"]))
+			if to := str(p["to"]); to != "" && str(p["action"]) == string(ActionRewind) {
+				line += fmt.Sprintf(" to `%s`", to)
+				if i+1 < len(events) && events[i+1].Kind == RunEventRewind && events[i+1].StepID == ev.StepID {
+					if reset, ok := eventPayload(events[i+1])["reset"].([]any); ok && len(reset) > 0 {
+						keys := make([]string, 0, len(reset))
+						for _, k := range reset {
+							keys = append(keys, str(k))
+						}
+						line += " (resets " + strings.Join(keys, ", ") + ")"
+					}
+				}
+			}
 			if ev.OnBehalfOf.Valid {
 				line += " on behalf of " + firstNonEmpty(oneLine(people[ev.OnBehalfOf]), "a person")
 			}
@@ -344,9 +359,9 @@ func timeline(snap *RunSnapshot, people map[pgtype.UUID]string, events []db.ExtW
 	return out
 }
 
-// escalateDecision reports whether ev is an escalate decision on step.
-func escalateDecision(ev db.ExtWorkflowRunEvent, step pgtype.UUID) bool {
-	return ev.Kind == RunEventDecision && ev.StepID == step && str(eventPayload(ev)["action"]) == string(ActionEscalate)
+// decisionOf reports whether ev is a decision with action on step.
+func decisionOf(ev db.ExtWorkflowRunEvent, step pgtype.UUID, action DecisionAction) bool {
+	return ev.Kind == RunEventDecision && ev.StepID == step && str(eventPayload(ev)["action"]) == string(action)
 }
 
 func firstNonEmpty(values ...string) string {

@@ -44,7 +44,7 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { RunStatusBadge, StepStatusIcon, useStepStatusLabel } from "../../ext-workflows/components/status";
-import { errorStatus, eventDetail, eventKey, rewindTargets } from "../../ext-workflows/run-utils";
+import { errorStatus, eventKey, rewindTargets, timelineEntries } from "../../ext-workflows/run-utils";
 import { isActiveRunStatus } from "../../ext-workflows/status-keys";
 import { useT, useTimeAgo } from "../../i18n";
 import { AppLink } from "../../navigation";
@@ -494,9 +494,8 @@ function Timeline({ events }: { events: ExtWorkflowRun["events"] }) {
   }
   return (
     <ol className="mt-1 max-h-56 space-y-1.5 overflow-y-auto border-l pl-3">
-      {events.map((event) => {
+      {timelineEntries(events).map(({ event, detail }) => {
         const kind = eventKey(event.kind);
-        const detail = eventDetail(event.payload);
         const by =
           event.actor_type === "agent" || event.actor_type === "member"
             ? event.actor_id

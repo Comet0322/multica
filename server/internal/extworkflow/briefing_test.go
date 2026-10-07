@@ -424,3 +424,20 @@ func TestBuildBriefingNamesTheMemberADecisionWasMadeFor(t *testing.T) {
 	}
 	mustContain(t, text, "agent decided `redo` on behalf of Workflow User: Use the new tokens.")
 }
+
+func TestTimelineListsARewindOnce(t *testing.T) {
+	useID := util.MustParseUUID("00000000-0000-0000-0000-0000000000c1")
+	snap := &RunSnapshot{Steps: []db.ExtWorkflowRunStep{{ID: useID, NodeKey: "use"}}}
+	at := pgtype.Timestamptz{Time: time.Date(2026, 10, 7, 10, 0, 0, 0, time.UTC), Valid: true}
+	ev := func(kind, payload string) db.ExtWorkflowRunEvent {
+		return db.ExtWorkflowRunEvent{StepID: useID, Kind: kind, ActorType: "agent", Payload: []byte(payload), CreatedAt: at}
+	}
+	got := timeline(snap, nil, []db.ExtWorkflowRunEvent{
+		ev(RunEventDecision, `{"action":"rewind","to":"base","feedback":"produce base v2"}`),
+		ev(RunEventRewind, `{"from":"use","to":"base","reset":["base","use"],"rewinds_used":1}`),
+	})
+	want := []string{"2026-10-07 10:00 · `use` · agent decided `rewind` to `base` (resets base, use): produce base v2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("timeline\n got %q\nwant %q", got, want)
+	}
+}

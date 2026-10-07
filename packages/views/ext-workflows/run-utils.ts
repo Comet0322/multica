@@ -62,6 +62,41 @@ export function eventDetail(payload: Record<string, unknown> | null | undefined)
   return null;
 }
 
+interface EventLike {
+  kind: string;
+  step_id: string | null;
+  payload: Record<string, unknown> | null | undefined;
+}
+
+/** The event a decision records right after itself, when the decision has one. */
+const DECISION_FOLLOW_UP: Record<string, string> = { rewind: "rewind", escalate: "escalated" };
+
+/**
+ * Timeline rows, each act listed once: a rewind or escalate decision is folded
+ * into the rewind/escalated event it produced, which keeps the decision's text.
+ */
+export function timelineEntries<E extends EventLike>(events: readonly E[]): { event: E; detail: string | null }[] {
+  const out: { event: E; detail: string | null }[] = [];
+  let carried: string | null = null;
+  events.forEach((event, i) => {
+    const next = events[i + 1];
+    const action = event.payload?.action;
+    if (
+      event.kind === "decision" &&
+      typeof action === "string" &&
+      next &&
+      next.step_id === event.step_id &&
+      next.kind === DECISION_FOLLOW_UP[action]
+    ) {
+      carried = eventDetail(event.payload);
+      return;
+    }
+    out.push({ event, detail: eventDetail(event.payload) ?? carried });
+    carried = null;
+  });
+  return out;
+}
+
 /** HTTP status of an ApiError-like value, without importing the class (it may be mocked). */
 export function errorStatus(err: unknown): number | undefined {
   if (err && typeof err === "object" && "status" in err) {
