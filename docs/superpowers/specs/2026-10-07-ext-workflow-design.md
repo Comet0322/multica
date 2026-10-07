@@ -373,7 +373,7 @@ feedback: |
 ```
 ````
 
-- Parsed as YAML with `KnownFields(true)`. One block per comment; a second block is a protocol error.
+- Parsed as YAML with `KnownFields(true)`. One block per comment; a second block is a protocol error. A one-line unquoted `reason` or `feedback` containing `: ` is read as the whole rest of the line, because agents write prose unquoted; `action`, `step` and `to` stay strict.
 - Required fields:
   - `redo` and `rewind` need `feedback`;
   - `escalate`, `abort` and `request-rewind` need `reason`;

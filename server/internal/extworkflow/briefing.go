@@ -605,6 +605,7 @@ func (b briefing) renderDecisionFormat(w *strings.Builder, allowed []DecisionAct
 		w.WriteString("  <what must change>\n")
 	}
 	w.WriteString("```\n\n")
+	w.WriteString("Wrap a free-text value in double quotes (`reason: \"...\"`), especially when it contains a colon.\n\n")
 	w.WriteString("Allowed now:\n\n")
 	for _, a := range allowed {
 		fmt.Fprintf(w, "- `%s`: %s\n", a, actionHelp[a])

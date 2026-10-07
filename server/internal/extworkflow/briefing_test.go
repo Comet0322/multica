@@ -363,3 +363,12 @@ func TestTimelineListsAnEscalationOnce(t *testing.T) {
 		t.Fatalf("timeline\n got %q\nwant %q", got, want)
 	}
 }
+
+func TestRenderDecisionFormatAsksToQuoteFreeText(t *testing.T) {
+	stepOut := briefing{Kind: KindStep, Def: briefDef(), Focus: "build", Steps: briefSteps(briefStep{Key: "build", Title: "Build", Status: "running", Attempts: 1, MaxAttempts: 3})}.render()
+	for name, out := range map[string]string{"step": stepOut, "supervisor": supervisorBriefing(KindReview, 1, 0).render()} {
+		if !strings.Contains(out, "Wrap a free-text value in double quotes") {
+			t.Errorf("%s briefing does not ask to quote free text\n---\n%s", name, out)
+		}
+	}
+}

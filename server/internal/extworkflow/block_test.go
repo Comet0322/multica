@@ -115,6 +115,30 @@ func TestParseBlock(t *testing.T) {
 			wantErr:   ErrIllegalDecision,
 		},
 		{
+			name:      "unquoted reason containing a colon is taken whole",
+			markdown:  "```ext-workflow\naction: escalate\nreason: Failed again on attempt 2/2 (ended without finishing): the step needs a person\n```",
+			wantFound: true,
+			want:      Decision{Action: ActionEscalate, Reason: "Failed again on attempt 2/2 (ended without finishing): the step needs a person"},
+		},
+		{
+			name:      "unquoted feedback containing a colon is taken whole",
+			markdown:  "```ext-workflow\naction: redo\nfeedback: Fix this: the title is wrong. Also: \"quote\" it\n```",
+			wantFound: true,
+			want:      Decision{Action: ActionRedo, Feedback: `Fix this: the title is wrong. Also: "quote" it`},
+		},
+		{
+			name:      "quoted reason with a colon still parses",
+			markdown:  "```ext-workflow\naction: abort\nreason: \"note: stop\"\n```",
+			wantFound: true,
+			want:      Decision{Action: ActionAbort, Reason: "note: stop"},
+		},
+		{
+			name:      "a colon in the action value stays invalid",
+			markdown:  "```ext-workflow\naction: approve: now\n```",
+			wantFound: true,
+			wantErr:   ErrBlockInvalid,
+		},
+		{
 			name:     "a fenced example inside a longer fence is not a block",
 			markdown: "````markdown\n```ext-workflow\naction: approve\n```\n````",
 		},

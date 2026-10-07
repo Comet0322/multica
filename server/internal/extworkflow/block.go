@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -50,7 +51,7 @@ func ParseBlock(markdown string) (Decision, bool, error) {
 		return Decision{}, true, ErrBlockUnclosed
 	}
 	var raw blockFields
-	dec := yaml.NewDecoder(strings.NewReader(bodies[0]))
+	dec := yaml.NewDecoder(strings.NewReader(quoteFreeText(bodies[0])))
 	dec.KnownFields(true)
 	if err := dec.Decode(&raw); err != nil {
 		if errors.Is(err, io.EOF) {
@@ -69,6 +70,31 @@ func ParseBlock(markdown string) (Decision, bool, error) {
 		return d, true, err
 	}
 	return d, true, nil
+}
+
+// freeTextFields are the block fields that hold prose rather than a keyword.
+var freeTextFields = []string{"reason", "feedback"}
+
+// quoteFreeText quotes a one-line plain reason or feedback that contains
+// ": ". Agents write such prose unquoted, and YAML would read the colon as a
+// nested mapping; the whole rest of the line is the value. Keyword fields
+// (action, step, to) stay strict.
+func quoteFreeText(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		for _, field := range freeTextFields {
+			rest, ok := strings.CutPrefix(line, field+":")
+			if !ok {
+				continue
+			}
+			value := strings.TrimSpace(rest)
+			if !(strings.Contains(value, ": ") || strings.HasSuffix(value, ":")) || strings.ContainsAny(value[:1], `"'|>`) {
+				continue
+			}
+			lines[i] = field + ": " + strconv.Quote(value)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ValidateDecision checks the fields each action requires (spec §6.3).

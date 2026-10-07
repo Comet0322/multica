@@ -129,7 +129,7 @@ Where the comment goes decides who may post it:
 | Supervisor, handling a conversation turn | The parent issue, with `step` | All except `request-rewind`, if the commenting person may decide |
 | Step agent, while its step runs | Its own child issue | `request-rewind` only |
 
-A comment may carry one block, and unknown fields are rejected. An invalid block gets a reply on the same issue explaining the error, and a **Protocol error** entry in the timeline. A block from a person is ignored; people decide through the run panel.
+A comment may carry one block, and unknown fields are rejected. A one-line `reason` or `feedback` is read to the end of the line, even when it contains a colon; other values follow YAML rules. An invalid block gets a reply on the same issue explaining the error, and a **Protocol error** entry in the timeline. A block from a person is ignored; people decide through the run panel.
 
 A block counts as protocol, not as a normal comment, only on a workflow's parent or step issues while the engine is on. It wakes no agent there. On any other issue the fence is plain text.
 
