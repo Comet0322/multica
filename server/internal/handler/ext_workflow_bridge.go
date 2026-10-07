@@ -79,9 +79,12 @@ func (h *Handler) startExtWorkflowRun(ctx context.Context, issue db.Issue, actor
 }
 
 // notifyExtWorkflowParentChanged lets the engine stop a run whose parent was
-// cancelled or reassigned away from its workflow.
+// cancelled or reassigned away from its workflow. It does not look at the
+// previous assignee: a run left active while the engine was off must be
+// cancelled before the next workflow assignment starts its run. Without an
+// active run OnParentChanged is one indexed lookup.
 func (h *Handler) notifyExtWorkflowParentChanged(ctx context.Context, prev db.Issue, statusChanged, assigneeChanged bool) {
-	if !h.ExtWorkflow.Enabled() || prev.AssigneeType.String != "workflow" || (!statusChanged && !assigneeChanged) {
+	if !h.ExtWorkflow.Enabled() || (!statusChanged && !assigneeChanged) {
 		return
 	}
 	if err := h.ExtWorkflow.OnParentChanged(ctx, prev.ID); err != nil {

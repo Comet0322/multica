@@ -240,6 +240,38 @@ func TestExtWorkflowReassignToAnAgentCancelsTheRun(t *testing.T) {
 	}
 }
 
+// A run left active while the engine was off (the parent was reassigned to
+// an agent with no hook running) must not block the next workflow
+// assignment: the parent-change hook cancels it whatever the previous
+// assignee type was, so the new run starts in the same request.
+func TestExtWorkflowStaleRunDoesNotBlockANewAssignment(t *testing.T) {
+	requireExtWorkflowDB(t)
+	engine := withExtWorkflowEngine(t)
+	wfA := hookWorkflow(t, "")
+	wfB := hookWorkflow(t, "")
+	agent := createHandlerTestAgent(t, t.Name()+"-agent", nil)
+	var issue IssueResponse
+	createWorkflowIssue(t, wfA, "todo").Want(http.StatusCreated).JSON(&issue)
+	dbfx.Cleanup(t, `DELETE FROM agent_task_queue WHERE issue_id = $1`, issue.ID)
+
+	setExtWorkflowEngine(t, nil)
+	toAgent := withURLParam(newRequest("PUT", "/api/issues/"+issue.ID, map[string]any{"assignee_type": "agent", "assignee_id": agent}), "id", issue.ID)
+	testutil.Call(t, testHandler.UpdateIssue, toAgent).Want(http.StatusOK)
+	if got := activeRunStatus(t, issue.ID); got != "running" {
+		t.Fatalf("precondition: run status = %q, want a stale running run", got)
+	}
+
+	setExtWorkflowEngine(t, engine)
+	toB := withURLParam(newRequest("PUT", "/api/issues/"+issue.ID, map[string]any{"assignee_type": "workflow", "assignee_id": wfB}), "id", issue.ID)
+	testutil.Call(t, testHandler.UpdateIssue, toB).Want(http.StatusOK)
+	if n := dbfx.Count(t, `SELECT count(*) FROM ext_workflow_run WHERE issue_id=$1 AND workflow_id=$2 AND status='cancelled'`, issue.ID, wfA); n != 1 {
+		t.Fatalf("stale run not cancelled (%d)", n)
+	}
+	if n := dbfx.Count(t, `SELECT count(*) FROM ext_workflow_run WHERE issue_id=$1 AND workflow_id=$2 AND status IN ('running','waiting_human')`, issue.ID, wfB); n != 1 {
+		t.Fatalf("want exactly one active run of the new workflow, got %d", n)
+	}
+}
+
 // Moving a finished workflow issue back through backlog starts a fresh run:
 // the one-active-run index only covers active runs.
 func TestExtWorkflowRerunAfterDoneStartsAFreshRun(t *testing.T) {
