@@ -149,6 +149,23 @@ describe("NodeEditor row editing", () => {
     expect(within(node(1)).queryByLabelText("Prompt")).not.toBeInTheDocument();
   });
 
+  it("shows a cleared max attempts as empty, never NaN, and still flags it invalid", async () => {
+    const onRows = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderWithI18n(<Harness initial={CHAIN} onRows={onRows} />);
+    const input = within(node(1)).getByLabelText("Max attempts");
+    await userEvent.clear(input);
+    // The row keeps the unparseable value so validation still rejects it.
+    expect(Number.isNaN(onRows.mock.lastCall![0][0].max_attempts)).toBe(true);
+    expect(input).toHaveValue(null);
+    expect(input).toHaveDisplayValue("");
+    await userEvent.type(input, "5");
+    expect(input).toHaveValue(5);
+    expect(onRows.mock.lastCall![0][0].max_attempts).toBe(5);
+    expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(/NaN/);
+    consoleError.mockRestore();
+  });
+
   it("warns when a row's agent is archived", () => {
     renderWithI18n(<Harness initial={[mk("a", "plan", "Plan", [], { agent_id: "ag-old" })]} />);
     expect(

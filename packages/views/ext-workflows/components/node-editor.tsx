@@ -268,7 +268,9 @@ function NodeRowEditor({
             type="number"
             min={1}
             max={10}
-            value={row.max_attempts}
+            // A cleared input parses to NaN; keep it in the row for validation
+            // but never hand NaN to the controlled input.
+            value={Number.isNaN(row.max_attempts) ? "" : row.max_attempts}
             disabled={readOnly}
             aria-invalid={hasError("max_attempts") || undefined}
             onChange={(e) => onPatch({ max_attempts: e.target.valueAsNumber })}
