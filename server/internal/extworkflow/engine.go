@@ -96,6 +96,10 @@ type RunSnapshot struct {
 	ByKey  map[string]db.ExtWorkflowRunStep
 	Active []db.AgentTaskQueue
 	State  RunState
+	// invokable is the result of the permission check, resolved before the run
+	// was locked so no pool connection is needed under the lock. An agent
+	// missing from it is not dispatchable (fail closed).
+	invokable map[pgtype.UUID]bool
 }
 
 // KeyOf maps a step id to its node key.
@@ -225,6 +229,12 @@ type deriveFunc func(ctx context.Context, q *db.Queries, snap *RunSnapshot) ([]s
 // the caller's transaction and defers notifications to the caller's
 // ExtAfterCommit collector.
 func (e *Engine) advance(ctx context.Context, ext pgx.Tx, runID pgtype.UUID, derive deriveFunc) error {
+	// The invoke gate queries through the pool: resolve it before the run row
+	// is locked (the squad enqueue pattern), never under the lock.
+	invokable, err := e.resolveInvokable(ctx, ext, runID)
+	if err != nil {
+		return err
+	}
 	tx := ext
 	if tx == nil {
 		var err error
@@ -245,6 +255,7 @@ func (e *Engine) advance(ctx context.Context, ext pgx.Tx, runID pgtype.UUID, der
 	if err != nil {
 		return err
 	}
+	snap.invokable = invokable
 	evs, err := derive(ctx, q, snap)
 	if err != nil {
 		return err
@@ -374,15 +385,64 @@ func isDispatchFailure(err error) bool {
 		errors.Is(err, service.ErrExtTaskSlotBusy) || errors.Is(err, service.ErrAttributionFailClosed)
 }
 
-func (e *Engine) checkInvoke(ctx context.Context, run db.ExtWorkflowRun, agentID pgtype.UUID) error {
+// resolveInvokable runs the invoke gate for every agent of a run's definition
+// (its nodes and the supervisor), outside any run lock. A run that is not
+// active dispatches nothing, so it is not checked.
+func (e *Engine) resolveInvokable(ctx context.Context, ext pgx.Tx, runID pgtype.UUID) (map[pgtype.UUID]bool, error) {
+	if e.access == nil {
+		return nil, nil
+	}
+	q := e.q
+	if ext != nil {
+		q = q.WithTx(ext)
+	}
+	run, err := q.GetExtWorkflowRun(ctx, runID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrRunNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load run: %w", err)
+	}
+	if !RunStatus(run.Status).Active() {
+		return nil, nil
+	}
+	var def Definition
+	if err := json.Unmarshal(run.Definition, &def); err != nil {
+		return nil, fmt.Errorf("decode run definition: %w", err)
+	}
+	return e.invokableAgents(ctx, run.WorkspaceID, run.TriggeredByType, run.TriggeredByID, def)
+}
+
+// invokableAgents applies the invoke gate to each distinct agent of def.
+func (e *Engine) invokableAgents(ctx context.Context, workspaceID pgtype.UUID, actorType string, actorID pgtype.UUID, def Definition) (map[pgtype.UUID]bool, error) {
+	ids := []string{def.SupervisorAgentID}
+	for _, n := range def.Nodes {
+		ids = append(ids, n.AgentID)
+	}
+	out := make(map[pgtype.UUID]bool, len(ids))
+	for _, raw := range ids {
+		id, err := util.ParseUUID(raw)
+		if err != nil {
+			continue // dispatch reports the invalid agent
+		}
+		if _, done := out[id]; done {
+			continue
+		}
+		ok, err := e.access.CanInvokeAgent(ctx, workspaceID, actorType, actorID, id)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = ok
+	}
+	return out, nil
+}
+
+// checkInvoke reads the pre-resolved gate; it never queries.
+func (e *Engine) checkInvoke(snap *RunSnapshot, agentID pgtype.UUID) error {
 	if e.access == nil {
 		return nil
 	}
-	ok, err := e.access.CanInvokeAgent(ctx, run.WorkspaceID, run.TriggeredByType, run.TriggeredByID, agentID)
-	if err != nil {
-		return err
-	}
-	if !ok {
+	if !snap.invokable[agentID] {
 		return ErrAgentNotInvokable
 	}
 	return nil
@@ -401,7 +461,7 @@ func (e *Engine) enqueueStep(ctx context.Context, tx pgx.Tx, snap *RunSnapshot, 
 	if err != nil {
 		return fmt.Errorf("%w: node %q has no valid agent", ErrAgentNotInvokable, key)
 	}
-	if err := e.checkInvoke(ctx, snap.Run, agentID); err != nil {
+	if err := e.checkInvoke(snap, agentID); err != nil {
 		return err
 	}
 	note := fmt.Sprintf("Workflow step %q (%s), attempt %d of %d. Your instructions carry the workflow briefing for this step.",
@@ -422,7 +482,7 @@ func (e *Engine) enqueueSupervisor(ctx context.Context, tx pgx.Tx, snap *RunSnap
 	if err != nil {
 		return fmt.Errorf("%w: the run has no valid supervisor", ErrAgentNotInvokable)
 	}
-	if err := e.checkInvoke(ctx, snap.Run, supervisorID); err != nil {
+	if err := e.checkInvoke(snap, supervisorID); err != nil {
 		return err
 	}
 	note := "Workflow supervisor: every step has settled. Write the run summary as one comment on this issue."

@@ -77,6 +77,10 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 	if !e.Enabled() {
 		return ErrEngineDisabled
 	}
+	invokable, err := e.resolveStartInvokable(ctx, issueID, actorType, actorID)
+	if err != nil {
+		return err
+	}
 	tx, err := e.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
@@ -172,6 +176,7 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 	if err != nil {
 		return err
 	}
+	snap.invokable = invokable
 	starter := Actor{Type: actorType, ID: actorID}
 	if err := e.recordEvent(ctx, q, snap, record(RunEventRunStarted, "", map[string]any{"workflow_id": util.UUIDToString(wf.ID), "steps": len(def.Nodes)}), starter); err != nil {
 		return err
@@ -190,6 +195,40 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 	// notifications.
 	e.flush(context.WithoutCancel(ctx), out)
 	return nil
+}
+
+// resolveStartInvokable is resolveInvokable for a run that does not exist yet:
+// it reads the issue's workflow before StartRun takes any lock. When the
+// workflow changed in between, the agents it no longer matches are refused.
+func (e *Engine) resolveStartInvokable(ctx context.Context, issueID pgtype.UUID, actorType string, actorID pgtype.UUID) (map[pgtype.UUID]bool, error) {
+	if e.access == nil {
+		return nil, nil
+	}
+	parent, err := e.q.GetIssue(ctx, issueID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load issue: %w", err)
+	}
+	if parent.AssigneeType.String != "workflow" || !parent.AssigneeID.Valid {
+		return nil, nil
+	}
+	wf, err := e.q.GetExtWorkflowInWorkspace(ctx, db.GetExtWorkflowInWorkspaceParams{ID: parent.AssigneeID, WorkspaceID: parent.WorkspaceID})
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && wf.ArchivedAt.Valid) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load workflow: %w", err)
+	}
+	nodes, err := e.q.ListExtWorkflowNodes(ctx, wf.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load workflow nodes: %w", err)
+	}
+	if (actorType != "member" && actorType != "agent") || !actorID.Valid {
+		actorType, actorID = parent.CreatorType, parent.CreatorID
+	}
+	return e.invokableAgents(ctx, parent.WorkspaceID, actorType, actorID, definitionFromRows(wf, nodes))
 }
 
 // definitionFromRows is the run's snapshot of a workflow and its nodes.
