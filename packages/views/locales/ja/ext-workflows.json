@@ -65,7 +65,7 @@
     "archive_button": "アーカイブ",
     "discard_dialog": {
       "title": "未保存の変更を破棄しますか？",
-      "description": "このワークフローへの編集はまだ保存されていません。",
+      "description": "このワークフローへの編集は失われます。",
       "keep_editing": "編集を続ける",
       "discard": "破棄"
     }

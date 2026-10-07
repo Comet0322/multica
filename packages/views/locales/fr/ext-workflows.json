@@ -65,7 +65,7 @@
     "archive_button": "Archiver",
     "discard_dialog": {
       "title": "Abandonner les modifications non enregistrées ?",
-      "description": "Vos modifications de ce workflow n'ont pas été enregistrées.",
+      "description": "Vos modifications de ce workflow seront perdues.",
       "keep_editing": "Continuer la modification",
       "discard": "Abandonner"
     }

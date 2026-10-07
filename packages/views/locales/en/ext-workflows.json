@@ -65,7 +65,7 @@
     "archive_button": "Archive",
     "discard_dialog": {
       "title": "Discard unsaved changes?",
-      "description": "Your edits to this workflow haven't been saved.",
+      "description": "Your edits to this workflow will be lost.",
       "keep_editing": "Keep editing",
       "discard": "Discard"
     }

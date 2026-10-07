@@ -65,7 +65,7 @@
     "archive_button": "归档",
     "discard_dialog": {
       "title": "放弃未保存的修改？",
-      "description": "你对此工作流所做的修改尚未保存。",
+      "description": "你对此工作流所做的修改将会丢失。",
       "keep_editing": "继续编辑",
       "discard": "放弃"
     }
