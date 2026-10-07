@@ -259,8 +259,12 @@ func writeExtWorkflowEngineError(w http.ResponseWriter, err error) {
 }
 
 // loadExtRunForMutation resolves the member, the workspace and the run id
-// for cancel/decision. The engine must be on.
+// for cancel/decision. Only human actors may call them, and the engine must
+// be on.
 func (h *Handler) loadExtRunForMutation(w http.ResponseWriter, r *http.Request) (db.Member, pgtype.UUID, pgtype.UUID, bool) {
+	if !requireExtHumanActor(w, r) {
+		return db.Member{}, pgtype.UUID{}, pgtype.UUID{}, false
+	}
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
 	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {

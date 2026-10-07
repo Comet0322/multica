@@ -181,6 +181,32 @@ func TestExtWorkflowRunCancel(t *testing.T) {
 	testutil.Call(t, testHandler.CancelExtWorkflowRun, extRunReq("", "POST", "/x", nil, issue.ID, "")).Want(http.StatusNotFound)
 }
 
+// TestExtWorkflowRunMutationsRejectAgentActor pins I1 at the handler: a task
+// token authenticates as the runtime owner (here the test user, who could
+// otherwise decide and cancel), so the handlers refuse machine actors and
+// leave the run untouched.
+func TestExtWorkflowRunMutationsRejectAgentActor(t *testing.T) {
+	requireExtWorkflowDB(t)
+	engine := withExtWorkflowEngine(t)
+	issue, runID, _ := startExtRun(t)
+	failExtStep(t, engine, issue.ID)
+	stepID := getExtRun(t, runID).Steps[0].ID
+	asAgent := func(req *http.Request) *http.Request {
+		req.Header.Set("X-Actor-Source", "task_token")
+		return req
+	}
+
+	path := "/api/ext/workflow-runs/" + runID + "/steps/" + stepID + "/decision"
+	body := map[string]any{"action": "retry", "expected_status": "awaiting_supervisor"}
+	testutil.Call(t, testHandler.DecideExtWorkflowStep, asAgent(extRunReq("", "POST", path, body, runID, stepID))).Want(http.StatusForbidden)
+	testutil.Call(t, testHandler.CancelExtWorkflowRun, asAgent(extRunReq("", "POST", "/api/ext/workflow-runs/"+runID+"/cancel", nil, runID, ""))).Want(http.StatusForbidden)
+
+	run := getExtRun(t, runID)
+	if run.Status != "running" || run.Steps[0].Status != "awaiting_supervisor" || run.Steps[0].Attempts != 1 {
+		t.Fatalf("agent request changed the run: status=%s step=%+v", run.Status, run.Steps[0])
+	}
+}
+
 // otherWorkspaceReq rewrites a request's workspace param to a second
 // workspace the test user also belongs to, so membership passes and only the
 // run's workspace scoping can reject it.

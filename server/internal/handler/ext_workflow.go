@@ -271,6 +271,9 @@ func (h *Handler) ListExtWorkflows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateExtWorkflow(w http.ResponseWriter, r *http.Request) {
+	if !requireExtHumanActor(w, r) {
+		return
+	}
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
 	// Any workspace member can create a workflow and becomes its creator;
 	// management stays creator-scoped (see canManageExtWorkflow).
@@ -359,6 +362,9 @@ type extWorkflowNodeRequest struct {
 }
 
 func (h *Handler) UpdateExtWorkflow(w http.ResponseWriter, r *http.Request) {
+	if !requireExtHumanActor(w, r) {
+		return
+	}
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
 	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
@@ -557,6 +563,9 @@ func (h *Handler) UpdateExtWorkflow(w http.ResponseWriter, r *http.Request) {
 // DeleteExtWorkflow archives the workflow. Active runs keep running against
 // their snapshot; the workflow just stops accepting new assignments.
 func (h *Handler) DeleteExtWorkflow(w http.ResponseWriter, r *http.Request) {
+	if !requireExtHumanActor(w, r) {
+		return
+	}
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
 	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
@@ -585,4 +594,17 @@ func (h *Handler) DeleteExtWorkflow(w http.ResponseWriter, r *http.Request) {
 		"workflow_id": uuidToString(wf.ID),
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// requireExtHumanActor is the in-handler backstop for the human-only ext
+// routes (template writes, run cancel and decisions). The router also wraps
+// them in RequireHumanActor; this keeps the handlers fail-closed if a route is
+// ever mounted without it. An agent's task token resolves to its runtime
+// owner, so without this an agent could act with that member's permissions.
+func requireExtHumanActor(w http.ResponseWriter, r *http.Request) bool {
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "this endpoint is only available to human actors")
+		return false
+	}
+	return true
 }
