@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, MemberWithUser, Squad, Workspace } from "../types";
+// ext-workflow: workflow actors resolve through the fork's workflow list.
 import type { ExtWorkflow } from "../ext-workflows/types";
 import { extWorkflowListOptions } from "../ext-workflows/queries";
 import { useWorkspaceId } from "../hooks";
@@ -30,7 +31,7 @@ import { pluginInstallationsOptions } from "../plugins";
 const EMPTY_MEMBERS: MemberWithUser[] = [];
 const EMPTY_AGENTS: Agent[] = [];
 const EMPTY_SQUADS: Squad[] = [];
-const EMPTY_EXT_WORKFLOWS: ExtWorkflow[] = [];
+const EMPTY_EXT_WORKFLOWS: ExtWorkflow[] = []; // ext-workflow
 const EMPTY_WORKSPACES: Workspace[] = [];
 
 /**
@@ -81,13 +82,13 @@ export function buildActorNameResolver(directories: {
   const memberNames = new Map(directories.members.map((m) => [m.user_id, m.name]));
   const agentNames = new Map(directories.agents.map((a) => [a.id, a.name]));
   const squadNames = new Map(directories.squads.map((s) => [s.id, s.name]));
-  const workflowNames = new Map((directories.workflows ?? []).map((w) => [w.id, w.name]));
+  const workflowNames = new Map((directories.workflows ?? []).map((w) => [w.id, w.name])); // ext-workflow
   const pluginNames = new Map((directories.plugins ?? []).map((p) => [p.id, p.name]));
   return (type: string, id: string) => {
     if (type === "member") return memberNames.get(id) ?? "Unknown";
     if (type === "agent") return agentNames.get(id) ?? "Unknown Agent";
     if (type === "squad") return squadNames.get(id) ?? "Unknown Squad";
-    if (type === "workflow") return workflowNames.get(id) ?? "Unknown Workflow";
+    if (type === "workflow") return workflowNames.get(id) ?? "Unknown Workflow"; // ext-workflow
     // An event-triggered hook writes as the installation itself: there is no
     // person behind it, and borrowing the last member who touched the issue
     // would be a lie the audit trail cannot undo. An id that no longer
@@ -103,11 +104,11 @@ export function useActorName() {
   const { data: memberData } = useQuery(memberListOptions(wsId));
   const { data: agentData } = useQuery(agentListOptions(wsId));
   const { data: squadData } = useQuery(squadListOptions(wsId));
-  const { data: workflowData } = useQuery(extWorkflowListOptions(wsId));
+  const { data: workflowData } = useQuery(extWorkflowListOptions(wsId)); // ext-workflow
   const members = memberData ?? EMPTY_MEMBERS;
   const agents = agentData ?? EMPTY_AGENTS;
   const squads = squadData ?? EMPTY_SQUADS;
-  const workflows = workflowData ?? EMPTY_EXT_WORKFLOWS;
+  const workflows = workflowData ?? EMPTY_EXT_WORKFLOWS; // ext-workflow
   // Only for naming a plugin-authored row. Gated on the flag so a workspace
   // without plugins does not fetch a list it can never render an author from.
   const pluginsEnabled = useFeatureEnabled(PLUGINS_V1_FLAG, false);
@@ -131,6 +132,7 @@ export function useActorName() {
     return s?.name ?? "Unknown Squad";
   }, [squads]);
 
+  // ext-workflow: workflows added to the resolver and its deps.
   const getActorName = useMemo(
     () => buildActorNameResolver({ members, agents, squads, workflows, plugins: pluginData?.plugins }),
     [agents, members, squads, workflows, pluginData],
@@ -153,9 +155,9 @@ export function useActorName() {
     if (type === "member") return resolvePublicFileUrl(members.find((m) => m.user_id === id)?.avatar_url);
     if (type === "agent") return resolvePublicFileUrl(agents.find((a) => a.id === id)?.avatar_url);
     if (type === "squad") return resolvePublicFileUrl(squads.find((s) => s.id === id)?.avatar_url);
-    if (type === "workflow") return resolvePublicFileUrl(workflows.find((w) => w.id === id)?.avatar_url);
+    if (type === "workflow") return resolvePublicFileUrl(workflows.find((w) => w.id === id)?.avatar_url); // ext-workflow
     return null;
-  }, [agents, members, squads, workflows]);
+  }, [agents, members, squads, workflows]); // ext-workflow: workflows
 
   const hasActor = useCallback(
     (type: string, id: string): boolean | undefined => {
@@ -176,6 +178,7 @@ export function useActorName() {
           ? undefined
           : squads.some((s) => s.id === id);
       }
+      // ext-workflow
       if (type === "workflow") {
         return workflowData === undefined
           ? undefined
@@ -186,6 +189,7 @@ export function useActorName() {
       }
       return type === "system";
     },
+    // ext-workflow: workflowData, workflows
     [agentData, agents, memberData, members, pluginData, squadData, squads, workflowData, workflows],
   );
 
