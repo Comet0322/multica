@@ -21,6 +21,7 @@
     "agent": "Agent",
     "member": "Membre",
     "squad": "Squad",
+    "workflow": "Workflow",
     "skill": "Skill",
     "machine": "Machine",
     "runtime": "Runtime",

@@ -297,6 +297,10 @@
         "label": "Squadsへ移動",
         "description": "Squad一覧を開きます。"
       },
+      "goWorkflows": {
+        "label": "ワークフローへ移動",
+        "description": "ワークフロー一覧を開きます。"
+      },
       "goUsage": {
         "label": "使用量へ移動",
         "description": "使用量分析を開きます。"

@@ -63,6 +63,7 @@
     "toast_failed": "操作失败",
     "create_will_start": "创建后 {{name}} 会立即开始工作。",
     "create_will_start_squad": "创建后 {{name}} 的队长会评估并开始安排任务。",
+    "create_will_start_workflow": "创建后将立即运行 {{name}} 的各个步骤。",
     "create_parked": "已指派——在 backlog 中不会开始工作。"
   },
   "create_squad": {

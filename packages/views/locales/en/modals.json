@@ -63,6 +63,7 @@
     "toast_failed": "Action failed",
     "create_will_start": "{{name}} will start working right after creation.",
     "create_will_start_squad": "{{name}}'s leader will review it and start assigning work right after creation.",
+    "create_will_start_workflow": "{{name}} will run its steps right after creation.",
     "create_parked": "Assigned — won't start working in Backlog."
   },
   "create_squad": {

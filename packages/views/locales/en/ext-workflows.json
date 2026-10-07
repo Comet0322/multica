@@ -1,0 +1,222 @@
+{
+  "page": {
+    "title": "Workflows",
+    "new_button": "New workflow",
+    "empty": "No workflows yet.",
+    "row_menu": "Workflow actions",
+    "archive_action": "Archive",
+    "never_run": "Never",
+    "table": {
+      "name": "Workflow",
+      "supervisor": "Supervisor",
+      "nodes": "Nodes",
+      "active_runs": "Active runs",
+      "last_run": "Last run"
+    }
+  },
+  "archive_dialog": {
+    "title": "Archive this workflow?",
+    "description": "\"{{name}}\" will be archived. Runs in progress continue, but it can't be assigned to new issues.",
+    "cancel": "Cancel",
+    "confirm": "Archive",
+    "archiving": "Archiving…",
+    "success": "Workflow archived",
+    "failed": "Failed to archive workflow"
+  },
+  "agent_select": {
+    "search_placeholder": "Search agents…",
+    "group_my_agents": "My agents",
+    "group_workspace_agents": "Workspace agents",
+    "no_agents": "No agents available. Create an agent first.",
+    "archived_suffix": "(archived)"
+  },
+  "create": {
+    "title": "New workflow",
+    "name_label": "Name",
+    "name_placeholder": "e.g. Release pipeline",
+    "description_label": "Description",
+    "description_placeholder": "What this workflow is for",
+    "supervisor_label": "Supervisor agent",
+    "supervisor_hint": "Reviews each step and decides what happens next.",
+    "supervisor_placeholder": "Select a supervisor agent",
+    "cancel": "Cancel",
+    "submit": "Create",
+    "submitting": "Creating…",
+    "toast_created": "Workflow created",
+    "toast_failed": "Failed to create workflow"
+  },
+  "detail": {
+    "not_found": "Workflow not found",
+    "tabs": {
+      "nodes": "Nodes",
+      "runs": "Runs"
+    },
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Workflow saved",
+    "save_failed": "Failed to save workflow",
+    "discard": "Discard changes",
+    "unsaved": "Unsaved changes",
+    "validation_failed": "Fix the highlighted problems and save again.",
+    "archive_button": "Archive",
+    "discard_dialog": {
+      "title": "Discard unsaved changes?",
+      "description": "Your edits to this workflow haven't been saved.",
+      "keep_editing": "Keep editing",
+      "discard": "Discard"
+    }
+  },
+  "inspector": {
+    "name": "Name",
+    "description": "Description",
+    "description_placeholder": "No description",
+    "supervisor": "Supervisor",
+    "max_rewinds": "Max rewinds",
+    "max_rewinds_hint": "How many times a run may return to an earlier step.",
+    "created_by": "Created by",
+    "updated": "Updated"
+  },
+  "nodes": {
+    "add": "Add node",
+    "empty": "No nodes yet. Add the first step.",
+    "active_runs_note_one": "{{count}} run in progress keeps using the previous definition.",
+    "active_runs_note_other": "{{count}} runs in progress keep using the previous definition.",
+    "node_n": "Node {{n}}",
+    "title_label": "Title",
+    "title_placeholder": "Step title",
+    "key_label": "Key",
+    "agent_label": "Agent",
+    "agent_placeholder": "Select agent",
+    "depends_label": "Depends on",
+    "depends_none": "None",
+    "depends_no_options": "No other node can be added without creating a cycle.",
+    "review_label": "Review",
+    "max_attempts_label": "Max attempts",
+    "prompt_label": "Prompt",
+    "prompt_placeholder": "What should the agent do in this step?",
+    "expand": "Show prompt",
+    "collapse": "Hide prompt",
+    "move_up": "Move up",
+    "move_down": "Move down",
+    "delete": "Delete node",
+    "archived_agent": "This agent is archived. Choose another agent."
+  },
+  "errors": {
+    "key_required": "Key is required",
+    "key_invalid": "Use 1 to 40 lowercase letters, digits, - or _",
+    "key_duplicate": "Key is already used",
+    "title_required": "Title is required",
+    "agent_required": "Choose an agent",
+    "prompt_too_long": "Prompt is too long (max 20,000 bytes)",
+    "max_attempts_range": "Max attempts must be 1 to 10",
+    "self_dependency": "A node can't depend on itself",
+    "unknown_dependency": "Depends on a node that doesn't exist",
+    "cycle": "Dependencies form a cycle",
+    "too_many_nodes": "At most 50 nodes",
+    "no_nodes": "Add at least one node"
+  },
+  "dag": {
+    "aria_label": "Workflow graph",
+    "empty": "Add nodes to see the flow."
+  },
+  "runs": {
+    "empty": "No runs yet. Assign an issue to this workflow to start one.",
+    "col_issue": "Issue",
+    "col_status": "Status",
+    "col_started": "Started",
+    "col_finished": "Finished",
+    "showing": "Showing {{shown}} of {{total}}"
+  },
+  "run_status": {
+    "running": "Running",
+    "waiting_human": "Needs you",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "unknown": "Unknown"
+  },
+  "step_status": {
+    "pending": "Pending",
+    "running": "Running",
+    "awaiting_supervisor": "Supervisor reviewing",
+    "awaiting_human": "Needs you",
+    "done": "Done",
+    "skipped": "Skipped",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "unknown": "Unknown"
+  },
+  "run_section": {
+    "title": "Workflow run",
+    "rewinds": "Rewinds {{used}}/{{max}}",
+    "attempts": "Attempt {{attempts}}/{{max}}",
+    "open_child": "Open step issue",
+    "open_workflow": "Open workflow",
+    "needs_decision": "Needs your decision",
+    "action_approve": "Approve",
+    "action_redo": "Redo…",
+    "action_retry": "Retry",
+    "action_skip": "Skip",
+    "action_rewind": "Rewind to…",
+    "action_abort": "Abort…",
+    "attempt_limit": "Attempt limit reached",
+    "rewind_limit": "Rewind limit reached",
+    "cancel_run": "Cancel run",
+    "timeline": "Timeline",
+    "timeline_empty": "No events yet",
+    "actor_engine": "Workflow",
+    "step_line": "Workflow step {{index}} of {{total}}",
+    "step_line_with_parent": "Workflow step {{index}} of {{total}} · {{parent}}",
+    "redo_dialog": {
+      "title": "Redo this step",
+      "feedback_label": "Feedback for the agent",
+      "feedback_placeholder": "What should change?",
+      "confirm": "Redo",
+      "cancel": "Cancel"
+    },
+    "rewind_dialog": {
+      "title": "Rewind",
+      "target_label": "Return to",
+      "target_self": "{{title}} (this step)",
+      "feedback_label": "Feedback for the agent",
+      "feedback_placeholder": "What should change?",
+      "confirm": "Rewind",
+      "cancel": "Cancel"
+    },
+    "abort_dialog": {
+      "title": "Abort the run?",
+      "reason_label": "Reason",
+      "reason_placeholder": "Why is this run being stopped?",
+      "confirm": "Abort run",
+      "cancel": "Cancel"
+    },
+    "cancel_dialog": {
+      "title": "Cancel this run?",
+      "description": "Running steps stop and open step issues are cancelled.",
+      "keep": "Keep running",
+      "confirm": "Cancel run"
+    },
+    "toast": {
+      "decided": "Decision sent",
+      "mismatch": "This step changed. Review its new state and try again.",
+      "forbidden": "You can't decide on this run",
+      "failed": "Failed to send decision",
+      "cancelled": "Run cancelled",
+      "cancel_failed": "Failed to cancel run"
+    }
+  },
+  "events": {
+    "run_started": "Run started",
+    "step_started": "Step started",
+    "step_finished": "Step finished",
+    "step_failed": "Step failed",
+    "decision": "Decision",
+    "rewind": "Rewind",
+    "rewind_requested": "Rewind requested",
+    "escalated": "Escalated to a human",
+    "run_finished": "Run finished",
+    "run_cancelled": "Run cancelled",
+    "protocol_error": "Protocol error",
+    "unknown": "Event"
+  }
+}

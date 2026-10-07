@@ -1,0 +1,222 @@
+{
+  "page": {
+    "title": "Workflows",
+    "new_button": "Nouveau workflow",
+    "empty": "Aucun workflow pour le moment.",
+    "row_menu": "Actions du workflow",
+    "archive_action": "Archiver",
+    "never_run": "Jamais",
+    "table": {
+      "name": "Workflow",
+      "supervisor": "Superviseur",
+      "nodes": "Nœuds",
+      "active_runs": "Exécutions actives",
+      "last_run": "Dernière exécution"
+    }
+  },
+  "archive_dialog": {
+    "title": "Archiver ce workflow ?",
+    "description": "« {{name}} » sera archivé. Les exécutions en cours continuent, mais il ne pourra plus être assigné à de nouvelles tâches.",
+    "cancel": "Annuler",
+    "confirm": "Archiver",
+    "archiving": "Archivage…",
+    "success": "Workflow archivé",
+    "failed": "Impossible d'archiver le workflow"
+  },
+  "agent_select": {
+    "search_placeholder": "Rechercher des agents…",
+    "group_my_agents": "Mes agents",
+    "group_workspace_agents": "Agents de l'espace de travail",
+    "no_agents": "Aucun agent disponible. Créez d'abord un agent.",
+    "archived_suffix": "(archivé)"
+  },
+  "create": {
+    "title": "Nouveau workflow",
+    "name_label": "Nom",
+    "name_placeholder": "p. ex. Pipeline de publication",
+    "description_label": "Description",
+    "description_placeholder": "À quoi sert ce workflow",
+    "supervisor_label": "Agent superviseur",
+    "supervisor_hint": "Examine chaque étape et décide de la suite.",
+    "supervisor_placeholder": "Choisir un agent superviseur",
+    "cancel": "Annuler",
+    "submit": "Créer",
+    "submitting": "Création…",
+    "toast_created": "Workflow créé",
+    "toast_failed": "Impossible de créer le workflow"
+  },
+  "detail": {
+    "not_found": "Workflow introuvable",
+    "tabs": {
+      "nodes": "Nœuds",
+      "runs": "Exécutions"
+    },
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "Workflow enregistré",
+    "save_failed": "Impossible d'enregistrer le workflow",
+    "discard": "Annuler les modifications",
+    "unsaved": "Modifications non enregistrées",
+    "validation_failed": "Corrigez les problèmes signalés, puis enregistrez à nouveau.",
+    "archive_button": "Archiver",
+    "discard_dialog": {
+      "title": "Abandonner les modifications non enregistrées ?",
+      "description": "Vos modifications de ce workflow n'ont pas été enregistrées.",
+      "keep_editing": "Continuer la modification",
+      "discard": "Abandonner"
+    }
+  },
+  "inspector": {
+    "name": "Nom",
+    "description": "Description",
+    "description_placeholder": "Aucune description",
+    "supervisor": "Superviseur",
+    "max_rewinds": "Retours en arrière max.",
+    "max_rewinds_hint": "Nombre de fois où une exécution peut revenir à une étape précédente.",
+    "created_by": "Créé par",
+    "updated": "Mis à jour"
+  },
+  "nodes": {
+    "add": "Ajouter un nœud",
+    "empty": "Aucun nœud pour le moment. Ajoutez la première étape.",
+    "active_runs_note_one": "{{count}} exécution en cours continue d'utiliser l'ancienne définition.",
+    "active_runs_note_other": "{{count}} exécutions en cours continuent d'utiliser l'ancienne définition.",
+    "node_n": "Nœud {{n}}",
+    "title_label": "Titre",
+    "title_placeholder": "Titre de l'étape",
+    "key_label": "Clé",
+    "agent_label": "Agent",
+    "agent_placeholder": "Choisir un agent",
+    "depends_label": "Dépend de",
+    "depends_none": "Aucun",
+    "depends_no_options": "Aucun autre nœud ne peut être ajouté sans créer de cycle.",
+    "review_label": "Revue",
+    "max_attempts_label": "Tentatives max.",
+    "prompt_label": "Prompt",
+    "prompt_placeholder": "Que doit faire l'agent à cette étape ?",
+    "expand": "Afficher le prompt",
+    "collapse": "Masquer le prompt",
+    "move_up": "Monter",
+    "move_down": "Descendre",
+    "delete": "Supprimer le nœud",
+    "archived_agent": "Cet agent est archivé. Choisissez un autre agent."
+  },
+  "errors": {
+    "key_required": "La clé est obligatoire",
+    "key_invalid": "Utilisez 1 à 40 lettres minuscules, chiffres, - ou _",
+    "key_duplicate": "Cette clé est déjà utilisée",
+    "title_required": "Le titre est obligatoire",
+    "agent_required": "Choisissez un agent",
+    "prompt_too_long": "Le prompt est trop long (20 000 octets max.)",
+    "max_attempts_range": "Les tentatives max. doivent être comprises entre 1 et 10",
+    "self_dependency": "Un nœud ne peut pas dépendre de lui-même",
+    "unknown_dependency": "Dépend d'un nœud qui n'existe pas",
+    "cycle": "Les dépendances forment un cycle",
+    "too_many_nodes": "50 nœuds au maximum",
+    "no_nodes": "Ajoutez au moins un nœud"
+  },
+  "dag": {
+    "aria_label": "Graphe du workflow",
+    "empty": "Ajoutez des nœuds pour voir le déroulement."
+  },
+  "runs": {
+    "empty": "Aucune exécution. Assignez une tâche à ce workflow pour en lancer une.",
+    "col_issue": "Tâche",
+    "col_status": "Statut",
+    "col_started": "Début",
+    "col_finished": "Fin",
+    "showing": "{{shown}} sur {{total}} affichées"
+  },
+  "run_status": {
+    "running": "En cours",
+    "waiting_human": "Votre action requise",
+    "done": "Terminée",
+    "failed": "Échouée",
+    "cancelled": "Annulée",
+    "unknown": "Inconnu"
+  },
+  "step_status": {
+    "pending": "En attente",
+    "running": "En cours",
+    "awaiting_supervisor": "Revue par le superviseur",
+    "awaiting_human": "Votre action requise",
+    "done": "Terminée",
+    "skipped": "Ignorée",
+    "failed": "Échouée",
+    "cancelled": "Annulée",
+    "unknown": "Inconnu"
+  },
+  "run_section": {
+    "title": "Exécution du workflow",
+    "rewinds": "Retours en arrière {{used}}/{{max}}",
+    "attempts": "Tentative {{attempts}}/{{max}}",
+    "open_child": "Ouvrir la tâche de l'étape",
+    "open_workflow": "Ouvrir le workflow",
+    "needs_decision": "Une décision de votre part est nécessaire",
+    "action_approve": "Approuver",
+    "action_redo": "Refaire…",
+    "action_retry": "Réessayer",
+    "action_skip": "Ignorer",
+    "action_rewind": "Revenir à…",
+    "action_abort": "Abandonner…",
+    "attempt_limit": "Limite de tentatives atteinte",
+    "rewind_limit": "Limite de retours en arrière atteinte",
+    "cancel_run": "Annuler l'exécution",
+    "timeline": "Chronologie",
+    "timeline_empty": "Aucun événement pour le moment",
+    "actor_engine": "Workflow",
+    "step_line": "Étape {{index}} sur {{total}} du workflow",
+    "step_line_with_parent": "Étape {{index}} sur {{total}} du workflow · {{parent}}",
+    "redo_dialog": {
+      "title": "Refaire cette étape",
+      "feedback_label": "Retour pour l'agent",
+      "feedback_placeholder": "Que faut-il changer ?",
+      "confirm": "Refaire",
+      "cancel": "Annuler"
+    },
+    "rewind_dialog": {
+      "title": "Revenir en arrière",
+      "target_label": "Revenir à",
+      "target_self": "{{title}} (cette étape)",
+      "feedback_label": "Retour pour l'agent",
+      "feedback_placeholder": "Que faut-il changer ?",
+      "confirm": "Revenir en arrière",
+      "cancel": "Annuler"
+    },
+    "abort_dialog": {
+      "title": "Abandonner l'exécution ?",
+      "reason_label": "Motif",
+      "reason_placeholder": "Pourquoi cette exécution est-elle arrêtée ?",
+      "confirm": "Abandonner l'exécution",
+      "cancel": "Annuler"
+    },
+    "cancel_dialog": {
+      "title": "Annuler cette exécution ?",
+      "description": "Les étapes en cours s'arrêtent et les tâches d'étape ouvertes sont annulées.",
+      "keep": "Continuer l'exécution",
+      "confirm": "Annuler l'exécution"
+    },
+    "toast": {
+      "decided": "Décision envoyée",
+      "mismatch": "Cette étape a changé. Consultez son nouvel état puis réessayez.",
+      "forbidden": "Vous ne pouvez pas décider pour cette exécution",
+      "failed": "Impossible d'envoyer la décision",
+      "cancelled": "Exécution annulée",
+      "cancel_failed": "Impossible d'annuler l'exécution"
+    }
+  },
+  "events": {
+    "run_started": "Exécution démarrée",
+    "step_started": "Étape démarrée",
+    "step_finished": "Étape terminée",
+    "step_failed": "Étape échouée",
+    "decision": "Décision",
+    "rewind": "Retour en arrière",
+    "rewind_requested": "Retour en arrière demandé",
+    "escalated": "Transmis à un humain",
+    "run_finished": "Exécution terminée",
+    "run_cancelled": "Exécution annulée",
+    "protocol_error": "Erreur de protocole",
+    "unknown": "Événement"
+  }
+}

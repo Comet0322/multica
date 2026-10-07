@@ -887,8 +887,10 @@
       "members_group": "Membres",
       "agents_group": "Agents",
       "squads_group": "Squads",
+      "workflows_group": "Workflows",
       "agent_runtime_required": "Associez un runtime avant d'assigner du travail à cet agent",
-      "squad_runtime_required": "Associez un runtime au chef de ce squad avant d'assigner du travail"
+      "squad_runtime_required": "Associez un runtime au chef de ce squad avant d'assigner du travail",
+      "workflow_needs_nodes": "Ajoutez des nœuds à ce workflow avant d'assigner du travail"
     },
     "start_date": {
       "trigger_label": "Date de début",

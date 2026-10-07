@@ -848,8 +848,10 @@
       "members_group": "メンバー",
       "agents_group": "エージェント",
       "squads_group": "スクワッド",
+      "workflows_group": "ワークフロー",
       "agent_runtime_required": "作業を割り当てる前に、このエージェントにランタイムをバインドしてください",
-      "squad_runtime_required": "作業を割り当てる前に、このスクワッドのリーダーにランタイムをバインドしてください"
+      "squad_runtime_required": "作業を割り当てる前に、このスクワッドのリーダーにランタイムをバインドしてください",
+      "workflow_needs_nodes": "作業を割り当てる前に、このワークフローにノードを追加してください"
     },
     "start_date": {
       "trigger_label": "開始日",

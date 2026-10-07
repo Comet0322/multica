@@ -63,6 +63,7 @@
     "toast_failed": "操作に失敗しました",
     "create_will_start": "作成後、{{name}} がすぐに作業を開始します。",
     "create_will_start_squad": "作成後、{{name}} のリーダーが内容を評価し、タスクの割り振りを開始します。",
+    "create_will_start_workflow": "作成後すぐに {{name}} のステップが実行されます。",
     "create_parked": "割り当て済み — バックログでは作業を開始しません。"
   },
   "create_squad": {

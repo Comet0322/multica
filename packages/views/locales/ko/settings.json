@@ -297,6 +297,10 @@
         "label": "스쿼드로 이동",
         "description": "스쿼드 목록을 엽니다."
       },
+      "goWorkflows": {
+        "label": "워크플로로 이동",
+        "description": "워크플로 목록을 엽니다."
+      },
       "goUsage": {
         "label": "사용량으로 이동",
         "description": "사용량 분석을 엽니다."

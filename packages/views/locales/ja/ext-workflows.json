@@ -1,0 +1,221 @@
+{
+  "page": {
+    "title": "ワークフロー",
+    "new_button": "新しいワークフロー",
+    "empty": "ワークフローはまだありません。",
+    "row_menu": "ワークフローの操作",
+    "archive_action": "アーカイブ",
+    "never_run": "未実行",
+    "table": {
+      "name": "ワークフロー",
+      "supervisor": "スーパーバイザー",
+      "nodes": "ノード",
+      "active_runs": "実行中",
+      "last_run": "最終実行"
+    }
+  },
+  "archive_dialog": {
+    "title": "このワークフローをアーカイブしますか？",
+    "description": "「{{name}}」をアーカイブします。実行中のものは継続しますが、新しいタスクには割り当てられなくなります。",
+    "cancel": "キャンセル",
+    "confirm": "アーカイブ",
+    "archiving": "アーカイブ中…",
+    "success": "ワークフローをアーカイブしました",
+    "failed": "ワークフローをアーカイブできませんでした"
+  },
+  "agent_select": {
+    "search_placeholder": "エージェントを検索…",
+    "group_my_agents": "自分のエージェント",
+    "group_workspace_agents": "ワークスペースのエージェント",
+    "no_agents": "使えるエージェントがありません。先にエージェントを作成してください。",
+    "archived_suffix": "（アーカイブ済み）"
+  },
+  "create": {
+    "title": "新しいワークフロー",
+    "name_label": "名前",
+    "name_placeholder": "例：リリースパイプライン",
+    "description_label": "説明",
+    "description_placeholder": "このワークフローの用途",
+    "supervisor_label": "スーパーバイザーのエージェント",
+    "supervisor_hint": "各ステップをレビューし、次に何をするかを決めます。",
+    "supervisor_placeholder": "スーパーバイザーのエージェントを選択",
+    "cancel": "キャンセル",
+    "submit": "作成",
+    "submitting": "作成中…",
+    "toast_created": "ワークフローを作成しました",
+    "toast_failed": "ワークフローを作成できませんでした"
+  },
+  "detail": {
+    "not_found": "ワークフローが見つかりません",
+    "tabs": {
+      "nodes": "ノード",
+      "runs": "実行"
+    },
+    "save": "保存",
+    "saving": "保存中…",
+    "saved": "ワークフローを保存しました",
+    "save_failed": "ワークフローを保存できませんでした",
+    "discard": "変更を破棄",
+    "unsaved": "未保存の変更があります",
+    "validation_failed": "強調表示された問題を直してから、もう一度保存してください。",
+    "archive_button": "アーカイブ",
+    "discard_dialog": {
+      "title": "未保存の変更を破棄しますか？",
+      "description": "このワークフローへの編集はまだ保存されていません。",
+      "keep_editing": "編集を続ける",
+      "discard": "破棄"
+    }
+  },
+  "inspector": {
+    "name": "名前",
+    "description": "説明",
+    "description_placeholder": "説明なし",
+    "supervisor": "スーパーバイザー",
+    "max_rewinds": "最大巻き戻し回数",
+    "max_rewinds_hint": "1 回の実行が以前のステップへ戻れる回数です。",
+    "created_by": "作成者",
+    "updated": "更新"
+  },
+  "nodes": {
+    "add": "ノードを追加",
+    "empty": "ノードはまだありません。最初のステップを追加してください。",
+    "active_runs_note_other": "実行中の {{count}} 件は、以前の定義を使い続けます。",
+    "node_n": "ノード {{n}}",
+    "title_label": "タイトル",
+    "title_placeholder": "ステップのタイトル",
+    "key_label": "キー",
+    "agent_label": "エージェント",
+    "agent_placeholder": "エージェントを選択",
+    "depends_label": "依存先",
+    "depends_none": "なし",
+    "depends_no_options": "循環を作らずに追加できるノードはありません。",
+    "review_label": "レビュー",
+    "max_attempts_label": "最大試行回数",
+    "prompt_label": "プロンプト",
+    "prompt_placeholder": "このステップでエージェントに何をさせますか？",
+    "expand": "プロンプトを表示",
+    "collapse": "プロンプトを隠す",
+    "move_up": "上へ移動",
+    "move_down": "下へ移動",
+    "delete": "ノードを削除",
+    "archived_agent": "このエージェントはアーカイブ済みです。別のエージェントを選んでください。"
+  },
+  "errors": {
+    "key_required": "キーを入力してください",
+    "key_invalid": "小文字の英字、数字、- または _ を 1〜40 文字で入力してください",
+    "key_duplicate": "このキーはすでに使われています",
+    "title_required": "タイトルを入力してください",
+    "agent_required": "エージェントを選択してください",
+    "prompt_too_long": "プロンプトが長すぎます（最大 20,000 バイト）",
+    "max_attempts_range": "最大試行回数は 1〜10 にしてください",
+    "self_dependency": "ノードは自分自身に依存できません",
+    "unknown_dependency": "存在しないノードに依存しています",
+    "cycle": "依存関係が循環しています",
+    "too_many_nodes": "ノードは最大 50 個です",
+    "no_nodes": "ノードを 1 つ以上追加してください"
+  },
+  "dag": {
+    "aria_label": "ワークフローの図",
+    "empty": "ノードを追加すると流れが表示されます。"
+  },
+  "runs": {
+    "empty": "実行はまだありません。このワークフローにタスクを割り当てると開始されます。",
+    "col_issue": "タスク",
+    "col_status": "ステータス",
+    "col_started": "開始",
+    "col_finished": "終了",
+    "showing": "{{total}} 件中 {{shown}} 件を表示"
+  },
+  "run_status": {
+    "running": "実行中",
+    "waiting_human": "対応が必要",
+    "done": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み",
+    "unknown": "不明"
+  },
+  "step_status": {
+    "pending": "待機中",
+    "running": "実行中",
+    "awaiting_supervisor": "スーパーバイザーがレビュー中",
+    "awaiting_human": "対応が必要",
+    "done": "完了",
+    "skipped": "スキップ",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み",
+    "unknown": "不明"
+  },
+  "run_section": {
+    "title": "ワークフローの実行",
+    "rewinds": "巻き戻し {{used}}/{{max}}",
+    "attempts": "試行 {{attempts}}/{{max}}",
+    "open_child": "ステップのタスクを開く",
+    "open_workflow": "ワークフローを開く",
+    "needs_decision": "判断が必要です",
+    "action_approve": "承認",
+    "action_redo": "やり直し…",
+    "action_retry": "再試行",
+    "action_skip": "スキップ",
+    "action_rewind": "巻き戻し先…",
+    "action_abort": "中止…",
+    "attempt_limit": "試行回数の上限に達しました",
+    "rewind_limit": "巻き戻し回数の上限に達しました",
+    "cancel_run": "実行をキャンセル",
+    "timeline": "タイムライン",
+    "timeline_empty": "イベントはまだありません",
+    "actor_engine": "ワークフロー",
+    "step_line": "ワークフローのステップ {{index}}/{{total}}",
+    "step_line_with_parent": "ワークフローのステップ {{index}}/{{total}} · {{parent}}",
+    "redo_dialog": {
+      "title": "このステップをやり直す",
+      "feedback_label": "エージェントへのフィードバック",
+      "feedback_placeholder": "何を変えるべきですか？",
+      "confirm": "やり直す",
+      "cancel": "キャンセル"
+    },
+    "rewind_dialog": {
+      "title": "巻き戻し",
+      "target_label": "戻り先",
+      "target_self": "{{title}}（このステップ）",
+      "feedback_label": "エージェントへのフィードバック",
+      "feedback_placeholder": "何を変えるべきですか？",
+      "confirm": "巻き戻す",
+      "cancel": "キャンセル"
+    },
+    "abort_dialog": {
+      "title": "実行を中止しますか？",
+      "reason_label": "理由",
+      "reason_placeholder": "この実行を止める理由は何ですか？",
+      "confirm": "実行を中止",
+      "cancel": "キャンセル"
+    },
+    "cancel_dialog": {
+      "title": "この実行をキャンセルしますか？",
+      "description": "実行中のステップは停止し、未完了のステップのタスクはキャンセルされます。",
+      "keep": "実行を続ける",
+      "confirm": "実行をキャンセル"
+    },
+    "toast": {
+      "decided": "判断を送信しました",
+      "mismatch": "このステップは変更されました。新しい状態を確認してからもう一度お試しください。",
+      "forbidden": "この実行について判断する権限がありません",
+      "failed": "判断を送信できませんでした",
+      "cancelled": "実行をキャンセルしました",
+      "cancel_failed": "実行をキャンセルできませんでした"
+    }
+  },
+  "events": {
+    "run_started": "実行開始",
+    "step_started": "ステップ開始",
+    "step_finished": "ステップ終了",
+    "step_failed": "ステップ失敗",
+    "decision": "判断",
+    "rewind": "巻き戻し",
+    "rewind_requested": "巻き戻しをリクエスト",
+    "escalated": "人に引き継ぎ",
+    "run_finished": "実行終了",
+    "run_cancelled": "実行キャンセル",
+    "protocol_error": "プロトコルエラー",
+    "unknown": "イベント"
+  }
+}

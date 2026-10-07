@@ -1,0 +1,221 @@
+{
+  "page": {
+    "title": "工作流",
+    "new_button": "新建工作流",
+    "empty": "还没有工作流。",
+    "row_menu": "工作流操作",
+    "archive_action": "归档",
+    "never_run": "从未运行",
+    "table": {
+      "name": "工作流",
+      "supervisor": "监督者",
+      "nodes": "节点",
+      "active_runs": "进行中的运行",
+      "last_run": "最近运行"
+    }
+  },
+  "archive_dialog": {
+    "title": "归档此工作流？",
+    "description": "“{{name}}”将被归档。进行中的运行会继续，但无法再分配给新任务。",
+    "cancel": "取消",
+    "confirm": "归档",
+    "archiving": "归档中…",
+    "success": "工作流已归档",
+    "failed": "归档工作流失败"
+  },
+  "agent_select": {
+    "search_placeholder": "搜索智能体…",
+    "group_my_agents": "我的智能体",
+    "group_workspace_agents": "工作区智能体",
+    "no_agents": "没有可用的智能体，请先创建一个。",
+    "archived_suffix": "（已归档）"
+  },
+  "create": {
+    "title": "新建工作流",
+    "name_label": "名称",
+    "name_placeholder": "例如：发布流水线",
+    "description_label": "描述",
+    "description_placeholder": "这个工作流用来做什么",
+    "supervisor_label": "监督者智能体",
+    "supervisor_hint": "审核每个步骤，并决定下一步怎么走。",
+    "supervisor_placeholder": "选择监督者智能体",
+    "cancel": "取消",
+    "submit": "创建",
+    "submitting": "创建中…",
+    "toast_created": "工作流已创建",
+    "toast_failed": "创建工作流失败"
+  },
+  "detail": {
+    "not_found": "未找到工作流",
+    "tabs": {
+      "nodes": "节点",
+      "runs": "运行"
+    },
+    "save": "保存",
+    "saving": "保存中…",
+    "saved": "工作流已保存",
+    "save_failed": "保存工作流失败",
+    "discard": "放弃修改",
+    "unsaved": "有未保存的修改",
+    "validation_failed": "请修正标出的问题后再保存。",
+    "archive_button": "归档",
+    "discard_dialog": {
+      "title": "放弃未保存的修改？",
+      "description": "你对此工作流所做的修改尚未保存。",
+      "keep_editing": "继续编辑",
+      "discard": "放弃"
+    }
+  },
+  "inspector": {
+    "name": "名称",
+    "description": "描述",
+    "description_placeholder": "暂无描述",
+    "supervisor": "监督者",
+    "max_rewinds": "最大回退次数",
+    "max_rewinds_hint": "一次运行最多可以退回到之前步骤的次数。",
+    "created_by": "创建者",
+    "updated": "更新于"
+  },
+  "nodes": {
+    "add": "添加节点",
+    "empty": "还没有节点，添加第一个步骤。",
+    "active_runs_note_other": "有 {{count}} 个进行中的运行仍使用旧的定义。",
+    "node_n": "节点 {{n}}",
+    "title_label": "标题",
+    "title_placeholder": "步骤标题",
+    "key_label": "标识",
+    "agent_label": "智能体",
+    "agent_placeholder": "选择智能体",
+    "depends_label": "依赖于",
+    "depends_none": "无",
+    "depends_no_options": "没有其他节点可以在不形成环的情况下添加。",
+    "review_label": "审核",
+    "max_attempts_label": "最大尝试次数",
+    "prompt_label": "提示词",
+    "prompt_placeholder": "智能体在这一步要做什么？",
+    "expand": "显示提示词",
+    "collapse": "隐藏提示词",
+    "move_up": "上移",
+    "move_down": "下移",
+    "delete": "删除节点",
+    "archived_agent": "该智能体已归档，请选择其他智能体。"
+  },
+  "errors": {
+    "key_required": "标识不能为空",
+    "key_invalid": "请使用 1 到 40 个小写字母、数字、- 或 _",
+    "key_duplicate": "标识已被使用",
+    "title_required": "标题不能为空",
+    "agent_required": "请选择智能体",
+    "prompt_too_long": "提示词过长（最多 20,000 字节）",
+    "max_attempts_range": "最大尝试次数须为 1 到 10",
+    "self_dependency": "节点不能依赖自身",
+    "unknown_dependency": "依赖的节点不存在",
+    "cycle": "依赖关系形成了环",
+    "too_many_nodes": "最多 50 个节点",
+    "no_nodes": "请至少添加一个节点"
+  },
+  "dag": {
+    "aria_label": "工作流图",
+    "empty": "添加节点后即可看到流程。"
+  },
+  "runs": {
+    "empty": "还没有运行。把任务分配给此工作流即可开始一次运行。",
+    "col_issue": "任务",
+    "col_status": "状态",
+    "col_started": "开始时间",
+    "col_finished": "结束时间",
+    "showing": "显示 {{shown}} / {{total}}"
+  },
+  "run_status": {
+    "running": "运行中",
+    "waiting_human": "等你处理",
+    "done": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "unknown": "未知"
+  },
+  "step_status": {
+    "pending": "待开始",
+    "running": "运行中",
+    "awaiting_supervisor": "监督者审核中",
+    "awaiting_human": "等你处理",
+    "done": "已完成",
+    "skipped": "已跳过",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "unknown": "未知"
+  },
+  "run_section": {
+    "title": "工作流运行",
+    "rewinds": "回退 {{used}}/{{max}}",
+    "attempts": "第 {{attempts}}/{{max}} 次尝试",
+    "open_child": "打开步骤任务",
+    "open_workflow": "打开工作流",
+    "needs_decision": "需要你来决定",
+    "action_approve": "通过",
+    "action_redo": "重做…",
+    "action_retry": "重试",
+    "action_skip": "跳过",
+    "action_rewind": "回退到…",
+    "action_abort": "中止…",
+    "attempt_limit": "已达尝试次数上限",
+    "rewind_limit": "已达回退次数上限",
+    "cancel_run": "取消运行",
+    "timeline": "时间线",
+    "timeline_empty": "暂无事件",
+    "actor_engine": "工作流",
+    "step_line": "工作流步骤 {{index}}/{{total}}",
+    "step_line_with_parent": "工作流步骤 {{index}}/{{total}} · {{parent}}",
+    "redo_dialog": {
+      "title": "重做此步骤",
+      "feedback_label": "给智能体的反馈",
+      "feedback_placeholder": "需要改什么？",
+      "confirm": "重做",
+      "cancel": "取消"
+    },
+    "rewind_dialog": {
+      "title": "回退",
+      "target_label": "退回到",
+      "target_self": "{{title}}（当前步骤）",
+      "feedback_label": "给智能体的反馈",
+      "feedback_placeholder": "需要改什么？",
+      "confirm": "回退",
+      "cancel": "取消"
+    },
+    "abort_dialog": {
+      "title": "中止这次运行？",
+      "reason_label": "原因",
+      "reason_placeholder": "为什么要停止这次运行？",
+      "confirm": "中止运行",
+      "cancel": "取消"
+    },
+    "cancel_dialog": {
+      "title": "取消这次运行？",
+      "description": "运行中的步骤会停止，未完成的步骤任务会被取消。",
+      "keep": "继续运行",
+      "confirm": "取消运行"
+    },
+    "toast": {
+      "decided": "决定已发送",
+      "mismatch": "该步骤的状态已变化，请查看最新状态后重试。",
+      "forbidden": "你无权处理这次运行",
+      "failed": "发送决定失败",
+      "cancelled": "运行已取消",
+      "cancel_failed": "取消运行失败"
+    }
+  },
+  "events": {
+    "run_started": "运行开始",
+    "step_started": "步骤开始",
+    "step_finished": "步骤结束",
+    "step_failed": "步骤失败",
+    "decision": "决定",
+    "rewind": "回退",
+    "rewind_requested": "请求回退",
+    "escalated": "已转交人工处理",
+    "run_finished": "运行结束",
+    "run_cancelled": "运行已取消",
+    "protocol_error": "协议错误",
+    "unknown": "事件"
+  }
+}

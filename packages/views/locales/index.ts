@@ -23,6 +23,7 @@ import enLayout from "./en/layout.json";
 import enUsage from "./en/usage.json";
 import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
+import enExtWorkflows from "./en/ext-workflows.json";
 import enBilling from "./en/billing.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
@@ -48,6 +49,7 @@ import zhHansLayout from "./zh-Hans/layout.json";
 import zhHansUsage from "./zh-Hans/usage.json";
 import zhHansUi from "./zh-Hans/ui.json";
 import zhHansSquads from "./zh-Hans/squads.json";
+import zhHansExtWorkflows from "./zh-Hans/ext-workflows.json";
 import zhHansBilling from "./zh-Hans/billing.json";
 import koCommon from "./ko/common.json";
 import koAuth from "./ko/auth.json";
@@ -73,6 +75,7 @@ import koLayout from "./ko/layout.json";
 import koUsage from "./ko/usage.json";
 import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
+import koExtWorkflows from "./ko/ext-workflows.json";
 import koBilling from "./ko/billing.json";
 import jaCommon from "./ja/common.json";
 import jaAuth from "./ja/auth.json";
@@ -98,6 +101,7 @@ import jaLayout from "./ja/layout.json";
 import jaUsage from "./ja/usage.json";
 import jaUi from "./ja/ui.json";
 import jaSquads from "./ja/squads.json";
+import jaExtWorkflows from "./ja/ext-workflows.json";
 import jaBilling from "./ja/billing.json";
 import frCommon from "./fr/common.json";
 import frAuth from "./fr/auth.json";
@@ -123,6 +127,7 @@ import frLayout from "./fr/layout.json";
 import frUsage from "./fr/usage.json";
 import frUi from "./fr/ui.json";
 import frSquads from "./fr/squads.json";
+import frExtWorkflows from "./fr/ext-workflows.json";
 import frBilling from "./fr/billing.json";
 
 // Single source of truth for the resource bundle. Both apps (web layout +
@@ -154,6 +159,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     usage: enUsage,
     ui: enUi,
     squads: enSquads,
+    "ext-workflows": enExtWorkflows,
     billing: enBilling,
   },
   "zh-Hans": {
@@ -181,6 +187,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     usage: zhHansUsage,
     ui: zhHansUi,
     squads: zhHansSquads,
+    "ext-workflows": zhHansExtWorkflows,
     billing: zhHansBilling,
   },
   ko: {
@@ -208,6 +215,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     usage: koUsage,
     ui: koUi,
     squads: koSquads,
+    "ext-workflows": koExtWorkflows,
     billing: koBilling,
   },
   ja: {
@@ -235,6 +243,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     usage: jaUsage,
     ui: jaUi,
     squads: jaSquads,
+    "ext-workflows": jaExtWorkflows,
     billing: jaBilling,
   },
   fr: {
@@ -262,6 +271,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     usage: frUsage,
     ui: frUi,
     squads: frSquads,
+    "ext-workflows": frExtWorkflows,
     billing: frBilling,
   },
 };

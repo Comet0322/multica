@@ -1,0 +1,221 @@
+{
+  "page": {
+    "title": "워크플로",
+    "new_button": "새 워크플로",
+    "empty": "아직 워크플로가 없습니다.",
+    "row_menu": "워크플로 작업",
+    "archive_action": "보관",
+    "never_run": "실행 없음",
+    "table": {
+      "name": "워크플로",
+      "supervisor": "감독자",
+      "nodes": "노드",
+      "active_runs": "진행 중인 실행",
+      "last_run": "마지막 실행"
+    }
+  },
+  "archive_dialog": {
+    "title": "이 워크플로를 보관할까요?",
+    "description": "\"{{name}}\"을(를) 보관합니다. 진행 중인 실행은 계속되지만 새 태스크에는 지정할 수 없습니다.",
+    "cancel": "취소",
+    "confirm": "보관",
+    "archiving": "보관 중…",
+    "success": "워크플로를 보관했습니다",
+    "failed": "워크플로를 보관하지 못했습니다"
+  },
+  "agent_select": {
+    "search_placeholder": "에이전트 검색…",
+    "group_my_agents": "내 에이전트",
+    "group_workspace_agents": "워크스페이스 에이전트",
+    "no_agents": "사용할 수 있는 에이전트가 없습니다. 먼저 에이전트를 만드세요.",
+    "archived_suffix": "(보관됨)"
+  },
+  "create": {
+    "title": "새 워크플로",
+    "name_label": "이름",
+    "name_placeholder": "예: 릴리스 파이프라인",
+    "description_label": "설명",
+    "description_placeholder": "이 워크플로의 용도",
+    "supervisor_label": "감독자 에이전트",
+    "supervisor_hint": "각 단계를 검토하고 다음에 할 일을 결정합니다.",
+    "supervisor_placeholder": "감독자 에이전트 선택",
+    "cancel": "취소",
+    "submit": "만들기",
+    "submitting": "만드는 중…",
+    "toast_created": "워크플로를 만들었습니다",
+    "toast_failed": "워크플로를 만들지 못했습니다"
+  },
+  "detail": {
+    "not_found": "워크플로를 찾을 수 없습니다",
+    "tabs": {
+      "nodes": "노드",
+      "runs": "실행"
+    },
+    "save": "저장",
+    "saving": "저장 중…",
+    "saved": "워크플로를 저장했습니다",
+    "save_failed": "워크플로를 저장하지 못했습니다",
+    "discard": "변경 취소",
+    "unsaved": "저장하지 않은 변경 사항",
+    "validation_failed": "표시된 문제를 고친 뒤 다시 저장하세요.",
+    "archive_button": "보관",
+    "discard_dialog": {
+      "title": "저장하지 않은 변경 사항을 버릴까요?",
+      "description": "이 워크플로에 한 수정이 아직 저장되지 않았습니다.",
+      "keep_editing": "계속 편집",
+      "discard": "버리기"
+    }
+  },
+  "inspector": {
+    "name": "이름",
+    "description": "설명",
+    "description_placeholder": "설명 없음",
+    "supervisor": "감독자",
+    "max_rewinds": "최대 되돌리기",
+    "max_rewinds_hint": "한 번의 실행이 이전 단계로 돌아갈 수 있는 횟수입니다.",
+    "created_by": "만든 사람",
+    "updated": "업데이트"
+  },
+  "nodes": {
+    "add": "노드 추가",
+    "empty": "아직 노드가 없습니다. 첫 단계를 추가하세요.",
+    "active_runs_note_other": "진행 중인 실행 {{count}}개는 이전 정의를 계속 사용합니다.",
+    "node_n": "노드 {{n}}",
+    "title_label": "제목",
+    "title_placeholder": "단계 제목",
+    "key_label": "키",
+    "agent_label": "에이전트",
+    "agent_placeholder": "에이전트 선택",
+    "depends_label": "선행 노드",
+    "depends_none": "없음",
+    "depends_no_options": "순환을 만들지 않고 추가할 수 있는 노드가 없습니다.",
+    "review_label": "검토",
+    "max_attempts_label": "최대 시도",
+    "prompt_label": "프롬프트",
+    "prompt_placeholder": "이 단계에서 에이전트가 무엇을 해야 하나요?",
+    "expand": "프롬프트 보기",
+    "collapse": "프롬프트 숨기기",
+    "move_up": "위로 이동",
+    "move_down": "아래로 이동",
+    "delete": "노드 삭제",
+    "archived_agent": "보관된 에이전트입니다. 다른 에이전트를 선택하세요."
+  },
+  "errors": {
+    "key_required": "키를 입력하세요",
+    "key_invalid": "영문 소문자, 숫자, - 또는 _ 를 1~40자로 입력하세요",
+    "key_duplicate": "이미 사용 중인 키입니다",
+    "title_required": "제목을 입력하세요",
+    "agent_required": "에이전트를 선택하세요",
+    "prompt_too_long": "프롬프트가 너무 깁니다 (최대 20,000바이트)",
+    "max_attempts_range": "최대 시도는 1~10이어야 합니다",
+    "self_dependency": "노드는 자기 자신에 의존할 수 없습니다",
+    "unknown_dependency": "존재하지 않는 노드에 의존합니다",
+    "cycle": "의존 관계가 순환합니다",
+    "too_many_nodes": "노드는 최대 50개입니다",
+    "no_nodes": "노드를 하나 이상 추가하세요"
+  },
+  "dag": {
+    "aria_label": "워크플로 그래프",
+    "empty": "노드를 추가하면 흐름이 표시됩니다."
+  },
+  "runs": {
+    "empty": "아직 실행이 없습니다. 이 워크플로에 태스크를 지정하면 실행이 시작됩니다.",
+    "col_issue": "태스크",
+    "col_status": "상태",
+    "col_started": "시작",
+    "col_finished": "종료",
+    "showing": "{{total}}개 중 {{shown}}개 표시"
+  },
+  "run_status": {
+    "running": "실행 중",
+    "waiting_human": "확인 필요",
+    "done": "완료",
+    "failed": "실패",
+    "cancelled": "취소됨",
+    "unknown": "알 수 없음"
+  },
+  "step_status": {
+    "pending": "대기 중",
+    "running": "실행 중",
+    "awaiting_supervisor": "감독자 검토 중",
+    "awaiting_human": "확인 필요",
+    "done": "완료",
+    "skipped": "건너뜀",
+    "failed": "실패",
+    "cancelled": "취소됨",
+    "unknown": "알 수 없음"
+  },
+  "run_section": {
+    "title": "워크플로 실행",
+    "rewinds": "되돌리기 {{used}}/{{max}}",
+    "attempts": "시도 {{attempts}}/{{max}}",
+    "open_child": "단계 태스크 열기",
+    "open_workflow": "워크플로 열기",
+    "needs_decision": "결정이 필요합니다",
+    "action_approve": "승인",
+    "action_redo": "다시 하기…",
+    "action_retry": "재시도",
+    "action_skip": "건너뛰기",
+    "action_rewind": "되돌리기…",
+    "action_abort": "중단…",
+    "attempt_limit": "시도 한도에 도달했습니다",
+    "rewind_limit": "되돌리기 한도에 도달했습니다",
+    "cancel_run": "실행 취소",
+    "timeline": "타임라인",
+    "timeline_empty": "아직 이벤트가 없습니다",
+    "actor_engine": "워크플로",
+    "step_line": "워크플로 단계 {{index}}/{{total}}",
+    "step_line_with_parent": "워크플로 단계 {{index}}/{{total}} · {{parent}}",
+    "redo_dialog": {
+      "title": "이 단계 다시 하기",
+      "feedback_label": "에이전트에게 전달할 피드백",
+      "feedback_placeholder": "무엇을 바꿔야 하나요?",
+      "confirm": "다시 하기",
+      "cancel": "취소"
+    },
+    "rewind_dialog": {
+      "title": "되돌리기",
+      "target_label": "돌아갈 단계",
+      "target_self": "{{title}} (현재 단계)",
+      "feedback_label": "에이전트에게 전달할 피드백",
+      "feedback_placeholder": "무엇을 바꿔야 하나요?",
+      "confirm": "되돌리기",
+      "cancel": "취소"
+    },
+    "abort_dialog": {
+      "title": "실행을 중단할까요?",
+      "reason_label": "사유",
+      "reason_placeholder": "이 실행을 중단하는 이유는 무엇인가요?",
+      "confirm": "실행 중단",
+      "cancel": "취소"
+    },
+    "cancel_dialog": {
+      "title": "이 실행을 취소할까요?",
+      "description": "실행 중인 단계는 중지되고 열려 있는 단계 태스크는 취소됩니다.",
+      "keep": "계속 실행",
+      "confirm": "실행 취소"
+    },
+    "toast": {
+      "decided": "결정을 보냈습니다",
+      "mismatch": "이 단계가 변경되었습니다. 새 상태를 확인한 뒤 다시 시도하세요.",
+      "forbidden": "이 실행에 대해 결정할 권한이 없습니다",
+      "failed": "결정을 보내지 못했습니다",
+      "cancelled": "실행을 취소했습니다",
+      "cancel_failed": "실행을 취소하지 못했습니다"
+    }
+  },
+  "events": {
+    "run_started": "실행 시작",
+    "step_started": "단계 시작",
+    "step_finished": "단계 종료",
+    "step_failed": "단계 실패",
+    "decision": "결정",
+    "rewind": "되돌리기",
+    "rewind_requested": "되돌리기 요청",
+    "escalated": "사람에게 전달됨",
+    "run_finished": "실행 종료",
+    "run_cancelled": "실행 취소됨",
+    "protocol_error": "프로토콜 오류",
+    "unknown": "이벤트"
+  }
+}

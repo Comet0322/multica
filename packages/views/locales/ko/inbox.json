@@ -79,6 +79,7 @@
     "quick_create_unconfirmed": "에이전트 생성 결과 미확인",
     "autopilot_paused": "자동화 일시 중지됨",
     "children_done": "하위 태스크가 모두 끝났습니다",
+    "ext_workflow_escalation": "워크플로에 결정이 필요합니다",
     "autopilot_quota_exceeded": "자동화 실행 한도 도달"
   },
   "labels": {

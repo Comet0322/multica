@@ -297,6 +297,10 @@
         "label": "前往小队",
         "description": "打开小队列表。"
       },
+      "goWorkflows": {
+        "label": "前往工作流",
+        "description": "打开工作流列表。"
+      },
       "goUsage": {
         "label": "前往用量",
         "description": "打开用量分析。"

@@ -298,6 +298,10 @@
         "label": "Go to Squads",
         "description": "Open the squad list."
       },
+      "goWorkflows": {
+        "label": "Go to Workflows",
+        "description": "Open the workflow list."
+      },
       "goUsage": {
         "label": "Go to Usage",
         "description": "Open usage analytics."
