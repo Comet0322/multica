@@ -258,14 +258,16 @@ func (e *Engine) advance(ctx context.Context, ext pgx.Tx, runID pgtype.UUID, der
 			flushCtx := context.WithoutCancel(ctx)
 			after.Add(func() { e.flush(flushCtx, out) })
 		} else {
-			e.flush(ctx, out)
+			e.flush(context.WithoutCancel(ctx), out)
 		}
 		return nil
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
-	e.flush(ctx, out)
+	// The state is committed: a client disconnect must not drop its
+	// notifications.
+	e.flush(context.WithoutCancel(ctx), out)
 	return nil
 }
 

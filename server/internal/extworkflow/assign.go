@@ -186,7 +186,9 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
-	e.flush(ctx, out)
+	// The run is committed: a client disconnect must not drop its
+	// notifications.
+	e.flush(context.WithoutCancel(ctx), out)
 	return nil
 }
 
