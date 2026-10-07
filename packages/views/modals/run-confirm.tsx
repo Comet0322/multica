@@ -130,10 +130,13 @@ export function RunConfirmModal({
   };
 
   // The copy names whoever the issue is handed to; for a squad that is the
-  // squad itself, since its leader deciding who works is an internal detail.
+  // squad or workflow itself, since its leader deciding who works is an internal detail.
   const assigneeName =
     d.assigneeName ??
-    getActorName(d.assigneeType === "squad" ? "squad" : "agent", d.assigneeId ?? "");
+    getActorName(
+      d.assigneeType === "squad" || d.assigneeType === "workflow" ? d.assigneeType : "agent", // ext-workflow
+      d.assigneeId ?? "",
+    );
 
   const submit = async (suppressRun: boolean) => {
     if (issueIds.length === 0 || submitting) return;

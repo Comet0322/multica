@@ -13,14 +13,14 @@ export type RunConfirmIntent =
   | {
       issueIds: [string];
       mode: "assign";
-      assigneeType: "agent" | "squad";
+      assigneeType: "agent" | "squad" | "workflow"; // ext-workflow
       assigneeId: string;
     }
   | {
       issueIds: [string];
       mode: "promote";
       status: string;
-      assigneeType: "agent" | "squad";
+      assigneeType: "agent" | "squad" | "workflow"; // ext-workflow
       assigneeId: string;
     };
 
@@ -78,7 +78,9 @@ export function runConfirmIntent(
   const parked = issue.status === "backlog";
 
   if (
-    (updates.assignee_type === "agent" || updates.assignee_type === "squad") &&
+    (updates.assignee_type === "agent" ||
+      updates.assignee_type === "squad" ||
+      updates.assignee_type === "workflow") && // ext-workflow: a workflow owner starts a run like an agent/squad
     updates.assignee_id &&
     !parked
   ) {
@@ -96,7 +98,7 @@ export function runConfirmIntent(
     updates.status !== issue.status &&
     // Unknown counts as possibly-parked: the write may promote, so confirm.
     (parked || issueCategory === null) &&
-    (owner === "agent" || owner === "squad") &&
+    (owner === "agent" || owner === "squad" || owner === "workflow") && // ext-workflow
     issue.assignee_id
   ) {
     const target = resolveStatusCategory(updates.status, undefined, catalog);

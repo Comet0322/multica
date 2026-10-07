@@ -10,6 +10,7 @@ import { canAssignAgentToIssue } from "@multica/core/permissions";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { memberListOptions, agentListOptions, squadListOptions, assigneeFrequencyOptions } from "@multica/core/workspace/queries";
+import { extWorkflowListOptions } from "@multica/core/ext-workflows"; // ext-workflow
 import { ActorAvatar } from "../../../common/actor-avatar";
 import { DeferredPopup } from "../../../common/deferred-popup";
 import {
@@ -110,6 +111,7 @@ function AssigneePickerImpl({
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
+  const { data: workflows = [] } = useQuery(extWorkflowListOptions(wsId)); // ext-workflow
   const { data: frequency = [] } = useQuery(assigneeFrequencyOptions(wsId));
   const { getActorName } = useActorName();
 
@@ -137,6 +139,10 @@ function AssigneePickerImpl({
   const filteredSquads = squads
     .filter((s) => !s.archived_at && (s.name.toLowerCase().includes(query) || matchesPinyin(s.name, query)))
     .sort((a, b) => getFreq("squad", b.id) - getFreq("squad", a.id));
+  // ext-workflow: non-archived workflows, most-used first.
+  const filteredWorkflows = workflows
+    .filter((w) => !w.archived_at && (w.name.toLowerCase().includes(query) || matchesPinyin(w.name, query)))
+    .sort((a, b) => getFreq("workflow", b.id) - getFreq("workflow", a.id));
   const runnableAgentIds = new Set(
     agents
       .filter((agent) => !agent.archived_at && isAgentRuntimeBound(agent))
@@ -292,9 +298,36 @@ function AssigneePickerImpl({
         </PickerSection>
       )}
 
+      {/* Workflows (ext-workflow) — assigning starts a run that fans the issue
+          out into step issues. A workflow with no nodes cannot start one. */}
+      {filteredWorkflows.length > 0 && (
+        <PickerSection label={t(($) => $.pickers.assignee.workflows_group)}>
+          {filteredWorkflows.map((w) => {
+            const startable = w.node_count > 0;
+            return (
+              <PickerItem
+                key={w.id}
+                selected={isSelected("workflow", w.id)}
+                disabled={!startable}
+                tooltip={startable ? undefined : t(($) => $.pickers.assignee.workflow_needs_nodes)}
+                onClick={() => {
+                  if (!startable) return;
+                  onUpdate({ assignee_type: "workflow", assignee_id: w.id });
+                  setOpen(false);
+                }}
+              >
+                <ActorAvatar actorType="workflow" actorId={w.id} size="sm" />
+                <span className="truncate">{w.name}</span>
+              </PickerItem>
+            );
+          })}
+        </PickerSection>
+      )}
+
       {filteredMembers.length === 0 &&
         filteredAgents.length === 0 &&
         filteredSquads.length === 0 &&
+        filteredWorkflows.length === 0 && // ext-workflow
         filter && <PickerEmpty />}
     </PropertyPicker>
   );

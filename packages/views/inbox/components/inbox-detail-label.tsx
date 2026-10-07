@@ -13,7 +13,11 @@ import { priorityLabel } from "../../issues/utils/priority-label";
 // Hook returning the inbox-item type → human label map. Replaces the
 // previous static `typeLabels` const so the labels can flow through
 // i18next. Call sites keep the same `typeLabels[type]` access pattern.
-export function useTypeLabels(): Record<InboxItemType, string> {
+// ext-workflow: server-side only type. It is NOT added to InboxItemType
+// (apps/mobile keeps a total Record over that union), so it is carried here.
+type InboxLabelType = InboxItemType | "ext_workflow_escalation";
+
+export function useTypeLabels(): Record<InboxLabelType, string> {
   const { t } = useT("inbox");
   return {
     issue_assigned: t(($) => $.types.issue_assigned),
@@ -38,6 +42,7 @@ export function useTypeLabels(): Record<InboxItemType, string> {
     autopilot_paused: t(($) => $.types.autopilot_paused),
     autopilot_quota_exceeded: t(($) => $.types.autopilot_quota_exceeded),
     children_done: t(($) => $.types.children_done),
+    ext_workflow_escalation: t(($) => $.types.ext_workflow_escalation), // ext-workflow
   };
 }
 

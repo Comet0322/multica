@@ -127,7 +127,8 @@ function CreateRunHint({
 }) {
   const { t } = useT("modals");
   const { getActorName } = useActorName();
-  const isAgentLike = assigneeType === "agent" || assigneeType === "squad";
+  const isAgentLike =
+    assigneeType === "agent" || assigneeType === "squad" || assigneeType === "workflow"; // ext-workflow
   const preview = useIssueTriggerPreview({
     isCreate: true,
     assigneeType: assigneeType ?? null,
@@ -141,6 +142,7 @@ function CreateRunHint({
   const ready = isAgentLike && !!assigneeId && !preview.isLoading;
   const willStart = preview.totalCount > 0;
   const isSquad = assigneeType === "squad";
+  const isWorkflow = assigneeType === "workflow"; // ext-workflow
   const triggerAgentId = preview.triggers[0]?.agent_id ?? assigneeId;
 
   // Avatar + copy mirror the flow. A squad doesn't "work" — its leader
@@ -159,6 +161,14 @@ function CreateRunHint({
     avatarId = assigneeId;
     text = t(($) => $.run_confirm.create_will_start_squad, {
       name: getActorName("squad", assigneeId ?? ""),
+    });
+  } else if (isWorkflow) {
+    // ext-workflow: the supervisor and step agents work through the workflow,
+    // so the workflow stays the subject.
+    avatarType = "workflow";
+    avatarId = assigneeId;
+    text = t(($) => $.run_confirm.create_will_start_workflow, {
+      name: getActorName("workflow", assigneeId ?? ""),
     });
   } else {
     avatarType = "agent";

@@ -31,6 +31,7 @@ vi.mock("@multica/core/paths", () => ({
     memberDetail: (id: string) => `/acme/members/${id}`,
     agentDetail: (id: string) => `/acme/agents/${id}`,
     squadDetail: (id: string) => `/acme/squads/${id}`,
+    workflowDetail: (id: string) => `/acme/workflows/${id}`,
   }),
   useCurrentWorkspace: () => ({ id: "ws1", slug: "acme" }),
 }));
@@ -174,6 +175,19 @@ describe("ActorAvatar profile link", () => {
     );
 
     expect(screen.getByRole("link")).toBeInTheDocument();
+  });
+
+  it("renders a workflow actor with the workflow glyph and links to its page", () => {
+    const push = vi.fn();
+    const { container } = render(
+      <NavigationProvider value={makeAdapter({ push })}>
+        <ActorAvatar actorType="workflow" actorId="wf1" />
+      </NavigationProvider>,
+    );
+    // The base avatar draws a lucide glyph (an svg) instead of initials for workflows.
+    expect(container.querySelector('[data-slot="avatar"] svg')).not.toBeNull();
+    fireEvent.click(screen.getByRole("link"));
+    expect(push).toHaveBeenCalledWith("/acme/workflows/wf1");
   });
 
   it("pushes on plain click", () => {

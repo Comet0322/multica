@@ -135,3 +135,33 @@ describe("runConfirmIntent — promote", () => {
     expect(runConfirmIntent(issue(from as Partial<GateIssue>), { status: to }, CATALOG)).toBeNull();
   });
 });
+
+describe("runConfirmIntent — workflow owners", () => {
+  it("confirms assigning a workflow like an agent or squad", () => {
+    expect(
+      runConfirmIntent(issue({ status: "todo" }), { assignee_type: "workflow", assignee_id: "wf-1" }, CATALOG),
+    ).toEqual({ issueIds: ["issue-1"], mode: "assign", assigneeType: "workflow", assigneeId: "wf-1" });
+  });
+
+  it("applies directly when the issue is parked in backlog", () => {
+    expect(
+      runConfirmIntent(issue({ status: "backlog" }), { assignee_type: "workflow", assignee_id: "wf-1" }, CATALOG),
+    ).toBeNull();
+  });
+
+  it("confirms promoting a workflow-owned issue out of backlog", () => {
+    expect(
+      runConfirmIntent(
+        issue({ status: "backlog", assignee_type: "workflow", assignee_id: "wf-1" }),
+        { status: "todo" },
+        CATALOG,
+      ),
+    ).toEqual({
+      issueIds: ["issue-1"],
+      mode: "promote",
+      status: "todo",
+      assigneeType: "workflow",
+      assigneeId: "wf-1",
+    });
+  });
+});

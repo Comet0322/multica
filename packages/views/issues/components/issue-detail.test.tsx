@@ -307,6 +307,7 @@ vi.mock("../../projects/components/project-picker", () => ({
 // Mock api
 const mockApiObj = vi.hoisted(() => ({
   getIssue: vi.fn(),
+listExtWorkflows: vi.fn().mockResolvedValue([]), // ext-workflow: AssigneePicker lists workflows
   listTimeline: vi.fn().mockResolvedValue([]),
   listComments: vi.fn().mockResolvedValue([]),
   createComment: vi.fn(),

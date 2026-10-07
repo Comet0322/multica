@@ -27,6 +27,9 @@ vi.mock("@tanstack/react-query", () => ({
   },
 }));
 
+vi.mock("@multica/core/ext-workflows", () => ({
+  extWorkflowListOptions: () => ({ queryKey: ["ext-workflows"] }), // ext-workflow
+}));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "workspace-1" }));
 vi.mock("@multica/core/auth", () => ({ useAuthStore: () => ({ id: "user-1" }) }));
 vi.mock("@multica/core/agents", () => ({ isAgentRuntimeBound: () => true }));

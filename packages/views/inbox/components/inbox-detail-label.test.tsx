@@ -116,6 +116,13 @@ describe("InboxDetailLabel quick-create outcomes", () => {
 });
 
 describe("InboxDetailLabel localized values", () => {
+  it("labels an ext workflow escalation", () => {
+    const { container } = render(
+      <InboxDetailLabel item={item({ type: "ext_workflow_escalation" as InboxItem["type"] })} />,
+    );
+    expect(container).toHaveTextContent("Workflow needs a decision");
+  });
+
   it("uses the localized built-in status instead of the English catalog seed", () => {
     const { container } = render(
       <InboxDetailLabel

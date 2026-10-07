@@ -119,6 +119,7 @@ export function ActorAvatar({
       isAgent={actorType === "agent"}
       isSystem={actorType === "system"}
       isSquad={actorType === "squad"}
+      isWorkflow={actorType === "workflow"} // ext-workflow: workflow glyph
       size={size}
       className={className}
     />
@@ -144,7 +145,8 @@ export function ActorAvatar({
     (profileLink ??
       (actorType === "member" ||
         actorType === "agent" ||
-        actorType === "squad"));
+        actorType === "squad" ||
+        actorType === "workflow")); // ext-workflow
   const profileHref = shouldLinkToProfile
     ? actorType === "member"
       ? paths.memberDetail(actorId)
@@ -152,7 +154,9 @@ export function ActorAvatar({
         ? paths.agentDetail(actorId)
         : actorType === "squad"
           ? paths.squadDetail(actorId)
-          : null
+          : actorType === "workflow" // ext-workflow
+            ? paths.workflowDetail(actorId)
+            : null
     : null;
   const content = profileHref ? (
     <ActorAvatarProfileLink href={profileHref}>{dotted}</ActorAvatarProfileLink>
