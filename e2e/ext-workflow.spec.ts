@@ -19,6 +19,9 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
   try {
     const workspace = (await api.getWorkspaces())[0]!;
     workspaceId = workspace.id;
+    // A previous run that died before its cleanup must not leave an "E2E Flow"
+    // behind: the list's empty state is asserted below.
+    await purgeExtWorkflowRows(db, workspace.id);
     const user = await db.query<{ id: string }>(`SELECT id FROM "user" WHERE email = $1`, [api.getEmail()]);
     const userId = user.rows[0]!.id;
     const runtime = await db.query<{ id: string }>(
@@ -94,15 +97,33 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     const parent = await api.createIssue("E2E workflow parent", { status: "todo" });
     parentId = parent.id;
     await page.goto(`/${workspace.slug}/issues/${parent.id}`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "Unassigned" }).first().click({ timeout: 45_000 });
-    await page.getByRole("button", { name: /E2E Flow/ }).click();
-    await page.getByRole("button", { name: "Confirm assignment" }).click();
+    // Wait for the loaded issue before touching its sidebar, then target the
+    // Assignee property row only. The sidebar re-renders while the issue's
+    // queries settle, which can close a picker that just opened, so retry
+    // open-and-pick until the confirmation dialog is up.
+    await expect(page.getByText("E2E workflow parent").first()).toBeVisible({ timeout: 45_000 });
+    const assigneeRow = page.getByText("Assignee", { exact: true }).locator("xpath=..");
+    const assigneeTrigger = assigneeRow.getByRole("button", { name: "Unassigned" });
+    await expect(assigneeTrigger).toBeVisible({ timeout: 45_000 });
+    const pickerSearch = page.getByPlaceholder("Assign to...");
+    const confirmAssignment = page.getByRole("button", { name: "Confirm assignment" });
+    await expect(async () => {
+      if (!(await confirmAssignment.isVisible())) {
+        if (!(await pickerSearch.isVisible())) await assigneeTrigger.click({ timeout: 5_000 });
+        await expect(pickerSearch).toBeVisible({ timeout: 2_000 });
+        await page.getByRole("button", { name: /E2E Flow/ }).click({ timeout: 2_000 });
+      }
+      await expect(confirmAssignment).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 60_000 });
+    await confirmAssignment.click();
 
     // 7. The run panel lists both steps, each linking to its child issue.
-    await expect(page.getByText("Workflow run")).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByText("Plan the work", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Build it", { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open step issue" })).toHaveCount(2);
+    const runPanel = page.locator("[data-ext-workflow-run]");
+    await expect(runPanel).toBeVisible({ timeout: 45_000 });
+    await expect(runPanel.getByRole("button", { name: /Workflow run/ })).toBeVisible();
+    await expect(runPanel.getByText("Plan the work", { exact: true })).toBeVisible();
+    await expect(runPanel.getByText("Build it", { exact: true })).toBeVisible();
+    await expect(runPanel.getByRole("link", { name: "Open step issue" })).toHaveCount(2);
 
     const children = await db.query<{ id: string; title: string }>(
       `SELECT id, title FROM issue WHERE parent_issue_id = $1 ORDER BY created_at`,
@@ -119,7 +140,7 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     expect(run.rows).toEqual([{ status: "running" }]);
 
     // 8. A child issue says which step it is and links back to the parent.
-    await page.getByRole("link", { name: "Open step issue" }).first().click();
+    await runPanel.getByRole("link", { name: "Open step issue" }).first().click();
     await expect(page.getByRole("link", { name: /Workflow step 1 of 2/ })).toBeVisible({ timeout: 45_000 });
 
     // 9. The workflow's Runs tab lists the run.
@@ -128,24 +149,49 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     await page.getByRole("button", { name: "Runs" }).click();
     await expect(page.getByText("E2E workflow parent")).toBeVisible({ timeout: 30_000 });
   } finally {
-    if (workspaceId) {
-      // No foreign keys: delete ext rows explicitly, children and tasks before their parent.
-      await db.query(`DELETE FROM ext_workflow_run_event WHERE workspace_id = $1`, [workspaceId]);
-      await db.query(`DELETE FROM ext_workflow_run_step WHERE workspace_id = $1`, [workspaceId]);
-      await db.query(`DELETE FROM ext_workflow_run WHERE workspace_id = $1`, [workspaceId]);
-      await db.query(`DELETE FROM ext_workflow_node WHERE workspace_id = $1`, [workspaceId]);
-      await db.query(`DELETE FROM ext_workflow WHERE workspace_id = $1`, [workspaceId]);
+    // Each statement is guarded so one failure cannot skip the rest, and the
+    // connection is always closed.
+    try {
+      if (workspaceId) await purgeExtWorkflowRows(db, workspaceId, guarded);
+      if (parentId) {
+        await guarded("child issue tasks", () =>
+          db.query(
+            `DELETE FROM agent_task_queue WHERE issue_id IN (SELECT id FROM issue WHERE parent_issue_id = $1 OR id = $1)`,
+            [parentId],
+          ),
+        );
+        await guarded("child issues", () => db.query(`DELETE FROM issue WHERE parent_issue_id = $1`, [parentId]));
+      }
+      await guarded("api cleanup", () => api.cleanup());
+      for (const id of agentIds) await guarded(`agent ${id}`, () => db.query(`DELETE FROM agent WHERE id = $1`, [id]));
+      if (runtimeId) await guarded("runtime", () => db.query(`DELETE FROM agent_runtime WHERE id = $1`, [runtimeId]));
+    } finally {
+      await db.end();
     }
-    if (parentId) {
-      await db.query(
-        `DELETE FROM agent_task_queue WHERE issue_id IN (SELECT id FROM issue WHERE parent_issue_id = $1 OR id = $1)`,
-        [parentId],
-      );
-      await db.query(`DELETE FROM issue WHERE parent_issue_id = $1`, [parentId]);
-    }
-    await api.cleanup();
-    for (const id of agentIds) await db.query(`DELETE FROM agent WHERE id = $1`, [id]);
-    if (runtimeId) await db.query(`DELETE FROM agent_runtime WHERE id = $1`, [runtimeId]);
-    await db.end();
   }
 });
+
+type Step = (label: string, fn: () => Promise<unknown>) => Promise<unknown>;
+
+// No foreign keys: delete the ext rows explicitly, run tasks and children
+// before their parents. `step` wraps each statement: plain before the test
+// (a failure should fail it), guarded during cleanup.
+async function purgeExtWorkflowRows(db: pg.Client, workspaceId: string, step: Step = (_label, fn) => fn()) {
+  await step("ext workflow run tasks", () =>
+    db.query(
+      `DELETE FROM agent_task_queue WHERE ext_workflow_run_id IN (SELECT id FROM ext_workflow_run WHERE workspace_id = $1)`,
+      [workspaceId],
+    ),
+  );
+  for (const table of ["ext_workflow_run_event", "ext_workflow_run_step", "ext_workflow_run", "ext_workflow_node", "ext_workflow"]) {
+    await step(table, () => db.query(`DELETE FROM ${table} WHERE workspace_id = $1`, [workspaceId]));
+  }
+}
+
+async function guarded(label: string, fn: () => Promise<unknown>) {
+  try {
+    await fn();
+  } catch (err) {
+    console.warn(`ext-workflow e2e cleanup (${label}) failed:`, err);
+  }
+}

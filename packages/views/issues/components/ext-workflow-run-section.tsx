@@ -126,7 +126,7 @@ function RunPanel({ wsId, summary }: { wsId: string; summary: ExtWorkflowRunSumm
   };
 
   return (
-    <div>
+    <div data-ext-workflow-run={run.id}>
       <button
         type="button"
         className={cn(
