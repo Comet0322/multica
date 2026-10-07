@@ -110,6 +110,7 @@ import { IssueAgentHeaderChip } from "./issue-agent-header-chip";
 import { IssueWakeupHeaderChip } from "./issue-wakeup-header-chip";
 import { ExecutionLogSection } from "./execution-log-section";
 import { WakeupsSection } from "./wakeups-section";
+import { ExtWorkflowRunSection, ExtWorkflowStepLine } from "./ext-workflow-run-section"; // ext-workflow
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
@@ -2874,6 +2875,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       />
       <PluginPanelSection issueId={issue.id} />
 
+      {/* ext-workflow: child issues of a workflow run show which step they are. */}
+      <ExtWorkflowStepLine issueId={id} />
+
       {/* Parent issue — standalone section, only when the issue has a
           parent. Setting a parent is reachable via the issue actions menu;
           this card surfaces an existing parent without occupying sidebar
@@ -2935,6 +2939,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       {/* Deliverables — the files this issue's comments delivered. Hidden
           while there are none. */}
       <DeliverablesSection files={deliverableFiles} onOpenOverview={openOverview} />
+
+      {/* ext-workflow: the run panel of a workflow-assigned issue; renders nothing otherwise. */}
+      <ExtWorkflowRunSection issueId={id} />
 
       {/* Execution log — active runs + collapsed past runs, each carrying its
           own token spend, with the issue total on the section header.
