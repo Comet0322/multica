@@ -220,3 +220,6 @@ WHERE ext_workflow_run_id = @run_id
   AND id IS DISTINCT FROM sqlc.narg(except_task_id)::uuid
   AND status IN ('queued', 'dispatched', 'running', 'waiting_local_directory', 'deferred')
 RETURNING *;
+
+-- name: ExtWorkflowRunExistsForIssue :one
+SELECT EXISTS (SELECT 1 FROM ext_workflow_run WHERE issue_id = @issue_id AND workspace_id = @workspace_id);

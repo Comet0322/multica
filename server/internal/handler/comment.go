@@ -2018,10 +2018,6 @@ const noteCommentPrefix = "/note"
 // "/note check expiry", "  /NOTE", and "/note" all match, while "/notes",
 // "/ note", and "see foo/note" do not.
 func isNoteComment(content string) bool {
-	// ext-workflow: a decision block is workflow protocol traffic; it wakes no agent.
-	if isExtWorkflowBlockComment(content) {
-		return true
-	}
 	trimmed := strings.TrimLeft(content, " \t\r\n")
 	firstToken := trimmed
 	if i := strings.IndexFunc(trimmed, unicode.IsSpace); i >= 0 {
@@ -2039,7 +2035,7 @@ func isNoteComment(content string) bool {
 // steerTaskIDs are the running turns the author chose: a recipient whose chosen
 // turn is still running receives this comment there instead of a follow-up run.
 func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, actorType, actorID, originatorUserID string, suppressAgentIDs, steerTaskIDs []pgtype.UUID) []CommentTriggerOutcome {
-	if isNoteComment(comment.Content) {
+	if h.isNoteCommentOn(ctx, issue, comment.Content) { // ext-workflow: block notes are workflow-scoped
 		return nil
 	}
 	ctx = withExtWorkflowCommentTrigger(ctx, comment.ID) // ext-workflow: only this pass may wake a workflow supervisor
@@ -2710,7 +2706,7 @@ func (h *Handler) computeCommentAgentTriggers(ctx context.Context, issue db.Issu
 		opts.ThreadCommentID = parentComment.ID
 	}
 
-	if isNoteComment(content) {
+	if h.isNoteCommentOn(ctx, issue, content) { // ext-workflow: block notes are workflow-scoped
 		return nil, nil
 	}
 
@@ -4011,7 +4007,7 @@ func (h *Handler) retriggerCancelledTaskSurvivors(ctx context.Context, issue db.
 
 	for i := range comments {
 		comment := comments[i]
-		if isNoteComment(comment.Content) {
+		if h.isNoteCommentOn(ctx, issue, comment.Content) { // ext-workflow: block notes are workflow-scoped
 			continue
 		}
 		// Platform recovery comments bypass generic member/agent routing. If

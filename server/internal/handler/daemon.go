@@ -4505,7 +4505,7 @@ func (h *Handler) reconcileCommentsOnCompletion(ctx context.Context, task *db.Ag
 			// Already delivered to this run (trigger or pre-claim coalesced).
 			continue
 		}
-		if isNoteComment(c.Content) {
+		if h.isNoteCommentOn(ctx, issue, c.Content) { // ext-workflow: block notes are workflow-scoped
 			continue
 		}
 		// A delegated failure recovery signal is platform-authored and targets

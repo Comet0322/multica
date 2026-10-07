@@ -7,14 +7,15 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 const extWFApproveBlock = "Approving.\n\n```ext-workflow\naction: approve\n```\n"
 
-func TestIsNoteCommentTreatsWorkflowBlocksAsNotes(t *testing.T) {
+func TestIsNoteCommentIsPureAndIgnoresWorkflowBlocks(t *testing.T) {
 	for content, want := range map[string]bool{
-		extWFApproveBlock:                  true,
-		"```ext-workflow\naction: approve": true, // unclosed still counts: it is protocol traffic
+		extWFApproveBlock:                  false, // a block is a note only in workflow context: isNoteCommentOn
+		"```ext-workflow\naction: approve": false,
 		"/note remember this":              true,
 		"please look at this":              false,
 		"```yaml\naction: approve\n```\n":  false,
@@ -146,5 +147,68 @@ func TestExtWorkflowBlockFromAMemberIsInert(t *testing.T) {
 	}
 	if n := childTasks(); n != tasksBefore {
 		t.Fatalf("child tasks %d -> %d", tasksBefore, n)
+	}
+}
+
+// A fenced block only means workflow protocol inside a workflow. Anywhere else
+// it is ordinary text, and the comment routes like any other.
+func TestExtWorkflowBlockOutsideAWorkflowBehavesLikeAComment(t *testing.T) {
+	requireExtWorkflowDB(t)
+	engine := withExtWorkflowEngine(t)
+	helper := createHandlerTestAgent(t, "ext-wf-plain-helper", nil)
+	mention := "[@Helper](mention://agent/" + helper + ") "
+	wakes := func(issueID string) int {
+		c := postComment(t, "", issueID, map[string]any{"content": mention + extWFApproveBlock})
+		return dbfx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE trigger_comment_id = $1`, c.ID)
+	}
+
+	plain := createTestIssue(t, "Ordinary issue", "todo", "none")
+	if n := wakes(plain); n != 1 {
+		t.Fatalf("block on an ordinary issue enqueued %d tasks, want 1", n)
+	}
+
+	_, runID, _ := startExtRun(t)
+	child := getExtRun(t, runID).Steps[0].IssueID
+	setExtWorkflowEngine(t, nil)
+	if n := wakes(child); n != 1 {
+		t.Fatalf("engine off: block on a step child enqueued %d tasks, want 1", n)
+	}
+	if n := wakes(plain); n != 1 {
+		t.Fatalf("engine off: block on an ordinary issue enqueued %d tasks, want 1", n)
+	}
+	setExtWorkflowEngine(t, engine)
+	if n := wakes(child); n != 0 {
+		t.Fatalf("engine on: block on a step child enqueued %d tasks, want 0", n)
+	}
+}
+
+func TestIsNoteCommentOnDecidesByWorkflowContext(t *testing.T) {
+	requireExtWorkflowDB(t)
+	withExtWorkflowEngine(t)
+	ctx := context.Background()
+	issue, runID, _ := startExtRun(t)
+	child := getExtRun(t, runID).Steps[0].IssueID
+	load := func(id string) db.Issue {
+		row, err := testHandler.Queries.GetIssue(ctx, util.MustParseUUID(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	plain := load(createTestIssue(t, "Ordinary issue for the note predicate", "todo", "none"))
+	for name, tc := range map[string]struct {
+		issue   db.Issue
+		content string
+		want    bool
+	}{
+		"parent block":        {load(issue.ID), extWFApproveBlock, true},
+		"child block":         {load(child), extWFApproveBlock, true},
+		"plain block":         {plain, extWFApproveBlock, false},
+		"plain /note":         {plain, "/note x", true},
+		"child ordinary text": {load(child), "hello", false},
+	} {
+		if got := testHandler.isNoteCommentOn(ctx, tc.issue, tc.content); got != tc.want {
+			t.Errorf("%s: isNoteCommentOn = %v, want %v", name, got, tc.want)
+		}
 	}
 }

@@ -14,10 +14,25 @@ import (
 // ext-workflow (fork): comment-side glue for the workflow engine (spec §6.3,
 // §6.4). The hooks in comment.go stay one line each.
 
-// isExtWorkflowBlockComment: the comment carries an ext-workflow decision
-// block (valid or not). isNoteComment treats it as a note, so it wakes no
-// agent; the engine reads it from comment:created.
-func isExtWorkflowBlockComment(content string) bool { return extworkflow.ContainsBlock(content) }
+// isNoteCommentOn is isNoteComment in the context of the comment's issue: a
+// decision block (valid or not) is also a note, so it wakes no agent and the
+// engine reads it from comment:created, but only while the engine is on and
+// the issue is a workflow parent or step child. Anywhere else the fence is
+// ordinary text. Every site that decides "does this comment trigger agents"
+// calls this, so create, edit, replay and end-of-run re-evaluation agree.
+func (h *Handler) isNoteCommentOn(ctx context.Context, issue db.Issue, content string) bool {
+	if isNoteComment(content) {
+		return true
+	}
+	if !extworkflow.ContainsBlock(content) || !h.ExtWorkflow.Enabled() {
+		return false
+	}
+	if _, err := h.Queries.GetExtWorkflowRunStepByIssue(ctx, db.GetExtWorkflowRunStepByIssueParams{IssueID: issue.ID, WorkspaceID: issue.WorkspaceID}); err == nil {
+		return true
+	}
+	isParent, err := h.Queries.ExtWorkflowRunExistsForIssue(ctx, db.ExtWorkflowRunExistsForIssueParams{IssueID: issue.ID, WorkspaceID: issue.WorkspaceID})
+	return err == nil && isParent
+}
 
 type extWorkflowCommentKey struct{}
 

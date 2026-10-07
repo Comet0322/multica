@@ -618,6 +618,22 @@ func (q *Queries) CreateExtWorkflowTask(ctx context.Context, arg CreateExtWorkfl
 	return i, err
 }
 
+const extWorkflowRunExistsForIssue = `-- name: ExtWorkflowRunExistsForIssue :one
+SELECT EXISTS (SELECT 1 FROM ext_workflow_run WHERE issue_id = $1 AND workspace_id = $2)
+`
+
+type ExtWorkflowRunExistsForIssueParams struct {
+	IssueID     pgtype.UUID `json:"issue_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) ExtWorkflowRunExistsForIssue(ctx context.Context, arg ExtWorkflowRunExistsForIssueParams) (bool, error) {
+	row := q.db.QueryRow(ctx, extWorkflowRunExistsForIssue, arg.IssueID, arg.WorkspaceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getActiveExtWorkflowRunByIssue = `-- name: GetActiveExtWorkflowRunByIssue :one
 SELECT id, workspace_id, workflow_id, issue_id, triggered_by_type, triggered_by_id, status, definition, rewinds_used, started_at, finished_at, created_at, updated_at FROM ext_workflow_run
 WHERE issue_id = $1 AND status IN ('running', 'waiting_human')
