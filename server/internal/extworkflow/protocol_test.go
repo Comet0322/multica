@@ -252,3 +252,60 @@ func TestDecideRefusesTaskThatEndedAfterAuthorization(t *testing.T) {
 	}
 	wantStepRow(t, e.step(t, run, "build"), StepAwaitingSupervisor, 1)
 }
+
+func TestTwoInvalidBlockTurnsEscalate(t *testing.T) {
+	e := newEnv(t)
+	run, build, supervisor := e.reviewRun(t, e.user)
+
+	first := e.running(t, e.latestTask(t, build, RoleSupervisor))
+	e.agentSays(t, build.IssueID, supervisor, &first, block("action: maybe"))
+	e.endTask(t, first, "completed")
+	second := e.latestTask(t, e.step(t, run, "build"), RoleSupervisor)
+	if second.ID == first.ID || e.step(t, run, "build").SupervisorWakes != 2 {
+		t.Fatalf("supervisor was not re-woken after an invalid-block turn (wakes=%d)", e.step(t, run, "build").SupervisorWakes)
+	}
+
+	second = e.running(t, second)
+	e.agentSays(t, build.IssueID, supervisor, &second, block("action: maybe"))
+	e.endTask(t, second, "completed")
+	build = e.step(t, run, "build")
+	wantStepRow(t, build, StepAwaitingHuman, 1)
+	if RunStatus(e.run(t, run.IssueID).Status) != RunWaitingHuman || !build.EscalationReason.Valid {
+		t.Fatalf("run=%s escalation=%q", e.run(t, run.IssueID).Status, build.EscalationReason.String)
+	}
+	if n := e.fx.Count(t, `SELECT count(*) FROM ext_workflow_run_event WHERE run_id = $1 AND kind = 'escalated' AND payload->>'auto' = 'true'`, run.ID); n != 1 {
+		t.Fatalf("auto escalations = %d, want 1", n)
+	}
+	if n := e.fx.Count(t, `SELECT count(*) FROM inbox_item WHERE recipient_id = $1 AND type = $2 AND issue_id = $3`, e.user, InboxTypeEscalation, run.IssueID); n != 1 {
+		t.Fatalf("escalation inbox items = %d, want 1", n)
+	}
+	if n := e.countTasks(t, build, RoleSupervisor); n != 2 {
+		t.Fatalf("supervisor tasks = %d, want 2", n)
+	}
+	// Reconciling again changes nothing: each turn's no-decision applies once.
+	events := len(e.runEvents(t, run))
+	if err := e.engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if got := len(e.runEvents(t, run)); got != events {
+		t.Fatalf("run events %d -> %d after reconcile", events, got)
+	}
+}
+
+func TestInvalidThenValidBlockIsADecision(t *testing.T) {
+	e := newEnv(t)
+	run, build, supervisor := e.reviewRun(t, e.user)
+
+	review := e.running(t, e.latestTask(t, build, RoleSupervisor))
+	e.agentSays(t, build.IssueID, supervisor, &review, block("action: maybe"))
+	e.agentSays(t, build.IssueID, supervisor, &review, block("action: approve"))
+	e.endTask(t, review, "completed")
+
+	wantStepRow(t, e.step(t, run, "build"), StepDone, 1)
+	if n := e.fx.Count(t, `SELECT count(*) FROM ext_workflow_run_event WHERE run_id = $1 AND kind = 'protocol_error' AND payload->>'reason' = 'no_decision'`, run.ID); n != 0 {
+		t.Fatalf("no_decision events = %d, want 0", n)
+	}
+	if n := e.countTasks(t, e.step(t, run, "build"), RoleSupervisor); n != 1 {
+		t.Fatalf("supervisor tasks = %d, want 1", n)
+	}
+}

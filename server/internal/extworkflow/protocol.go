@@ -30,6 +30,10 @@ import (
 // ProtocolErrorReason is the protocol_error payload reason for a rejected block.
 const ProtocolErrorReason = "invalid_block"
 
+// NoDecisionReason is the protocol_error payload reason for a supervisor turn
+// that ended without a decision.
+const NoDecisionReason = "no_decision"
+
 // OnComment handles comment:created for an agent comment that carries an
 // ext-workflow block.
 func (e *Engine) OnComment(ctx context.Context, commentID pgtype.UUID) error {

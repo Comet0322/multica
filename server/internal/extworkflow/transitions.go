@@ -323,7 +323,7 @@ func stepObservation(out *RunState, key string, ev Event) ([]Effect, error) {
 			}, nil
 		}
 		return []Effect{record(RunEventProtocolError, key,
-			withDetail(map[string]any{"reason": "no_decision", "detail": ev.Reason, "wake": st.SupervisorWakes}, ev.Detail))}, nil
+			withDetail(map[string]any{"reason": NoDecisionReason, "detail": ev.Reason, "wake": st.SupervisorWakes}, ev.Detail))}, nil
 	case EvChildCancelled:
 		if st.Status.Terminal() {
 			return nil, ErrNoTransition

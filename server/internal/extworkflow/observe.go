@@ -323,7 +323,10 @@ func stepTaskMissing(row db.ExtWorkflowRunStep, now time.Time) bool {
 }
 
 // noDecisionRecorded reports whether a timeline event already carries this
-// supervisor task as the turn that ended without a decision.
+// supervisor task as the turn that ended without a decision. Only the
+// no_decision protocol error and the auto-escalation mark a turn: an
+// invalid_block error carries the task id too, but a turn that posted only
+// invalid blocks still ended without a decision.
 func noDecisionRecorded(ctx context.Context, q *db.Queries, runID, taskID pgtype.UUID) (bool, error) {
 	rows, err := q.ListExtWorkflowRunEvents(ctx, runID)
 	if err != nil {
@@ -336,8 +339,12 @@ func noDecisionRecorded(ctx context.Context, q *db.Queries, runID, taskID pgtype
 		}
 		var p struct {
 			TaskID string `json:"task_id"`
+			Reason string `json:"reason"`
 		}
-		if json.Unmarshal(r.Payload, &p) == nil && p.TaskID == want {
+		if json.Unmarshal(r.Payload, &p) != nil || p.TaskID != want {
+			continue
+		}
+		if r.Kind == RunEventEscalated || p.Reason == NoDecisionReason {
 			return true, nil
 		}
 	}
