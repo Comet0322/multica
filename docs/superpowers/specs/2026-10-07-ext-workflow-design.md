@@ -203,7 +203,7 @@ Backlog rules match agents and squads: an issue in `backlog` does not start a ru
      - parent: the original issue
      - assignee: the node agent
      - status: `backlog`, so the platform does not auto-enqueue
-     - creator: the triggering actor
+     - creator: the supervisor agent, so the triggering member is not subscribed to every child; status changes on a step's child do not bubble to the parent's subscribers either (`notifySubscribers`). Task attribution still comes from the run's trigger.
      - project and priority copied from the parent
 3. Set the parent issue to `in_progress`, and append a `run_started` event.
 4. Call `Advance(run)` inside the same transaction.

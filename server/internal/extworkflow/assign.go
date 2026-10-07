@@ -124,7 +124,7 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 	if err != nil {
 		return fmt.Errorf("encode definition: %w", err)
 	}
-	// The run, the children and their creator name a real actor; a system
+	// The run names a real actor as its trigger; a system
 	// trigger is attributed to the issue's creator.
 	if (actorType != "member" && actorType != "agent") || !actorID.Valid {
 		actorType, actorID = parent.CreatorType, parent.CreatorID
@@ -140,6 +140,14 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 		}
 		return fmt.Errorf("create run: %w", err)
 	}
+	// Children are the supervisor's: a member creator would be subscribed to
+	// every child and get an inbox item for each step comment and status
+	// move, while step progress belongs in the run panel (spec §5.6). Task
+	// attribution comes from the run's trigger, not the child's creator.
+	supervisor, err := util.ParseUUID(def.SupervisorAgentID)
+	if err != nil {
+		return fmt.Errorf("supervisor agent: %w", err)
+	}
 	out := &outbox{run: run}
 	for _, n := range def.Nodes {
 		agentID, err := util.ParseUUID(n.AgentID)
@@ -154,8 +162,8 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 			Priority:      parent.Priority,
 			AssigneeType:  pgtype.Text{String: "agent", Valid: true},
 			AssigneeID:    agentID,
-			CreatorType:   actorType,
-			CreatorID:     actorID,
+			CreatorType:   "agent",
+			CreatorID:     supervisor,
 			ParentIssueID: parent.ID,
 			ProjectID:     parent.ProjectID,
 		})
@@ -167,7 +175,7 @@ func (e *Engine) StartRun(ctx context.Context, issueID pgtype.UUID, actorType st
 		}); err != nil {
 			return fmt.Errorf("create step %q: %w", n.Key, err)
 		}
-		out.created = append(out.created, createdIssue{issue: child, actorType: actorType, actorID: util.UUIDToString(actorID)})
+		out.created = append(out.created, createdIssue{issue: child, actorType: "agent", actorID: util.UUIDToString(supervisor)})
 	}
 	if err := e.setIssueStatus(ctx, q, parent.ID, "in_progress", out); err != nil {
 		return err

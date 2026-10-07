@@ -330,6 +330,11 @@ func notifySubscribers(
 	if !issue.ParentIssueID.Valid {
 		return
 	}
+	// ext-workflow: a workflow step's child does not bubble; step progress
+	// belongs in the run panel, not in the parent watchers' inbox.
+	if _, err := queries.GetExtWorkflowRunStepByIssue(ctx, db.GetExtWorkflowRunStepByIssueParams{IssueID: issue.ID, WorkspaceID: issue.WorkspaceID}); err == nil {
+		return
+	}
 
 	// Merge already-notified IDs into exclude set for parent subscribers.
 	parentExclude := make(map[string]bool, len(exclude)+len(notified)+len(tierSuppressed))
