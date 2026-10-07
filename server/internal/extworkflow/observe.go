@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -21,6 +22,11 @@ var _ service.ExtWorkflowHooks = (*Engine)(nil)
 
 // ReconcileBatch bounds one reconcile tick (spec §5.2).
 const ReconcileBatch = 200
+
+// StepTaskMissingGrace is how long a running step may have no step task
+// before reconcile reports it as step_failed{task_missing}. It spans a couple
+// of reconcile ticks, far longer than the step's own start transaction.
+const StepTaskMissingGrace = 2 * time.Minute
 
 // OnTaskTerminal handles task:completed / task:failed / task:cancelled for a
 // workflow task. A failed task whose platform retry is pending is ignored:
@@ -262,8 +268,18 @@ func deriveStep(ctx context.Context, q *db.Queries, snap *RunSnapshot, key strin
 			return observed(Event{Kind: EvStepFinished, Detail: map[string]any{"child_status": child.Status}})
 		}
 		task, found, err := latestTask(ctx, q, row.ID, RoleStep)
-		if err != nil || !found {
+		if err != nil {
 			return stepEvent{}, false, err
+		}
+		if !found {
+			// The step task is enqueued in the transaction that starts the
+			// step, so a running step without one lost it outside the engine
+			// (for example, the agent's tasks were removed). After a grace
+			// period hand it to the supervisor instead of waiting forever.
+			if stepTaskMissing(row, time.Now()) {
+				return observed(Event{Kind: EvStepFailed, Reason: "task_missing"})
+			}
+			return none()
 		}
 		if settled, err := taskSettled(ctx, q, task); err != nil || !settled {
 			return stepEvent{}, false, err
@@ -294,6 +310,16 @@ func deriveStep(ctx context.Context, q *db.Queries, snap *RunSnapshot, key strin
 		return observed(Event{Kind: EvSupervisorNoDecision, Reason: describeSupervisorEnd(task), Detail: map[string]any{"task_id": task.ID.String()}})
 	}
 	return none()
+}
+
+// stepTaskMissing reports whether a running step without a step task has
+// been in that state for longer than StepTaskMissingGrace.
+func stepTaskMissing(row db.ExtWorkflowRunStep, now time.Time) bool {
+	since := row.UpdatedAt.Time
+	if row.StartedAt.Valid && row.StartedAt.Time.After(since) {
+		since = row.StartedAt.Time
+	}
+	return now.Sub(since) > StepTaskMissingGrace
 }
 
 // noDecisionRecorded reports whether a timeline event already carries this

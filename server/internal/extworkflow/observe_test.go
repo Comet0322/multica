@@ -310,3 +310,39 @@ func TestOnTaskTerminalIgnoresFailedTaskWithRetry(t *testing.T) {
 		t.Fatalf("run events %d -> %d, want no step_failed", events, got)
 	}
 }
+
+// A running step whose step task vanished outside the engine is handed to
+// the supervisor once the grace period has passed, not left running forever.
+func TestReconcileFailsARunningStepWithoutATask(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	supervisor, planner := e.agent(t, "Supervisor"), e.agent(t, "Planner")
+	wf := e.workflow(t, supervisor, 3, wfNode{key: "spec", title: "Spec", agent: planner})
+	parent := e.parentIssue(t, wf, "todo")
+	run := e.start(t, parent)
+	spec := e.step(t, run, "spec")
+	e.fx.Exec(t, `DELETE FROM agent_task_queue WHERE id = $1`, e.latestTask(t, spec, RoleStep).ID)
+
+	if err := e.engine.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wantStepRow(t, e.step(t, run, "spec"), StepRunning, 1)
+
+	e.fx.Exec(t, `UPDATE ext_workflow_run_step SET started_at = now() - interval '3 minutes', updated_at = now() - interval '3 minutes' WHERE id = $1`, spec.ID)
+	if err := e.engine.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	spec = e.step(t, run, "spec")
+	wantStepRow(t, spec, StepAwaitingSupervisor, 1)
+	if spec.PendingReason.String != string(PendingFailure) {
+		t.Fatalf("reason = %q", spec.PendingReason.String)
+	}
+	var reason string
+	e.fx.QueryRow(t, `SELECT payload->>'reason' FROM ext_workflow_run_event WHERE run_id = $1 AND kind = 'step_failed'`, run.ID).Scan(&reason)
+	if reason != "task_missing" {
+		t.Fatalf("step_failed reason = %q, want task_missing", reason)
+	}
+	if sup := e.latestTask(t, spec, RoleSupervisor); sup.ExtWorkflowKind.String != KindFailure {
+		t.Fatalf("supervisor task kind = %q", sup.ExtWorkflowKind.String)
+	}
+}
