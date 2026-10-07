@@ -4536,7 +4536,8 @@ func (s *TaskService) CompleteTaskWithTransition(ctx context.Context, taskID pgt
 		})
 		// A scheduled wakeup check that found nothing new ends with a check-in
 		// instead of a comment (see IssueWakeupService.CheckIn).
-		if !suppressNoActionComment && !agentCommented && !HasWakeupCheckin(task) {
+		// ext-workflow: a supervisor decision turn posts on the step's child issue, so no fallback lands on the parent.
+		if !suppressNoActionComment && !agentCommented && !HasWakeupCheckin(task) && !isExtWorkflowDecisionTurn(task) {
 			var payload protocol.TaskCompletedPayload
 			if err := json.Unmarshal(result, &payload); err == nil {
 				if payload.Output != "" {
@@ -8104,4 +8105,18 @@ func agentToMap(a db.Agent) map[string]any {
 		"archived_at":          util.TimestampToPtr(a.ArchivedAt),
 		"archived_by":          util.UUIDToPtr(a.ArchivedBy),
 	}
+}
+
+// isExtWorkflowDecisionTurn reports whether task is an ext-workflow supervisor
+// turn whose result is a decision posted on a step's child issue.
+// ext-workflow: plain strings, since service does not import extworkflow.
+func isExtWorkflowDecisionTurn(task db.AgentTaskQueue) bool {
+	if task.ExtWorkflowRole.String != "supervisor" {
+		return false
+	}
+	switch task.ExtWorkflowKind.String {
+	case "review", "failure", "rewind_request":
+		return true
+	}
+	return false
 }
