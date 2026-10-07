@@ -259,12 +259,13 @@ func TestNext(t *testing.T) {
 			state: state(step("spec", StepDone, 1), step("docs", StepDone, 1), step("backend", StepAwaitingSupervisor, 1, because(PendingReview), woken(1))),
 			key:   "backend",
 			event: decision(Decision{Action: ActionRedo, Feedback: "add tests"}),
-			want:  []string{"event:decision@backend", "cancel_step:backend", "child:backend=in_progress", "enqueue_step:backend"},
-			check: func(t *testing.T, got RunState, _ []Effect) {
+			want:  []string{"event:decision@backend", "cancel_step:backend", "child:backend=in_progress", "enqueue_step:backend", "event:step_started@backend"},
+			check: func(t *testing.T, got RunState, effs []Effect) {
 				st := wantStep(t, got, "backend", StepRunning, 2)
 				if st.LastFeedback != "add tests" || st.PendingReason != "" || st.SupervisorWakes != 0 {
 					t.Fatalf("backend = %+v", st)
 				}
+				wantStepStarted(t, effs, 2)
 			},
 		},
 		{
@@ -279,8 +280,25 @@ func TestNext(t *testing.T) {
 			state: state(step("spec", StepAwaitingSupervisor, 1, because(PendingFailure), woken(1))),
 			key:   "spec",
 			event: decision(Decision{Action: ActionRetry}),
-			want:  []string{"event:decision@spec", "cancel_step:spec", "child:spec=in_progress", "enqueue_step:spec"},
-			check: func(t *testing.T, got RunState, _ []Effect) { wantStep(t, got, "spec", StepRunning, 2) },
+			want:  []string{"event:decision@spec", "cancel_step:spec", "child:spec=in_progress", "enqueue_step:spec", "event:step_started@spec"},
+			check: func(t *testing.T, got RunState, effs []Effect) {
+				wantStep(t, got, "spec", StepRunning, 2)
+				wantStepStarted(t, effs, 2)
+			},
+		},
+		{
+			name:  "a person's retry restarts an escalated step",
+			state: state(step("spec", StepAwaitingHuman, 1, because(PendingFailure)), runStatus(RunWaitingHuman)),
+			key:   "spec",
+			event: decision(Decision{Action: ActionRetry}),
+			want:  []string{"event:decision@spec", "cancel_step:spec", "child:spec=in_progress", "enqueue_step:spec", "event:step_started@spec"},
+			check: func(t *testing.T, got RunState, effs []Effect) {
+				wantStep(t, got, "spec", StepRunning, 2)
+				wantStepStarted(t, effs, 2)
+				if got.Status != RunRunning {
+					t.Fatalf("run = %s, want running", got.Status)
+				}
+			},
 		},
 		{
 			name:  "skip settles the step and unblocks dependents",
@@ -339,6 +357,7 @@ func TestNext(t *testing.T) {
 				if p := payloadOf(t, effs, RunEventRewind); !reflect.DeepEqual(p["reset"], []string{"spec", "backend", "docs"}) {
 					t.Fatalf("reset = %v", p["reset"])
 				}
+				wantStepStarted(t, effs, 1)
 			},
 		},
 		{
@@ -536,6 +555,24 @@ func TestNext(t *testing.T) {
 				tc.check(t, got, effs)
 			}
 		})
+	}
+}
+
+// wantStepStarted checks the one step_started event: the attempt it
+// dispatches, recorded with the engine as actor like every dispatch.
+func wantStepStarted(t *testing.T, effs []Effect, attempt int) {
+	t.Helper()
+	var started []Effect
+	for _, e := range effs {
+		if e.Kind == EffRecordEvent && e.RunEvent == RunEventStepStarted {
+			started = append(started, e)
+		}
+	}
+	if len(started) != 1 {
+		t.Fatalf("step_started events = %d in %v, want 1", len(started), sigs(effs))
+	}
+	if !reflect.DeepEqual(started[0].Payload, map[string]any{"attempt": attempt}) || !started[0].Engine {
+		t.Fatalf("step_started = %+v, want attempt %d by the engine", started[0], attempt)
 	}
 }
 

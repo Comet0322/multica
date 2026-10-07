@@ -368,16 +368,8 @@ func stepDecision(out *RunState, key string, d Decision) ([]Effect, error) {
 		if d.Action == ActionRedo {
 			st.LastFeedback = d.Feedback
 		}
-		st.Status = StepRunning
-		st.Attempts++
-		clearWait(&st)
-		out.Steps[key] = st
-		return []Effect{
-			rec,
-			{Kind: EffCancelStepWork, Step: key},
-			{Kind: EffSetChildStatus, Step: key, IssueStatus: "in_progress"},
-			{Kind: EffEnqueueStep, Step: key},
-		}, nil
+		effs := []Effect{rec, {Kind: EffCancelStepWork, Step: key}}
+		return append(effs, dispatch(out, key, st, false)...), nil
 	case ActionSkip:
 		st.Status = StepSkipped
 		clearWait(&st)
@@ -527,14 +519,7 @@ func schedule(out *RunState) []Effect {
 		if st.Status != StepPending || !out.depsSettled(n) {
 			continue
 		}
-		st.Status = StepRunning
-		st.Attempts++
-		clearWait(&st)
-		out.Steps[n.Key] = st
-		effs = append(effs,
-			engine(Effect{Kind: EffSetChildStatus, Step: n.Key, IssueStatus: "in_progress"}),
-			engine(Effect{Kind: EffEnqueueStep, Step: n.Key}),
-			engine(record(RunEventStepStarted, n.Key, map[string]any{"attempt": st.Attempts})))
+		effs = append(effs, dispatch(out, n.Key, st, true)...)
 	}
 	if !out.SupervisorBusy {
 		for _, n := range out.Def.Nodes {
@@ -563,6 +548,23 @@ func schedule(out *RunState) []Effect {
 		}
 	}
 	return effs
+}
+
+// dispatch starts the next attempt of a step. Every dispatch, first or
+// repeated (redo, retry, a rewound step rescheduled), records step_started
+// with its attempt; the event is the engine's, as the scheduler's are.
+// byEngine marks the status change and the enqueue as the engine's too.
+func dispatch(out *RunState, key string, st StepState, byEngine bool) []Effect {
+	st.Status = StepRunning
+	st.Attempts++
+	clearWait(&st)
+	out.Steps[key] = st
+	child := Effect{Kind: EffSetChildStatus, Step: key, IssueStatus: "in_progress"}
+	enqueue := Effect{Kind: EffEnqueueStep, Step: key}
+	if byEngine {
+		child, enqueue = engine(child), engine(enqueue)
+	}
+	return []Effect{child, enqueue, engine(record(RunEventStepStarted, key, map[string]any{"attempt": st.Attempts}))}
 }
 
 func awaitSupervisor(st StepState, reason PendingReason) StepState {
