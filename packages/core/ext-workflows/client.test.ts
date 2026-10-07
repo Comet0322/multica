@@ -142,7 +142,12 @@ describe("ext workflow API client", () => {
     expect(url.pathname).toBe("/api/ext/workflow-runs/r1/steps/s1/decision");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ action: "approve", expected_status: "awaiting_human" });
-    expect(run.status).toBe("running");
+    expect(run?.status).toBe("running");
+  });
+
+  it("treats a 204 decision as applied, with no run to return", async () => {
+    respond(null, 204);
+    await expect(api().decideExtWorkflowStep("r1", "s1", { action: "approve", expected_status: "awaiting_human" })).resolves.toBeNull();
   });
 
   it("surfaces a 409 status mismatch as an ApiError", async () => {

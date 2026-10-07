@@ -439,8 +439,17 @@ func (h *Handler) DecideExtWorkflowStep(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	resp, found, err := h.extRunResponse(r.Context(), wsUUID, runID)
+	writeExtDecisionResult(w, runID, resp, found, err)
+}
+
+// writeExtDecisionResult answers a decision that was already applied: the run
+// when it reloads, else 204, never a failure the client would retry against a
+// decision that no longer applies.
+func writeExtDecisionResult(w http.ResponseWriter, runID pgtype.UUID, resp ExtWorkflowRunResponse, found bool, err error) {
 	if err != nil || !found {
-		writeError(w, http.StatusInternalServerError, "failed to load workflow run")
+		slog.Warn("ext-workflow: decision applied but the run could not be reloaded",
+			"run_id", uuidToString(runID), "found", found, "error", err)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

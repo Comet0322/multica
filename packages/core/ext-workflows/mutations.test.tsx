@@ -56,4 +56,15 @@ describe("ext workflow mutations", () => {
     ).rejects.toMatchObject({ status: 409 });
     expect(qc.getQueryState(extWorkflowKeys.run("ws-1", "r1"))?.isInvalidated).toBe(true);
   });
+
+  it("decide resolves with null on a 204 and still invalidates run caches", async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(extWorkflowKeys.run("ws-1", "r1"), {});
+    setApiInstance({ decideExtWorkflowStep: vi.fn().mockResolvedValue(null) } as unknown as ApiClient);
+    const { result } = renderHook(() => useDecideExtWorkflowStep("ws-1"), { wrapper: wrapper(qc) });
+    await expect(
+      act(() => result.current.mutateAsync({ runId: "r1", stepId: "s1", action: "approve", expected_status: "awaiting_human" })),
+    ).resolves.toBeNull();
+    expect(qc.getQueryState(extWorkflowKeys.run("ws-1", "r1"))?.isInvalidated).toBe(true);
+  });
 });

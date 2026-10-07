@@ -5334,11 +5334,13 @@ export class ApiClient {
     runId: string,
     stepId: string,
     body: DecideExtWorkflowStepRequest,
-  ): Promise<ExtWorkflowRun> {
+  ): Promise<ExtWorkflowRun | null> {
     const raw = await this.fetch<unknown>(`/api/ext/workflow-runs/${runId}/steps/${stepId}/decision`, {
       method: "POST",
       body: JSON.stringify(body),
     });
+    // 204: the decision was applied but the server could not reload the run.
+    if (raw === undefined) return null;
     return parseWithFallback(raw, ExtWorkflowRunSchema, EMPTY_EXT_WORKFLOW_RUN, {
       endpoint: "POST /api/ext/workflow-runs/:id/steps/:stepId/decision",
     }) as ExtWorkflowRun;
