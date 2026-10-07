@@ -488,7 +488,7 @@ func endRun(out *RunState, status RunStatus, focus, reason string) []Effect {
 		if status == RunFailed && n.Key == focus {
 			st.Status = StepFailed
 		}
-		st.PendingReason = ""
+		clearWait(&st)
 		out.Steps[n.Key] = st
 		effs = append(effs, Effect{Kind: EffSetChildStatus, Step: n.Key, IssueStatus: "cancelled"})
 	}

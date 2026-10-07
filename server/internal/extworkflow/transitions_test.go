@@ -508,6 +508,23 @@ func TestNext(t *testing.T) {
 			},
 		},
 		{
+			name: "cancelling the run clears an escalated step's wait",
+			state: state(step("spec", StepAwaitingHuman, 1, woken(1), func(s *StepState) {
+				s.EscalationReason = "needs a product call"
+			})),
+			event: Event{Kind: EvCancelRun, Reason: "a person cancelled the run"},
+			want: []string{
+				"cancel_run", "child:spec=cancelled", "child:backend=cancelled", "child:qa=cancelled", "child:docs=cancelled",
+				"event:run_cancelled@", "milestone:run_cancelled",
+			},
+			check: func(t *testing.T, got RunState, _ []Effect) {
+				st := wantStep(t, got, "spec", StepCancelled, 1)
+				if st.EscalationReason != "" || st.SupervisorWakes != 0 || st.PendingReason != "" {
+					t.Fatalf("cancelled step kept its wait: %+v", st)
+				}
+			},
+		},
+		{
 			name:    "decisions on a finished run are a status mismatch",
 			state:   state(runStatus(RunDone)),
 			key:     "spec",
