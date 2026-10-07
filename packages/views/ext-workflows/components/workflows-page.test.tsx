@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { renderWithI18n } from "../../test/i18n";
@@ -38,12 +38,15 @@ const WORKFLOWS = [
 const mocks = vi.hoisted(() => ({
   archive: vi.fn(),
   openModal: vi.fn(),
+  toastError: vi.fn(),
   role: "member" as "member" | "admin",
+  list: { data: undefined as unknown, isLoading: false, isError: false, error: null as unknown, refetch: vi.fn() },
 }));
 
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: mocks.toastError } }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => {
-    if (queryKey[0] === "ext-workflows") return { data: WORKFLOWS, isLoading: false };
+    if (queryKey[0] === "ext-workflows") return mocks.list;
     if (queryKey[0] === "agents") return { data: [{ id: "ag-1", name: "Supervisor Bot" }] };
     if (queryKey[0] === "members")
       return { data: [{ user_id: "user-me", name: "Me", role: mocks.role }] };
@@ -82,7 +85,21 @@ vi.mock("../../layout/collection-page", () => ({
   CollectionPageHeaderAction: ({ label, onClick }: { label: string; onClick: () => void }) => (
     <button onClick={onClick}>{label}</button>
   ),
-  CollectionPageState: ({ title }: { title: ReactNode }) => <div>{title}</div>,
+  CollectionPageState: ({
+    title,
+    description,
+    actions,
+  }: {
+    title: ReactNode;
+    description?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <div>
+      <p>{title}</p>
+      {description ? <p>{description}</p> : null}
+      {actions}
+    </div>
+  ),
 }));
 vi.mock("../../common/actor-avatar", () => ({
   ActorAvatar: ({ actorId }: { actorId: string }) => <span data-testid={`avatar-${actorId}`} />,
@@ -91,7 +108,9 @@ vi.mock("../../common/actor-avatar", () => ({
 beforeEach(() => {
   mocks.archive.mockReset().mockResolvedValue(undefined);
   mocks.openModal.mockReset();
+  mocks.toastError.mockReset();
   mocks.role = "member";
+  mocks.list = { data: WORKFLOWS, isLoading: false, isError: false, error: null, refetch: vi.fn() };
 });
 
 describe("WorkflowsPage", () => {
@@ -129,5 +148,43 @@ describe("WorkflowsPage", () => {
     mocks.role = "admin";
     renderWithI18n(<WorkflowsPage />);
     expect(screen.getAllByRole("button", { name: "Workflow actions" })).toHaveLength(2);
+  });
+
+  it("shows the failure with a retry instead of the empty state when loading fails", async () => {
+    const refetch = vi.fn();
+    mocks.list = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch };
+    renderWithI18n(<WorkflowsPage />);
+    expect(screen.getByText("Couldn't load workflows")).toBeInTheDocument();
+    expect(screen.getByText("boom")).toBeInTheDocument();
+    expect(screen.queryByText("No workflows yet.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("shows the empty state with a create action when there are no workflows", async () => {
+    mocks.list = { data: [], isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    renderWithI18n(<WorkflowsPage />);
+    expect(screen.getByText("No workflows yet.")).toBeInTheDocument();
+    const buttons = screen.getAllByRole("button", { name: "New workflow" });
+    await userEvent.click(buttons[buttons.length - 1]!);
+    expect(mocks.openModal).toHaveBeenCalledWith("create-ext-workflow");
+  });
+
+  it("renders neither rows nor the empty state while loading", () => {
+    mocks.list = { data: undefined, isLoading: true, isError: false, error: null, refetch: vi.fn() };
+    renderWithI18n(<WorkflowsPage />);
+    expect(screen.queryByText("No workflows yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Release pipeline")).not.toBeInTheDocument();
+  });
+
+  it("keeps the archive dialog open and reports the error when archiving fails", async () => {
+    mocks.archive.mockRejectedValue(new Error("nope"));
+    renderWithI18n(<WorkflowsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Workflow actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("nope"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

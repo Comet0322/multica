@@ -3,6 +3,8 @@
     "title": "Workflows",
     "new_button": "Nouveau workflow",
     "empty": "Aucun workflow pour le moment.",
+    "load_failed": "Impossible de charger les workflows",
+    "retry": "Réessayer",
     "row_menu": "Actions du workflow",
     "archive_action": "Archiver",
     "never_run": "Jamais",

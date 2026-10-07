@@ -3,6 +3,8 @@
     "title": "工作流",
     "new_button": "新建工作流",
     "empty": "还没有工作流。",
+    "load_failed": "无法加载工作流",
+    "retry": "重试",
     "row_menu": "工作流操作",
     "archive_action": "归档",
     "never_run": "从未运行",

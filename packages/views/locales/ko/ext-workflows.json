@@ -3,6 +3,8 @@
     "title": "워크플로",
     "new_button": "새 워크플로",
     "empty": "아직 워크플로가 없습니다.",
+    "load_failed": "워크플로를 불러오지 못했습니다",
+    "retry": "다시 시도",
     "row_menu": "워크플로 작업",
     "archive_action": "보관",
     "never_run": "실행 없음",

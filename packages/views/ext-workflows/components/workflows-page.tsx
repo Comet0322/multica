@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Loader2, MoreHorizontal, Plus, Trash2, Workflow as WorkflowIcon } from "lucide-react";
+import { AlertCircle, ExternalLink, Loader2, MoreHorizontal, Plus, Trash2, Workflow as WorkflowIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@multica/core/auth";
 import {
@@ -189,7 +189,13 @@ export function WorkflowsPage() {
   const rowLink = useRowLink();
   const currentUser = useAuthStore((s) => s.user);
 
-  const { data: workflows = [], isLoading } = useQuery({
+  const {
+    data: workflows = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     ...extWorkflowListOptions(wsId),
     enabled: !!wsId,
   });
@@ -220,6 +226,19 @@ export function WorkflowsPage() {
 
       {isLoading ? (
         <LoadingSkeleton />
+      ) : isError ? (
+        <CollectionPageState
+          role="alert"
+          tone="destructive"
+          icon={AlertCircle}
+          title={t(($) => $.page.load_failed)}
+          description={error instanceof Error ? error.message : undefined}
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>
+              {t(($) => $.page.retry)}
+            </Button>
+          }
+        />
       ) : workflows.length === 0 ? (
         <CollectionPageState
           icon={WorkflowIcon}

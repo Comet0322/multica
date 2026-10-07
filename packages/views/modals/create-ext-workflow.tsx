@@ -90,9 +90,9 @@ export function CreateExtWorkflowModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-caption text-muted-foreground">
+            <div className="text-caption font-medium text-muted-foreground">
               {t(($) => $.create.supervisor_label)}
-            </Label>
+            </div>
             <p className="text-caption text-muted-foreground">{t(($) => $.create.supervisor_hint)}</p>
             <AgentSelect
               agents={agents}

@@ -3,6 +3,8 @@
     "title": "ワークフロー",
     "new_button": "新しいワークフロー",
     "empty": "ワークフローはまだありません。",
+    "load_failed": "ワークフローを読み込めませんでした",
+    "retry": "再試行",
     "row_menu": "ワークフローの操作",
     "archive_action": "アーカイブ",
     "never_run": "未実行",
