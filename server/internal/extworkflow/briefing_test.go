@@ -372,3 +372,18 @@ func TestRenderDecisionFormatAsksToQuoteFreeText(t *testing.T) {
 		}
 	}
 }
+
+func TestSupervisorDecisionFormatOmitsStepOnlyActions(t *testing.T) {
+	conv := supervisorBriefing(KindConversation, 1, 0)
+	conv.Focus, conv.TriggerCommentID, conv.TriggerAuthor, conv.TriggerText, conv.TriggerMayDecide = "", "comment-1", "Ada", "Please approve build.", true
+	for _, out := range []string{supervisorBriefing(KindReview, 1, 0).render(), conv.render()} {
+		mustNotContain(t, out, "request-rewind")
+		mustContain(t, out, "to: <step key>        # required for rewind", "feedback: |           # required for redo and rewind")
+	}
+	review := supervisorBriefing(KindReview, 1, 0).render()
+	mustContain(t, review, "reason: <one line>    # required for escalate and abort", "ignored and the run is escalated")
+	// A conversation turn without a block changes nothing.
+	out := conv.render()
+	mustContain(t, out, "reason: <one line>    # required for abort", "only in your final output, or posted after this task has ended, is ignored.")
+	mustNotContain(t, out, "escalated to a person")
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -599,10 +600,25 @@ func (b briefing) renderDecisionFormat(w *strings.Builder, allowed []DecisionAct
 		if onParent {
 			w.WriteString("step: <step key>      # required, except for abort\n")
 		}
-		w.WriteString("to: <step key>        # rewind (required), request-rewind (optional)\n")
-		w.WriteString("reason: <one line>    # required for escalate, abort, request-rewind\n")
-		w.WriteString("feedback: |           # required for redo and rewind\n")
-		w.WriteString("  <what must change>\n")
+		needs := func(actions ...DecisionAction) string {
+			var names []string
+			for _, a := range actions {
+				if slices.Contains(allowed, a) {
+					names = append(names, string(a))
+				}
+			}
+			return strings.Join(names, " and ")
+		}
+		if slices.Contains(allowed, ActionRewind) {
+			w.WriteString("to: <step key>        # required for rewind\n")
+		}
+		if n := needs(ActionEscalate, ActionAbort); n != "" {
+			w.WriteString("reason: <one line>    # required for " + n + "\n")
+		}
+		if n := needs(ActionRedo, ActionRewind); n != "" {
+			w.WriteString("feedback: |           # required for " + n + "\n")
+			w.WriteString("  <what must change>\n")
+		}
 	}
 	w.WriteString("```\n\n")
 	w.WriteString("Wrap a free-text value in double quotes (`reason: \"...\"`), especially when it contains a colon.\n\n")
@@ -613,9 +629,10 @@ func (b briefing) renderDecisionFormat(w *strings.Builder, allowed []DecisionAct
 	if b.RewindsUsed >= b.Def.MaxRewinds {
 		fmt.Fprintf(w, "\nThe rewind budget (%d) is spent.\n", b.Def.MaxRewinds)
 	}
-	missed := "is ignored and the run is escalated to a person"
-	if b.Kind == KindStep {
-		missed = "is ignored"
+	// Only a focus supervisor turn escalates when it ends without a decision.
+	missed := "is ignored"
+	if b.Kind == KindReview || b.Kind == KindFailure || b.Kind == KindRewindRequest {
+		missed = "is ignored and the run is escalated to a person"
 	}
 	fmt.Fprintf(w, "\nThe block counts only as a comment posted during this turn: write the comment body to a file in your working directory with your file-write tool, then post it with `multica issue comment add %s --content-file ./decision.md` (never `--content-stdin` or inline `--content`), and delete the file only after the post succeeded, before you end. A block left only in your final output, or posted after this task has ended, %s. Unknown fields, a second block or a missing required field are rejected with a reply on the issue; fix the block and post it again.\n", issueID, missed)
 }
