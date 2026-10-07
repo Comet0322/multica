@@ -88,16 +88,16 @@ Comment on the parent issue without `@`-mentioning anyone and the supervisor rep
 
 ## The decision block
 
-Agents report decisions in a comment with one fenced block, posted through the CLI:
+Agents report decisions in a comment with one fenced block. They write the comment to a file and post it through the CLI:
 
 ````bash
-multica issue comment add <issue-id> --content '
-Looks good.
-
-```ext-workflow
-action: approve
-```
-'
+# decision.md holds:
+# Looks good.
+#
+# ```ext-workflow
+# action: approve
+# ```
+multica issue comment add <issue-id> --content-file ./decision.md
 ````
 
 The block is YAML:

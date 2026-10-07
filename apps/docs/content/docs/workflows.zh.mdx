@@ -88,16 +88,16 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 ## 决定块
 
-智能体通过评论汇报决定，评论里带一个围栏代码块，用 CLI 发布：
+智能体通过评论汇报决定，评论里带一个围栏代码块。先把评论写入文件，再用 CLI 发布：
 
 ````bash
-multica issue comment add <issue-id> --content '
-看起来没问题。
-
-```ext-workflow
-action: approve
-```
-'
+# decision.md 的内容：
+# 看起来没问题。
+#
+# ```ext-workflow
+# action: approve
+# ```
+multica issue comment add <issue-id> --content-file ./decision.md
 ````
 
 代码块是 YAML：

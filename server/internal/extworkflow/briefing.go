@@ -601,7 +601,7 @@ func (b briefing) renderDecisionFormat(w *strings.Builder, allowed []DecisionAct
 	if b.Kind == KindStep {
 		missed = "is ignored"
 	}
-	fmt.Fprintf(w, "\nThe block counts only as a comment posted during this turn: post it with `multica issue comment add %s --content-stdin` (so it keeps its line breaks) before you end. A block left only in your final output, or posted after this task has ended, %s. Unknown fields, a second block or a missing required field are rejected with a reply on the issue; fix the block and post it again.\n", issueID, missed)
+	fmt.Fprintf(w, "\nThe block counts only as a comment posted during this turn: write the comment body to a file in your working directory with your file-write tool, then post it with `multica issue comment add %s --content-file ./decision.md` (never `--content-stdin` or inline `--content`), and delete the file only after the post succeeded, before you end. A block left only in your final output, or posted after this task has ended, %s. Unknown fields, a second block or a missing required field are rejected with a reply on the issue; fix the block and post it again.\n", issueID, missed)
 }
 
 // quote renders untrusted text as a block quote. Every line break form is

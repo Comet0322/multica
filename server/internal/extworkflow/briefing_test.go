@@ -67,7 +67,7 @@ func TestRenderStepBriefing(t *testing.T) {
 		"#### `api` API — skipped", "Its agent left no comment.",
 		"### Feedback on the previous attempt", "> Use the new tokens.",
 		"Work only in this child issue (issue-build).", "move this issue to `done`", "Do not modify the parent issue",
-		"```ext-workflow\naction: <action>", "- `request-rewind`:", "multica issue comment add issue-build --content-stdin",
+		"```ext-workflow\naction: <action>", "- `request-rewind`:", "multica issue comment add issue-build --content-file ./decision.md",
 	)
 	mustNotContain(t, out, "- `approve`", "step: <step key>", squadMarker)
 	if got := strings.Count(out, "界"); got != briefCommentRunes {
@@ -118,7 +118,7 @@ func TestRenderSupervisorReviewBriefing(t *testing.T) {
 		"### Your task: review step `build` Build", "> Build the UI.", "> Built the UI with the old tokens.",
 		"Required: exactly one decision block, posted on the step's child issue issue-build.",
 		"- `approve`:", "- `redo`:", "- `retry`:", "- `skip`:", "- `rewind`:", "- `escalate`:", "- `abort`:",
-		"multica issue comment add issue-build --content-stdin",
+		"multica issue comment add issue-build --content-file ./decision.md",
 	)
 	mustNotContain(t, out, "- `request-rewind`:", squadMarker)
 }
