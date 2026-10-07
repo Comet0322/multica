@@ -56,7 +56,7 @@ func (e *Engine) ValidateAssignment(ctx context.Context, workspaceID, workflowID
 	}
 	if e.access != nil {
 		for _, agentID := range agents {
-			ok, err := e.access.CanInvokeAgent(ctx, workspaceID, actorType, actorID, agentID)
+			ok, err := e.canInvoke(ctx, workspaceID, actorType, actorID, agentID)
 			if err != nil {
 				return fmt.Errorf("check agent access: %w", err)
 			}

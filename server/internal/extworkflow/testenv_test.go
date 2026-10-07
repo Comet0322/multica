@@ -151,7 +151,7 @@ func newEnv(t *testing.T) *env {
 		pool: p, q: q, fx: fx, ws: util.MustParseUUID(ws), user: util.MustParseUUID(user), runtime: rt,
 		bus: bus, tasks: tasks, issues: issues, access: &fakeAccess{}, pub: &recPublisher{},
 	}
-	e.engine = NewEngine(Deps{Pool: p, Queries: q, Issues: issues, Tasks: tasks, Access: e.access, Publisher: e.pub, Enabled: true})
+	e.engine = NewEngine(Deps{Pool: p, Queries: q, Issues: issues, Tasks: tasks, Access: e.access, Publisher: e.pub, Enabled: true, AccessCacheTTL: -1})
 	tasks.ExtWorkflow = e.engine // the child-event hook reaches the engine through the task service
 	return e
 }

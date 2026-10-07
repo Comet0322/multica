@@ -51,7 +51,7 @@ func (e *Engine) OnMemberParentComment(ctx context.Context, issueID, commentID, 
 	if e.access == nil {
 		return nil
 	}
-	ok, err := e.access.CanInvokeAgent(ctx, run.WorkspaceID, "member", memberID, supervisor)
+	ok, err := e.canInvoke(ctx, run.WorkspaceID, "member", memberID, supervisor)
 	if err != nil {
 		return fmt.Errorf("check supervisor access: %w", err)
 	}

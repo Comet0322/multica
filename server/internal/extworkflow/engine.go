@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,6 +37,11 @@ type Deps struct {
 	Access    AgentAccess
 	Publisher Publisher
 	Enabled   bool
+	// AccessCacheTTL bounds how long invoke-gate answers are reused: 0 means
+	// 30s, negative disables the cache.
+	AccessCacheTTL time.Duration
+	// Now is the cache clock (tests); nil means time.Now.
+	Now func() time.Time
 }
 
 // Engine schedules workflow runs. Every state change goes through advance:
@@ -47,12 +53,21 @@ type Engine struct {
 	issues  *service.IssueService
 	tasks   *service.TaskService
 	access  AgentAccess
+	cache   *accessCache
 	pub     Publisher
 	enabled bool
 }
 
 func NewEngine(d Deps) *Engine {
-	return &Engine{pool: d.Pool, q: d.Queries, issues: d.Issues, tasks: d.Tasks, access: d.Access, pub: d.Publisher, enabled: d.Enabled}
+	e := &Engine{pool: d.Pool, q: d.Queries, issues: d.Issues, tasks: d.Tasks, access: d.Access, pub: d.Publisher, enabled: d.Enabled}
+	ttl := d.AccessCacheTTL
+	if ttl == 0 {
+		ttl = defaultAccessCacheTTL
+	}
+	if ttl > 0 {
+		e.cache = newAccessCache(ttl, d.Now)
+	}
+	return e
 }
 
 // Enabled reports the MULTICA_WORKFLOW_ENGINE kill switch.
@@ -230,7 +245,9 @@ type deriveFunc func(ctx context.Context, q *db.Queries, snap *RunSnapshot) ([]s
 // ExtAfterCommit collector.
 func (e *Engine) advance(ctx context.Context, ext pgx.Tx, runID pgtype.UUID, derive deriveFunc) error {
 	// The invoke gate queries through the pool: resolve it before the run row
-	// is locked (the squad enqueue pattern), never under the lock.
+	// is locked (the squad enqueue pattern), never under the lock. On the
+	// OnChildEvents path (ext != nil) this runs while the caller's child-event
+	// transaction is open, but the run and issue rows are not locked yet.
 	invokable, err := e.resolveInvokable(ctx, ext, runID)
 	if err != nil {
 		return err
@@ -428,7 +445,7 @@ func (e *Engine) invokableAgents(ctx context.Context, workspaceID pgtype.UUID, a
 		if _, done := out[id]; done {
 			continue
 		}
-		ok, err := e.access.CanInvokeAgent(ctx, workspaceID, actorType, actorID, id)
+		ok, err := e.canInvoke(ctx, workspaceID, actorType, actorID, id)
 		if err != nil {
 			return nil, err
 		}
