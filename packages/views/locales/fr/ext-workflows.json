@@ -49,6 +49,8 @@
   },
   "detail": {
     "not_found": "Workflow introuvable",
+    "load_failed": "Impossible de charger le workflow",
+    "retry": "Réessayer",
     "tabs": {
       "nodes": "Nœuds",
       "runs": "Exécutions"
@@ -123,6 +125,8 @@
   },
   "runs": {
     "empty": "Aucune exécution. Assignez une tâche à ce workflow pour en lancer une.",
+    "load_failed": "Impossible de charger les exécutions",
+    "retry": "Réessayer",
     "col_issue": "Tâche",
     "col_status": "Statut",
     "col_started": "Début",

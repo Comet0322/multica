@@ -49,6 +49,8 @@
   },
   "detail": {
     "not_found": "워크플로를 찾을 수 없습니다",
+    "load_failed": "워크플로를 불러오지 못했습니다",
+    "retry": "다시 시도",
     "tabs": {
       "nodes": "노드",
       "runs": "실행"
@@ -122,6 +124,8 @@
   },
   "runs": {
     "empty": "아직 실행이 없습니다. 이 워크플로에 태스크를 지정하면 실행이 시작됩니다.",
+    "load_failed": "실행 기록을 불러오지 못했습니다",
+    "retry": "다시 시도",
     "col_issue": "태스크",
     "col_status": "상태",
     "col_started": "시작",

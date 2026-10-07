@@ -49,6 +49,8 @@
   },
   "detail": {
     "not_found": "未找到工作流",
+    "load_failed": "无法加载工作流",
+    "retry": "重试",
     "tabs": {
       "nodes": "节点",
       "runs": "运行"
@@ -122,6 +124,8 @@
   },
   "runs": {
     "empty": "还没有运行。把任务分配给此工作流即可开始一次运行。",
+    "load_failed": "无法加载运行记录",
+    "retry": "重试",
     "col_issue": "任务",
     "col_status": "状态",
     "col_started": "开始时间",

@@ -49,6 +49,8 @@
   },
   "detail": {
     "not_found": "Workflow not found",
+    "load_failed": "Couldn't load workflow",
+    "retry": "Try again",
     "tabs": {
       "nodes": "Nodes",
       "runs": "Runs"
@@ -123,6 +125,8 @@
   },
   "runs": {
     "empty": "No runs yet. Assign an issue to this workflow to start one.",
+    "load_failed": "Couldn't load runs",
+    "retry": "Try again",
     "col_issue": "Issue",
     "col_status": "Status",
     "col_started": "Started",
