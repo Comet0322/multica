@@ -509,3 +509,13 @@ func TestConversationBriefingSaysHowPeopleDecide(t *testing.T) {
 		mustContain(t, out, "run panel", "never tell anyone to post a decision block on a child issue")
 	}
 }
+func TestSupervisorBriefingsLinkEachStepsIssue(t *testing.T) {
+	steps := briefSteps(briefStep{Key: "build", Title: "Build", Status: "done", IssueID: "uuid-build", Ident: "MUL-7", Attempts: 1, MaxAttempts: 3})
+	for _, kind := range []string{KindSummary, KindReview, KindConversation} {
+		b := convBriefing(steps, 0)
+		b.Kind = kind
+		out := b.render()
+		mustContain(t, out, "[MUL-7](mention://issue/uuid-build)", "exactly as written")
+		mustNotContain(t, out, "](multica://")
+	}
+}

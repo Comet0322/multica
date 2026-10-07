@@ -121,8 +121,16 @@ type briefing struct {
 
 type briefStep struct {
 	Key, Title, Agent, Status, IssueID string
+	Ident                              string // the child issue's identifier, e.g. MUL-7; "" when unknown
 	Attempts, MaxAttempts              int
 	DependsOn                          []string
+}
+
+// link is the step's child issue as an issue mention, the markdown comments
+// use to link an issue.
+func (s briefStep) link() string {
+	text := strings.NewReplacer("[", "(", "]", ")").Replace(firstNonEmpty(s.Ident, s.Title, s.Key))
+	return fmt.Sprintf("[%s](mention://issue/%s)", text, s.IssueID)
 }
 
 type briefComment struct {
@@ -141,6 +149,10 @@ func (e *Engine) gatherBriefing(ctx context.Context, snap *RunSnapshot, task db.
 	if parent, err := e.q.GetIssue(ctx, snap.Run.IssueID); err == nil {
 		b.ParentTitle, b.ParentDesc = parent.Title, parent.Description.String
 	}
+	prefix := ""
+	if ws, err := e.q.GetWorkspace(ctx, snap.Run.WorkspaceID); err == nil {
+		prefix = ws.IssuePrefix
+	}
 	agentNames := map[pgtype.UUID]string{}
 	for _, row := range snap.Steps {
 		name, ok := agentNames[row.AgentID]
@@ -151,8 +163,14 @@ func (e *Engine) gatherBriefing(ctx context.Context, snap *RunSnapshot, task db.
 			agentNames[row.AgentID] = name
 		}
 		n, _ := snap.Def.NodeByKey(row.NodeKey)
+		ident := ""
+		if prefix != "" {
+			if iss, err := e.q.GetIssue(ctx, row.IssueID); err == nil {
+				ident = fmt.Sprintf("%s-%d", prefix, iss.Number)
+			}
+		}
 		b.Steps = append(b.Steps, briefStep{
-			Key: row.NodeKey, Title: n.Title, Agent: name, Status: row.Status, IssueID: util.UUIDToString(row.IssueID),
+			Ident: ident, Key: row.NodeKey, Title: n.Title, Agent: name, Status: row.Status, IssueID: util.UUIDToString(row.IssueID),
 			Attempts: int(row.Attempts), MaxAttempts: n.MaxAttempts, DependsOn: n.DependsOn,
 		})
 	}
@@ -509,6 +527,10 @@ func (b briefing) renderSupervisor(w *strings.Builder) {
 	for _, s := range b.Steps {
 		fmt.Fprintf(w, "| `%s` %s | %s | %s | %d/%d | %s |\n", s.Key, s.Title, s.Agent, s.Status, s.Attempts, s.MaxAttempts, s.IssueID)
 	}
+	w.WriteString("\nLinks to the steps' issues. When you mention a step in a comment, paste its link exactly as written; never write `multica://` URLs or bare IDs:\n\n")
+	for _, s := range b.Steps {
+		fmt.Fprintf(w, "- `%s`: %s\n", s.Key, s.link())
+	}
 	fmt.Fprintf(w, "\nRewinds used: %d of %d.\n\n", b.RewindsUsed, b.Def.MaxRewinds)
 	if len(b.Timeline) > 0 {
 		w.WriteString("### Timeline\n\n")
@@ -526,7 +548,7 @@ func (b briefing) renderSupervisor(w *strings.Builder) {
 		b.renderFocus(w)
 	case KindSummary:
 		w.WriteString("### Your task: the run summary\n\n")
-		w.WriteString("Every step has settled. Post exactly one plain comment on this issue that summarizes each step's outcome, with links to the steps' issues. Do not post a decision block.\n")
+		w.WriteString("Every step has settled. Post exactly one plain comment on this issue that summarizes each step's outcome, with a link to each step's issue (use the links listed above exactly as written). Do not post a decision block.\n")
 	case KindConversation:
 		b.renderConversation(w)
 	}
