@@ -588,6 +588,7 @@ func (b briefing) renderConversation(w *strings.Builder) {
 		w.WriteString("Reply with a new comment. ")
 	}
 	w.WriteString("Answer questions about the run from the overview and the timeline.\n\n")
+	w.WriteString("People decide in the run panel on this issue (its Approve, Redo, Retry, Skip, Rewind and Abort buttons), or by asking you here when they are allowed to; never tell anyone to post a decision block on a child issue.\n\n")
 	if !b.TriggerMayDecide {
 		w.WriteString("This person may not decide on this run (only the member who started it, the workflow's creator or a workspace admin can), so do not post a decision block; tell them who can.\n")
 		return

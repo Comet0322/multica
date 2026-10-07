@@ -500,3 +500,12 @@ func TestStepBriefingForbidsWakeups(t *testing.T) {
 	out := briefing{Kind: KindStep, Def: briefDef(), Focus: "build", Steps: briefSteps(briefStep{Key: "build", Title: "Build", Status: "running", Attempts: 1, MaxAttempts: 3})}.render()
 	mustContain(t, out, "do not create issue wakeups")
 }
+
+func TestConversationBriefingSaysHowPeopleDecide(t *testing.T) {
+	for _, may := range []bool{true, false} {
+		b := convBriefing(briefSteps(briefStep{Key: "build", Title: "Build", Status: "awaiting_human", IssueID: "issue-build", Attempts: 1, MaxAttempts: 3}), 0)
+		b.TriggerMayDecide = may
+		out := b.render()
+		mustContain(t, out, "run panel", "never tell anyone to post a decision block on a child issue")
+	}
+}
