@@ -185,7 +185,7 @@ func (e *Engine) gatherBriefing(ctx context.Context, snap *RunSnapshot, task db.
 			return b, err
 		}
 	}
-	b.Timeline = timeline(snap, events)
+	b.Timeline = timeline(snap, e.onBehalfNames(ctx, events), events)
 	return b, nil
 }
 
@@ -284,8 +284,27 @@ func str(v any) string {
 	return s
 }
 
-// timeline renders the run's past decisions, oldest first.
-func timeline(snap *RunSnapshot, events []db.ExtWorkflowRunEvent) []string {
+// onBehalfNames resolves the members decisions were made for.
+func (e *Engine) onBehalfNames(ctx context.Context, events []db.ExtWorkflowRunEvent) map[pgtype.UUID]string {
+	names := map[pgtype.UUID]string{}
+	for _, ev := range events {
+		if !ev.OnBehalfOf.Valid {
+			continue
+		}
+		if _, seen := names[ev.OnBehalfOf]; seen {
+			continue
+		}
+		names[ev.OnBehalfOf] = ""
+		if u, err := e.q.GetUser(ctx, ev.OnBehalfOf); err == nil {
+			names[ev.OnBehalfOf] = u.Name
+		}
+	}
+	return names
+}
+
+// timeline renders the run's past decisions, oldest first. people names the
+// members decisions were made for.
+func timeline(snap *RunSnapshot, people map[pgtype.UUID]string, events []db.ExtWorkflowRunEvent) []string {
 	var out []string
 	for i, ev := range events {
 		if ev.Kind == RunEventEscalated && i > 0 && escalateDecision(events[i-1], ev.StepID) {
@@ -297,6 +316,9 @@ func timeline(snap *RunSnapshot, events []db.ExtWorkflowRunEvent) []string {
 		switch ev.Kind {
 		case RunEventDecision:
 			line = fmt.Sprintf("%s decided `%s`", ev.ActorType, str(p["action"]))
+			if ev.OnBehalfOf.Valid {
+				line += " on behalf of " + firstNonEmpty(oneLine(people[ev.OnBehalfOf]), "a person")
+			}
 			if r := firstNonEmpty(str(p["reason"]), str(p["feedback"])); r != "" {
 				line += ": " + oneLine(r)
 			}

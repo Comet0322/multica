@@ -170,6 +170,7 @@
     "timeline": "타임라인",
     "timeline_empty": "아직 이벤트가 없습니다",
     "actor_engine": "워크플로",
+    "actor_on_behalf": "{{actor}} ({{member}} 님을 대신하여)",
     "step_line": "워크플로 단계 {{index}}/{{total}}",
     "step_line_with_parent": "워크플로 단계 {{index}}/{{total}} · {{parent}}",
     "redo_dialog": {

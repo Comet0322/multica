@@ -171,6 +171,7 @@
     "timeline": "Timeline",
     "timeline_empty": "No events yet",
     "actor_engine": "Workflow",
+    "actor_on_behalf": "{{actor}} on behalf of {{member}}",
     "step_line": "Workflow step {{index}} of {{total}}",
     "step_line_with_parent": "Workflow step {{index}} of {{total}} · {{parent}}",
     "redo_dialog": {

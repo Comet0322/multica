@@ -170,6 +170,7 @@
     "timeline": "タイムライン",
     "timeline_empty": "イベントはまだありません",
     "actor_engine": "ワークフロー",
+    "actor_on_behalf": "{{actor}}（{{member}} の代理）",
     "step_line": "ワークフローのステップ {{index}}/{{total}}",
     "step_line_with_parent": "ワークフローのステップ {{index}}/{{total}} · {{parent}}",
     "redo_dialog": {

@@ -171,6 +171,7 @@
     "timeline": "Chronologie",
     "timeline_empty": "Aucun événement pour le moment",
     "actor_engine": "Workflow",
+    "actor_on_behalf": "{{actor}} au nom de {{member}}",
     "step_line": "Étape {{index}} sur {{total}} du workflow",
     "step_line_with_parent": "Étape {{index}} sur {{total}} du workflow · {{parent}}",
     "redo_dialog": {

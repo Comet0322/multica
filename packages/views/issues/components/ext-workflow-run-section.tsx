@@ -497,12 +497,16 @@ function Timeline({ events }: { events: ExtWorkflowRun["events"] }) {
       {events.map((event) => {
         const kind = eventKey(event.kind);
         const detail = eventDetail(event.payload);
-        const actor =
+        const by =
           event.actor_type === "agent" || event.actor_type === "member"
             ? event.actor_id
               ? getActorName(event.actor_type, event.actor_id)
               : null
             : t(($) => $.run_section.actor_engine);
+        const actor =
+          by && event.on_behalf_of
+            ? t(($) => $.run_section.actor_on_behalf, { actor: by, member: getActorName("member", event.on_behalf_of) })
+            : by;
         return (
           <li key={event.id} className="text-micro">
             <div className="flex items-baseline gap-1.5">

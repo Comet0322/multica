@@ -346,6 +346,17 @@ describe("ExtWorkflowRunSection", () => {
     expect(screen.getByText("Escalated to a human")).toBeInTheDocument();
     expect(screen.getAllByText("Tests keep failing").length).toBeGreaterThan(1);
   });
+
+  it("names the member an agent decided for", async () => {
+    mocks.run = makeRun({
+      events: [
+        { id: "e1", step_id: "s2", kind: "decision", actor_type: "agent", actor_id: "ag-9", on_behalf_of: "user-2", payload: { action: "retry" }, created_at: "2026-10-01T01:00:00Z" },
+      ],
+    });
+    renderWithI18n(<ExtWorkflowRunSection issueId="issue-1" />);
+    await userEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    expect(screen.getByText("agent:ag-9 on behalf of member:user-2")).toBeInTheDocument();
+  });
 });
 
 describe("ExtWorkflowStepLine", () => {

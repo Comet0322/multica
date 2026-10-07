@@ -347,7 +347,7 @@ func TestTimelineListsAnEscalationOnce(t *testing.T) {
 	ev := func(kind, actor, payload string) db.ExtWorkflowRunEvent {
 		return db.ExtWorkflowRunEvent{StepID: buildID, Kind: kind, ActorType: actor, Payload: []byte(payload), CreatedAt: at}
 	}
-	got := timeline(snap, []db.ExtWorkflowRunEvent{
+	got := timeline(snap, nil, []db.ExtWorkflowRunEvent{
 		ev(RunEventDecision, "agent", `{"action":"escalate","reason":"needs a product call"}`),
 		ev(RunEventEscalated, "agent", `{"reason":"needs a product call"}`),
 		ev(RunEventDecision, "member", `{"action":"retry"}`),
@@ -386,4 +386,41 @@ func TestSupervisorDecisionFormatOmitsStepOnlyActions(t *testing.T) {
 	out := conv.render()
 	mustContain(t, out, "reason: <one line>    # required for abort", "only in your final output, or posted after this task has ended, is ignored.")
 	mustNotContain(t, out, "escalated to a person")
+}
+
+func TestTimelineNamesTheMemberADecisionWasMadeFor(t *testing.T) {
+	buildID := util.MustParseUUID("00000000-0000-0000-0000-0000000000b1")
+	ada, gone := util.MustParseUUID("00000000-0000-0000-0000-0000000000a1"), util.MustParseUUID("00000000-0000-0000-0000-0000000000a2")
+	snap := &RunSnapshot{Steps: []db.ExtWorkflowRunStep{{ID: buildID, NodeKey: "build"}}}
+	at := pgtype.Timestamptz{Time: time.Date(2026, 10, 7, 10, 0, 0, 0, time.UTC), Valid: true}
+	ev := func(onBehalfOf pgtype.UUID, payload string) db.ExtWorkflowRunEvent {
+		return db.ExtWorkflowRunEvent{StepID: buildID, Kind: RunEventDecision, ActorType: "agent", OnBehalfOf: onBehalfOf, Payload: []byte(payload), CreatedAt: at}
+	}
+	got := timeline(snap, map[pgtype.UUID]string{ada: "Ada"}, []db.ExtWorkflowRunEvent{
+		ev(ada, `{"action":"retry"}`),
+		ev(gone, `{"action":"skip"}`),
+		ev(pgtype.UUID{}, `{"action":"approve"}`),
+	})
+	want := []string{
+		"2026-10-07 10:00 · `build` · agent decided `retry` on behalf of Ada",
+		"2026-10-07 10:00 · `build` · agent decided `skip` on behalf of a person",
+		"2026-10-07 10:00 · `build` · agent decided `approve`",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("timeline\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestBuildBriefingNamesTheMemberADecisionWasMadeFor(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	run, build, supervisor := e.reviewRun(t, e.user)
+	e.decide(t, run, "build", Decision{Action: ActionRedo, Feedback: "Use the new tokens."}, Actor{Type: "agent", ID: supervisor, OnBehalfOf: e.user})
+	e.running(t, e.latestTask(t, e.step(t, run, "build"), RoleStep))
+	e.childMoves(t, run.IssueID, build.IssueID, "done")
+	text, ok, err := e.engine.BuildBriefing(ctx, e.latestTask(t, e.step(t, run, "build"), RoleSupervisor))
+	if err != nil || !ok {
+		t.Fatalf("BuildBriefing = %v, %v", ok, err)
+	}
+	mustContain(t, text, "agent decided `redo` on behalf of Workflow User: Use the new tokens.")
 }

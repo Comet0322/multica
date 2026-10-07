@@ -170,6 +170,7 @@
     "timeline": "时间线",
     "timeline_empty": "暂无事件",
     "actor_engine": "工作流",
+    "actor_on_behalf": "{{actor}}（代表 {{member}}）",
     "step_line": "工作流步骤 {{index}}/{{total}}",
     "step_line_with_parent": "工作流步骤 {{index}}/{{total}} · {{parent}}",
     "redo_dialog": {
