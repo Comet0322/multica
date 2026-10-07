@@ -286,7 +286,10 @@ func str(v any) string {
 // timeline renders the run's past decisions, oldest first.
 func timeline(snap *RunSnapshot, events []db.ExtWorkflowRunEvent) []string {
 	var out []string
-	for _, ev := range events {
+	for i, ev := range events {
+		if ev.Kind == RunEventEscalated && i > 0 && escalateDecision(events[i-1], ev.StepID) {
+			continue // the decision line already names the escalation and its reason
+		}
 		key, _ := snap.KeyOf(ev.StepID)
 		p := eventPayload(ev)
 		var line string
@@ -316,6 +319,11 @@ func timeline(snap *RunSnapshot, events []db.ExtWorkflowRunEvent) []string {
 		out = out[len(out)-briefTimelineMax:]
 	}
 	return out
+}
+
+// escalateDecision reports whether ev is an escalate decision on step.
+func escalateDecision(ev db.ExtWorkflowRunEvent, step pgtype.UUID) bool {
+	return ev.Kind == RunEventDecision && ev.StepID == step && str(eventPayload(ev)["action"]) == string(ActionEscalate)
 }
 
 func firstNonEmpty(values ...string) string {

@@ -2,12 +2,16 @@ package extworkflow
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // squadMarker is the daemon's legacy squad-leader detection string
@@ -331,4 +335,28 @@ func TestBuildBriefingCarriesFeedbackAfterRedoAndRewind(t *testing.T) {
 		t.Fatalf("BuildBriefing after rewind = %v, %v", ok, err)
 	}
 	mustContain(t, text, "step 1 of 2, **Spec**", "### Feedback on the previous attempt", "> The spec ignored pagination.")
+}
+
+func TestTimelineListsAnEscalationOnce(t *testing.T) {
+	buildID := util.MustParseUUID("00000000-0000-0000-0000-0000000000b1")
+	snap := &RunSnapshot{Steps: []db.ExtWorkflowRunStep{{ID: buildID, NodeKey: "build"}}}
+	at := pgtype.Timestamptz{Time: time.Date(2026, 10, 7, 10, 0, 0, 0, time.UTC), Valid: true}
+	ev := func(kind, actor, payload string) db.ExtWorkflowRunEvent {
+		return db.ExtWorkflowRunEvent{StepID: buildID, Kind: kind, ActorType: actor, Payload: []byte(payload), CreatedAt: at}
+	}
+	got := timeline(snap, []db.ExtWorkflowRunEvent{
+		ev(RunEventDecision, "agent", `{"action":"escalate","reason":"needs a product call"}`),
+		ev(RunEventEscalated, "agent", `{"reason":"needs a product call"}`),
+		ev(RunEventDecision, "member", `{"action":"retry"}`),
+		// The engine's own escalation (a silent supervisor) has no decision.
+		ev(RunEventEscalated, "engine", `{"reason":"The supervisor did not reach a decision: silent","auto":true}`),
+	})
+	want := []string{
+		"2026-10-07 10:00 · `build` · agent decided `escalate`: needs a product call",
+		"2026-10-07 10:00 · `build` · member decided `retry`",
+		"2026-10-07 10:00 · `build` · escalated to a person: The supervisor did not reach a decision: silent",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("timeline\n got %q\nwant %q", got, want)
+	}
 }
