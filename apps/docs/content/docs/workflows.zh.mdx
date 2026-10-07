@@ -117,7 +117,7 @@ feedback: |
 |---|---|
 | `action` | `approve`、`redo`、`retry`、`skip`、`rewind`、`escalate`、`abort` 或 `request-rewind`。 |
 | `step` | 步骤的节点标识。发在父任务下时必填，`abort` 除外。 |
-| `to` | 要退回到的节点。`rewind` 和 `request-rewind` 必填。 |
+| `to` | 要退回到的节点。`rewind` 必填，`request-rewind` 可选。 |
 | `reason` | `escalate`、`abort` 和 `request-rewind` 必填。 |
 | `feedback` | `redo` 和 `rewind` 必填。 |
 
