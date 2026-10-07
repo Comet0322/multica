@@ -3,6 +3,7 @@ package extworkflow
 import (
 	"context"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -439,5 +440,58 @@ func TestTimelineListsARewindOnce(t *testing.T) {
 	want := []string{"2026-10-07 10:00 · `use` · agent decided `rewind` to `base` (resets base, use): produce base v2"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("timeline\n got %q\nwant %q", got, want)
+	}
+}
+
+func convBriefing(steps []briefStep, rewinds int) briefing {
+	return briefing{
+		Kind: KindConversation, Workflow: "Ship", ParentID: "issue-parent", ParentTitle: "Ship feature", Def: briefDef(),
+		RewindsUsed: rewinds, Steps: steps,
+		TriggerCommentID: "comment-1", TriggerAuthor: "Ada", TriggerText: "retry it", TriggerMayDecide: true,
+	}
+}
+
+func TestConversationOffersOnlyWhatTheEngineAccepts(t *testing.T) {
+	// Attempts exhausted and no rewinds left: neither redo, retry nor rewind.
+	out := convBriefing(briefSteps(briefStep{Key: "build", Title: "Build", Status: "awaiting_human", IssueID: "issue-build", Attempts: 3, MaxAttempts: 3}), 3).render()
+	mustContain(t, out, "- `approve`:", "- `skip`:", "- `abort`:", "`build`", "no attempts left")
+	mustNotContain(t, out, "- `redo`:", "- `retry`:", "- `rewind`:", "to: <step key>        # required for rewind")
+
+	// Attempts left, rewinds left: the full human set.
+	out = convBriefing(briefSteps(briefStep{Key: "build", Title: "Build", Status: "awaiting_human", IssueID: "issue-build", Attempts: 1, MaxAttempts: 3}), 0).render()
+	mustContain(t, out, "- `redo`:", "- `retry`:", "- `rewind`:")
+}
+
+func TestConversationListsAllowedActionsPerStep(t *testing.T) {
+	steps := briefSteps(briefStep{Key: "build", Title: "Build", Status: "awaiting_human", IssueID: "issue-build", Attempts: 3, MaxAttempts: 3})
+	steps[0].Status, steps[1].Status = "awaiting_supervisor", "awaiting_human"
+	steps[0].Attempts = 3
+	out := convBriefing(steps, 0).render()
+	mustContain(t, out, "- `spec` Spec: approve, skip, rewind", "- `api` API: approve, redo, retry, skip, rewind", "- `build` Build: approve, skip, rewind")
+	// The union is offered once in the format.
+	mustContain(t, out, "- `redo`:", "- `retry`:")
+}
+
+func TestAllowedActionsShareTheEngineRules(t *testing.T) {
+	def := briefDef()
+	for _, tc := range []struct {
+		attempts, rewinds int
+		redo, rewind      bool
+	}{{1, 0, true, true}, {3, 0, false, true}, {1, 3, true, false}, {3, 3, false, false}} {
+		got := allowedActions(HumanActions, tc.attempts, 3, tc.rewinds, def.MaxRewinds)
+		if slices.Contains(got, ActionRedo) != tc.redo || slices.Contains(got, ActionRetry) != tc.redo || slices.Contains(got, ActionRewind) != tc.rewind {
+			t.Errorf("attempts=%d rewinds=%d: allowed %v", tc.attempts, tc.rewinds, got)
+		}
+		// The engine agrees: an action not offered is rejected, one offered is not rejected for budget.
+		out := RunState{Def: def, RewindsUsed: tc.rewinds, Steps: map[string]StepState{"build": {Status: StepAwaitingHuman, Attempts: tc.attempts}}}
+		_, err := stepDecision(&out, "build", Decision{Action: ActionRetry})
+		if (err == nil) != tc.redo {
+			t.Errorf("attempts=%d: engine retry err=%v, offered=%v", tc.attempts, err, tc.redo)
+		}
+		out = RunState{Def: def, RewindsUsed: tc.rewinds, Steps: map[string]StepState{"build": {Status: StepAwaitingHuman, Attempts: tc.attempts}}}
+		_, err = stepDecision(&out, "build", Decision{Action: ActionRewind, To: "build", Feedback: "x"})
+		if (err == nil) != tc.rewind {
+			t.Errorf("rewinds=%d: engine rewind err=%v, offered=%v", tc.rewinds, err, tc.rewind)
+		}
 	}
 }

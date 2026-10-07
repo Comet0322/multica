@@ -339,6 +339,27 @@ func stepObservation(out *RunState, key string, ev Event) ([]Effect, error) {
 	return nil, ErrNoTransition
 }
 
+// attemptsLeft and rewindsLeft are the budget rules stepDecision enforces for
+// redo/retry and rewind; allowedActions offers actions by the same rules.
+func attemptsLeft(attempts, maxAttempts int) bool { return attempts < maxAttempts }
+
+func rewindsLeft(used, maxRewinds int) bool { return used < maxRewinds }
+
+// allowedActions filters candidates down to those the engine accepts for a
+// waiting step with this budget.
+func allowedActions(candidates []DecisionAction, attempts, maxAttempts, rewindsUsed, maxRewinds int) []DecisionAction {
+	out := make([]DecisionAction, 0, len(candidates))
+	for _, a := range candidates {
+		switch {
+		case (a == ActionRedo || a == ActionRetry) && !attemptsLeft(attempts, maxAttempts):
+		case a == ActionRewind && !rewindsLeft(rewindsUsed, maxRewinds):
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func stepDecision(out *RunState, key string, d Decision) ([]Effect, error) {
 	if d.Action == ActionRequestRewind {
 		return requestRewind(out, key, d)
@@ -362,7 +383,7 @@ func stepDecision(out *RunState, key string, d Decision) ([]Effect, error) {
 		if d.Action == ActionRedo && d.Feedback == "" {
 			return nil, fmt.Errorf("%w: redo needs feedback", ErrIllegalDecision)
 		}
-		if st.Attempts >= node.MaxAttempts {
+		if !attemptsLeft(st.Attempts, node.MaxAttempts) {
 			return nil, fmt.Errorf("%w: step %q used %d of %d attempts", ErrIllegalDecision, key, st.Attempts, node.MaxAttempts)
 		}
 		if d.Action == ActionRedo {
@@ -382,7 +403,7 @@ func stepDecision(out *RunState, key string, d Decision) ([]Effect, error) {
 		if d.To != key && !Ancestors(out.Def, key)[d.To] {
 			return nil, fmt.Errorf("%w: %q is not %q or upstream of it", ErrIllegalDecision, d.To, key)
 		}
-		if out.RewindsUsed >= out.Def.MaxRewinds {
+		if !rewindsLeft(out.RewindsUsed, out.Def.MaxRewinds) {
 			return nil, fmt.Errorf("%w: the rewind budget (%d) is spent", ErrIllegalDecision, out.Def.MaxRewinds)
 		}
 		return append([]Effect{rec}, applyRewind(out, key, d.To, d.Feedback)...), nil

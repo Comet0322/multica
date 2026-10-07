@@ -592,20 +592,62 @@ func (b briefing) renderConversation(w *strings.Builder) {
 		return
 	}
 	w.WriteString("If they ask for a decision, you may act on their behalf with one decision block in your reply. Name the step with `step:` (not needed for `abort`). The engine checks their permission, not yours.\n\n")
-	b.renderDecisionFormat(w, HumanActions, b.ParentID, true)
+	union, perStep := b.conversationActions()
+	if len(perStep) > 0 {
+		w.WriteString("Steps waiting for a decision, and what the engine accepts for each now:\n\n")
+		for _, s := range b.Steps {
+			acts, ok := perStep[s.Key]
+			if !ok {
+				continue
+			}
+			names := make([]string, len(acts))
+			for i, a := range acts {
+				names[i] = string(a)
+			}
+			line := fmt.Sprintf("- `%s` %s: %s", s.Key, s.Title, strings.Join(names, ", "))
+			if !attemptsLeft(s.Attempts, s.MaxAttempts) {
+				line += " (no attempts left, so no redo or retry)"
+			}
+			w.WriteString(line + "\n")
+		}
+		w.WriteString("\nOffer nothing else; if they ask for an action that is not listed for a step, tell them why it is unavailable.\n\n")
+	} else {
+		w.WriteString("No step is waiting for a decision, so only `abort` can be taken now.\n\n")
+	}
+	b.renderDecisionFormat(w, union, b.ParentID, true)
 }
+
+// supervisorActions are the decisions a supervisor may take on a waiting step.
+var supervisorActions = []DecisionAction{ActionApprove, ActionRedo, ActionRetry, ActionSkip, ActionRewind, ActionEscalate, ActionAbort}
 
 // allowedFor is what a supervisor may decide on a waiting step now.
 func (b briefing) allowedFor(s briefStep) []DecisionAction {
-	out := []DecisionAction{ActionApprove}
-	if s.Attempts < s.MaxAttempts {
-		out = append(out, ActionRedo, ActionRetry)
+	return allowedActions(supervisorActions, s.Attempts, s.MaxAttempts, b.RewindsUsed, b.Def.MaxRewinds)
+}
+
+// conversationActions is what a person may decide on the run now: per waiting
+// step by the engine's rules, plus the union for the decision format.
+func (b briefing) conversationActions() (union []DecisionAction, perStep map[string][]DecisionAction) {
+	perStep = map[string][]DecisionAction{}
+	for _, s := range b.Steps {
+		if !StepStatus(s.Status).Awaiting() {
+			continue
+		}
+		perStep[s.Key] = allowedActions(HumanActions, s.Attempts, s.MaxAttempts, b.RewindsUsed, b.Def.MaxRewinds)
 	}
-	out = append(out, ActionSkip)
-	if b.RewindsUsed < b.Def.MaxRewinds {
-		out = append(out, ActionRewind)
+	for _, a := range HumanActions {
+		if a == ActionAbort {
+			union = append(union, a)
+			continue
+		}
+		for _, acts := range perStep {
+			if slices.Contains(acts, a) {
+				union = append(union, a)
+				break
+			}
+		}
 	}
-	return append(out, ActionEscalate, ActionAbort)
+	return union, perStep
 }
 
 var actionHelp = map[DecisionAction]string{
