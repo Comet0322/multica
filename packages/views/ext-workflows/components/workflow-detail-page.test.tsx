@@ -76,8 +76,8 @@ vi.mock("../../layout/breadcrumb-header", () => ({
 }));
 vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => <span /> }));
 vi.mock("./agent-select", () => ({
-  AgentSelect: ({ ariaLabel, value }: { ariaLabel: string; value: string }) => (
-    <button type="button" aria-label={ariaLabel}>
+  AgentSelect: ({ ariaLabel, value, disabled }: { ariaLabel: string; value: string; disabled?: boolean }) => (
+    <button type="button" aria-label={ariaLabel} disabled={disabled}>
       {value}
     </button>
   ),
@@ -177,6 +177,25 @@ describe("WorkflowDetailPage", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(mocks.archive).toHaveBeenCalledWith("wf-1"));
     expect(mocks.push).toHaveBeenCalledWith("/acme/workflows");
+  });
+});
+
+describe("WorkflowDetailPage for a member who cannot manage it", () => {
+  it("hides Save and Archive and makes the inspector and editor read-only", () => {
+    // Role member (see the members mock) and not the creator.
+    mocks.detail = { data: { ...WORKFLOW, creator_id: "user-other" }, isError: false, error: null };
+    renderWithI18n(<WorkflowDetailPage />);
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+
+    expect(screen.getByLabelText("Name")).toBeDisabled();
+    expect(screen.getByLabelText("Description")).toBeDisabled();
+    expect(screen.getByLabelText("Max rewinds")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Supervisor" })).toBeDisabled();
+
+    expect(screen.queryByRole("button", { name: "Add node" })).not.toBeInTheDocument();
+    expect(within(node(1)).getByLabelText("Title")).toBeDisabled();
+    expect(within(node(1)).queryByRole("button", { name: "Delete node" })).not.toBeInTheDocument();
   });
 });
 
