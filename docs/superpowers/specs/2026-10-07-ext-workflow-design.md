@@ -221,7 +221,7 @@ If the triggering actor later loses access to an agent, the dispatch fails. The 
 3. Persist the new step and run state and the events, and enqueue tasks **in the same transaction**.
 4. Commit, then publish WS events (`ext_workflow_run:updated`, `issue:updated`).
 
-Actions are: enqueue a step task, enqueue a supervisor task, set a child or parent issue status, cancel tasks for an issue, create an escalation inbox item, and post a milestone system comment.
+Actions are: enqueue a step task, enqueue a supervisor task, set a child or parent issue status, cancel tasks for an issue, create an escalation inbox item, and post a milestone system comment. An escalation inbox item is archived (and marked read) when its step leaves awaiting_human or the run ends.
 
 ### 5.2 Event sources
 

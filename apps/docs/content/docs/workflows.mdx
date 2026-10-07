@@ -74,7 +74,7 @@ When every step is `done` or skipped, the supervisor posts a summary on the pare
 
 Open the parent issue. The **Workflow run** panel in the sidebar shows each step's status, agent and attempts, with a link to its child issue, and a timeline of events.
 
-A step that needs you is marked **Needs you** and shows the reason. When an escalation happens you also get an inbox item, **Workflow needs a decision**, that opens the parent issue.
+A step that needs you is marked **Needs you** and shows the reason. When an escalation happens you also get an inbox item, **Workflow needs a decision**, that opens the parent issue. The item is archived once the step is decided or the run ends.
 
 The panel offers **Approve**, **Redo…**, **Retry**, **Skip**, **Rewind to…** and **Abort…**. Redo and rewind ask for feedback for the agent; abort asks for a reason. Redo and retry are unavailable once **Max attempts** is used, and rewind once **Max rewinds** is used. If the step changed while you were deciding, Multica asks you to review its new state and try again.
 

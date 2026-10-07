@@ -178,6 +178,18 @@ func (s *TaskService) ExtPublishSystemComment(issue db.Issue, created db.CreateC
 	})
 }
 
+// ExtPublishInboxBatchArchived emits inbox:batch-archived for inbox items the
+// engine archived, in the shape of the task_failed auto-archive.
+func (s *TaskService) ExtPublishInboxBatchArchived(workspaceID, recipientID, issueID string, count int64) {
+	if s.Bus == nil {
+		return
+	}
+	s.Bus.Publish(events.Event{
+		Type: protocol.EventInboxBatchArchived, WorkspaceID: workspaceID, ActorType: "system",
+		Payload: map[string]any{"recipient_id": recipientID, "count": count, "issue_id": issueID, "reason": "ext_workflow_escalation_resolved"},
+	})
+}
+
 // ExtPublishInbox emits inbox:new for an inbox item the engine wrote, in the
 // same shape as the system wakeup notifications.
 func (s *TaskService) ExtPublishInbox(item db.InboxItem, issueStatus string) {

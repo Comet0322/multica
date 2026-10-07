@@ -223,3 +223,14 @@ RETURNING *;
 
 -- name: ExtWorkflowRunExistsForIssue :one
 SELECT EXISTS (SELECT 1 FROM ext_workflow_run WHERE issue_id = @issue_id AND workspace_id = @workspace_id);
+
+-- name: ResolveExtWorkflowEscalationInbox :many
+-- Takes a run's open escalation items out of the inbox (archived and read)
+-- once nobody needs to act on them: their step was decided or the run ended.
+-- With step_id only that step's items go; without it, the whole run's.
+UPDATE inbox_item SET archived = true, read = true
+WHERE workspace_id = @workspace_id AND issue_id = @issue_id
+  AND type = 'ext_workflow_escalation' AND archived = false
+  AND details->>'run_id' = @run_id::text
+  AND (sqlc.narg(step_id)::text IS NULL OR details->>'step_id' = sqlc.narg(step_id)::text)
+RETURNING recipient_type, recipient_id;

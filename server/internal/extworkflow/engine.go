@@ -326,7 +326,48 @@ func (e *Engine) apply(ctx context.Context, tx pgx.Tx, q *db.Queries, snap *RunS
 			return err
 		}
 	}
+	if err := e.resolveEscalations(ctx, q, snap, state, out); err != nil {
+		return err
+	}
 	return e.persist(ctx, q, snap, state, out)
+}
+
+// resolveEscalations takes escalation inbox items out of the inbox once no
+// person needs to act on them: their step left awaiting_human (decided,
+// rewound, its child cancelled) or the run ended. The person's clients hear
+// inbox:batch-archived after the commit, as for upstream's auto-archive.
+func (e *Engine) resolveEscalations(ctx context.Context, q *db.Queries, snap *RunSnapshot, state RunState, out *outbox) error {
+	var scopes []pgtype.Text // invalid = the whole run
+	switch {
+	case !snap.State.Status.Active():
+		return nil
+	case !state.Status.Active():
+		scopes = append(scopes, pgtype.Text{})
+	default:
+		for _, row := range snap.Steps {
+			if snap.State.Steps[row.NodeKey].Status == StepAwaitingHuman && state.Steps[row.NodeKey].Status != StepAwaitingHuman {
+				scopes = append(scopes, pgtype.Text{String: util.UUIDToString(row.ID), Valid: true})
+			}
+		}
+	}
+	for _, step := range scopes {
+		rows, err := q.ResolveExtWorkflowEscalationInbox(ctx, db.ResolveExtWorkflowEscalationInboxParams{
+			WorkspaceID: snap.Run.WorkspaceID, IssueID: snap.Run.IssueID, RunID: util.UUIDToString(snap.Run.ID), StepID: step,
+		})
+		if err != nil {
+			return fmt.Errorf("resolve escalation inbox items: %w", err)
+		}
+		for _, r := range rows {
+			if r.RecipientType != "member" {
+				continue
+			}
+			if out.resolvedInbox == nil {
+				out.resolvedInbox = map[string]int64{}
+			}
+			out.resolvedInbox[util.UUIDToString(r.RecipientID)]++
+		}
+	}
+	return nil
 }
 
 // execute performs effects in order. A dispatch that cannot start (agent
@@ -725,10 +766,12 @@ type outbox struct {
 	issueUpdates []issueUpdate
 	comments     []commentNote
 	inbox        []inboxNote
-	tasks        []db.AgentTaskQueue
-	cancelled    []db.AgentTaskQueue
-	touched      bool
-	runChanged   bool
+	// resolvedInbox counts the escalation items archived per member.
+	resolvedInbox map[string]int64
+	tasks         []db.AgentTaskQueue
+	cancelled     []db.AgentTaskQueue
+	touched       bool
+	runChanged    bool
 }
 
 // flush publishes after the commit. Cancelled tasks go last: their
@@ -745,6 +788,9 @@ func (e *Engine) flush(ctx context.Context, out *outbox) {
 	}
 	for _, n := range out.inbox {
 		e.tasks.ExtPublishInbox(n.item, n.issueStatus)
+	}
+	for recipient, n := range out.resolvedInbox {
+		e.tasks.ExtPublishInboxBatchArchived(util.UUIDToString(out.run.WorkspaceID), recipient, util.UUIDToString(out.run.IssueID), n)
 	}
 	for _, t := range out.tasks {
 		e.tasks.PublishExtWorkflowTaskQueued(ctx, t)

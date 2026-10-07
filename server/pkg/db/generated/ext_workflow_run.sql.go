@@ -1538,6 +1538,55 @@ func (q *Queries) LockIssueForExtWorkflowStart(ctx context.Context, id pgtype.UU
 	return i, err
 }
 
+const resolveExtWorkflowEscalationInbox = `-- name: ResolveExtWorkflowEscalationInbox :many
+UPDATE inbox_item SET archived = true, read = true
+WHERE workspace_id = $1 AND issue_id = $2
+  AND type = 'ext_workflow_escalation' AND archived = false
+  AND details->>'run_id' = $3::text
+  AND ($4::text IS NULL OR details->>'step_id' = $4::text)
+RETURNING recipient_type, recipient_id
+`
+
+type ResolveExtWorkflowEscalationInboxParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+	RunID       string      `json:"run_id"`
+	StepID      pgtype.Text `json:"step_id"`
+}
+
+type ResolveExtWorkflowEscalationInboxRow struct {
+	RecipientType string      `json:"recipient_type"`
+	RecipientID   pgtype.UUID `json:"recipient_id"`
+}
+
+// Takes a run's open escalation items out of the inbox (archived and read)
+// once nobody needs to act on them: their step was decided or the run ended.
+// With step_id only that step's items go; without it, the whole run's.
+func (q *Queries) ResolveExtWorkflowEscalationInbox(ctx context.Context, arg ResolveExtWorkflowEscalationInboxParams) ([]ResolveExtWorkflowEscalationInboxRow, error) {
+	rows, err := q.db.Query(ctx, resolveExtWorkflowEscalationInbox,
+		arg.WorkspaceID,
+		arg.IssueID,
+		arg.RunID,
+		arg.StepID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ResolveExtWorkflowEscalationInboxRow{}
+	for rows.Next() {
+		var i ResolveExtWorkflowEscalationInboxRow
+		if err := rows.Scan(&i.RecipientType, &i.RecipientID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const touchExtWorkflowRun = `-- name: TouchExtWorkflowRun :exec
 UPDATE ext_workflow_run SET updated_at = now() WHERE id = $1
 `
