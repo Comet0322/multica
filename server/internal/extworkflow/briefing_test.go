@@ -71,9 +71,11 @@ func TestRenderStepBriefing(t *testing.T) {
 		"#### `api` API — skipped", "Its agent left no comment.",
 		"### Feedback on the previous attempt", "> Use the new tokens.",
 		"Work only in this child issue (issue-build).", "move this issue to `done`", "Do not modify the parent issue",
-		"```ext-workflow\naction: <action>", "- `request-rewind`:", "multica issue comment add issue-build --content-file ./decision.md",
+		"```ext-workflow\naction: request-rewind\nto: <step key>", "reason: <one line>    # required\n```",
+		"- `request-rewind`:", "multica issue comment add issue-build --content-file ./decision.md",
 	)
-	mustNotContain(t, out, "- `approve`", "step: <step key>", squadMarker)
+	// A step agent may only request a rewind: no other action or its fields.
+	mustNotContain(t, out, "- `approve`", "step: <step key>", "action: <action>", "feedback:", "redo", "escalate", "abort", squadMarker)
 	if got := strings.Count(out, "界"); got != briefCommentRunes {
 		t.Errorf("quoted %d runes of the upstream comment, want %d", got, briefCommentRunes)
 	}
@@ -123,6 +125,7 @@ func TestRenderSupervisorReviewBriefing(t *testing.T) {
 		"Required: exactly one decision block, posted on the step's child issue issue-build.",
 		"- `approve`:", "- `redo`:", "- `retry`:", "- `skip`:", "- `rewind`:", "- `escalate`:", "- `abort`:",
 		"multica issue comment add issue-build --content-file ./decision.md",
+		"```ext-workflow\naction: <action>\nto: <step key>", "feedback: |",
 	)
 	mustNotContain(t, out, "- `request-rewind`:", squadMarker)
 }

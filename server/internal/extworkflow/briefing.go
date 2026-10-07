@@ -589,14 +589,21 @@ func (b briefing) renderDecisionFormat(w *strings.Builder, allowed []DecisionAct
 		fmt.Fprintf(w, "Decide by posting one comment on issue %s that contains exactly one fenced block:\n\n", issueID)
 	}
 	w.WriteString("```" + BlockLang + "\n")
-	w.WriteString("action: <action>\n")
-	if onParent {
-		w.WriteString("step: <step key>      # required, except for abort\n")
+	if b.Kind == KindStep {
+		// A step agent's only action is request-rewind.
+		w.WriteString("action: request-rewind\n")
+		w.WriteString("to: <step key>        # optional: this step or one upstream of it; omit for this step\n")
+		w.WriteString("reason: <one line>    # required\n")
+	} else {
+		w.WriteString("action: <action>\n")
+		if onParent {
+			w.WriteString("step: <step key>      # required, except for abort\n")
+		}
+		w.WriteString("to: <step key>        # rewind (required), request-rewind (optional)\n")
+		w.WriteString("reason: <one line>    # required for escalate, abort, request-rewind\n")
+		w.WriteString("feedback: |           # required for redo and rewind\n")
+		w.WriteString("  <what must change>\n")
 	}
-	w.WriteString("to: <step key>        # rewind (required), request-rewind (optional)\n")
-	w.WriteString("reason: <one line>    # required for escalate, abort, request-rewind\n")
-	w.WriteString("feedback: |           # required for redo and rewind\n")
-	w.WriteString("  <what must change>\n")
 	w.WriteString("```\n\n")
 	w.WriteString("Allowed now:\n\n")
 	for _, a := range allowed {
