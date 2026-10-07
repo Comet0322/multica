@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bot, Users } from "lucide-react";
+import { Bot, Users, Workflow } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
 import {
   AVATAR_SIZE_PX,
@@ -18,6 +18,7 @@ interface ActorAvatarProps {
   isAgent?: boolean;
   isSystem?: boolean;
   isSquad?: boolean;
+  isWorkflow?: boolean; // ext-workflow: workflow actor glyph
   size?: AvatarSize;
   className?: string;
 }
@@ -29,6 +30,7 @@ function ActorAvatar({
   isAgent,
   isSystem,
   isSquad,
+  isWorkflow,
   size = DEFAULT_AVATAR_SIZE,
   className,
 }: ActorAvatarProps) {
@@ -78,6 +80,8 @@ function ActorAvatar({
         <Bot style={{ width: px * 0.55, height: px * 0.55 }} />
       ) : isSquad ? (
         <Users style={{ width: px * 0.55, height: px * 0.55 }} />
+      ) : isWorkflow ? (
+        <Workflow style={{ width: px * 0.55, height: px * 0.55 }} />
       ) : (
         initials
       )}
