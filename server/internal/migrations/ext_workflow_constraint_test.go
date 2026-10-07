@@ -20,9 +20,12 @@ import (
 const assigneeConstraintName = "issue_assignee_type_check"
 
 // TestAssigneeConstraintOnlyRedefinedByKnownMigrations fails when a migration
-// other than the known ones touches the constraint. The fix is a new ext_NNNN
-// migration that re-asserts the full list including 'workflow'; then add the
-// new file to knownAssigneeConstraintMigrations.
+// other than the known ones touches the constraint. A later ext_NNNN
+// migration cannot repair it: on a database with workflow-assigned issues the
+// upstream migration's ADD CONSTRAINT fails validation before any later
+// migration runs, so the deploy stops there. The fix is to patch that
+// upstream migration in the fork so its list includes 'workflow', then add
+// the file to the known map below.
 func TestAssigneeConstraintOnlyRedefinedByKnownMigrations(t *testing.T) {
 	known := map[string]bool{
 		"084_squad.up.sql":                          true, // adds 'squad'
@@ -47,7 +50,7 @@ func TestAssigneeConstraintOnlyRedefinedByKnownMigrations(t *testing.T) {
 	}
 	sort.Strings(unexpected)
 	if len(unexpected) > 0 {
-		t.Fatalf("migrations %v touch %s. An upstream change can drop 'workflow' from it; add an ext_NNNN migration that re-asserts ('member','agent','squad','workflow') and register the file in this test", unexpected, assigneeConstraintName)
+		t.Fatalf("migrations %v touch %s. Without 'workflow' in its list it fails on databases with workflow-assigned issues, and no later ext_ migration runs first. Patch that migration in the fork to include 'workflow' in the allowed list, then register the file in this test", unexpected, assigneeConstraintName)
 	}
 }
 
