@@ -364,3 +364,22 @@ func TestIssueWakeupInstructionAPI(t *testing.T) {
 		testutil.Call(t, testHandler.EditIssueWakeupInstruction, req).Want(tc.want)
 	}
 }
+
+// ext-workflow: the engine schedules a step's work; a wakeup on a step's child
+// issue could start a task it does not track.
+func TestIssueWakeupRefusedOnAnExtWorkflowChildIssue(t *testing.T) {
+	requireExtWorkflowDB(t)
+	withExtWorkflowEngine(t)
+	_, runID, _ := startExtRun(t)
+	child := getExtRun(t, runID).Steps[0].IssueID
+	agent := dbfx.Agent(t, "wake ext child", testRuntimeID)
+	body := map[string]any{"agent_id": agent, "kind": "at", "after_seconds": 600, "instruction": "finish later"}
+	rec := httptest.NewRecorder()
+	testHandler.CreateIssueWakeup(rec, withURLParam(newRequest("POST", "/api/issues/"+child+"/wakeups", body), "id", child))
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "workflow") {
+		t.Fatalf("wakeup on a workflow child: %d %s", rec.Code, rec.Body.String())
+	}
+	if n := dbfx.Count(t, "SELECT count(*) FROM issue_wakeup WHERE issue_id=$1", child); n != 0 {
+		t.Fatalf("%d wakeups stored on the child", n)
+	}
+}

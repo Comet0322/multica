@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
@@ -83,4 +84,15 @@ func ExtCommentFromEvent(e events.Event) (pgtype.UUID, string, bool) {
 		return pgtype.UUID{}, "", false
 	}
 	return commentID, authorType, true
+}
+
+// refuseExtWorkflowChildWakeup answers 409 when the issue is a step's child
+// issue in a workflow run: the engine schedules that work, and a wakeup could
+// start a task it does not track.
+func (h *Handler) refuseExtWorkflowChildWakeup(w http.ResponseWriter, r *http.Request, issue db.Issue) bool {
+	if _, err := h.Queries.GetExtWorkflowRunStepByIssue(r.Context(), db.GetExtWorkflowRunStepByIssueParams{IssueID: issue.ID, WorkspaceID: issue.WorkspaceID}); err != nil {
+		return false
+	}
+	writeError(w, http.StatusConflict, "this issue is a workflow step; the workflow engine schedules its work, so wakeups cannot be created on it")
+	return true
 }

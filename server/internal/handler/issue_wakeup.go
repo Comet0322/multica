@@ -194,6 +194,9 @@ func (h *Handler) CreateIssueWakeup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if h.refuseExtWorkflowChildWakeup(w, r, issue) { // ext-workflow: the engine schedules step work
+		return
+	}
 	var in service.WakeupInput
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32768))
 	dec.DisallowUnknownFields()

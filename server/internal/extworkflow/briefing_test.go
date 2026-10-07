@@ -495,3 +495,8 @@ func TestAllowedActionsShareTheEngineRules(t *testing.T) {
 		}
 	}
 }
+
+func TestStepBriefingForbidsWakeups(t *testing.T) {
+	out := briefing{Kind: KindStep, Def: briefDef(), Focus: "build", Steps: briefSteps(briefStep{Key: "build", Title: "Build", Status: "running", Attempts: 1, MaxAttempts: 3})}.render()
+	mustContain(t, out, "do not create issue wakeups")
+}
