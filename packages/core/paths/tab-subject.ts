@@ -15,7 +15,7 @@
  */
 import { pageForSegment, type WorkspacePageKey } from "./route-icons";
 
-export type TabActorType = "agent" | "member" | "squad";
+export type TabActorType = "agent" | "member" | "squad" | "workflow"; // ext-workflow
 
 export type TabSubject =
   /** A collection or tool page with no specific resource. */
@@ -26,7 +26,7 @@ export type TabSubject =
   | { kind: "project"; id: string }
   /** A single autopilot detail. */
   | { kind: "autopilot"; id: string }
-  /** An agent / member / squad detail (has an avatar identity). */
+  /** An agent / member / squad / workflow detail (has an avatar identity). */
   | { kind: "actor"; actorType: TabActorType; id: string }
   /** A single skill detail. */
   | { kind: "skill"; id: string }
@@ -96,6 +96,10 @@ export function parseTabSubject(url: string): TabSubject {
       return id
         ? { kind: "actor", actorType: "squad", id }
         : { kind: "page", page: "squads" };
+    case "workflows": // ext-workflow
+      return id
+        ? { kind: "actor", actorType: "workflow", id }
+        : { kind: "page", page: "workflows" };
     case "usage":
       return { kind: "page", page: "usage" };
     case "inbox":

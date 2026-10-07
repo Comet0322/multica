@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { Workflow } from "lucide-react";
 import { paths, DEFAULT_ROUTE_ICON_NAME } from "@multica/core/paths";
 import { ROUTE_ICON_COMPONENTS, routeIconForPath } from "./route-icon-components";
 
@@ -8,11 +9,17 @@ describe("routeIconForPath", () => {
   // render two different icons.
   it("gives a route the same component wherever it is rendered", () => {
     const p = paths.workspace("acme");
-    for (const href of [p.projects(), p.autopilots(), p.chat(), p.squads(), p.usage()]) {
+    for (const href of [p.projects(), p.autopilots(), p.chat(), p.squads(), p.workflows(), p.usage()]) {
       // Sidebar passes the bare nav href; a tab passes its own url, which for
       // a sub-route carries extra segments.
       expect(routeIconForPath(`${href}/some-id`)).toBe(routeIconForPath(href));
     }
+  });
+
+  it("gives Workflows the Workflow glyph, in the sidebar and in tabs", () => {
+    const p = paths.workspace("acme");
+    expect(routeIconForPath(p.workflows())).toBe(Workflow);
+    expect(routeIconForPath(p.workflowDetail("wf1"))).toBe(Workflow);
   });
 
   it("resolves distinct components for distinct routes", () => {

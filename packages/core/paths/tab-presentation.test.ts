@@ -70,6 +70,14 @@ describe("resolveTabPresentation — direct resources", () => {
       visual: { kind: "actor", actorType: "squad", id: "sq1" },
       title: { kind: "tab", tabKey: "squad" },
     });
+    expect(present("/acme/workflows/wf1")).toEqual({
+      visual: { kind: "actor", actorType: "workflow", id: "wf1" },
+      title: { kind: "tab", tabKey: "workflow" },
+    });
+    expect(present("/acme/workflows/wf1", { actorName: "Release flow" }).title).toEqual({
+      kind: "text",
+      text: "Release flow",
+    });
   });
 
   it("autopilot / skill / machine / runtime use a type icon + name", () => {

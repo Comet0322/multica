@@ -22,6 +22,7 @@ import {
   memberListOptions,
   squadListOptions,
 } from "@multica/core/workspace/queries";
+import { extWorkflowListOptions } from "@multica/core/ext-workflows"; // ext-workflow
 import { runtimeListOptions } from "@multica/core/runtimes/queries";
 import { runtimeDisplayName } from "@multica/core/runtimes";
 import { chatSessionsOptions } from "@multica/core/chat/queries";
@@ -70,6 +71,7 @@ const PENDING_RESOURCE_KEYS: ReadonlySet<TabLabelKey> = new Set<TabLabelKey>([
   "agent",
   "member",
   "squad",
+  "workflow",
   "skill",
   "machine",
   "runtime",
@@ -151,6 +153,7 @@ function useTabEntityData(subject: TabSubject, wsId: string): TabEntityData {
   const agents = useQuery({ ...agentListOptions(wsId), enabled: false }).data;
   const members = useQuery({ ...memberListOptions(wsId), enabled: false }).data;
   const squads = useQuery({ ...squadListOptions(wsId), enabled: false }).data;
+  const workflows = useQuery({ ...extWorkflowListOptions(wsId), enabled: false }).data; // ext-workflow
   const runtimes = useQuery({ ...runtimeListOptions(wsId), enabled: false }).data;
   const sessions = useQuery({ ...chatSessionsOptions(wsId), enabled: false }).data;
 
@@ -180,7 +183,9 @@ function useTabEntityData(subject: TabSubject, wsId: string): TabEntityData {
           ? agents?.find((a) => a.id === subject.id)?.name
           : subject.actorType === "member"
             ? members?.find((m) => m.user_id === subject.id)?.name
-            : squads?.find((s) => s.id === subject.id)?.name;
+            : subject.actorType === "workflow" // ext-workflow
+              ? workflows?.find((w) => w.id === subject.id)?.name
+              : squads?.find((s) => s.id === subject.id)?.name;
       if (name) data.actorName = name;
       break;
     }
@@ -294,9 +299,11 @@ export function useTabPresentation(
           icon:
             visual.actorType === "squad"
               ? "Users"
-              : visual.actorType === "member"
-                ? "CircleUser"
-                : "Bot",
+              : visual.actorType === "workflow" // ext-workflow
+                ? "Workflow"
+                : visual.actorType === "member"
+                  ? "CircleUser"
+                  : "Bot",
         }
       : visual;
 

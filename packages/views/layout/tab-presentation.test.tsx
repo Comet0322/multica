@@ -12,6 +12,7 @@ import {
   archivedInboxLookupOptions,
 } from "@multica/core/inbox/queries";
 import { EMPTY_INBOX_FILTERS } from "@multica/core/inbox/filter-store";
+import { extWorkflowListOptions } from "@multica/core/ext-workflows";
 import { agentListOptions } from "@multica/core/workspace/queries";
 import { runtimeListOptions } from "@multica/core/runtimes/queries";
 
@@ -94,6 +95,9 @@ function seed(qc: QueryClient) {
   qc.setQueryData(agentListOptions("ws1").queryKey, [
     { id: "ag1", name: "Robby", avatar_url: null },
   ] as never);
+  qc.setQueryData(extWorkflowListOptions("ws1").queryKey, [
+    { id: "wf1", name: "Release flow" },
+  ] as never);
   qc.setQueryData(runtimeListOptions("ws1").queryKey, [
     { id: "rt1", name: "Claude (host)", custom_name: "Prod Box", status: "online" },
   ] as never);
@@ -163,6 +167,13 @@ describe("useTabPresentation — live from cache", () => {
     expect(presentationOf("/acme/agents/ag1")).toEqual({
       visual: { kind: "actor", actorType: "agent", id: "ag1" },
       title: "Robby",
+    });
+  });
+
+  it("workflow actor: avatar visual + workflow name from the list cache", () => {
+    expect(presentationOf("/acme/workflows/wf1")).toEqual({
+      visual: { kind: "actor", actorType: "workflow", id: "wf1" },
+      title: "Release flow",
     });
   });
 

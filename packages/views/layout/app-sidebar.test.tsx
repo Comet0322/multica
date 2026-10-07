@@ -144,6 +144,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     autopilots: () => "/acme/autopilots",
     agents: () => "/acme/agents",
     squads: () => "/acme/squads",
+    workflows: () => "/acme/workflows",
     usage: () => "/acme/usage",
     runtimes: () => "/acme/runtimes",
     skills: () => "/acme/skills",
@@ -536,5 +537,33 @@ describe("Pending invitation self-heal", () => {
     }
     expect(invitationApi.accept).toHaveBeenCalledTimes(1);
     expect(invitationApi.decline).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("workflows nav entry", () => {
+  beforeEach(() => {
+    navigation.current.pathname = "/acme/issues";
+    summary.current = [];
+    workspaces.current = [];
+  });
+
+  it("shows Workflows in the AI Team group, right after Squads", () => {
+    const { container } = renderWithI18n(<AppSidebar />);
+    const squads = container.querySelector('[data-href="/acme/squads"]');
+    const workflows = container.querySelector('[data-href="/acme/workflows"]');
+    expect(workflows).not.toBeNull();
+    expect(workflows).toHaveTextContent("Workflows");
+    expect(
+      squads!.compareDocumentPosition(workflows!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("marks Workflows active on a workflow detail route", () => {
+    navigation.current.pathname = "/acme/workflows/wf1";
+    const { container } = renderWithI18n(<AppSidebar />);
+    expect(container.querySelector('[data-href="/acme/workflows"]')).toHaveAttribute(
+      "data-active",
+      "true",
+    );
   });
 });

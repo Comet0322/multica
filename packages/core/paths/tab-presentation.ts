@@ -46,6 +46,7 @@ export type TabLabelKey =
   | "agent"
   | "member"
   | "squad"
+  | "workflow"
   | "skill"
   | "machine"
   | "runtime"
@@ -105,6 +106,7 @@ const ACTOR_LABEL: Record<TabActorType, TabLabelKey> = {
   agent: "agent",
   member: "member",
   squad: "squad",
+  workflow: "workflow",
 };
 
 // Extension → file-type icon. The preview URL only carries the filename, so the

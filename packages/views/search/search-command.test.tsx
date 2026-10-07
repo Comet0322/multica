@@ -228,6 +228,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     memberDetail: (id: string) => `/ws-test/members/${id}`,
     agentDetail: (id: string) => `/ws-test/agents/${id}`,
     squadDetail: (id: string) => `/ws-test/squads/${id}`,
+    workflowDetail: (id: string) => `/ws-test/workflows/${id}`,
     projectDetail: (id: string) => `/ws-test/projects/${id}`,
   }),
 }));
@@ -426,6 +427,15 @@ describe("SearchCommand", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByText("Inbox")).not.toBeInTheDocument();
+  });
+
+  it("finds Workflows through its keyword aliases", async () => {
+    const user = userEvent.setup();
+    renderSearch();
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "pipeline");
+    await user.click(await screen.findByText("Workflows"));
+    expect(mockPush).toHaveBeenCalledWith("/ws-test/workflows");
   });
 
   it("navigates to a page whose label differs from its route segment", async () => {
