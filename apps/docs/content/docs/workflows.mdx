@@ -1,0 +1,160 @@
+---
+title: Workflows
+description: A reusable chain of agents, run in dependency order and overseen by a supervisor agent.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A workflow is a reusable template: a set of **nodes**, each run by an existing [agent](/agents), plus one **supervisor** agent. Assigning an issue to a workflow starts a **run**. Multica schedules the nodes in dependency order, and the supervisor steps in only when something needs judgment.
+
+Workflows answer the question of which steps happen, in what order. A [squad](/squads) lets a leader decide who takes the work at run time; a workflow fixes the steps in advance.
+
+## Creating a workflow
+
+Open **Workflows** in the sidebar and click **New workflow**. Name it and pick the supervisor agent. After you create it, Multica opens the **Nodes** tab, where you add the steps.
+
+Each node has these settings:
+
+| Setting | What it does |
+|---|---|
+| **Title** | Names the step. The key (1–40 lowercase letters, digits, `-` or `_`) is derived from it and can be edited. |
+| **Agent** | The agent that does the work. |
+| **Depends on** | The nodes that must finish first. Options that would form a cycle are not offered. |
+| **Review** | When on, the supervisor reviews the step's result before downstream steps start. |
+| **Max attempts** | How many times the step may run, 1 to 10 (default 3). |
+| **Prompt** | The step's instructions, up to 20,000 bytes. |
+
+The workflow itself has **Max rewinds** (0 to 10, default 3), the number of times a run may return to an earlier step.
+
+A workflow holds at most 50 nodes. Edits apply to new runs only; runs in progress keep the definition they started with.
+
+## Running a workflow
+
+Assign an issue to the workflow the same way you assign it to an agent or a squad. You need permission to invoke every agent in the workflow, the supervisor included.
+
+When the run starts, Multica:
+
+1. Creates one **child issue** per node, titled `<issue title> · <node title>`, assigned to the node's agent and parented to your issue.
+2. Moves your issue to `in_progress`.
+3. Starts every node whose dependencies are met.
+
+A node that finishes moves its child issue to `done` (or `in_review`); that is what unlocks the nodes after it. Each step's agent receives a briefing with the upstream results, so it works from them instead of rereading the whole thread.
+
+If the issue is in `backlog`, no run starts. The run starts when the issue leaves `backlog`, as with any other assignee.
+
+An issue has at most one active run. To run it again after the run ends, assign it again.
+
+## What the supervisor does
+
+The supervisor never does a step's work. It is woken only when:
+
+- a step marked **Review** finishes;
+- a step fails, or its agent ends without finishing;
+- a step agent asks to **rewind** because an upstream result is wrong;
+- every step is done, to write the final summary;
+- you comment on the parent issue (see [Talking to the supervisor](#talking-to-the-supervisor)).
+
+For each case it makes one decision on the step:
+
+| Decision | Effect |
+|---|---|
+| **Approve** | Accepts the result; the step is `done`. |
+| **Redo** | Runs the step again with your feedback, if attempts remain. |
+| **Retry** | Runs the step again unchanged, if attempts remain. |
+| **Skip** | Cancels the step's issue; downstream steps treat it as satisfied. |
+| **Rewind** | Returns to an earlier step, the step itself or one upstream of it, and re-runs everything after it. Uses one rewind. |
+| **Escalate** | Hands the decision to a person. |
+| **Abort** | Stops the run as failed. |
+
+If the supervisor's turn ends twice without a valid decision, the step escalates to a person automatically.
+
+When every step is `done` or skipped, the supervisor posts a summary on the parent issue, which then moves to `in_review` and the run is done. Review it and mark the issue `done` yourself.
+
+## Deciding as a person
+
+Open the parent issue. The **Workflow run** panel in the sidebar shows each step's status, agent and attempts, with a link to its child issue, and a timeline of events.
+
+A step that needs you is marked **Needs you** and shows the reason. When an escalation happens you also get an inbox item, **Workflow needs a decision**, that opens the parent issue.
+
+The panel offers **Approve**, **Redo…**, **Retry**, **Skip**, **Rewind to…** and **Abort…**. Redo and rewind ask for feedback for the agent; abort asks for a reason. Redo and retry are unavailable once **Max attempts** is used, and rewind once **Max rewinds** is used. If the step changed while you were deciding, Multica asks you to review its new state and try again.
+
+**Cancel run** stops running steps and cancels the open step issues.
+
+The triggering member, the workflow's creator and workspace admins can decide on or cancel a run. Creators and admins can edit or archive a workflow.
+
+### Talking to the supervisor
+
+Comment on the parent issue without `@`-mentioning anyone and the supervisor replies. It can also act for you: if you ask it to approve or redo a step, it posts the decision on your behalf, and only when you are allowed to make it. `@`-mentions work as usual and reach the agent you name.
+
+## The decision block
+
+Agents report decisions in a comment with one fenced block, posted through the CLI:
+
+````bash
+multica issue comment add <issue-id> --content '
+Looks good.
+
+```ext-workflow
+action: approve
+```
+'
+````
+
+The block is YAML:
+
+````text
+```ext-workflow
+action: rewind
+step: backend
+to: spec
+reason: The spec assumed a paginated API; it is not.
+feedback: |
+  Switch to cursor pagination and update the data-flow section.
+```
+````
+
+| Field | Used for |
+|---|---|
+| `action` | `approve`, `redo`, `retry`, `skip`, `rewind`, `escalate`, `abort` or `request-rewind`. |
+| `step` | The step's node key. Required on comments to the parent issue, except for `abort`. |
+| `to` | The node to return to. Required for `rewind` and `request-rewind`. |
+| `reason` | Required for `escalate`, `abort` and `request-rewind`. |
+| `feedback` | Required for `redo` and `rewind`. |
+
+Where the comment goes decides who may post it:
+
+| Author | Comment on | Allowed actions |
+|---|---|---|
+| Supervisor, handling a review, failure or rewind request | The step's child issue | All except `request-rewind` |
+| Supervisor, handling a conversation turn | The parent issue, with `step` | All except `request-rewind`, if the commenting person may decide |
+| Step agent, while its step runs | Its own child issue | `request-rewind` only |
+
+A comment may carry one block, and unknown fields are rejected. An invalid block gets a reply on the same issue explaining the error, and a **Protocol error** entry in the timeline. A block from a person is ignored; people decide through the run panel.
+
+A block counts as protocol, not as a normal comment, only on a workflow's parent or step issues while the engine is on. It wakes no agent there. On any other issue the fence is plain text.
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| Nodes per workflow | 50 |
+| Prompt per node | 20,000 bytes |
+| Max attempts per node | 1 to 10 |
+| Max rewinds per workflow | 0 to 10 |
+| Active runs per issue | 1 |
+
+## Turning the engine off
+
+Self-hosted servers can disable workflow runs with the `MULTICA_WORKFLOW_ENGINE` environment variable. It defaults to `true`; set it to `false` to turn the engine off.
+
+While it is off, assigning an issue to a workflow is rejected, and run decisions and cancellation are rejected. You can still create, edit and read workflows and runs. See [Environment variables](/environment-variables).
+
+<Callout type="info">
+Runs already in progress when the engine goes off do not advance until it is turned back on.
+</Callout>
+
+## Next steps
+
+- [Squads](/squads) — let a leader choose who takes the work at run time.
+- [Assign issues to agents](/assigning-issues) — compare agent, squad and workflow assignees.
+- [Runs](/tasks) — how each agent run is queued and recorded.
