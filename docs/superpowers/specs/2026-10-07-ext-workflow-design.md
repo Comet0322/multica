@@ -353,8 +353,8 @@ Per kind:
   - the focus step's prompt and child issue id;
   - the agent's last comment;
   - for failure: `failure_reason`, the error, and whether the task ended without finishing;
-  - required: exactly one decision block on the **focus step's child issue**.
-- `rewind_request`: the requesting step, the requested target, and the reason. Required: a decision block. Typical answers are `rewind` or `redo` with a rejection explanation.
+  - required: exactly one decision block on the **focus step's child issue**, and no other comment: not on the parent, where the engine records progress (enforced by §6.5).
+- `rewind_request`: the requesting step, the requested target, and the reason. Required: a decision block on the focus step's child issue, and no comment on the parent. Typical answers are `rewind` or `redo` with a rejection explanation.
 - `summary`: every step's outcome with links. Required: one plain comment on the parent. No decision block.
 - `conversation`: the triggering member comment. The supervisor may answer. It may also act **on behalf of the commenter** with a decision block on the parent that names `step:`, but only if that member is permitted (§7.2). The engine checks permission against the commenter, not the supervisor.
 
@@ -410,7 +410,8 @@ The engine reads a run from its issues: a child moved to `done`/`in_review` fini
 
 - Covered paths: `PUT /api/issues/{id}` (and `POST .../move`, which delegates to it), `POST /api/issues/batch-update` and `batch-delete` (checked for the whole batch before any write; one guarded item refuses the request), `DELETE /api/issues/{id}`. The plugin `PATCH /v1/issues` edits only title and description.
 - One query (`GetExtWorkflowIssueGuard`) classifies the issue; the decision is `extworkflow.AgentIssueRefusal`.
-- Not guarded: members, comments, other fields, and service-level writes (the engine's own status writes, task claim/finish status moves), which do not pass through the handlers. When the run ends the guard lifts.
+- Comments: `POST /api/issues/{id}/comments` refuses (409, pointing at the step's issue) a comment on the run's parent from a supervisor `review`, `failure` or `rewind_request` task of that run (`X-Task-ID`); the decision is `extworkflow.AgentCommentRefusal`. Summary and conversation turns, step agents and members may comment on the parent.
+- Not guarded: members, other comments, other fields, and service-level writes (the engine's own status writes, task claim/finish status moves), which do not pass through the handlers. When the run ends the guard lifts.
 
 ## 7. API
 
@@ -508,6 +509,7 @@ Every place that branches on `"squad"` was reviewed. The table below lists the o
 | `server/internal/service/issue_wakeup_system.go` | `resolveWakeTarget` returns none for workflow; `processChildEvents` hook |
 | `server/internal/handler/comment.go` | `isNoteComment` ext block; `routeAssigneeFallback` workflow → supervisor `conversation` |
 | `server/internal/handler/issue.go` `UpdateIssue`, `DeleteIssue`, `BatchUpdateIssues`, `BatchDeleteIssues` | agent write guard hooks (§6.5) |
+| `server/internal/handler/comment.go` `CreateComment` | decision-turn comment guard hook (§6.5) |
 | `server/internal/handler/daemon.go` `buildClaimedTaskResponse` | briefing hook |
 | `server/internal/service/task.go` `RerunIssue` | workflow assignee → 409 (rerun the run, not the issue) |
 | `server/pkg/db/queries/agent.sql` `CreateRetryTask` | copy ext columns |

@@ -54,3 +54,33 @@ func AgentIssueRefusal(g IssueGuard, c IssueChange) string {
 	}
 	return ""
 }
+
+// IsDecisionTurn reports whether a task with this role and kind is a
+// supervisor turn that answers with a decision block on a step's child issue.
+func IsDecisionTurn(role, kind string) bool {
+	if role != RoleSupervisor {
+		return false
+	}
+	switch kind {
+	case KindReview, KindFailure, KindRewindRequest:
+		return true
+	}
+	return false
+}
+
+// AgentCommentRefusal returns why an agent's task (role, kind) may not comment
+// on an issue, or "" when it may. onRunParent: the issue is the parent of the
+// task's run. A decision turn's only comment is its decision block on the
+// step's issue; the engine records the run's progress on the parent, so a
+// note there only notifies the run's trigger member again. stepIssue is the
+// step's issue id, "" when unknown.
+func AgentCommentRefusal(role, kind string, onRunParent bool, stepIssue string) string {
+	if !onRunParent || !IsDecisionTurn(role, kind) {
+		return ""
+	}
+	where := "the step's issue"
+	if stepIssue != "" {
+		where += " (" + stepIssue + ")"
+	}
+	return "this issue is the parent of the workflow run you are deciding on, and the workflow engine records the run's progress here: do not comment on it in this turn. Post your decision block as one comment on " + where + " instead."
+}

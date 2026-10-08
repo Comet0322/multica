@@ -2,9 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/extworkflow"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
@@ -143,6 +145,40 @@ func (h *Handler) refuseExtWorkflowAgentChange(w http.ResponseWriter, r *http.Re
 	}
 	guard := extworkflow.IssueGuard{ActiveParent: row.ActiveParent, ActiveChild: row.ActiveChild, OwnStepTask: row.OwnStepTask}
 	if msg := extworkflow.AgentIssueRefusal(guard, change); msg != "" {
+		writeError(w, http.StatusConflict, msg)
+		return true
+	}
+	return false
+}
+
+// refuseExtWorkflowDecisionTurnComment answers 409 when a supervisor's review,
+// failure or rewind-request turn comments on its run's parent issue: its only
+// comment is the decision block on the step's issue. Summary and conversation
+// turns, step agents and members are not affected.
+func (h *Handler) refuseExtWorkflowDecisionTurnComment(w http.ResponseWriter, r *http.Request, issue db.Issue) bool {
+	task, ok := h.taskFromRequestHeader(r)
+	if !ok || !task.ExtWorkflowRunID.Valid || !extworkflow.IsDecisionTurn(task.ExtWorkflowRole.String, task.ExtWorkflowKind.String) {
+		return false
+	}
+	run, err := h.Queries.GetExtWorkflowRun(r.Context(), task.ExtWorkflowRunID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false
+	}
+	if err != nil {
+		slog.Error("ext-workflow: comment guard", append(logger.RequestAttrs(r), "issue_id", uuidToString(issue.ID), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to check the issue's workflow")
+		return true
+	}
+	if run.IssueID != issue.ID {
+		return false
+	}
+	stepIssue := ""
+	if task.ExtWorkflowStepID.Valid {
+		if step, err := h.Queries.GetExtWorkflowRunStep(r.Context(), task.ExtWorkflowStepID); err == nil {
+			stepIssue = uuidToString(step.IssueID)
+		}
+	}
+	if msg := extworkflow.AgentCommentRefusal(task.ExtWorkflowRole.String, task.ExtWorkflowKind.String, true, stepIssue); msg != "" {
 		writeError(w, http.StatusConflict, msg)
 		return true
 	}

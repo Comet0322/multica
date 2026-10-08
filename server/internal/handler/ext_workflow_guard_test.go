@@ -235,3 +235,49 @@ func TestExtWorkflowGuardEndsWithTheRun(t *testing.T) {
 	planner.update(t1, issue.ID, map[string]any{"status": "backlog"}).Want(http.StatusOK)
 	planner.delete(t1, build.IssueID).Want(http.StatusNoContent)
 }
+
+func (a extWFAgent) tryComment(taskID, issueID, content, parentID string) *testutil.Response {
+	a.t.Helper()
+	body := map[string]any{"content": content}
+	if parentID != "" {
+		body["parent_id"] = parentID
+	}
+	return testutil.Call(a.t, testHandler.CreateComment, withURLParam(a.request("POST", "/api/issues/"+issueID+"/comments", body, taskID), "id", issueID))
+}
+
+// A supervisor's review, failure or rewind-request turn answers with one
+// decision block on the step's issue; the engine records progress on the
+// parent, so a note there would only notify the run's trigger member again.
+func TestExtWorkflowGuardDecisionTurnCommentsOnlyOnTheStep(t *testing.T) {
+	requireExtWorkflowDB(t)
+	withExtWorkflowEngine(t)
+	supervisor, _, _, issue, runID := e2eWorkflow(t)
+	spec := extStep(t, runID, "spec")
+	turn := func(kind string, over testutil.Cols) string {
+		cols := testutil.Cols{"ext_workflow_run_id": runID, "ext_workflow_role": "supervisor", "ext_workflow_kind": kind}
+		for k, v := range over {
+			cols[k] = v
+		}
+		return liveTask(t, supervisor.id, issue.ID, cols)
+	}
+
+	for _, kind := range []string{"review", "failure", "rewind_request"} {
+		task := turn(kind, testutil.Cols{"ext_workflow_step_id": spec.ID})
+		resp := supervisor.tryComment(task, issue.ID, "Step plan approved.", "")
+		wantWorkflowRefusal(t, resp, kind)
+		if !strings.Contains(resp.Text(), spec.IssueID) || !strings.Contains(resp.Text(), "decision block") {
+			t.Fatalf("%s: refusal does not point at the step's issue: %s", kind, resp.Text())
+		}
+		supervisor.tryComment(task, spec.IssueID, "Looks complete.", "").Want(http.StatusCreated)
+		dbfx.Exec(t, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, task)
+	}
+	if n := dbfx.Count(t, `SELECT count(*) FROM comment WHERE issue_id = $1 AND author_id = $2`, issue.ID, supervisor.id); n != 0 {
+		t.Fatalf("supervisor comments on the parent = %d, want 0", n)
+	}
+
+	// The summary and conversation turns speak on the parent.
+	supervisor.tryComment(turn("summary", nil), issue.ID, "Run summary.", "").Want(http.StatusCreated)
+	asked := postComment(t, "", issue.ID, map[string]any{"content": "How is it going?"})
+	conv := turn("conversation", testutil.Cols{"trigger_comment_id": asked.ID})
+	supervisor.tryComment(conv, issue.ID, "Spec is running.", asked.ID).Want(http.StatusCreated)
+}
