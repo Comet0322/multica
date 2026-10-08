@@ -548,7 +548,7 @@ func (b briefing) renderSupervisor(w *strings.Builder) {
 		b.renderFocus(w)
 	case KindSummary:
 		w.WriteString("### Your task: the run summary\n\n")
-		w.WriteString("Every step has settled. Post exactly one plain comment on this issue that summarizes each step's outcome, with a link to each step's issue (use the links listed above exactly as written). Do not post a decision block.\n")
+		w.WriteString("Every step has settled. Post exactly one plain comment on this issue that summarizes each step's outcome, with a link to each step's issue (use the links listed above exactly as written). Do not post a decision block, and do not change this issue's status: the engine moves it to in_review when the run finishes.\n")
 	case KindConversation:
 		b.renderConversation(w)
 	}

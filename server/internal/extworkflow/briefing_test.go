@@ -152,7 +152,7 @@ func TestRenderSummaryAndConversationBriefings(t *testing.T) {
 	summary := supervisorBriefing(KindSummary, 1, 0)
 	summary.Focus = ""
 	out := summary.render()
-	mustContain(t, out, "### Your task: the run summary", "one plain comment")
+	mustContain(t, out, "### Your task: the run summary", "one plain comment", "do not change this issue's status")
 	mustNotContain(t, out, "```ext-workflow", "### Decision format")
 
 	conv := supervisorBriefing(KindConversation, 1, 0)
