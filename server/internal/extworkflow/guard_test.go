@@ -1,0 +1,46 @@
+package extworkflow
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestAgentIssueRefusal(t *testing.T) {
+	parent := IssueGuard{ActiveParent: true}
+	child := IssueGuard{ActiveChild: true}
+	own := IssueGuard{ActiveChild: true, OwnStepTask: true}
+	cases := []struct {
+		name   string
+		guard  IssueGuard
+		change IssueChange
+		want   string // substring of the refusal; "" means allowed
+	}{
+		{"plain issue", IssueGuard{}, IssueChange{Status: "cancelled", Assignee: true, Parent: true, Delete: true}, ""},
+		{"nothing guarded changes", parent, IssueChange{}, ""},
+		{"parent status", parent, IssueChange{Status: "done"}, "parent of an active workflow run"},
+		{"parent assignee", parent, IssueChange{Assignee: true}, "parent of an active workflow run"},
+		{"parent parent", parent, IssueChange{Parent: true}, "parent of an active workflow run"},
+		{"parent delete", parent, IssueChange{Delete: true}, "parent of an active workflow run"},
+		{"other step status", child, IssueChange{Status: "done"}, "only the status of its own step"},
+		{"other step delete", child, IssueChange{Delete: true}, "only the status of its own step"},
+		{"own step done", own, IssueChange{Status: "done"}, ""},
+		{"own step in progress", own, IssueChange{Status: "in_progress"}, ""},
+		{"own step cancel", own, IssueChange{Status: "cancelled"}, "skip the step"},
+		{"own step assignee", own, IssueChange{Assignee: true}, "only its status"},
+		{"own step parent", own, IssueChange{Parent: true}, "only its status"},
+		{"own step delete", own, IssueChange{Delete: true}, "only its status"},
+		{"own step status and assignee", own, IssueChange{Status: "done", Assignee: true}, "only its status"},
+	}
+	for _, tc := range cases {
+		got := AgentIssueRefusal(tc.guard, tc.change)
+		if tc.want == "" {
+			if got != "" {
+				t.Errorf("%s: refused: %s", tc.name, got)
+			}
+			continue
+		}
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%s: refusal %q lacks %q", tc.name, got, tc.want)
+		}
+	}
+}

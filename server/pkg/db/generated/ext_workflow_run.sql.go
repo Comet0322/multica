@@ -662,6 +662,59 @@ func (q *Queries) GetActiveExtWorkflowRunByIssue(ctx context.Context, issueID pg
 	return i, err
 }
 
+const getExtWorkflowIssueGuard = `-- name: GetExtWorkflowIssueGuard :one
+SELECT
+    EXISTS (
+        SELECT 1 FROM ext_workflow_run r
+        WHERE r.issue_id = $1 AND r.workspace_id = $2
+          AND r.status IN ('running', 'waiting_human')
+    )::bool AS active_parent,
+    EXISTS (
+        SELECT 1 FROM ext_workflow_run_step s
+        JOIN ext_workflow_run r ON r.id = s.run_id
+        WHERE s.issue_id = $1 AND s.workspace_id = $2
+          AND r.status IN ('running', 'waiting_human')
+    )::bool AS active_child,
+    EXISTS (
+        SELECT 1 FROM ext_workflow_run_step s
+        JOIN ext_workflow_run r ON r.id = s.run_id
+        JOIN agent_task_queue t ON t.ext_workflow_step_id = s.id
+        WHERE s.issue_id = $1 AND s.workspace_id = $2
+          AND r.status IN ('running', 'waiting_human')
+          AND t.id = $3 AND t.agent_id = $4
+          AND t.ext_workflow_role = 'step'
+          AND t.status NOT IN ('completed', 'failed', 'cancelled')
+    )::bool AS own_step_task
+`
+
+type GetExtWorkflowIssueGuardParams struct {
+	IssueID     pgtype.UUID `json:"issue_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	TaskID      pgtype.UUID `json:"task_id"`
+	AgentID     pgtype.UUID `json:"agent_id"`
+}
+
+type GetExtWorkflowIssueGuardRow struct {
+	ActiveParent bool `json:"active_parent"`
+	ActiveChild  bool `json:"active_child"`
+	OwnStepTask  bool `json:"own_step_task"`
+}
+
+// The agent write guard's view of one issue: whether it is the parent or a
+// step child of an active run, and whether the acting task is a live step task
+// of that child's step.
+func (q *Queries) GetExtWorkflowIssueGuard(ctx context.Context, arg GetExtWorkflowIssueGuardParams) (GetExtWorkflowIssueGuardRow, error) {
+	row := q.db.QueryRow(ctx, getExtWorkflowIssueGuard,
+		arg.IssueID,
+		arg.WorkspaceID,
+		arg.TaskID,
+		arg.AgentID,
+	)
+	var i GetExtWorkflowIssueGuardRow
+	err := row.Scan(&i.ActiveParent, &i.ActiveChild, &i.OwnStepTask)
+	return i, err
+}
+
 const getExtWorkflowRun = `-- name: GetExtWorkflowRun :one
 SELECT id, workspace_id, workflow_id, issue_id, triggered_by_type, triggered_by_id, status, definition, rewinds_used, started_at, finished_at, created_at, updated_at FROM ext_workflow_run WHERE id = $1
 `

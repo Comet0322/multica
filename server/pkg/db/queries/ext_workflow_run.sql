@@ -234,3 +234,30 @@ WHERE workspace_id = @workspace_id AND issue_id = @issue_id
   AND details->>'run_id' = @run_id::text
   AND (sqlc.narg(step_id)::text IS NULL OR details->>'step_id' = sqlc.narg(step_id)::text)
 RETURNING recipient_type, recipient_id;
+
+-- name: GetExtWorkflowIssueGuard :one
+-- The agent write guard's view of one issue: whether it is the parent or a
+-- step child of an active run, and whether the acting task is a live step task
+-- of that child's step.
+SELECT
+    EXISTS (
+        SELECT 1 FROM ext_workflow_run r
+        WHERE r.issue_id = @issue_id AND r.workspace_id = @workspace_id
+          AND r.status IN ('running', 'waiting_human')
+    )::bool AS active_parent,
+    EXISTS (
+        SELECT 1 FROM ext_workflow_run_step s
+        JOIN ext_workflow_run r ON r.id = s.run_id
+        WHERE s.issue_id = @issue_id AND s.workspace_id = @workspace_id
+          AND r.status IN ('running', 'waiting_human')
+    )::bool AS active_child,
+    EXISTS (
+        SELECT 1 FROM ext_workflow_run_step s
+        JOIN ext_workflow_run r ON r.id = s.run_id
+        JOIN agent_task_queue t ON t.ext_workflow_step_id = s.id
+        WHERE s.issue_id = @issue_id AND s.workspace_id = @workspace_id
+          AND r.status IN ('running', 'waiting_human')
+          AND t.id = @task_id AND t.agent_id = @agent_id
+          AND t.ext_workflow_role = 'step'
+          AND t.status NOT IN ('completed', 'failed', 'cancelled')
+    )::bool AS own_step_task;

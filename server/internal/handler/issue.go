@@ -3976,6 +3976,10 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.refuseExtWorkflowAgentUpdate(w, r, prevIssue, params) { // ext-workflow: the engine steers workflow issues
+		return
+	}
+
 	var issue db.Issue
 	attachmentsChanged := false
 	if req.Description != nil || req.TitleBase != nil || req.DescriptionBase != nil || len(attachmentIDs) > 0 {
@@ -4332,6 +4336,9 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.refuseExtWorkflowAgentDelete(w, r, issue) { // ext-workflow: the engine steers workflow issues
+		return
+	}
 	// ext-workflow: stop the issue's workflow run before its tasks are cancelled.
 	h.extWorkflowParentDeleting(r.Context(), issue)
 	h.TaskService.CancelTasksForIssue(r.Context(), issue.ID)
@@ -4589,6 +4596,9 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !h.validateBatchTriageLocks(w, r, wsUUID, req.IssueIDs, rawUpdates) {
+		return
+	}
+	if h.refuseExtWorkflowAgentBatchUpdate(w, r, wsUUID, req.IssueIDs, req.Updates, rawUpdates, batchStatusKey) { // ext-workflow
 		return
 	}
 	// The batch shares one project_id, so it is checked once here rather than
@@ -4888,6 +4898,9 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
 	if !ok {
+		return
+	}
+	if h.refuseExtWorkflowAgentBatchDelete(w, r, wsUUID, req.IssueIDs) { // ext-workflow: the engine steers workflow issues
 		return
 	}
 	issues := make([]db.Issue, 0, len(req.IssueIDs))
