@@ -71,7 +71,7 @@ func TestRenderStepBriefing(t *testing.T) {
 		"#### `spec` Spec — done", "(truncated; read the whole comment with `multica issue comment list issue-spec --tail 5 --output json`)",
 		"#### `api` API — skipped", "Its agent left no comment.",
 		"### Feedback on the previous attempt", "> Use the new tokens.",
-		"Work only in this child issue (issue-build).", "move this issue to `done`", "Do not modify the parent issue",
+		"Work only in this child issue (issue-build).", "move this issue to `done`", "Change only your own step's issue (status when you finish); do not change status, assignee or parent of any other issue, and do not touch the workflow's parent issue — the engine runs the workflow.",
 		"```ext-workflow\naction: request-rewind\nto: <step key>", "reason: <one line>    # required\n```",
 		"- `request-rewind`:", "multica issue comment add issue-build --content-file ./decision.md",
 	)
@@ -121,7 +121,7 @@ func TestRenderSupervisorReviewBriefing(t *testing.T) {
 	mustContain(t, out,
 		"## Workflow supervisor", "| `build` Build | Coder | awaiting_supervisor | 1/3 | issue-build |", "Rewinds used: 1 of 3.",
 		"- 2026-10-07 10:00 · `spec` · supervisor decided `approve`",
-		"Never do a step's work yourself", "Do not change the status",
+		"Never do a step's work yourself", "Decide only through decision blocks; never change any issue's status, assignee or parent, and never delete one — the engine runs the workflow.",
 		"### Your task: review step `build` Build", "> Build the UI.", "> Built the UI with the old tokens.",
 		"Required: exactly one decision block, posted on the step's child issue issue-build.",
 		"- `approve`:", "- `redo`:", "- `retry`:", "- `skip`:", "- `rewind`:", "- `escalate`:", "- `abort`:",

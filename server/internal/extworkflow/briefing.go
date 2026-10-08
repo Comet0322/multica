@@ -512,7 +512,7 @@ func (b briefing) renderStep(w *strings.Builder) {
 	w.WriteString("### Rules\n\n")
 	fmt.Fprintf(w, "- Work only in this child issue (%s).\n", focus.IssueID)
 	w.WriteString("- When you are finished, post your result as one comment on this issue, then move this issue to `done` (`in_review` also completes the step).\n")
-	w.WriteString("- Do not modify the parent issue or the other steps' issues.\n")
+	w.WriteString("- Change only your own step's issue (status when you finish); do not change status, assignee or parent of any other issue, and do not touch the workflow's parent issue — the engine runs the workflow.\n")
 	w.WriteString("- The engine schedules this step's work: finish within this turn, and do not create issue wakeups or leave background work running.\n")
 	w.WriteString("- Use `request-rewind` only when an upstream result is wrong or makes this step infeasible, never because the work is hard.\n\n")
 	b.renderDecisionFormat(w, []DecisionAction{ActionRequestRewind}, focus.IssueID, false)
@@ -541,7 +541,7 @@ func (b briefing) renderSupervisor(w *strings.Builder) {
 	}
 	w.WriteString("### Rules\n\n")
 	w.WriteString("- Never do a step's work yourself; decide, and let the step's agent do the work.\n")
-	w.WriteString("- Do not change the status of this issue or of any step's issue; the engine owns them.\n\n")
+	w.WriteString("- Decide only through decision blocks; never change any issue's status, assignee or parent, and never delete one — the engine runs the workflow.\n\n")
 
 	switch b.Kind {
 	case KindReview, KindFailure, KindRewindRequest:
