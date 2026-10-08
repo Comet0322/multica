@@ -131,6 +131,18 @@ func TestRenderSupervisorReviewBriefing(t *testing.T) {
 	mustNotContain(t, out, "- `request-rewind`:", squadMarker)
 }
 
+func TestDecisionTurnsDoNotCommentOnTheParent(t *testing.T) {
+	const rule = "That comment is the only one to post in this turn: do not comment on this issue (issue-parent). The engine records the run's progress here."
+	for _, kind := range []string{KindReview, KindFailure, KindRewindRequest} {
+		mustContain(t, supervisorBriefing(kind, 1, 0).render(), rule)
+	}
+	for _, kind := range []string{KindSummary, KindConversation} {
+		b := supervisorBriefing(kind, 1, 0)
+		b.Focus = ""
+		mustNotContain(t, b.render(), "do not comment on this issue")
+	}
+}
+
 func TestRenderSupervisorBriefingRespectsBudgets(t *testing.T) {
 	out := supervisorBriefing(KindReview, 3, 3).render()
 	mustContain(t, out, "- `approve`:", "- `skip`:", "- `escalate`:", "- `abort`:", "The rewind budget (3) is spent.")

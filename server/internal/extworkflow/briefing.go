@@ -595,7 +595,7 @@ func (b briefing) renderFocus(w *strings.Builder) {
 		}
 		w.WriteString("\n")
 	}
-	fmt.Fprintf(w, "Required: exactly one decision block, posted on the step's child issue %s.\n\n", focus.IssueID)
+	fmt.Fprintf(w, "Required: exactly one decision block, posted on the step's child issue %s. That comment is the only one to post in this turn: do not comment on this issue (%s). The engine records the run's progress here.\n\n", focus.IssueID, b.ParentID)
 	b.renderDecisionFormat(w, b.allowedFor(focus), focus.IssueID, false)
 }
 
