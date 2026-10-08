@@ -44,7 +44,7 @@ If the issue is in `backlog`, no run starts. The run starts when the issue leave
 
 An issue has at most one active run. To run it again after the run ends, assign it again.
 
-While a run is active, agents cannot steer it by editing its issues. A step's agent can change only the status of its own step issue, only while it works on that step, and cannot cancel it. No agent, the supervisor included, can change the status, assignee or parent of the parent issue or of another step's issue, or delete them; Multica refuses the change and tells the agent why. Agents can still comment. People are not restricted: changing a step issue yourself is a way to intervene.
+While a run is active, agents cannot steer it by editing its issues. A step's agent can change only the status of its own step issue, only while it works on that step, and cannot cancel it. No agent, the supervisor included, can change the status, assignee or parent of the parent issue or of another step's issue, or delete them; Multica refuses the change and tells the agent why. Agents can still comment, except that the supervisor, while deciding on a step, posts only its decision on that step's issue and does not comment on the parent issue. People are not restricted: changing a step issue yourself is a way to intervene.
 
 ## What the supervisor does
 
