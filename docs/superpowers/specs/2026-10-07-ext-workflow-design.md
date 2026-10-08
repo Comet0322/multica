@@ -334,7 +334,7 @@ First the task is re-validated against live state: the run is active, and the st
 - Rules:
   - Work only in this child issue.
   - When finished, post the result as a comment and set the issue to `done`.
-  - Do not modify the parent issue or sibling issues.
+  - Change only your own step's issue (status when you finish); do not change status, assignee or parent of any other issue, and do not touch the workflow's parent issue — the engine runs the workflow (enforced by §6.5).
   - Use `request-rewind` (§6.3) only when an upstream output is wrong or infeasible, not because the work is hard.
 
 **Supervisor briefing**
@@ -345,7 +345,7 @@ Common part:
 - rewinds used/max;
 - the timeline of past decisions;
 - the decision block format and the actions allowed now;
-- the rule: never do a step's work yourself.
+- the rules: never do a step's work yourself; decide only through decision blocks, and never change any issue's status, assignee or parent or delete one (enforced by §6.5).
 
 Per kind:
 
@@ -398,6 +398,19 @@ feedback: |
 | Parent issue, @agent | Unchanged platform behaviour. |
 | Parent issue, agent author (including the supervisor) | No trigger. |
 | Child issue | Unchanged platform behaviour (wakes the step agent). Not counted as an attempt (§5.3). |
+
+### 6.5 Agent write guard
+
+The engine reads a run from its issues: a child moved to `done`/`in_review` finishes its step and a cancelled or deleted child skips it, whoever did it; a cancelled, reassigned or deleted parent cancels the run. So the issue handlers refuse, with 409 and a message telling the agent what to do instead, these writes by an **agent actor** (`resolveActor`) while the run is `running` or `waiting_human`:
+
+| issue | refused for agents |
+|---|---|
+| parent of the run | status, assignee or `parent_issue_id` change; delete |
+| a step's child issue | the same, except that the agent of a live (non-terminal) step task of that step, acting from that task, may change the status to anything but a cancelled-category status |
+
+- Covered paths: `PUT /api/issues/{id}` (and `POST .../move`, which delegates to it), `POST /api/issues/batch-update` and `batch-delete` (checked for the whole batch before any write; one guarded item refuses the request), `DELETE /api/issues/{id}`. The plugin `PATCH /v1/issues` edits only title and description.
+- One query (`GetExtWorkflowIssueGuard`) classifies the issue; the decision is `extworkflow.AgentIssueRefusal`.
+- Not guarded: members, comments, other fields, and service-level writes (the engine's own status writes, task claim/finish status moves), which do not pass through the handlers. When the run ends the guard lifts.
 
 ## 7. API
 
@@ -494,6 +507,7 @@ Every place that branches on `"squad"` was reviewed. The table below lists the o
 | `server/internal/service/issue.go` `maybeEnqueueOnAssign` | workflow branch → `StartRun` |
 | `server/internal/service/issue_wakeup_system.go` | `resolveWakeTarget` returns none for workflow; `processChildEvents` hook |
 | `server/internal/handler/comment.go` | `isNoteComment` ext block; `routeAssigneeFallback` workflow → supervisor `conversation` |
+| `server/internal/handler/issue.go` `UpdateIssue`, `DeleteIssue`, `BatchUpdateIssues`, `BatchDeleteIssues` | agent write guard hooks (§6.5) |
 | `server/internal/handler/daemon.go` `buildClaimedTaskResponse` | briefing hook |
 | `server/internal/service/task.go` `RerunIssue` | workflow assignee → 409 (rerun the run, not the issue) |
 | `server/pkg/db/queries/agent.sql` `CreateRetryTask` | copy ext columns |
