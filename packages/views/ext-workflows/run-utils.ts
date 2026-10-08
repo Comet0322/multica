@@ -54,12 +54,63 @@ export function eventKey(kind: string): EventKey {
 }
 
 /** The most informative free text in an event payload, if any. */
-export function eventDetail(payload: Record<string, unknown> | null | undefined): string | null {
-  for (const field of ["reason", "feedback"]) {
+export function eventDetail(payload: Record<string, unknown> | null | undefined, kind?: string): string | null {
+  // A step failure's `reason` is a code shown in the row's summary; its free
+  // text is the task error.
+  const fields = kind === "step_failed" ? ["error"] : ["reason", "feedback"];
+  for (const field of fields) {
     const value = payload?.[field];
     if (typeof value === "string" && value.trim() !== "") return value;
   }
   return null;
+}
+
+const DECISION_ACTIONS = ["approve", "redo", "retry", "skip", "rewind", "abort", "escalate"] as const;
+export type DecisionActionKey = (typeof DECISION_ACTIONS)[number];
+
+/** The label key for a decision action, or null for one this client does not know. */
+export function decisionActionKey(action: string): DecisionActionKey | null {
+  return (DECISION_ACTIONS as readonly string[]).includes(action) ? (action as DecisionActionKey) : null;
+}
+
+const FAILURE_REASONS = ["ended_without_finishing", "cancelled", "task_missing", "dispatch_failed", "failed"] as const;
+export type FailureReasonKey = (typeof FAILURE_REASONS)[number];
+
+/** The label key for a step failure reason, or null for one this client does not know. */
+export function failureReasonKey(reason: string): FailureReasonKey | null {
+  return (FAILURE_REASONS as readonly string[]).includes(reason) ? (reason as FailureReasonKey) : null;
+}
+
+export interface EventFacts {
+  /** Title of the event's step; null for run-level events or an unknown step. */
+  stepTitle: string | null;
+  /** Raw decision action, for `decision` events. */
+  action: string | null;
+  /** Step attempt, for step_started / step_finished / step_failed. */
+  attempt: number | null;
+  /** Raw failure reason code, for `step_failed`. */
+  failureReason: string | null;
+}
+
+const ATTEMPT_KINDS = new Set(["step_started", "step_finished", "step_failed"]);
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/** What a timeline row says about an event beyond its kind. */
+export function eventFacts(
+  event: EventLike,
+  steps: readonly { id: string; title: string }[],
+): EventFacts {
+  const payload = event.payload ?? {};
+  const attempt = payload.attempt;
+  return {
+    stepTitle: event.step_id ? (steps.find((s) => s.id === event.step_id)?.title ?? null) : null,
+    action: event.kind === "decision" ? nonEmptyString(payload.action) : null,
+    attempt: ATTEMPT_KINDS.has(event.kind) && typeof attempt === "number" ? attempt : null,
+    failureReason: event.kind === "step_failed" ? nonEmptyString(payload.reason) : null,
+  };
 }
 
 interface EventLike {
@@ -91,7 +142,7 @@ export function timelineEntries<E extends EventLike>(events: readonly E[]): { ev
       carried = eventDetail(event.payload);
       return;
     }
-    out.push({ event, detail: eventDetail(event.payload) ?? carried });
+    out.push({ event, detail: eventDetail(event.payload, event.kind) ?? carried });
     carried = null;
   });
   return out;

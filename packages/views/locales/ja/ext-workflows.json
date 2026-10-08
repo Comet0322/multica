@@ -169,6 +169,7 @@
     "cancel_run": "実行をキャンセル",
     "timeline": "タイムライン",
     "timeline_empty": "イベントはまだありません",
+    "event_attempt": "試行 {{attempt}}",
     "actor_engine": "ワークフロー",
     "actor_on_behalf": "{{actor}}（{{member}} の代理）",
     "step_line": "ワークフローのステップ {{index}}/{{total}}",
@@ -224,5 +225,21 @@
     "run_cancelled": "実行キャンセル",
     "protocol_error": "プロトコルエラー",
     "unknown": "イベント"
+  },
+  "event_action": {
+    "approve": "承認",
+    "redo": "やり直し",
+    "retry": "再試行",
+    "skip": "スキップ",
+    "rewind": "巻き戻し",
+    "abort": "中止",
+    "escalate": "人に引き継ぎ"
+  },
+  "failure_reason": {
+    "ended_without_finishing": "完了せずに終了",
+    "cancelled": "タスクがキャンセルされました",
+    "task_missing": "タスクが見つかりません",
+    "dispatch_failed": "開始できませんでした",
+    "failed": "タスク失敗"
   }
 }

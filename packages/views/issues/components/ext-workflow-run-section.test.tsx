@@ -343,8 +343,30 @@ describe("ExtWorkflowRunSection", () => {
     expect(screen.queryByText("Run started")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Timeline" }));
     expect(screen.getByText("Run started")).toBeInTheDocument();
-    expect(screen.getByText("Escalated to a human")).toBeInTheDocument();
+    expect(screen.getByText("Escalated to a human · Build")).toBeInTheDocument();
     expect(screen.getAllByText("Tests keep failing").length).toBeGreaterThan(1);
+  });
+
+  it("says which step, decision, attempt and failure each event is about", async () => {
+    const at = "2026-10-01T01:00:00Z";
+    const base = { actor_type: "engine", actor_id: null, on_behalf_of: null, created_at: at };
+    mocks.run = makeRun({
+      events: [
+        { ...base, id: "e1", step_id: "s2", kind: "step_started", payload: { attempt: 2 } },
+        { ...base, id: "e2", step_id: "s2", kind: "step_failed", payload: { attempt: 2, reason: "ended_without_finishing" } },
+        { ...base, id: "e3", step_id: "s2", kind: "step_failed", payload: { attempt: 3, reason: "agent_crashed", error: "exit 1" } },
+        { ...base, id: "e4", step_id: "s1", kind: "decision", actor_type: "agent", actor_id: "ag-9", payload: { action: "approve" } },
+        { ...base, id: "e5", step_id: "s1", kind: "decision", actor_type: "agent", actor_id: "ag-9", payload: { action: "teleport" } },
+      ],
+    });
+    renderWithI18n(<ExtWorkflowRunSection issueId="issue-1" />);
+    await userEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    expect(screen.getByText("Step started · Build · Attempt 2")).toBeInTheDocument();
+    expect(screen.getByText("Step failed · Build · Attempt 2 · Ended without finishing")).toBeInTheDocument();
+    expect(screen.getByText("Step failed · Build · Attempt 3 · agent_crashed")).toBeInTheDocument();
+    expect(screen.getByText("exit 1")).toBeInTheDocument();
+    expect(screen.getByText("Decision · Plan · Approve")).toBeInTheDocument();
+    expect(screen.getByText("Decision · Plan · teleport")).toBeInTheDocument();
   });
 
   it("names the member an agent decided for", async () => {

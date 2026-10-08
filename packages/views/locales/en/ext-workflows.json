@@ -170,6 +170,7 @@
     "cancel_run": "Cancel run",
     "timeline": "Timeline",
     "timeline_empty": "No events yet",
+    "event_attempt": "Attempt {{attempt}}",
     "actor_engine": "Workflow",
     "actor_on_behalf": "{{actor}} on behalf of {{member}}",
     "step_line": "Workflow step {{index}} of {{total}}",
@@ -225,5 +226,21 @@
     "run_cancelled": "Run cancelled",
     "protocol_error": "Protocol error",
     "unknown": "Event"
+  },
+  "event_action": {
+    "approve": "Approve",
+    "redo": "Redo",
+    "retry": "Retry",
+    "skip": "Skip",
+    "rewind": "Rewind",
+    "abort": "Abort",
+    "escalate": "Escalate"
+  },
+  "failure_reason": {
+    "ended_without_finishing": "Ended without finishing",
+    "cancelled": "Task cancelled",
+    "task_missing": "Task missing",
+    "dispatch_failed": "Couldn't start",
+    "failed": "Task failed"
   }
 }

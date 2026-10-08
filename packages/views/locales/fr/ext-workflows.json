@@ -170,6 +170,7 @@
     "cancel_run": "Annuler l'exécution",
     "timeline": "Chronologie",
     "timeline_empty": "Aucun événement pour le moment",
+    "event_attempt": "Tentative {{attempt}}",
     "actor_engine": "Workflow",
     "actor_on_behalf": "{{actor}} au nom de {{member}}",
     "step_line": "Étape {{index}} sur {{total}} du workflow",
@@ -225,5 +226,21 @@
     "run_cancelled": "Exécution annulée",
     "protocol_error": "Erreur de protocole",
     "unknown": "Événement"
+  },
+  "event_action": {
+    "approve": "Approuver",
+    "redo": "Refaire",
+    "retry": "Réessayer",
+    "skip": "Ignorer",
+    "rewind": "Revenir en arrière",
+    "abort": "Abandonner",
+    "escalate": "Transmettre à un humain"
+  },
+  "failure_reason": {
+    "ended_without_finishing": "Terminée sans finir l'étape",
+    "cancelled": "Tâche annulée",
+    "task_missing": "Tâche introuvable",
+    "dispatch_failed": "Démarrage impossible",
+    "failed": "Tâche échouée"
   }
 }

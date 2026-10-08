@@ -169,6 +169,7 @@
     "cancel_run": "실행 취소",
     "timeline": "타임라인",
     "timeline_empty": "아직 이벤트가 없습니다",
+    "event_attempt": "시도 {{attempt}}",
     "actor_engine": "워크플로",
     "actor_on_behalf": "{{actor}} ({{member}} 님을 대신하여)",
     "step_line": "워크플로 단계 {{index}}/{{total}}",
@@ -224,5 +225,21 @@
     "run_cancelled": "실행 취소됨",
     "protocol_error": "프로토콜 오류",
     "unknown": "이벤트"
+  },
+  "event_action": {
+    "approve": "승인",
+    "redo": "다시 하기",
+    "retry": "재시도",
+    "skip": "건너뛰기",
+    "rewind": "되돌리기",
+    "abort": "중단",
+    "escalate": "사람에게 전달"
+  },
+  "failure_reason": {
+    "ended_without_finishing": "완료하지 않고 종료됨",
+    "cancelled": "작업 취소됨",
+    "task_missing": "작업 없음",
+    "dispatch_failed": "시작할 수 없음",
+    "failed": "작업 실패"
   }
 }

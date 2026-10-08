@@ -44,7 +44,15 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { RunStatusBadge, StepStatusIcon, useStepStatusLabel } from "../../ext-workflows/components/status";
-import { errorStatus, eventKey, rewindTargets, timelineEntries } from "../../ext-workflows/run-utils";
+import {
+  decisionActionKey,
+  errorStatus,
+  eventFacts,
+  eventKey,
+  failureReasonKey,
+  rewindTargets,
+  timelineEntries,
+} from "../../ext-workflows/run-utils";
 import { isActiveRunStatus } from "../../ext-workflows/status-keys";
 import { useT, useTimeAgo } from "../../i18n";
 import { AppLink } from "../../navigation";
@@ -180,7 +188,7 @@ function RunPanel({ wsId, summary }: { wsId: string; summary: ExtWorkflowRunSumm
               <ChevronRight className={cn("!size-3 transition-transform", timelineOpen && "rotate-90")} />
               {t(($) => $.run_section.timeline)}
             </button>
-            {timelineOpen && <Timeline events={events} />}
+            {timelineOpen && <Timeline events={events} steps={steps} />}
           </div>
 
           {canDecide && isActiveRunStatus(run.status) && (
@@ -484,10 +492,27 @@ function DecisionDialog({
 
 // ---------------------------------------------------------------- timeline
 
-function Timeline({ events }: { events: ExtWorkflowRun["events"] }) {
+function Timeline({ events, steps }: { events: ExtWorkflowRun["events"]; steps: ExtWorkflowRun["steps"] }) {
   const { t } = useT("ext-workflows");
   const timeAgo = useTimeAgo();
   const { getActorName } = useActorName();
+
+  // "Step failed · Build · Attempt 2 · Ended without finishing"
+  const summarize = (event: ExtWorkflowRun["events"][number]) => {
+    const facts = eventFacts(event, steps);
+    const parts: string[] = [t(($) => $.events[eventKey(event.kind)])];
+    if (facts.stepTitle) parts.push(facts.stepTitle);
+    if (facts.action) {
+      const key = decisionActionKey(facts.action);
+      parts.push(key ? t(($) => $.event_action[key]) : facts.action);
+    }
+    if (facts.attempt !== null) parts.push(t(($) => $.run_section.event_attempt, { attempt: facts.attempt }));
+    if (facts.failureReason) {
+      const key = failureReasonKey(facts.failureReason);
+      parts.push(key ? t(($) => $.failure_reason[key]) : facts.failureReason);
+    }
+    return parts.join(" · ");
+  };
 
   if (events.length === 0) {
     return <p className="mt-1 text-micro text-muted-foreground">{t(($) => $.run_section.timeline_empty)}</p>;
@@ -495,7 +520,6 @@ function Timeline({ events }: { events: ExtWorkflowRun["events"] }) {
   return (
     <ol className="mt-1 max-h-56 space-y-1.5 overflow-y-auto border-l pl-3">
       {timelineEntries(events).map(({ event, detail }) => {
-        const kind = eventKey(event.kind);
         const by =
           event.actor_type === "agent" || event.actor_type === "member"
             ? event.actor_id
@@ -509,7 +533,7 @@ function Timeline({ events }: { events: ExtWorkflowRun["events"] }) {
         return (
           <li key={event.id} className="text-micro">
             <div className="flex items-baseline gap-1.5">
-              <span className="font-medium">{t(($) => $.events[kind])}</span>
+              <span className="min-w-0 font-medium">{summarize(event)}</span>
               {actor && <span className="truncate text-muted-foreground">{actor}</span>}
               <span className="ml-auto shrink-0 text-muted-foreground">{timeAgo(event.created_at)}</span>
             </div>

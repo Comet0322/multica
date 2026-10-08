@@ -169,6 +169,7 @@
     "cancel_run": "取消运行",
     "timeline": "时间线",
     "timeline_empty": "暂无事件",
+    "event_attempt": "第 {{attempt}} 次尝试",
     "actor_engine": "工作流",
     "actor_on_behalf": "{{actor}}（代表 {{member}}）",
     "step_line": "工作流步骤 {{index}}/{{total}}",
@@ -224,5 +225,21 @@
     "run_cancelled": "运行已取消",
     "protocol_error": "协议错误",
     "unknown": "事件"
+  },
+  "event_action": {
+    "approve": "通过",
+    "redo": "重做",
+    "retry": "重试",
+    "skip": "跳过",
+    "rewind": "回退",
+    "abort": "中止",
+    "escalate": "转交人工"
+  },
+  "failure_reason": {
+    "ended_without_finishing": "未完成就结束",
+    "cancelled": "任务已取消",
+    "task_missing": "任务丢失",
+    "dispatch_failed": "无法启动",
+    "failed": "任务失败"
   }
 }

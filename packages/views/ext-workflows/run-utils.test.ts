@@ -1,6 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { errorStatus, eventDetail, eventKey, rewindTargets, stepAncestors, timelineEntries } from "./run-utils";
+import {
+  decisionActionKey,
+  errorStatus,
+  eventDetail,
+  eventFacts,
+  eventKey,
+  failureReasonKey,
+  rewindTargets,
+  stepAncestors,
+  timelineEntries,
+} from "./run-utils";
 
 const steps = [
   { node_key: "plan", title: "Plan", depends_on: [] as string[] },
@@ -45,6 +55,61 @@ describe("event helpers", () => {
     expect(eventDetail({ action: "approve" })).toBeNull();
     expect(eventDetail(null)).toBeNull();
   });
+  it("does not repeat a step failure's reason code, showing its error instead", () => {
+    expect(eventDetail({ reason: "ended_without_finishing", attempt: 1 }, "step_failed")).toBeNull();
+    expect(eventDetail({ reason: "failed", error: "exit status 1" }, "step_failed")).toBe("exit status 1");
+    expect(eventDetail({ reason: "no budget" }, "escalated")).toBe("no budget");
+  });
+});
+
+describe("eventFacts", () => {
+  const runSteps = [
+    { id: "s1", title: "Plan" },
+    { id: "s2", title: "Build" },
+  ];
+  const ev = (kind: string, step_id: string | null, payload: Record<string, unknown> = {}) => ({ kind, step_id, payload });
+
+  it.each([
+    ["run_started", null, {}, { stepTitle: null, action: null, attempt: null, failureReason: null }],
+    ["step_started", "s1", { attempt: 2 }, { stepTitle: "Plan", action: null, attempt: 2, failureReason: null }],
+    ["step_finished", "s2", { attempt: 1, review: true }, { stepTitle: "Build", action: null, attempt: 1, failureReason: null }],
+    [
+      "step_failed",
+      "s2",
+      { attempt: 3, reason: "ended_without_finishing" },
+      { stepTitle: "Build", action: null, attempt: 3, failureReason: "ended_without_finishing" },
+    ],
+    ["decision", "s1", { action: "approve" }, { stepTitle: "Plan", action: "approve", attempt: null, failureReason: null }],
+    ["escalated", "s2", { reason: "stuck" }, { stepTitle: "Build", action: null, attempt: null, failureReason: null }],
+    ["step_started", "gone", { attempt: 1 }, { stepTitle: null, action: null, attempt: 1, failureReason: null }],
+  ] as const)("%s on %s", (kind, stepId, payload, want) => {
+    expect(eventFacts(ev(kind, stepId, payload), runSteps)).toEqual(want);
+  });
+
+  it("ignores malformed payload values", () => {
+    expect(eventFacts(ev("step_failed", "s1", { attempt: "2", reason: 7 }), runSteps)).toEqual({
+      stepTitle: "Plan",
+      action: null,
+      attempt: null,
+      failureReason: null,
+    });
+    expect(eventFacts(ev("decision", "s1", { action: "" }), runSteps).action).toBeNull();
+    expect(eventFacts({ kind: "decision", step_id: "s1", payload: null }, runSteps).action).toBeNull();
+  });
+});
+
+describe("label keys", () => {
+  it("maps known decision actions and leaves unknown ones to the caller", () => {
+    expect(decisionActionKey("approve")).toBe("approve");
+    expect(decisionActionKey("escalate")).toBe("escalate");
+    expect(decisionActionKey("teleport")).toBeNull();
+  });
+  it("maps known step failure reasons and leaves unknown ones to the caller", () => {
+    for (const reason of ["ended_without_finishing", "cancelled", "task_missing", "dispatch_failed", "failed"]) {
+      expect(failureReasonKey(reason)).toBe(reason);
+    }
+    expect(failureReasonKey("agent_error")).toBeNull();
+  });
 });
 
 describe("errorStatus", () => {
@@ -82,5 +147,10 @@ describe("timelineEntries", () => {
       ev("x", "escalated", "s2", { reason: "auto" }),
     ]);
     expect(entries.map((e) => e.event.id)).toEqual(["d1", "d2", "r", "x"]);
+  });
+
+  it("does not show a step failure's reason code as its detail", () => {
+    const entries = timelineEntries([ev("f", "step_failed", "s1", { reason: "task_missing", attempt: 1 })]);
+    expect(entries.map((e) => e.detail)).toEqual([null]);
   });
 });
