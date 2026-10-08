@@ -1,6 +1,6 @@
 import "./env";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
 import { createTestApi } from "./helpers";
 
@@ -48,7 +48,8 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     // 1. Sidebar entry and empty list.
     await page.goto(`/${workspace.slug}/issues`, { waitUntil: "domcontentloaded" });
     await page.getByRole("link", { name: "Workflows" }).click();
-    await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/workflows$`));
+    // The first visit compiles the route on a cold dev server.
+    await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/workflows$`), { timeout: 30_000 });
     await expect(page.getByText("No workflows yet.")).toBeVisible({ timeout: 30_000 });
 
     // 2. Create dialog: name + supervisor, then land on the detail page.
@@ -56,7 +57,7 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     const createDialog = page.getByRole("dialog");
     await createDialog.getByLabel("Name").fill("E2E Flow");
     await createDialog.getByRole("button", { name: "Supervisor agent" }).click();
-    await page.getByRole("button", { name: /Flow Planner/ }).click();
+    await pickAgent(page, "Flow Planner");
     await createDialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/workflows/[0-9a-f-]{36}$`), { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "E2E Flow" })).toBeVisible();
@@ -66,11 +67,15 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     await page.getByRole("button", { name: "Add node" }).click();
     const node1 = page.getByRole("listitem", { name: "Node 1" });
     const node2 = page.getByRole("listitem", { name: "Node 2" });
+    // A new node starts without an agent; each step's worker is chosen explicitly.
+    await expect(node1.getByRole("button", { name: "Agent" })).toHaveText(/Select agent/);
     await node1.getByLabel("Title").fill("Plan the work");
+    await node1.getByRole("button", { name: "Agent" }).click();
+    await pickAgent(page, "Flow Planner");
     await node2.getByLabel("Title").fill("Build it");
     await expect(node2.getByLabel("Key")).toHaveValue("build_it");
     await node2.getByRole("button", { name: "Agent" }).click();
-    await page.getByRole("button", { name: /Flow Builder/ }).click();
+    await pickAgent(page, "Flow Builder");
     await node2.getByRole("button", { name: "Depends on" }).click();
     await page.getByRole("button", { name: "Plan the work" }).click();
     await page.keyboard.press("Escape");
@@ -170,6 +175,14 @@ test("a member builds a workflow, assigns an issue, and sees the run and its chi
     }
   }
 });
+
+// Picks an agent in the open picker and waits for the picker to finish closing,
+// so the next picker's options are the only ones on the page.
+async function pickAgent(page: Page, name: string) {
+  const popover = page.locator('[data-slot="popover-content"]');
+  await popover.getByRole("button", { name: new RegExp(name) }).click();
+  await expect(popover).toHaveCount(0);
+}
 
 type Step = (label: string, fn: () => Promise<unknown>) => Promise<unknown>;
 
