@@ -88,14 +88,14 @@ function deriveKey(title: string, position: number, taken: ReadonlySet<string>):
 
 // ---------------------------------------------------------------- row editing
 
-export function createRow(existing: readonly NodeRow[], agentId = ""): NodeRow {
+export function createRow(existing: readonly NodeRow[]): NodeRow {
   const taken = new Set(existing.map((r) => r.key));
   return {
     rowId: newRowId(),
     key: uniqueKey(`node_${existing.length + 1}`, taken),
     keyTouched: false,
     title: "",
-    agent_id: agentId,
+    agent_id: "",
     prompt: "",
     requires_review: false,
     max_attempts: DEFAULT_MAX_ATTEMPTS,

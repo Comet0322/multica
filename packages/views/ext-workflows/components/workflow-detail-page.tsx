@@ -304,7 +304,6 @@ export function WorkflowDetailPage() {
                 validation={validation}
                 serverErrors={serverErrors}
                 activeRunCount={workflow.active_run_count}
-                defaultAgentId={draft.supervisorId}
                 readOnly={!canManage}
               />
             ) : (

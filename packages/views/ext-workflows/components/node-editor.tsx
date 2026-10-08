@@ -38,8 +38,6 @@ export interface NodeEditorProps {
   serverErrors: MappedServerErrors | null;
   /** Runs in progress keep using the previous definition. */
   activeRunCount: number;
-  /** New rows start with this agent (the supervisor), which is usually a sensible default. */
-  defaultAgentId?: string;
   readOnly?: boolean;
 }
 
@@ -52,7 +50,6 @@ export function NodeEditor({
   validation,
   serverErrors,
   activeRunCount,
-  defaultAgentId = "",
   readOnly = false,
 }: NodeEditorProps) {
   const { t } = useT("ext-workflows");
@@ -139,7 +136,7 @@ export function NodeEditor({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => onChange([...rows, createRow(rows, defaultAgentId)])}
+          onClick={() => onChange([...rows, createRow(rows)])}
         >
           <Plus className="size-3.5" />
           {t(($) => $.nodes.add)}

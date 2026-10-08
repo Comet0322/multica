@@ -141,6 +141,15 @@ describe("WorkflowDetailPage", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it("starts a new node with no agent, not the supervisor", async () => {
+    renderWithI18n(<WorkflowDetailPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Add node" }));
+    await userEvent.type(within(node(3)).getByLabelText("Title"), "Ship");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await within(node(3)).findByText("Choose an agent")).toBeInTheDocument();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("guards tab switches while dirty, and warns before the page unloads", async () => {
     renderWithI18n(<WorkflowDetailPage />);
     await userEvent.type(within(node(1)).getByLabelText("Title"), "!");
