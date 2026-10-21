@@ -113,10 +113,24 @@ State machine: `Absent → Running → Suspended → Running … → Deleted`.
 `automountServiceAccountToken: false` · `enableServiceLinks: false` · NetworkPolicy allowing only the Multica server and the LLM gateway (PoC showed Postgres and the API server reachable) ·
 `runtimeClassName` gVisor or Kata (needs real nodes; kind cannot test it) · non-root, `readOnlyRootFilesystem` where possible, dropped capabilities, seccomp · `fsGroup` for the PVC · resource requests/limits · warm pool only with post-adoption identity (F7): the entrypoint waits for a token file, then starts the daemon — env injection forces a fresh pod.
 
-## 7. Out of scope but blocking for real agents: the LLM credential
+## 7. LLM credential: per-Sandbox LiteLLM virtual key (part of Workstream E)
 
-A real `claude`/`codex` needs a model API key inside the Sandbox, and the agent (a user-controlled process) can read anything the pod can. The PoC used a fake agent, so this was **not** exercised.
-Needed before launch: an LLM gateway that issues short-lived, per-workspace, rate-limited keys (also gives cost accounting), or equivalent. This is its own workstream.
+A real `claude`/`codex` needs a key inside the Sandbox, and the agent (a user-controlled process) can read anything the pod can. The PoC used a fake agent, so this was **not** exercised.
+The company LiteLLM already hides the upstream provider keys; what a pod holds is a LiteLLM key, so the risk is that key being reused elsewhere on the internal network and usage not being attributable.
+
+**Plan A (chosen): controller mints one virtual key per Sandbox.**
+- On Sandbox create, the controller calls LiteLLM `/key/generate` with a model allowlist, budget, RPM/TPM limit and `metadata` (workspace, agent, sandbox id); on delete it calls `/key/delete`. Rotation follows the same path as `mdt_` rotation.
+- The key goes into the **agent process environment only** (`ANTHROPIC_BASE_URL` pointing at LiteLLM, plus the key), not into a file and not into the daemon's own environment.
+- A LiteLLM key-management credential (`MULTICA_LITELLM_ADMIN_KEY`) exists only in the controller, never in a pod. It should be scoped to key management, not the master key.
+- NetworkPolicy: pods reach only the Multica server and LiteLLM.
+- Usage and cost reporting use LiteLLM's own per-key data; Multica adds nothing.
+- To confirm with the platform team: LiteLLM version supports `/key/generate` with budgets/metadata/delete, a scoped admin key can be issued, and the deployment authenticates to LiteLLM with an API key (not a subscription login).
+
+**Plan B (fallback if key management cannot be granted): swap proxy.**
+- Thin proxy between pod and LiteLLM. Pods hold a fake per-Sandbox key and `*_BASE_URL` pointing at the proxy; the proxy maps it to the Sandbox, injects the shared LiteLLM key, forwards, and logs per-Sandbox usage.
+- Cost: a new component to build and run, with its own rate/budget limits and revocation; the shared key still exists, but only in the proxy.
+
+Decision order: ask the platform team for Plan A first; use B only if refused.
 
 ## 8. Delivery order
 
@@ -129,7 +143,7 @@ Needed before launch: an LLM gateway that issues short-lived, per-workspace, rat
 | 5 | E: controller + Sandbox template manifests (F) | L | 2, 3 |
 | 6 | C3/C4: UI hiding and admin page | M | 4 |
 | 7 | ~~A enforce for local runtimes~~ — deferred (decision 3) | S | 1 + one release |
-| — | LLM gateway | L | independent, gates GA |
+| — | LLM key issuance (Plan A in §7) | in PR 5 | 5 |
 
 PRs 1 and 2 can start now in parallel. Use atomic conventional commits and the repo PR template.
 
@@ -149,9 +163,4 @@ member runtime view has no `daemon_id` / `device_info` / `metadata` / paths (T6)
 
 ### Consequence of a single shared LiteLLM key (decision 5)
 
-The agent process can read anything in its pod, so the shared key is readable by any user's agent: it can be exfiltrated and used outside the cluster, and one workspace's usage cannot be told apart or limited from another's.
-Cheap mitigations, in order of value:
-- Restrict the key in LiteLLM: model allowlist, budget, rate limit, and (if supported) source-IP allowlist to the cluster egress.
-- NetworkPolicy so pods reach LiteLLM only, plus the Multica server.
-- Put the key in an env var of the agent process only (not in a file, not in the daemon's `/proc` environ visible to the agent uid).
-- Later: LiteLLM virtual keys minted per Sandbox by the controller (key per workspace/agent with budget) — a controller change, not a Multica server change.
+A shared key in the pod is readable by any user's agent. Superseded by §7: per-Sandbox virtual keys (Plan A), swap proxy as fallback (Plan B).
