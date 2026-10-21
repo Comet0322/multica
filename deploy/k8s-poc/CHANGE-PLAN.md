@@ -134,7 +134,7 @@ Decision order: ask the platform team for Plan A first; use B only if refused.
 
 ## 8. Delivery order
 
-| PR | Content | Size | Depends on |
+| Step | Content | Size | Depends on |
 |---|---|---|---|
 | 1 | A: `authorizeDaemonRuntime`, `DAEMON_AUTHZ_MODE=log`, metrics, tests | S–M | — |
 | 2 | B: migration, internal API, token issuance/revoke | M | — |
@@ -143,9 +143,9 @@ Decision order: ask the platform team for Plan A first; use B only if refused.
 | 5 | E: controller + Sandbox template manifests (F) | L | 2, 3 |
 | 6 | C3/C4: UI hiding and admin page | M | 4 |
 | 7 | ~~A enforce for local runtimes~~ — deferred (decision 3) | S | 1 + one release |
-| — | LLM key issuance (Plan A in §7) | in PR 5 | 5 |
+| — | LLM key issuance (Plan A in §7) | in step 5 | 5 |
 
-PRs 1 and 2 can start now in parallel. Use atomic conventional commits and the repo PR template.
+Steps 1 and 2 can start now in parallel. Use atomic conventional commits.
 
 ## 9. Acceptance: rerun the PoC against the changes
 
@@ -156,7 +156,7 @@ member runtime view has no `daemon_id` / `device_info` / `metadata` / paths (T6)
 
 1. Platform admin: env email allowlist (`PLATFORM_ADMIN_EMAILS`). A DB flag / SSO group can replace it later behind the same helper.
 2. Granularity: one Sandbox per agent (D1) — no objection raised; treated as accepted.
-3. Fix **managed** runtimes only for now. PR 7 (owner rule on local runtimes) is deferred; F1 stays open for local runtimes and must be listed as a known gap in PR 4.
+3. Fix **managed** runtimes only for now. Step 7 (owner rule on local runtimes) is deferred; F1 stays open for local runtimes and must be listed as a known gap in step 4.
 4. Controller lives in this repo: `server/cmd/runtime-controller`.
 5. LLM: the company runs LiteLLM, and all pods share **one** key. Consequences below.
 6. Work happens on branches of the user's fork (`origin` = Comet0322/multica); nothing is sent to `multica-ai/multica`.
