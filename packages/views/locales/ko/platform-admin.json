@@ -1,0 +1,38 @@
+{
+  "title": "관리형 런타임",
+  "new": "새 런타임",
+  "empty": "관리형 런타임이 없습니다.",
+  "col": {
+    "name": "이름",
+    "workspace": "워크스페이스",
+    "daemon": "Daemon ID",
+    "status": "상태",
+    "sandbox": "샌드박스",
+    "queued": "대기",
+    "active": "실행 중",
+    "agents": "에이전트",
+    "seen": "마지막 확인",
+    "actions": "작업"
+  },
+  "never": "없음",
+  "refresh": "새로고침",
+  "revoke": "토큰 폐기",
+  "delete": "삭제",
+  "form": {
+    "workspace_id": "워크스페이스 ID",
+    "daemon_id": "Daemon ID",
+    "provider": "제공자",
+    "display_name": "표시 이름",
+    "owner_id": "소유자 사용자 ID",
+    "create": "만들기",
+    "cancel": "취소"
+  },
+  "confirm_delete": "\"{{name}}\"을(를) 삭제할까요? 연결된 에이전트는 해제되고 대기 및 실행 중인 작업은 취소됩니다.",
+  "toast": {
+    "created": "런타임을 만들었습니다",
+    "deleted": "런타임을 삭제했습니다",
+    "revoked_other": "토큰 {{count}}개를 폐기했습니다",
+    "error": "요청에 실패했습니다"
+  },
+  "not_found": "페이지를 찾을 수 없습니다"
+}

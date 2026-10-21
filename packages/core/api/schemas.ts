@@ -3710,3 +3710,33 @@ export const RuntimeProfileSchema = z
     runtime_type: profile.runtime_type || profile.protocol_family,
   }));
 export const RuntimeProfileListSchema = z.array(RuntimeProfileSchema);
+
+// Platform-admin managed runtimes (`/api/admin/managed-runtimes`). Operator
+// tooling, so it stays lenient: a missing field degrades to an empty value
+// rather than blanking the page.
+const PlatformManagedRuntimeSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().default(""),
+  workspace_name: z.string().default(""),
+  workspace_slug: z.string().default(""),
+  daemon_id: z.string().nullable().default(null),
+  display_name: z.string().default(""),
+  provider: z.string().default(""),
+  status: z.string().default("offline"),
+  managed_state: z.string().default(""),
+  managed_state_at: z.string().nullable().default(null),
+  last_seen_at: z.string().nullable().default(null),
+  device_info: z.string().default(""),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  owner_id: z.string().nullable().default(null),
+  queued_tasks: z.number().default(0),
+  active_tasks: z.number().default(0),
+  agent_count: z.number().default(0),
+  created_at: z.string().default(""),
+}).loose();
+export const PlatformManagedRuntimeListSchema = z.object({
+  runtimes: z.array(PlatformManagedRuntimeSchema).default([]),
+}).loose();
+export const PlatformAdminStatusSchema = z.object({
+  is_admin: z.boolean().default(false),
+}).loose();

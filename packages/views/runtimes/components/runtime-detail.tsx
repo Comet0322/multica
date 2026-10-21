@@ -125,9 +125,12 @@ export function RuntimeDetail({
     ? profiles.find((p) => p.id === runtime.profile_id) ?? null
     : null;
   const isCustomRuntime = !!runtime.profile_id;
-  const canDelete = isCustomRuntime
-    ? isAdmin && !!runtimeProfile
-    : canEditRuntime;
+  const isManaged = runtime.managed === true;
+  const canDelete = isManaged
+    ? false
+    : isCustomRuntime
+      ? isAdmin && !!runtimeProfile
+      : canEditRuntime;
 
   const servingAgents = agents.filter(
     (a) => a.runtime_id === runtime.id && !a.archived_at,
@@ -207,7 +210,7 @@ export function RuntimeDetail({
             />
             <DiagnosticsCard
               runtime={runtime}
-              canEditVisibility={!!isRuntimeOwner}
+              canEditVisibility={!!isRuntimeOwner && !isManaged}
               canDelete={!!canDelete}
               onDelete={() => setDeleteOpen(true)}
             />

@@ -163,10 +163,13 @@ export function RuntimeDetailPage({
     : null;
   const isAdmin =
     currentMember?.role === "owner" || currentMember?.role === "admin";
+  const isManagedMachine =
+    !!machine && machine.runtimes.every((runtime) => runtime.managed === true);
   const canAddRuntime =
-    isAdmin && machine?.mode === "local" && !!machine.daemonId;
+    isAdmin && !isManagedMachine && machine?.mode === "local" && !!machine.daemonId;
   const renameTarget = useMemo(() => {
     if (!machine || machine.runtimes.length === 0) return null;
+    if (machine.runtimes.every((runtime) => runtime.managed === true)) return null;
     const editable = isAdmin
       ? machine.runtimes[0]
       : machine.runtimes.find((runtime) => runtime.owner_id === currentUserId);

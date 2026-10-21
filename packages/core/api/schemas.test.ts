@@ -2355,3 +2355,19 @@ describe("AgentActivityBucketListSchema duration", () => {
     expect(parsed[0]?.duration_count).toBeUndefined();
   });
 });
+
+describe("PlatformManagedRuntimeListSchema", () => {
+  it("fills defaults for a sparse row and tolerates a missing list", async () => {
+    const { PlatformManagedRuntimeListSchema, PlatformAdminStatusSchema } = await import("./schemas");
+    const parsed = PlatformManagedRuntimeListSchema.parse({ runtimes: [{ id: "r1" }] });
+    expect(parsed.runtimes[0]).toMatchObject({
+      id: "r1",
+      daemon_id: null,
+      managed_state: "",
+      queued_tasks: 0,
+      metadata: {},
+    });
+    expect(PlatformManagedRuntimeListSchema.parse({}).runtimes).toEqual([]);
+    expect(PlatformAdminStatusSchema.parse({}).is_admin).toBe(false);
+  });
+});

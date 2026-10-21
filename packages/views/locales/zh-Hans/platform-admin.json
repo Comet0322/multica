@@ -1,0 +1,38 @@
+{
+  "title": "託管運行時",
+  "new": "新建運行時",
+  "empty": "尚無託管運行時。",
+  "col": {
+    "name": "名稱",
+    "workspace": "工作區",
+    "daemon": "Daemon ID",
+    "status": "狀態",
+    "sandbox": "沙箱",
+    "queued": "排隊中",
+    "active": "執行中",
+    "agents": "智能體",
+    "seen": "最後在線",
+    "actions": "操作"
+  },
+  "never": "從未",
+  "refresh": "刷新",
+  "revoke": "吊銷令牌",
+  "delete": "刪除",
+  "form": {
+    "workspace_id": "工作區 ID",
+    "daemon_id": "Daemon ID",
+    "provider": "提供方",
+    "display_name": "顯示名稱",
+    "owner_id": "擁有者用戶 ID",
+    "create": "創建",
+    "cancel": "取消"
+  },
+  "confirm_delete": "刪除「{{name}}」？綁定的智能體將被解綁，排隊和執行中的任務會被取消。",
+  "toast": {
+    "created": "運行時已創建",
+    "deleted": "運行時已刪除",
+    "revoked_other": "已吊銷 {{count}} 個令牌",
+    "error": "請求失敗"
+  },
+  "not_found": "頁面不存在"
+}

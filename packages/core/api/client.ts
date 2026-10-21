@@ -74,6 +74,8 @@ import type {
   CreatePersonalAccessTokenRequest,
   CreatePersonalAccessTokenResponse,
   RuntimeUsage,
+  PlatformManagedRuntime,
+  CreatePlatformManagedRuntimeRequest,
   IssueUsageSummary,
   RuntimeHourlyActivity,
   RuntimeUsageByAgent,
@@ -334,6 +336,8 @@ import {
   RuntimeUsageByAgentListSchema,
   RuntimeUsageByHourListSchema,
   RuntimeUsageListSchema,
+  PlatformManagedRuntimeListSchema,
+  PlatformAdminStatusSchema,
   SearchIssuesResponseSchema,
   SearchProjectsResponseSchema,
   SearchIndexManifestSchema,
@@ -2463,6 +2467,44 @@ export class ApiClient {
     return parseWithFallback<RuntimeUsage[]>(raw, RuntimeUsageListSchema, [], {
       endpoint: "GET /api/runtimes/:id/usage",
     });
+  }
+
+  // Platform-admin surface (PLATFORM_ADMIN_EMAILS). Anyone may probe the status;
+  // the rest answers 404 to non-admins.
+  async getPlatformAdminStatus(): Promise<{ is_admin: boolean }> {
+    const raw = await this.fetch<unknown>("/api/admin/status");
+    return parseWithFallback(raw, PlatformAdminStatusSchema, { is_admin: false }, {
+      endpoint: "GET /api/admin/status",
+    });
+  }
+
+  async listPlatformManagedRuntimes(): Promise<PlatformManagedRuntime[]> {
+    const raw = await this.fetch<unknown>("/api/admin/managed-runtimes");
+    return parseWithFallback(
+      raw,
+      PlatformManagedRuntimeListSchema,
+      { runtimes: [] },
+      { endpoint: "GET /api/admin/managed-runtimes" },
+    ).runtimes as PlatformManagedRuntime[];
+  }
+
+  async createPlatformManagedRuntime(
+    req: CreatePlatformManagedRuntimeRequest,
+  ): Promise<void> {
+    await this.fetch("/api/admin/managed-runtimes", {
+      method: "POST",
+      body: JSON.stringify(req),
+    });
+  }
+
+  async revokePlatformManagedRuntimeTokens(id: string): Promise<{ revoked: number }> {
+    return this.fetch(`/api/admin/managed-runtimes/${id}/revoke-tokens`, {
+      method: "POST",
+    });
+  }
+
+  async deletePlatformManagedRuntime(id: string): Promise<void> {
+    await this.fetch(`/api/admin/managed-runtimes/${id}`, { method: "DELETE" });
   }
 
   async getRuntimeTaskActivity(

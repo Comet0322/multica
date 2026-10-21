@@ -89,6 +89,8 @@ export type {
   RuntimeLocalSkillImportResult,
   IssueUsageSummary,
   MikaBootstrapResponse,
+  PlatformManagedRuntime,
+  CreatePlatformManagedRuntimeRequest,
 } from "./agent";
 export { RUNTIME_PROFILE_PROTOCOL_FAMILIES, RUNTIME_PROFILE_RUNTIME_TYPES } from "./agent";
 export type { Workspace, WorkspaceRepo, WorkspaceMcpServer, Member, MemberRole, User, MemberWithUser, Invitation, ShareLink, ShareLinkInfo } from "./workspace";

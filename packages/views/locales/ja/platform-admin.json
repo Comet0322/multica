@@ -1,0 +1,38 @@
+{
+  "title": "マネージドランタイム",
+  "new": "新規ランタイム",
+  "empty": "マネージドランタイムはまだありません。",
+  "col": {
+    "name": "名前",
+    "workspace": "ワークスペース",
+    "daemon": "Daemon ID",
+    "status": "ステータス",
+    "sandbox": "サンドボックス",
+    "queued": "待機中",
+    "active": "実行中",
+    "agents": "エージェント",
+    "seen": "最終確認",
+    "actions": "操作"
+  },
+  "never": "なし",
+  "refresh": "更新",
+  "revoke": "トークンを失効",
+  "delete": "削除",
+  "form": {
+    "workspace_id": "ワークスペース ID",
+    "daemon_id": "Daemon ID",
+    "provider": "プロバイダー",
+    "display_name": "表示名",
+    "owner_id": "オーナーのユーザー ID",
+    "create": "作成",
+    "cancel": "キャンセル"
+  },
+  "confirm_delete": "「{{name}}」を削除しますか？紐づくエージェントは解除され、待機中・実行中のタスクはキャンセルされます。",
+  "toast": {
+    "created": "ランタイムを作成しました",
+    "deleted": "ランタイムを削除しました",
+    "revoked_other": "トークンを {{count}} 件失効しました",
+    "error": "リクエストに失敗しました"
+  },
+  "not_found": "ページが見つかりません"
+}

@@ -89,6 +89,12 @@ export interface RuntimeDevice {
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Platform-operated runtime: machine details are redacted server-side and
+   * users cannot rename, update or delete it. Older backends omit the field;
+   * treat anything other than `true` as unmanaged.
+   */
+  managed?: boolean;
 }
 
 export type AgentRuntime = RuntimeDevice;
@@ -1347,4 +1353,35 @@ export interface RuntimeLocalSkillImportResult {
   status: "created" | "updated" | "conflict";
   skill?: Skill;
   conflict?: RuntimeLocalSkillImportConflict;
+}
+
+/** Row of the platform-admin managed-runtime list (unredacted). */
+export interface PlatformManagedRuntime {
+  id: string;
+  workspace_id: string;
+  workspace_name: string;
+  workspace_slug: string;
+  daemon_id: string | null;
+  display_name: string;
+  provider: string;
+  status: string;
+  /** Sandbox state last reported by the controller; "" if never reported. */
+  managed_state: string;
+  managed_state_at: string | null;
+  last_seen_at: string | null;
+  device_info: string;
+  metadata: Record<string, unknown>;
+  owner_id: string | null;
+  queued_tasks: number;
+  active_tasks: number;
+  agent_count: number;
+  created_at: string;
+}
+
+export interface CreatePlatformManagedRuntimeRequest {
+  workspace_id: string;
+  daemon_id: string;
+  provider: string;
+  display_name: string;
+  owner_id: string;
 }

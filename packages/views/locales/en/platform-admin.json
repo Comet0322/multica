@@ -1,0 +1,39 @@
+{
+  "title": "Managed runtimes",
+  "new": "New runtime",
+  "empty": "No managed runtimes yet.",
+  "col": {
+    "name": "Name",
+    "workspace": "Workspace",
+    "daemon": "Daemon ID",
+    "status": "Status",
+    "sandbox": "Sandbox",
+    "queued": "Queued",
+    "active": "Active",
+    "agents": "Agents",
+    "seen": "Last seen",
+    "actions": "Actions"
+  },
+  "never": "never",
+  "refresh": "Refresh",
+  "revoke": "Revoke tokens",
+  "delete": "Delete",
+  "form": {
+    "workspace_id": "Workspace ID",
+    "daemon_id": "Daemon ID",
+    "provider": "Provider",
+    "display_name": "Display name",
+    "owner_id": "Owner user ID",
+    "create": "Create",
+    "cancel": "Cancel"
+  },
+  "confirm_delete": "Delete \"{{name}}\"? Agents bound to it are unbound and its queued and running tasks are cancelled.",
+  "toast": {
+    "created": "Runtime created",
+    "deleted": "Runtime deleted",
+    "revoked_one": "{{count}} token revoked",
+    "revoked_other": "{{count}} tokens revoked",
+    "error": "Request failed"
+  },
+  "not_found": "Page not found"
+}

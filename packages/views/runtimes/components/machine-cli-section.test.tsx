@@ -74,6 +74,21 @@ describe("MachineCliSection", () => {
     mockUpdateSection.mockClear();
   });
 
+  it("renders nothing for a platform-managed machine", () => {
+    const managed = runtime({ managed: true, daemon_id: null, metadata: {} });
+
+    const { container } = render(
+      <MachineCliSection
+        machine={machine([managed])}
+        currentUserId="user-1"
+        canManagePublicRuntimes
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(mockUpdateSection).not.toHaveBeenCalled();
+  });
+
   it("renders one update control using an online viewer-owned runtime", () => {
     const offlineOwned = runtime({ id: "offline-owned", status: "offline" });
     const onlineOwned = runtime({

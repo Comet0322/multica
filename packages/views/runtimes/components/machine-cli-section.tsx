@@ -44,6 +44,14 @@ export function MachineCliSection({
     canManagePublicRuntimes,
   );
 
+  // Platform-operated machines are updated by the platform, never by users.
+  if (
+    machine.runtimes.length > 0 &&
+    machine.runtimes.every((runtime) => runtime.managed === true)
+  ) {
+    return null;
+  }
+
   if (machine.mode !== "local") {
     return machine.cliVersion ? (
       <span className="font-mono">CLI {machine.cliVersion}</span>

@@ -736,10 +736,13 @@ export function RuntimeList({
           ? memberById.get(runtime.owner_id) ?? null
           : null,
         workload: workloadIndex.get(runtime.id) ?? EMPTY_WORKLOAD,
-        canDelete: isCustomRuntime
-          ? isAdmin && !!profile
-          : !isPendingCustomRuntime(runtime) &&
-            (isAdmin || (!!user && runtime.owner_id === user.id)),
+        canDelete:
+          runtime.managed === true
+            ? false
+            : isCustomRuntime
+              ? isAdmin && !!profile
+              : !isPendingCustomRuntime(runtime) &&
+                (isAdmin || (!!user && runtime.owner_id === user.id)),
       };
     });
   }, [runtimes, profileById, memberById, workloadIndex, isAdmin, user]);

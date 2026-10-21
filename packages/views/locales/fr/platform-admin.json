@@ -1,0 +1,39 @@
+{
+  "title": "Runtimes gérés",
+  "new": "Nouveau runtime",
+  "empty": "Aucun runtime géré pour l'instant.",
+  "col": {
+    "name": "Nom",
+    "workspace": "Espace de travail",
+    "daemon": "Daemon ID",
+    "status": "Statut",
+    "sandbox": "Sandbox",
+    "queued": "En attente",
+    "active": "Actives",
+    "agents": "Agents",
+    "seen": "Dernière activité",
+    "actions": "Actions"
+  },
+  "never": "jamais",
+  "refresh": "Actualiser",
+  "revoke": "Révoquer les jetons",
+  "delete": "Supprimer",
+  "form": {
+    "workspace_id": "ID de l'espace de travail",
+    "daemon_id": "Daemon ID",
+    "provider": "Fournisseur",
+    "display_name": "Nom affiché",
+    "owner_id": "ID de l'utilisateur propriétaire",
+    "create": "Créer",
+    "cancel": "Annuler"
+  },
+  "confirm_delete": "Supprimer « {{name}} » ? Les agents liés sont déliés et les tâches en attente ou en cours sont annulées.",
+  "toast": {
+    "created": "Runtime créé",
+    "deleted": "Runtime supprimé",
+    "revoked_one": "{{count}} jeton révoqué",
+    "revoked_other": "{{count}} jetons révoqués",
+    "error": "Échec de la requête"
+  },
+  "not_found": "Page introuvable"
+}
