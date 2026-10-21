@@ -1,0 +1,57 @@
+#!/bin/sh
+# Fake `claude` CLI for the managed-runtime PoC. Speaks just enough of the
+# stream-json protocol for the Multica daemon, and never calls an LLM.
+#
+# Directives found anywhere in the prompt (e.g. in the issue description):
+#   @@SH@@<command>@@END@@     run <command> in a shell and return its output
+#   @@SLEEP@@<seconds>@@END@@  sleep before answering (keeps a task "running")
+# Keep commands free of quotes/backslashes: the prompt arrives JSON-escaped.
+# Without a directive it answers with a continuity report: how many times this
+# workdir has been used and which session id was resumed.
+
+case "$1" in
+  --version|-v)
+    echo "2.1.0 (Claude Code)"
+    exit 0
+    ;;
+esac
+
+resume=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--resume" ]; then resume="$a"; fi
+  prev="$a"
+done
+
+IFS= read -r input
+printf '%s\n' "$input" > .fake-last-input.json
+env | sort > .fake-last-env.txt
+# Like the real agent, fetch the issue through the CLI; the prompt itself carries no description.
+iid=$(printf '%s' "$input" | sed -n 's/.*issue ID is: \([0-9a-f-]*\).*/\1/p')
+[ -n "$iid" ] && input="$input $(/app/multica issue get "$iid" --output json 2>/dev/null | tr '\n' ' ')"
+
+esc() { sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\t' '  '; }
+
+state=".fake-agent-state"
+count=0
+[ -f "$state" ] && count=$(cat "$state")
+count=$((count + 1))
+echo "$count" > "$state"
+
+session="${resume:-fake-sess-$$-$(date +%s)}"
+printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$session"
+
+sleep_for="${FAKE_AGENT_SLEEP:-1}"
+d=$(printf '%s' "$input" | sed -n 's/.*@@SLEEP@@\([0-9]*\)@@END@@.*/\1/p')
+[ -n "$d" ] && sleep_for="$d"
+sleep "$sleep_for"
+
+cmd=$(printf '%s' "$input" | sed -n 's/.*@@SH@@\(.*\)@@END@@.*/\1/p')
+if [ -n "$cmd" ]; then
+  text=$(sh -c "$cmd" 2>&1 | head -c 6000 | esc)
+else
+  text="fake-agent ok; workdir_uses=$count; resumed_session=${resume:-none}; pwd=$(pwd)"
+fi
+
+printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"%s"}]},"session_id":"%s"}\n' "$text" "$session"
+printf '{"type":"result","subtype":"success","is_error":false,"session_id":"%s","result":"%s"}\n' "$session" "$text"

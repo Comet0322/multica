@@ -1,0 +1,27 @@
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata: {name: proj-x, namespace: mr-poc}
+spec:
+  operatingMode: Running
+  podTemplate:
+    spec:
+      securityContext: {fsGroup: 10001}
+      containers:
+        - name: daemon
+          image: mr-poc/daemon:v0.6.1
+          imagePullPolicy: Never
+          command: ["/bin/sh", "-c"]
+          args: ["/app/multica login --token \"$MULTICA_TOKEN\" >/tmp/login.log 2>&1 || { cat /tmp/login.log; exit 1; }; exec /app/multica daemon start --foreground"]
+          env:
+            - {name: MULTICA_SERVER_URL, value: "http://server.mr-poc:8080"}
+            - {name: MULTICA_DAEMON_ID, value: proj-x}
+            - {name: MULTICA_DAEMON_DEVICE_NAME, value: proj-x-pod}
+            - {name: MULTICA_WORKSPACES_ROOT, value: /data/workspaces}
+            - name: MULTICA_TOKEN
+              valueFrom: {secretKeyRef: {name: daemon-a, key: token}}
+          volumeMounts: [{name: data, mountPath: /data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 1Gi}}

@@ -1,0 +1,21 @@
+uid=10001
+user=agent
+task_token_prefix=mat_
+cfg_json_readable=yes
+cfg_token_prefix=mul_
+daemon_process_env_token_prefixes=mat_,mul_,
+other_task_dirs_visible=12
+other_task_env_files_readable=3
+service_link_env_vars=3
+k8s_sa_token_mounted=yes
+net_postgres.mr-poc:5432=OPEN
+net_server.mr-poc:8080=OPEN
+net_kubernetes.default.svc:443=OPEN
+net_169.254.169.254:80=blocked
+daemon_local_api(19514)=404
+task_token->own_ws_runtimes=200
+task_token->OTHER_ws_runtimes=200
+task_token->OTHER_agent_tasks=200
+task_token+OTHER_ws_header -> returned workspace_ids: ["workspace_id":"eaf53bb8-3920-4478-81b7-cc4d1fa862fe" ] (own=eaf53bb8-3920-4478-81b7-cc4d1fa862fe other=4cc732fb-bdab-4acd-b063-51057321caca)
+stolen_PAT->workspaces visible: "slug":"poc-a" "slug":"poc-b" 
+stolen_PAT->OTHER_ws_runtimes=200 

@@ -1,0 +1,36 @@
+{
+  "created_at": "2026-10-21T15:58:30Z",
+  "custom_name": null,
+  "daemon_id": "proj-x",
+  "device_info": "proj-x-pod · 2.1.0 (Claude Code)",
+  "id": "cbb1b893-93ea-4e40-84c1-f5cd66e60415",
+  "last_seen_at": "2026-10-21T16:03:51Z",
+  "launch_header": "claude (stream-json)",
+  "metadata": {
+    "capabilities": [
+      "skill-bundles-v1",
+      "coalesced-comments-v1",
+      "execution-manifest-v1",
+      "agent-skill-v1",
+      "remote-mcp-v1",
+      "local-worktree-v1",
+      "source_context_quick_create_v1",
+      "rpc-v1",
+      "platform-skill-v1",
+      "checkout-keeps-work-v1",
+      "joined-wakeups-v1"
+    ],
+    "cli_version": "v0.6.1",
+    "launched_by": "",
+    "version": "2.1.0 (Claude Code)"
+  },
+  "name": "Claude (proj-x-pod)",
+  "owner_id": "2ad4f56e-9072-4e21-a2c2-a19e2868721a",
+  "profile_id": null,
+  "provider": "claude",
+  "runtime_mode": "local",
+  "status": "online",
+  "updated_at": "2026-10-21T16:03:54Z",
+  "visibility": "public",
+  "workspace_id": "eaf53bb8-3920-4478-81b7-cc4d1fa862fe"
+}
