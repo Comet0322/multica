@@ -713,9 +713,15 @@ WHERE id = $1;
 -- Hot-path status polling needs only the task status and the owning agent's
 -- workspace for authorization. Keep this independent of optional source links
 -- (issue, chat session, autopilot run) so it needs no source-entity lookup.
-SELECT atq.status, a.workspace_id
+-- The task's runtime ownership fields ride along (LEFT JOIN: a task whose
+-- runtime row is gone still reports its status) so the per-runtime daemon
+-- authorization rule needs no second round trip.
+SELECT atq.status, a.workspace_id,
+       rt.id AS rt_id, rt.workspace_id AS rt_workspace_id, rt.daemon_id AS rt_daemon_id,
+       rt.legacy_daemon_id AS rt_legacy_daemon_id, rt.owner_id AS rt_owner_id
 FROM agent_task_queue atq
 JOIN agent a ON a.id = atq.agent_id
+LEFT JOIN agent_runtime rt ON rt.id = atq.runtime_id
 WHERE atq.id = $1;
 
 -- name: GetAgentTaskForDelegatedFailureUpdate :one

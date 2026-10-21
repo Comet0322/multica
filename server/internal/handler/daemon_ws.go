@@ -7,6 +7,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/middleware"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func (h *Handler) DaemonWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +77,15 @@ func (h *Handler) buildDaemonWebSocketIdentity(w http.ResponseWriter, r *http.Re
 		}
 		workspaceID := uuidToString(rt.WorkspaceID)
 		if !h.requireDaemonWorkspaceAccess(w, r, workspaceID) {
+			return daemonws.ClientIdentity{}, false
+		}
+		if !h.requireDaemonRuntimeOwnership(w, r, db.AgentRuntime{
+			ID:             rt.ID,
+			WorkspaceID:    rt.WorkspaceID,
+			DaemonID:       rt.DaemonID,
+			LegacyDaemonID: rt.LegacyDaemonID,
+			OwnerID:        rt.OwnerID,
+		}) {
 			return daemonws.ClientIdentity{}, false
 		}
 		if workspaceID != "" {

@@ -4328,24 +4328,43 @@ func (q *Queries) GetAgentTaskInWorkspace(ctx context.Context, arg GetAgentTaskI
 }
 
 const getAgentTaskStatus = `-- name: GetAgentTaskStatus :one
-SELECT atq.status, a.workspace_id
+SELECT atq.status, a.workspace_id,
+       rt.id AS rt_id, rt.workspace_id AS rt_workspace_id, rt.daemon_id AS rt_daemon_id,
+       rt.legacy_daemon_id AS rt_legacy_daemon_id, rt.owner_id AS rt_owner_id
 FROM agent_task_queue atq
 JOIN agent a ON a.id = atq.agent_id
+LEFT JOIN agent_runtime rt ON rt.id = atq.runtime_id
 WHERE atq.id = $1
 `
 
 type GetAgentTaskStatusRow struct {
-	Status      string      `json:"status"`
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Status           string      `json:"status"`
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	RtID             pgtype.UUID `json:"rt_id"`
+	RtWorkspaceID    pgtype.UUID `json:"rt_workspace_id"`
+	RtDaemonID       pgtype.Text `json:"rt_daemon_id"`
+	RtLegacyDaemonID pgtype.Text `json:"rt_legacy_daemon_id"`
+	RtOwnerID        pgtype.UUID `json:"rt_owner_id"`
 }
 
 // Hot-path status polling needs only the task status and the owning agent's
 // workspace for authorization. Keep this independent of optional source links
 // (issue, chat session, autopilot run) so it needs no source-entity lookup.
+// The task's runtime ownership fields ride along (LEFT JOIN: a task whose
+// runtime row is gone still reports its status) so the per-runtime daemon
+// authorization rule needs no second round trip.
 func (q *Queries) GetAgentTaskStatus(ctx context.Context, id pgtype.UUID) (GetAgentTaskStatusRow, error) {
 	row := q.db.QueryRow(ctx, getAgentTaskStatus, id)
 	var i GetAgentTaskStatusRow
-	err := row.Scan(&i.Status, &i.WorkspaceID)
+	err := row.Scan(
+		&i.Status,
+		&i.WorkspaceID,
+		&i.RtID,
+		&i.RtWorkspaceID,
+		&i.RtDaemonID,
+		&i.RtLegacyDaemonID,
+		&i.RtOwnerID,
+	)
 	return i, err
 }
 

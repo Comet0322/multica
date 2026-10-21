@@ -493,17 +493,19 @@ func (q *Queries) GetAgentRuntimeForWorkspace(ctx context.Context, arg GetAgentR
 }
 
 const getAgentRuntimeHeartbeatLeases = `-- name: GetAgentRuntimeHeartbeatLeases :many
-SELECT id, workspace_id, daemon_id, status, last_seen_at
+SELECT id, workspace_id, daemon_id, legacy_daemon_id, owner_id, status, last_seen_at
 FROM agent_runtime
 WHERE id = ANY($1::uuid[])
 `
 
 type GetAgentRuntimeHeartbeatLeasesRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	DaemonID    pgtype.Text        `json:"daemon_id"`
-	Status      string             `json:"status"`
-	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	DaemonID       pgtype.Text        `json:"daemon_id"`
+	LegacyDaemonID pgtype.Text        `json:"legacy_daemon_id"`
+	OwnerID        pgtype.UUID        `json:"owner_id"`
+	Status         string             `json:"status"`
+	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
 }
 
 // Narrow connection-time and heartbeat-reconciliation projection. The daemon
@@ -523,6 +525,8 @@ func (q *Queries) GetAgentRuntimeHeartbeatLeases(ctx context.Context, ids []pgty
 			&i.ID,
 			&i.WorkspaceID,
 			&i.DaemonID,
+			&i.LegacyDaemonID,
+			&i.OwnerID,
 			&i.Status,
 			&i.LastSeenAt,
 		); err != nil {

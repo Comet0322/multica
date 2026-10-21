@@ -32,6 +32,7 @@ const (
 	labelResult       = "result"
 	labelQuery        = "query"
 	labelOp           = "op"
+	labelCredential   = "credential"
 	labelGate         = "gate"
 	labelOutcome      = "outcome"
 	labelStage        = "stage"
@@ -63,6 +64,7 @@ var businessMetricLabels = map[string][]string{
 	"multica_runtime_sweeper_rows_changed_total":       {labelStage},
 	"multica_agent_runtime_lookup_total":               {labelSource, labelResult},
 	"multica_issue_metadata_mutation_total":            {labelOp, labelResult},
+	"multica_daemon_authz_denied_total":                {labelCredential, labelReason},
 	"multica_issue_metadata_mutation_duration_seconds": {labelOp, labelResult},
 
 	// PR3 funnel / community / commercial.

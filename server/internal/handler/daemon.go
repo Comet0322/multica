@@ -107,6 +107,9 @@ func (h *Handler) requireDaemonRuntimeAccess(w http.ResponseWriter, r *http.Requ
 	if !h.requireDaemonWorkspaceAccess(w, r, uuidToString(rt.WorkspaceID)) {
 		return db.AgentRuntime{}, false
 	}
+	if !h.requireDaemonRuntimeOwnership(w, r, rt) {
+		return db.AgentRuntime{}, false
+	}
 	return rt, true
 }
 
@@ -161,6 +164,17 @@ func (h *Handler) requireDaemonTaskAccessWithWorkspace(w http.ResponseWriter, r 
 
 	if !h.requireDaemonWorkspaceAccess(w, r, wsID) {
 		return db.AgentTaskQueue{}, "", false
+	}
+	if task.RuntimeID.Valid {
+		rt, err := h.getAgentRuntime(r.Context(), obsmetrics.RuntimeLookupSourceDaemonAPI, task.RuntimeID)
+		if err != nil && !isNotFound(err) {
+			slog.Warn("get task runtime failed", "task_id", taskID, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to load task")
+			return db.AgentTaskQueue{}, "", false
+		}
+		if err == nil && !h.requireDaemonRuntimeOwnership(w, r, rt) {
+			return db.AgentTaskQueue{}, "", false
+		}
 	}
 	return task, wsID, true
 }
@@ -993,6 +1007,9 @@ func (h *Handler) DaemonDeregister(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("deregister: workspace mismatch", "runtime_id", rid)
 			continue
 		}
+		if !h.daemonRuntimeAllowed(r, rt) {
+			continue
+		}
 
 		if err := h.setRuntimeOffline(r.Context(), rt.ID, req.OfflineReasons[rid]); err != nil {
 			slog.Warn("deregister: failed to set offline", "runtime_id", rid, "error", err)
@@ -1151,6 +1168,10 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 	workspaceCheckMs = time.Since(wsCheckStart).Milliseconds()
 	if !wsOK {
 		outcome = "workspace_denied"
+		return
+	}
+	if !h.requireDaemonRuntimeOwnership(w, r, rt) {
+		outcome = "runtime_denied"
 		return
 	}
 	authMs = time.Since(start).Milliseconds()
@@ -1806,6 +1827,9 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if !h.verifyDaemonWorkspaceAccess(r, uuidToString(rt.WorkspaceID)) {
+			continue
+		}
+		if !h.daemonRuntimeAllowed(r, rt) {
 			continue
 		}
 		// Group-ownership check (mirrors the WS path, daemon_ws.go): a runtime
@@ -4975,6 +4999,15 @@ func (h *Handler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireDaemonWorkspaceAccess(w, r, uuidToString(task.WorkspaceID)) {
+		return
+	}
+	if task.RtID.Valid && !h.requireDaemonRuntimeOwnership(w, r, db.AgentRuntime{
+		ID:             task.RtID,
+		WorkspaceID:    task.RtWorkspaceID,
+		DaemonID:       task.RtDaemonID,
+		LegacyDaemonID: task.RtLegacyDaemonID,
+		OwnerID:        task.RtOwnerID,
+	}) {
 		return
 	}
 

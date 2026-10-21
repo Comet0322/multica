@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"slices"
 	"sync"
 	"time"
 
@@ -80,6 +81,7 @@ type BusinessMetrics struct {
 	// own, including daemon heartbeats, browser polling, and readiness gates.
 	// See labels.go for the closed enum.
 	agentRuntimeLookup            *prometheus.CounterVec
+	daemonAuthzDenied             *prometheus.CounterVec
 	issueMetadataMutation         *prometheus.CounterVec
 	issueMetadataMutationDuration *prometheus.HistogramVec
 
@@ -289,6 +291,10 @@ func NewBusinessMetrics() *BusinessMetrics {
 			Namespace: "multica", Subsystem: "agent_runtime", Name: "lookup_total",
 			Help: "Total logical agent_runtime lookups by product source and outcome (one per requested id, not per SQL query).",
 		}, metricLabels("multica_agent_runtime_lookup_total")),
+		daemonAuthzDenied: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "multica", Subsystem: "daemon_authz", Name: "denied_total",
+			Help: "Daemon API requests the per-runtime authorization rule would deny (or denied, in enforce mode), by credential class and reason.",
+		}, metricLabels("multica_daemon_authz_denied_total")),
 		issueMetadataMutation: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "multica", Subsystem: "issue_metadata", Name: "mutation_total",
 			Help: "Total issue metadata mutation attempts by operation and bounded result.",
@@ -313,8 +319,19 @@ func NewBusinessMetrics() *BusinessMetrics {
 			m.agentRuntimeLookup.WithLabelValues(source, result).Add(0)
 		}
 	}
+	// Prewarm so "no denials" reads as zero, not as an absent series.
+	for _, credential := range daemonAuthzCredentials {
+		for _, reason := range daemonAuthzReasons {
+			m.daemonAuthzDenied.WithLabelValues(credential, reason).Add(0)
+		}
+	}
 	return m
 }
+
+var (
+	daemonAuthzCredentials = []string{"daemon_token", "pat", "cloud_pat", "jwt", "other"}
+	daemonAuthzReasons     = []string{"wrong_daemon", "wrong_workspace", "not_owner", "no_owner", "managed_runtime", "other"}
+)
 
 func (m *BusinessMetrics) Collectors() []prometheus.Collector {
 	return append([]prometheus.Collector{
@@ -352,6 +369,7 @@ func (m *BusinessMetrics) Collectors() []prometheus.Collector {
 		m.entitlementVersionRegression,
 		m.autopilotQuotaDecision,
 		m.agentRuntimeLookup,
+		m.daemonAuthzDenied,
 		m.issueMetadataMutation,
 		m.issueMetadataMutationDuration,
 	}, m.events.collectors()...)
@@ -422,6 +440,23 @@ func (m *BusinessMetrics) RecordAgentRuntimeLookup(source, result string) {
 		NormalizeAgentRuntimeLookupSource(source),
 		NormalizeAgentRuntimeLookupResult(result),
 	).Inc()
+}
+
+// RecordDaemonAuthzDenied counts one daemon-API request that failed the
+// per-runtime authorization rule. credential and reason are closed enums
+// chosen by the handler; anything else degrades to "other" so a call-site typo
+// cannot mint a series.
+func (m *BusinessMetrics) RecordDaemonAuthzDenied(credential, reason string) {
+	if m == nil {
+		return
+	}
+	if !slices.Contains(daemonAuthzCredentials, credential) {
+		credential = "other"
+	}
+	if !slices.Contains(daemonAuthzReasons, reason) {
+		reason = "other"
+	}
+	m.daemonAuthzDenied.WithLabelValues(credential, reason).Inc()
 }
 
 func (m *BusinessMetrics) RecordEntitlementVersionRegression() {

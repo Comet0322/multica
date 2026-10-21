@@ -255,7 +255,10 @@ type Handler struct {
 	// May be nil in tests / self-hosted with the metrics listener disabled;
 	// every Record* method is nil-safe and obsmetrics.RecordEvent treats a
 	// nil Metrics as "PostHog only".
-	Metrics                      *obsmetrics.BusinessMetrics
+	Metrics *obsmetrics.BusinessMetrics
+	// DaemonAuthzMode is how the per-runtime daemon authorization rule is
+	// applied (off|log|enforce, from DAEMON_AUTHZ_MODE; log by default).
+	DaemonAuthzMode              daemonAuthzMode
 	PATCache                     *auth.PATCache
 	DaemonTokenCache             *auth.DaemonTokenCache
 	MembershipCache              *auth.MembershipCache
@@ -481,6 +484,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	// a disabled client, which turns the feature off rather than failing.
 	taskSvc.QuickActions = llmClient
 	h := &Handler{
+		DaemonAuthzMode:              daemonAuthzModeFromEnv(),
 		Queries:                      queries,
 		ReadSelector:                 dbreader.NewPrimaryOnly(queries),
 		DB:                           executor,
