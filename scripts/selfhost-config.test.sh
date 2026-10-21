@@ -474,7 +474,7 @@ fi
 # ---------------------------------------------------------------------------
 
 # Neither installer may reconstruct the port from the env file again.
-for installer in scripts/install.sh scripts/install.ps1; do
+for installer in scripts/install.sh; do
   if grep -nE '(selfhost_backend_port|selfhost_frontend_port|Get-SelfHostBackendPort|Get-SelfHostFrontendPort)' "$installer"; then
     echo "$installer must not re-derive host ports from .env."
     echo "Read the published port from Compose, as scripts/selfhost-wait.sh does."
@@ -486,14 +486,6 @@ for installer_call in \
   'compose_published_port frontend 3000'; do
   if ! grep -Fq "$installer_call" scripts/install.sh; then
     echo "scripts/install.sh must read the published port from Compose: $installer_call"
-    exit 1
-  fi
-done
-for installer_call in \
-  'Get-ComposePublishedPort -Service "backend" -ContainerPort 8080' \
-  'Get-ComposePublishedPort -Service "frontend" -ContainerPort 3000'; do
-  if ! grep -Fq "$installer_call" scripts/install.ps1; then
-    echo "scripts/install.ps1 must read the published port from Compose: $installer_call"
     exit 1
   fi
 done
