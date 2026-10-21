@@ -1551,6 +1551,16 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// the browsers above; the other four composio endpoints stay session-gated.
 	r.Get("/api/integrations/composio/callback", h.ComposioCallback)
 
+	// Internal API for the runtime controller (bearer MULTICA_CONTROLLER_SECRET;
+	// 404 when the secret is unset). Not meant to be routed by public ingress.
+	r.Route("/internal/v1", func(r chi.Router) {
+		r.Use(middleware.ControllerAuth(os.Getenv("MULTICA_CONTROLLER_SECRET")))
+		r.Post("/managed-runtimes", h.ControllerUpsertManagedRuntime)
+		r.Get("/managed-runtimes/state", h.ControllerManagedRuntimeState)
+		r.Post("/daemon-tokens", h.ControllerIssueDaemonToken)
+		r.Delete("/daemon-tokens", h.ControllerRevokeDaemonTokens)
+	})
+
 	// Daemon API routes (require daemon token or valid user token)
 	r.Route("/api/daemon", func(r chi.Router) {
 		r.Use(middleware.DaemonAuth(queries, patCache, daemonTokenCache, cloudPATVerifier))
