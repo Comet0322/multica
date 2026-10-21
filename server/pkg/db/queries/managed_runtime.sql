@@ -60,3 +60,21 @@ SELECT id FROM agent_runtime WHERE id = ANY(@ids::uuid[]) AND managed;
 -- Which of the given daemon_ids are taken by a managed runtime in the workspace.
 SELECT DISTINCT daemon_id FROM agent_runtime
 WHERE workspace_id = @workspace_id AND daemon_id = ANY(@daemon_ids::text[]) AND managed;
+
+-- name: ListManagedRuntimesForAdmin :many
+-- Platform-admin view: every managed runtime with its workspace and unredacted
+-- implementation fields, plus pending work.
+SELECT
+    rt.*,
+    w.name AS workspace_name,
+    w.slug AS workspace_slug,
+    (SELECT count(*) FROM agent_task_queue q
+       WHERE q.runtime_id = rt.id AND q.status = 'queued')::bigint AS queued_tasks,
+    (SELECT count(*) FROM agent_task_queue q
+       WHERE q.runtime_id = rt.id AND q.status IN ('dispatched', 'running'))::bigint AS active_tasks,
+    (SELECT count(*) FROM agent a
+       WHERE a.runtime_id = rt.id AND a.archived_at IS NULL)::bigint AS agent_count
+FROM agent_runtime rt
+JOIN workspace w ON w.id = rt.workspace_id
+WHERE rt.managed
+ORDER BY rt.created_at, rt.id;

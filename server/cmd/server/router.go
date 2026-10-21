@@ -1661,6 +1661,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		// no workspace in the path to gate on.
 		// --- User-scoped routes (no workspace context required) ---
 		r.Get("/api/me", h.GetMe)
+		// Platform operators only (PLATFORM_ADMIN_EMAILS). The status probe is
+		// open to every user and returns just a boolean; the rest is 404 for
+		// anyone else.
+		r.Get("/api/admin/status", h.GetPlatformAdminStatus)
+		r.Route("/api/admin/managed-runtimes", func(r chi.Router) {
+			r.Use(handler.RequireHumanActor)
+			r.Use(h.RequirePlatformAdmin)
+			r.Get("/", h.ListPlatformManagedRuntimes)
+			r.Post("/", h.CreatePlatformManagedRuntime)
+			r.Delete("/{runtimeId}", h.DeletePlatformManagedRuntime)
+			r.Post("/{runtimeId}/revoke-tokens", h.RevokePlatformManagedRuntimeTokens)
+		})
 		r.Patch("/api/me", h.UpdateMe)
 		r.Patch("/api/me/onboarding", h.PatchOnboarding)
 		r.Post("/api/me/onboarding/complete", h.CompleteOnboarding)

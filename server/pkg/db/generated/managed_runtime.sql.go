@@ -174,6 +174,99 @@ func (q *Queries) ListManagedRuntimeState(ctx context.Context) ([]ListManagedRun
 	return items, nil
 }
 
+const listManagedRuntimesForAdmin = `-- name: ListManagedRuntimesForAdmin :many
+SELECT
+    rt.id, rt.workspace_id, rt.daemon_id, rt.name, rt.runtime_mode, rt.provider, rt.status, rt.device_info, rt.metadata, rt.last_seen_at, rt.created_at, rt.updated_at, rt.owner_id, rt.legacy_daemon_id, rt.visibility, rt.profile_id, rt.custom_name, rt.managed, rt.managed_state, rt.managed_state_at,
+    w.name AS workspace_name,
+    w.slug AS workspace_slug,
+    (SELECT count(*) FROM agent_task_queue q
+       WHERE q.runtime_id = rt.id AND q.status = 'queued')::bigint AS queued_tasks,
+    (SELECT count(*) FROM agent_task_queue q
+       WHERE q.runtime_id = rt.id AND q.status IN ('dispatched', 'running'))::bigint AS active_tasks,
+    (SELECT count(*) FROM agent a
+       WHERE a.runtime_id = rt.id AND a.archived_at IS NULL)::bigint AS agent_count
+FROM agent_runtime rt
+JOIN workspace w ON w.id = rt.workspace_id
+WHERE rt.managed
+ORDER BY rt.created_at, rt.id
+`
+
+type ListManagedRuntimesForAdminRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	DaemonID       pgtype.Text        `json:"daemon_id"`
+	Name           string             `json:"name"`
+	RuntimeMode    string             `json:"runtime_mode"`
+	Provider       string             `json:"provider"`
+	Status         string             `json:"status"`
+	DeviceInfo     string             `json:"device_info"`
+	Metadata       []byte             `json:"metadata"`
+	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	OwnerID        pgtype.UUID        `json:"owner_id"`
+	LegacyDaemonID pgtype.Text        `json:"legacy_daemon_id"`
+	Visibility     string             `json:"visibility"`
+	ProfileID      pgtype.UUID        `json:"profile_id"`
+	CustomName     pgtype.Text        `json:"custom_name"`
+	Managed        bool               `json:"managed"`
+	ManagedState   string             `json:"managed_state"`
+	ManagedStateAt pgtype.Timestamptz `json:"managed_state_at"`
+	WorkspaceName  string             `json:"workspace_name"`
+	WorkspaceSlug  string             `json:"workspace_slug"`
+	QueuedTasks    int64              `json:"queued_tasks"`
+	ActiveTasks    int64              `json:"active_tasks"`
+	AgentCount     int64              `json:"agent_count"`
+}
+
+// Platform-admin view: every managed runtime with its workspace and unredacted
+// implementation fields, plus pending work.
+func (q *Queries) ListManagedRuntimesForAdmin(ctx context.Context) ([]ListManagedRuntimesForAdminRow, error) {
+	rows, err := q.db.Query(ctx, listManagedRuntimesForAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListManagedRuntimesForAdminRow{}
+	for rows.Next() {
+		var i ListManagedRuntimesForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.DaemonID,
+			&i.Name,
+			&i.RuntimeMode,
+			&i.Provider,
+			&i.Status,
+			&i.DeviceInfo,
+			&i.Metadata,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnerID,
+			&i.LegacyDaemonID,
+			&i.Visibility,
+			&i.ProfileID,
+			&i.CustomName,
+			&i.Managed,
+			&i.ManagedState,
+			&i.ManagedStateAt,
+			&i.WorkspaceName,
+			&i.WorkspaceSlug,
+			&i.QueuedTasks,
+			&i.ActiveTasks,
+			&i.AgentCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setManagedRuntimeState = `-- name: SetManagedRuntimeState :execrows
 UPDATE agent_runtime
 SET managed_state = $1, managed_state_at = now()
