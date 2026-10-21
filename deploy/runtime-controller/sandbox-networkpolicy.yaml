@@ -1,0 +1,25 @@
+# Egress for Sandbox pods: DNS, the Multica server, and the LLM gateway. Nothing
+# else - in particular not the Kubernetes API, other namespaces, or the
+# Internet. Adjust the selectors to where the server and LiteLLM run.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: multica-runtime-controller
+  policyTypes: [Egress, Ingress]
+  ingress: []   # nothing connects in; daemons only dial out
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - podSelector: {matchLabels: {app: server}}
+      ports: [{protocol: TCP, port: 8080}]
+    # - to:
+    #     - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: llm}}
+    #       podSelector: {matchLabels: {app: litellm}}
+    #   ports: [{protocol: TCP, port: 4000}]
