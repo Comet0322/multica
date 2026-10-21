@@ -1,0 +1,55 @@
+# Controller for the e2e: deploy/runtime-controller/controller.yaml with e2e image names,
+# short timers and the fake LiteLLM wired in.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: runtime-controller, namespace: mr-e2e}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: runtime-controller, namespace: mr-e2e}
+rules:
+  - {apiGroups: ["agents.x-k8s.io"], resources: ["sandboxes"], verbs: ["get","list","create","patch","delete"]}
+  - {apiGroups: [""], resources: ["secrets"], verbs: ["get","create","update","delete"]}
+  - {apiGroups: ["coordination.k8s.io"], resources: ["leases"], verbs: ["get","create","update"]}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: runtime-controller, namespace: mr-e2e}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: runtime-controller}
+subjects: [{kind: ServiceAccount, name: runtime-controller, namespace: mr-e2e}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: runtime-controller, namespace: mr-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: runtime-controller}}
+  template:
+    metadata: {labels: {app: runtime-controller}}
+    spec:
+      serviceAccountName: runtime-controller
+      containers:
+        - name: controller
+          image: mr-e2e/controller:test
+          imagePullPolicy: Never
+          env:
+            - name: CONTROLLER_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - {name: MULTICA_SERVER_URL, value: "http://server:8080"}
+            - name: MULTICA_CONTROLLER_SECRET
+              valueFrom: {secretKeyRef: {name: runtime-controller, key: controller-secret}}
+            - {name: SANDBOX_IMAGE, value: "mr-e2e/daemon:test"}
+            - {name: SANDBOX_IMAGE_PULL_POLICY, value: "Never"}
+            - {name: SANDBOX_PVC_SIZE, value: "100Mi"}
+            - {name: SANDBOX_CPU_REQUEST, value: "50m"}
+            - {name: SANDBOX_MEMORY_REQUEST, value: "64Mi"}
+            - {name: RECONCILE_INTERVAL, value: "3s"}
+            - {name: IDLE_SUSPEND_AFTER, value: "40s"}
+            - {name: MULTICA_DAEMON_DRAIN_TIMEOUT, value: "60s"}
+            - {name: LITELLM_URL, value: "http://litellm:4000"}
+            - name: LITELLM_ADMIN_KEY
+              valueFrom: {secretKeyRef: {name: runtime-controller, key: litellm-admin-key}}
+            - {name: LITELLM_MAX_BUDGET, value: "5"}
+            - {name: CONTROLLER_LEADER_ELECT, value: "false"}
+          ports: [{name: health, containerPort: 8081}]
+          readinessProbe: {httpGet: {path: /healthz, port: health}}

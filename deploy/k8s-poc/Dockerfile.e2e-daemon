@@ -1,0 +1,13 @@
+# Managed-runtime e2e daemon image: the multica CLI built from this checkout plus a fake `claude`.
+FROM mr-e2e/multica:test
+USER root
+RUN apk add --no-cache git curl \
+ && adduser -D -u 10001 agent \
+ && mkdir -p /home/agent/.multica /work && chown -R agent:agent /home/agent /work
+COPY fake-claude /usr/local/bin/claude
+COPY probe.sh /usr/local/bin/probe.sh
+RUN chmod 0755 /usr/local/bin/claude /usr/local/bin/probe.sh
+USER agent
+WORKDIR /work
+ENV HOME=/home/agent MULTICA_DAEMON_AUTO_UPDATE=false
+ENTRYPOINT ["/app/multica"]

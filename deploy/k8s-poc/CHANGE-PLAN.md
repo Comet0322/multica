@@ -32,7 +32,7 @@ Call sites that do not go through those two helpers and need the same rule (veri
 - `DaemonHeartbeat` (`daemon.go:1150`) calls `requireDaemonWorkspaceAccess` directly.
 - `DaemonDeregister` (`daemon.go:992`) and the batch claim `ClaimTasksByRuntime` (`daemon.go:1808`) use `verifyDaemonWorkspaceAccess`, a second workspace-only helper. Consequence beyond claim theft: **any member can deregister (take offline) any runtime in the workspace**. The batch claim's body `daemon_id` is self-declared, so it is not a security check for PAT/JWT.
 - The WebSocket identity (`daemon_ws.go`, `buildDaemonWebSocketIdentity`) builds a runtime set per connection; filter it with the same rule.
-Already covered once the helpers change: `RecoverOrphanedTasks` (`task_lifecycle.go`), `ClaimTaskByRuntime`, `ResolveTaskSkillBundles`, `ListPendingTasksByRuntime`, `ExtendTaskPrepareLease`, `GetTaskStatus`.
+Already covered once the helpers change: `RecoverOrphanedTasks` (`task_lifecycle.go`), `ClaimTaskByRuntime`, `ResolveTaskSkillBundles`, `ListPendingTasksByRuntime`, `ExtendTaskPrepareLease`. Correction found during implementation: `GetTaskStatus` does **not** go through the shared helpers and needed its own check (done, with the runtime columns joined into `GetAgentTaskStatus`).
 Workspace-level reads (`GetDaemonWorkspaceRepos`, the `*GCCheck` endpoints) stay workspace-scoped.
 
 **Rollout (compatibility).** Installed local daemons authenticate with the owner's PAT; the owner rule keeps them working.
@@ -164,3 +164,41 @@ member runtime view has no `daemon_id` / `device_info` / `metadata` / paths (T6)
 ### Consequence of a single shared LiteLLM key (decision 5)
 
 A shared key in the pod is readable by any user's agent. Superseded by §7: per-Sandbox virtual keys (Plan A), swap proxy as fallback (Plan B).
+
+## 11. Implementation status (2026-10-22)
+
+Steps 1-6 are implemented on this branch (commits `e0c96c8b5` .. step 6) and verified end to end on kind
+by `deploy/k8s-poc/e2e/` (`setup.sh` then `run.sh`; last output in `e2e/last-run.log`): 47 checks, 0 failed.
+Go: 6707 tests pass across handler, middleware, service, daemon, runtimecontroller, pkg/agent, cmd, metrics.
+Frontend: `pnpm typecheck`, `pnpm lint` (0 errors), `pnpm test` pass.
+
+Measured on kind with images preloaded and a fake agent (a lower bound, not a production number):
+cold Sandbox to task completed 4.8 s; suspended to task completed 3.7 s (each includes a 1 s fake agent).
+
+What the run proved: admin gate (404 for non-admins); admin create/list/delete; controller provisions the
+Sandbox; members see a redacted runtime that is "online" while suspended and cannot rename/delete it;
+member JWT, member PAT and another daemon's `mdt_` all get 404 on claim; internal API rejects missing and
+user tokens; the agent environment has only the task token (`mat_`), no `mdt_`/`mul_`, no `config.json`
+credential, no work-dir paths in member task lists; idle Sandbox suspends, pod disappears, PVC stays;
+a follow-up comment wakes it and the same workdir and session are resumed (`workdir_uses=2`);
+SIGTERM during a task lets it finish (drain); force-killing the pod mid-task fails the task as
+`runtime_recovery` and a retry child completes on the recreated Sandbox; per-Sandbox LiteLLM keys are
+minted and revoked; admin delete removes Sandbox, Secrets, tokens, key and unbinds the agent;
+controller down for over 2 minutes makes the runtime show offline, and it recovers when the controller returns.
+
+Known gaps (not done, or not provable here):
+- Local (non-managed) runtimes keep F1: any workspace member can still speak the daemon protocol for a
+  public local runtime. Only managed runtimes are protected (step 7 deferred by decision).
+- Managed runtimes are created by an operator on the admin page or the internal API; nothing creates one
+  automatically when a user creates an agent.
+- If the controller is down, queued tasks are not failed by it; they wait for the existing queue expiry.
+  The server stops presenting the runtime as available after 2 minutes.
+- PVC retention window / garbage collection of old volumes is not implemented; deleting the runtime deletes it.
+- The LLM key is readable by the agent (environment). Blast radius is that key's budget, models and rate limit.
+- gVisor/Kata and NetworkPolicy enforcement are not testable on kind (kindnet does not enforce policies);
+  `deploy/runtime-controller/sandbox-networkpolicy.yaml` is untested.
+- The LiteLLM in the run is a fake that implements `/key/generate` and `/key/delete` only; a real LiteLLM
+  was not exercised. No real Claude/Codex was run (fake agent), so real `--resume` behavior is unverified.
+- Baseline is v0.6.1; v0.6.2 was not re-run. The e2e used `alpine:latest` retagged as `3.21` and a local
+  `kindest/node` because Docker Hub was unreachable from the test machine.
+- The user-facing `/api/runtimes` list is not wrapped in a zod schema (it was not before); only the new admin responses are.
