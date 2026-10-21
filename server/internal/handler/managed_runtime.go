@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -8,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -20,6 +23,11 @@ import (
 // controller can wake and suspend Sandboxes.
 
 const (
+	// managedStateTTL is how long a controller state report stays believable.
+	// Past it the runtime is shown unavailable: a dead controller must not leave
+	// users queueing work behind a Sandbox nobody will wake.
+	managedStateTTL = 2 * time.Minute
+
 	managedDaemonTokenDefaultTTL = time.Hour
 	managedDaemonTokenMaxTTL     = 24 * time.Hour
 )
@@ -203,6 +211,7 @@ func (h *Handler) ControllerManagedRuntimeState(w http.ResponseWriter, r *http.R
 			"provider":     row.Provider,
 			"status":       row.Status,
 			"display_name": row.CustomName.String,
+			"state":        row.ManagedState,
 			"queued_tasks": row.QueuedTasks,
 			"active_tasks": row.ActiveTasks,
 		}
@@ -212,4 +221,151 @@ func (h *Handler) ControllerManagedRuntimeState(w http.ResponseWriter, r *http.R
 		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"runtimes": out})
+}
+
+// managedRuntimeServiceable reports whether work sent to a managed runtime will
+// be picked up: the daemon is online, or the controller recently reported the
+// Sandbox as running, waking or suspended (it wakes on queued work).
+func managedRuntimeServiceable(rt db.AgentRuntime, now time.Time) bool {
+	if rt.Status == "online" {
+		return true
+	}
+	if !rt.ManagedStateAt.Valid || now.Sub(rt.ManagedStateAt.Time) > managedStateTTL {
+		return false
+	}
+	switch rt.ManagedState {
+	case "running", "waking", "suspended":
+		return true
+	}
+	return false
+}
+
+// runtimeToUserResponse is the runtime as an ordinary workspace member may see
+// it. Unmanaged runtimes are unchanged. A managed runtime shows only its
+// display name, provider and projected availability: no daemon id, device
+// info, metadata, launch header or owner.
+func runtimeToUserResponse(rt db.AgentRuntime, now time.Time) AgentRuntimeResponse {
+	resp := runtimeToResponse(rt)
+	if !rt.Managed {
+		return resp
+	}
+	resp.DaemonID = nil
+	resp.DeviceInfo = ""
+	resp.LaunchHeader = ""
+	resp.Metadata = map[string]any{}
+	resp.OwnerID = nil
+	resp.ProfileID = nil
+	if name := rt.CustomName; name.Valid && name.String != "" {
+		resp.Name = name.String
+	}
+	if managedRuntimeServiceable(rt, now) {
+		resp.Status = "online"
+		resp.LastSeenAt = timestampToPtr(pgtype.Timestamptz{Time: now, Valid: true})
+	} else {
+		resp.Status = "offline"
+	}
+	return resp
+}
+
+// redactManagedTaskPaths blanks pod filesystem paths on task responses that ran
+// on a managed runtime. Failure to look up falls back to blanking nothing the
+// caller was already allowed to see elsewhere; it never widens exposure.
+func (h *Handler) redactManagedTaskPaths(ctx context.Context, tasks []db.AgentTaskQueue, resp []AgentTaskResponse) {
+	if len(tasks) == 0 || len(tasks) != len(resp) {
+		return
+	}
+	ids := make([]pgtype.UUID, 0, len(tasks))
+	for _, t := range tasks {
+		if t.RuntimeID.Valid {
+			ids = append(ids, t.RuntimeID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	managed, err := h.Queries.ListManagedRuntimeIDs(ctx, ids)
+	if err != nil {
+		slog.Warn("managed task redaction lookup failed; blanking paths for all tasks in this response", "error", err)
+		for i := range resp {
+			clearTaskPaths(&resp[i])
+		}
+		return
+	}
+	set := make(map[string]struct{}, len(managed))
+	for _, id := range managed {
+		set[uuidToString(id)] = struct{}{}
+	}
+	for i, t := range tasks {
+		if _, ok := set[uuidToString(t.RuntimeID)]; ok {
+			clearTaskPaths(&resp[i])
+		}
+	}
+}
+
+func clearTaskPaths(t *AgentTaskResponse) {
+	t.WorkDir = ""
+	t.RelativeWorkDir = ""
+	t.DurableWorkDir = ""
+	t.RelativeDurableWorkDir = ""
+	t.PriorWorkDir = ""
+}
+
+// RejectManagedRuntime answers 404 for operations that act on a runtime's
+// machine (rename, delete, update, model/local-skill probes). Managed runtimes
+// are operated by the platform, so these are not available on the user API.
+func (h *Handler) RejectManagedRuntime(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "runtimeId")
+		if uid, err := util.ParseUUID(id); err == nil {
+			if rt, err := h.Queries.GetAgentRuntime(r.Context(), uid); err == nil && rt.Managed {
+				writeError(w, http.StatusNotFound, "runtime not found")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type managedStateReport struct {
+	Runtimes []struct {
+		WorkspaceID string `json:"workspace_id"`
+		DaemonID    string `json:"daemon_id"`
+		State       string `json:"state"`
+	} `json:"runtimes"`
+}
+
+// ControllerReportManagedState records the Sandbox state per runtime. The
+// controller repeats it on every reconcile; the server treats a stale report as
+// unavailable (managedStateTTL).
+func (h *Handler) ControllerReportManagedState(w http.ResponseWriter, r *http.Request) {
+	var req managedStateReport
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	updated := 0
+	for _, item := range req.Runtimes {
+		switch item.State {
+		case "running", "waking", "suspended", "unavailable":
+		default:
+			writeError(w, http.StatusBadRequest, "state must be running, waking, suspended or unavailable")
+			return
+		}
+		wsUUID, ok := parseUUIDOrBadRequest(w, item.WorkspaceID, "workspace_id")
+		if !ok {
+			return
+		}
+		n, err := h.Queries.SetManagedRuntimeState(r.Context(), db.SetManagedRuntimeStateParams{
+			WorkspaceID: wsUUID,
+			DaemonID:    strToText(item.DaemonID),
+			State:       item.State,
+		})
+		if err != nil {
+			slog.Warn("set managed runtime state failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to save state")
+			return
+		}
+		updated += int(n)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"updated": updated})
 }

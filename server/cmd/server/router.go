@@ -1557,6 +1557,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Use(middleware.ControllerAuth(os.Getenv("MULTICA_CONTROLLER_SECRET")))
 		r.Post("/managed-runtimes", h.ControllerUpsertManagedRuntime)
 		r.Get("/managed-runtimes/state", h.ControllerManagedRuntimeState)
+		r.Put("/managed-runtimes/state", h.ControllerReportManagedState)
 		r.Post("/daemon-tokens", h.ControllerIssueDaemonToken)
 		r.Delete("/daemon-tokens", h.ControllerRevokeDaemonTokens)
 	})
@@ -2334,32 +2335,37 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			r.Route("/api/runtimes", func(r chi.Router) {
 				r.Get("/", h.ListAgentRuntimes)
 				r.Route("/{runtimeId}", func(r chi.Router) {
-					r.Patch("/", h.UpdateAgentRuntime)
 					r.Get("/usage", h.GetRuntimeUsage)
 					r.Get("/usage/by-agent", h.GetRuntimeUsageByAgent)
 					r.Get("/usage/by-hour", h.GetRuntimeUsageByHour)
 					r.Get("/activity", h.GetRuntimeTaskActivity)
-					r.Post("/update", h.InitiateUpdate)
-					r.Get("/update/{updateId}", h.GetUpdate)
-					r.Post("/models", h.InitiateListModels)
-					r.Get("/models/{requestId}", h.GetModelListRequest)
-					r.Post("/local-skills", h.InitiateListLocalSkills)
-					r.Get("/local-skills/{requestId}", h.GetLocalSkillListRequest)
-					r.Post("/local-skills/import", h.InitiateImportLocalSkill)
-					r.Get("/local-skills/import/{requestId}", h.GetLocalSkillImportRequest)
-					r.Delete("/", h.DeleteAgentRuntime)
-					// Confirmed variant of DELETE: unbind every agent bound to
-					// this runtime (they keep their configuration and chats and
-					// need a new runtime to run again), cancel their tasks,
-					// detach their task history, then delete the runtime — all
-					// in one transaction. Used by the DeleteRuntimeDialog when
-					// the strict DELETE refused with
-					// `runtime_has_active_agents` and the user confirmed.
-					r.Post("/unbind-agents-and-delete", h.UnbindAgentsAndDeleteRuntime)
-					// Legacy path for installed clients built against the
-					// archive-and-delete contract (MUL-5559 renamed the
-					// behaviour, not just the route). Same handler.
-					r.Post("/archive-agents-and-delete", h.UnbindAgentsAndDeleteRuntime)
+					// Everything below acts on the runtime's machine or lifecycle;
+					// managed runtimes are operated by the platform, not by users.
+					r.Group(func(r chi.Router) {
+						r.Use(h.RejectManagedRuntime)
+						r.Patch("/", h.UpdateAgentRuntime)
+						r.Post("/update", h.InitiateUpdate)
+						r.Get("/update/{updateId}", h.GetUpdate)
+						r.Post("/models", h.InitiateListModels)
+						r.Get("/models/{requestId}", h.GetModelListRequest)
+						r.Post("/local-skills", h.InitiateListLocalSkills)
+						r.Get("/local-skills/{requestId}", h.GetLocalSkillListRequest)
+						r.Post("/local-skills/import", h.InitiateImportLocalSkill)
+						r.Get("/local-skills/import/{requestId}", h.GetLocalSkillImportRequest)
+						r.Delete("/", h.DeleteAgentRuntime)
+						// Confirmed variant of DELETE: unbind every agent bound to
+						// this runtime (they keep their configuration and chats and
+						// need a new runtime to run again), cancel their tasks,
+						// detach their task history, then delete the runtime — all
+						// in one transaction. Used by the DeleteRuntimeDialog when
+						// the strict DELETE refused with
+						// `runtime_has_active_agents` and the user confirmed.
+						r.Post("/unbind-agents-and-delete", h.UnbindAgentsAndDeleteRuntime)
+						// Legacy path for installed clients built against the
+						// archive-and-delete contract (MUL-5559 renamed the
+						// behaviour, not just the route). Same handler.
+						r.Post("/archive-agents-and-delete", h.UnbindAgentsAndDeleteRuntime)
+					})
 				})
 			})
 

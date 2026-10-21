@@ -35,7 +35,7 @@ WHERE id = ANY(@ids::uuid[]);
 -- WebSocket authenticates its whole runtime set in one round trip and then
 -- keeps these immutable ownership fields plus liveness state in its connection
 -- lease, avoiding a GetAgentRuntime call on every heartbeat.
-SELECT id, workspace_id, daemon_id, legacy_daemon_id, owner_id, status, last_seen_at
+SELECT id, workspace_id, daemon_id, legacy_daemon_id, owner_id, managed, status, last_seen_at
 FROM agent_runtime
 WHERE id = ANY(@ids::uuid[]);
 

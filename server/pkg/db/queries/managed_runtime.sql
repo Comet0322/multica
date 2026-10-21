@@ -36,6 +36,8 @@ SELECT
     rt.status,
     rt.last_seen_at,
     rt.custom_name,
+    rt.managed_state,
+    rt.managed_state_at,
     (SELECT count(*) FROM agent_task_queue q
        WHERE q.runtime_id = rt.id AND q.status = 'queued')::bigint AS queued_tasks,
     (SELECT count(*) FROM agent_task_queue q
@@ -43,3 +45,18 @@ SELECT
 FROM agent_runtime rt
 WHERE rt.managed
 ORDER BY rt.created_at, rt.id;
+
+-- name: SetManagedRuntimeState :execrows
+-- Records the Sandbox state the controller observed. Only managed rows change.
+UPDATE agent_runtime
+SET managed_state = @state, managed_state_at = now()
+WHERE workspace_id = @workspace_id AND daemon_id = @daemon_id AND managed;
+
+-- name: ListManagedRuntimeIDs :many
+-- Which of the given runtimes are managed (for response redaction).
+SELECT id FROM agent_runtime WHERE id = ANY(@ids::uuid[]) AND managed;
+
+-- name: ListManagedDaemonIDs :many
+-- Which of the given daemon_ids are taken by a managed runtime in the workspace.
+SELECT DISTINCT daemon_id FROM agent_runtime
+WHERE workspace_id = @workspace_id AND daemon_id = ANY(@daemon_ids::text[]) AND managed;

@@ -99,6 +99,8 @@ type AgentRuntime struct {
 	ProfileID      pgtype.UUID        `json:"profile_id"`
 	CustomName     pgtype.Text        `json:"custom_name"`
 	Managed        bool               `json:"managed"`
+	ManagedState   string             `json:"managed_state"`
+	ManagedStateAt pgtype.Timestamptz `json:"managed_state_at"`
 }
 
 type AgentSkill struct {

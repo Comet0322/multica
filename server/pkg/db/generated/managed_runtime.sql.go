@@ -12,7 +12,7 @@ import (
 )
 
 const getManagedAgentRuntimeByDaemon = `-- name: GetManagedAgentRuntimeByDaemon :one
-SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name, managed FROM agent_runtime
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name, managed, managed_state, managed_state_at FROM agent_runtime
 WHERE workspace_id = $1 AND daemon_id = $2 AND managed
 LIMIT 1
 `
@@ -44,8 +44,66 @@ func (q *Queries) GetManagedAgentRuntimeByDaemon(ctx context.Context, arg GetMan
 		&i.ProfileID,
 		&i.CustomName,
 		&i.Managed,
+		&i.ManagedState,
+		&i.ManagedStateAt,
 	)
 	return i, err
+}
+
+const listManagedDaemonIDs = `-- name: ListManagedDaemonIDs :many
+SELECT DISTINCT daemon_id FROM agent_runtime
+WHERE workspace_id = $1 AND daemon_id = ANY($2::text[]) AND managed
+`
+
+type ListManagedDaemonIDsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	DaemonIds   []string    `json:"daemon_ids"`
+}
+
+// Which of the given daemon_ids are taken by a managed runtime in the workspace.
+func (q *Queries) ListManagedDaemonIDs(ctx context.Context, arg ListManagedDaemonIDsParams) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, listManagedDaemonIDs, arg.WorkspaceID, arg.DaemonIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Text{}
+	for rows.Next() {
+		var daemon_id pgtype.Text
+		if err := rows.Scan(&daemon_id); err != nil {
+			return nil, err
+		}
+		items = append(items, daemon_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listManagedRuntimeIDs = `-- name: ListManagedRuntimeIDs :many
+SELECT id FROM agent_runtime WHERE id = ANY($1::uuid[]) AND managed
+`
+
+// Which of the given runtimes are managed (for response redaction).
+func (q *Queries) ListManagedRuntimeIDs(ctx context.Context, ids []pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listManagedRuntimeIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listManagedRuntimeState = `-- name: ListManagedRuntimeState :many
@@ -57,6 +115,8 @@ SELECT
     rt.status,
     rt.last_seen_at,
     rt.custom_name,
+    rt.managed_state,
+    rt.managed_state_at,
     (SELECT count(*) FROM agent_task_queue q
        WHERE q.runtime_id = rt.id AND q.status = 'queued')::bigint AS queued_tasks,
     (SELECT count(*) FROM agent_task_queue q
@@ -67,15 +127,17 @@ ORDER BY rt.created_at, rt.id
 `
 
 type ListManagedRuntimeStateRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	DaemonID    pgtype.Text        `json:"daemon_id"`
-	Provider    string             `json:"provider"`
-	Status      string             `json:"status"`
-	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
-	CustomName  pgtype.Text        `json:"custom_name"`
-	QueuedTasks int64              `json:"queued_tasks"`
-	ActiveTasks int64              `json:"active_tasks"`
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	DaemonID       pgtype.Text        `json:"daemon_id"`
+	Provider       string             `json:"provider"`
+	Status         string             `json:"status"`
+	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
+	CustomName     pgtype.Text        `json:"custom_name"`
+	ManagedState   string             `json:"managed_state"`
+	ManagedStateAt pgtype.Timestamptz `json:"managed_state_at"`
+	QueuedTasks    int64              `json:"queued_tasks"`
+	ActiveTasks    int64              `json:"active_tasks"`
 }
 
 // One row per managed runtime for the runtime controller: liveness plus how
@@ -97,6 +159,8 @@ func (q *Queries) ListManagedRuntimeState(ctx context.Context) ([]ListManagedRun
 			&i.Status,
 			&i.LastSeenAt,
 			&i.CustomName,
+			&i.ManagedState,
+			&i.ManagedStateAt,
 			&i.QueuedTasks,
 			&i.ActiveTasks,
 		); err != nil {
@@ -108,6 +172,27 @@ func (q *Queries) ListManagedRuntimeState(ctx context.Context) ([]ListManagedRun
 		return nil, err
 	}
 	return items, nil
+}
+
+const setManagedRuntimeState = `-- name: SetManagedRuntimeState :execrows
+UPDATE agent_runtime
+SET managed_state = $1, managed_state_at = now()
+WHERE workspace_id = $2 AND daemon_id = $3 AND managed
+`
+
+type SetManagedRuntimeStateParams struct {
+	State       string      `json:"state"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	DaemonID    pgtype.Text `json:"daemon_id"`
+}
+
+// Records the Sandbox state the controller observed. Only managed rows change.
+func (q *Queries) SetManagedRuntimeState(ctx context.Context, arg SetManagedRuntimeStateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setManagedRuntimeState, arg.State, arg.WorkspaceID, arg.DaemonID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertManagedAgentRuntime = `-- name: UpsertManagedAgentRuntime :one
@@ -125,7 +210,7 @@ DO UPDATE SET
     managed = true,
     updated_at = now()
 WHERE agent_runtime.managed
-RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name, managed
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name, managed, managed_state, managed_state_at
 `
 
 type UpsertManagedAgentRuntimeParams struct {
@@ -171,6 +256,8 @@ func (q *Queries) UpsertManagedAgentRuntime(ctx context.Context, arg UpsertManag
 		&i.ProfileID,
 		&i.CustomName,
 		&i.Managed,
+		&i.ManagedState,
+		&i.ManagedStateAt,
 	)
 	return i, err
 }

@@ -4330,7 +4330,7 @@ func (q *Queries) GetAgentTaskInWorkspace(ctx context.Context, arg GetAgentTaskI
 const getAgentTaskStatus = `-- name: GetAgentTaskStatus :one
 SELECT atq.status, a.workspace_id,
        rt.id AS rt_id, rt.workspace_id AS rt_workspace_id, rt.daemon_id AS rt_daemon_id,
-       rt.legacy_daemon_id AS rt_legacy_daemon_id, rt.owner_id AS rt_owner_id
+       rt.legacy_daemon_id AS rt_legacy_daemon_id, rt.owner_id AS rt_owner_id, rt.managed AS rt_managed
 FROM agent_task_queue atq
 JOIN agent a ON a.id = atq.agent_id
 LEFT JOIN agent_runtime rt ON rt.id = atq.runtime_id
@@ -4345,6 +4345,7 @@ type GetAgentTaskStatusRow struct {
 	RtDaemonID       pgtype.Text `json:"rt_daemon_id"`
 	RtLegacyDaemonID pgtype.Text `json:"rt_legacy_daemon_id"`
 	RtOwnerID        pgtype.UUID `json:"rt_owner_id"`
+	RtManaged        pgtype.Bool `json:"rt_managed"`
 }
 
 // Hot-path status polling needs only the task status and the owning agent's
@@ -4364,6 +4365,7 @@ func (q *Queries) GetAgentTaskStatus(ctx context.Context, id pgtype.UUID) (GetAg
 		&i.RtDaemonID,
 		&i.RtLegacyDaemonID,
 		&i.RtOwnerID,
+		&i.RtManaged,
 	)
 	return i, err
 }

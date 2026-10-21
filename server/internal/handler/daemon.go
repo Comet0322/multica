@@ -464,6 +464,10 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		ownerID = member.UserID
 	}
 
+	if !h.requireRegisterMayUseDaemonID(w, r, wsUUID, req.DaemonID, req.LegacyDaemonIDs) {
+		return
+	}
+
 	ws, err := h.Queries.GetWorkspace(r.Context(), wsUUID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "workspace not found")
@@ -5007,6 +5011,7 @@ func (h *Handler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
 		DaemonID:       task.RtDaemonID,
 		LegacyDaemonID: task.RtLegacyDaemonID,
 		OwnerID:        task.RtOwnerID,
+		Managed:        task.RtManaged.Bool,
 	}) {
 		return
 	}

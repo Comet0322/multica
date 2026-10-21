@@ -48,6 +48,11 @@ type AgentRuntimeResponse struct {
 	LastSeenAt *string `json:"last_seen_at"`
 	CreatedAt  string  `json:"created_at"`
 	UpdatedAt  string  `json:"updated_at"`
+	// Managed marks a platform-operated runtime. For an ordinary caller its
+	// implementation fields (daemon_id, device_info, metadata, owner) are
+	// redacted and status is the projected availability; see
+	// runtimeToUserResponse.
+	Managed bool `json:"managed"`
 }
 
 func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
@@ -77,6 +82,7 @@ func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
 		LastSeenAt:   timestampToPtr(rt.LastSeenAt),
 		CreatedAt:    timestampToString(rt.CreatedAt),
 		UpdatedAt:    timestampToString(rt.UpdatedAt),
+		Managed:      rt.Managed,
 	}
 }
 
@@ -935,9 +941,10 @@ func (h *Handler) ListAgentRuntimes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
 	resp := make([]AgentRuntimeResponse, len(runtimes))
 	for i, rt := range runtimes {
-		resp[i] = runtimeToResponse(rt)
+		resp[i] = runtimeToUserResponse(rt, now)
 	}
 
 	writeJSON(w, http.StatusOK, resp)

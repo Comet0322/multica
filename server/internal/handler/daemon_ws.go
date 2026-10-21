@@ -85,6 +85,7 @@ func (h *Handler) buildDaemonWebSocketIdentity(w http.ResponseWriter, r *http.Re
 			DaemonID:       rt.DaemonID,
 			LegacyDaemonID: rt.LegacyDaemonID,
 			OwnerID:        rt.OwnerID,
+			Managed:        rt.Managed,
 		}) {
 			return daemonws.ClientIdentity{}, false
 		}

@@ -2951,7 +2951,7 @@ func (h *Handler) isRuntimeOnline(ctx context.Context, runtimeID pgtype.UUID) bo
 	if err != nil {
 		return false
 	}
-	return rt.Status == "online"
+	return rt.Status == "online" || (rt.Managed && managedRuntimeServiceable(rt, time.Now()))
 }
 
 // checkQuickCreateDaemonVersion enforces MinQuickCreateCLIVersion against the
