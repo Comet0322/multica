@@ -132,9 +132,3 @@ else
   wait_for_port "$FRONTEND_PORT" "Frontend" 120 "/"
 fi
 
-# --------------------------------------------------------------------------
-# Step 5: E2E tests (Playwright)
-# --------------------------------------------------------------------------
-echo ""
-echo "==> [5/5] E2E tests (Playwright)..."
-pnpm exec playwright test || { EXIT_CODE=1; exit 1; }

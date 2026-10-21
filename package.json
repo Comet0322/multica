@@ -5,31 +5,16 @@
   "type": "module",
   "scripts": {
     "dev:web": "turbo dev --filter=@multica/web",
-    "dev:docs": "turbo dev --filter=@multica/docs",
-    "dev:desktop": "turbo dev --filter=@multica/desktop",
-    "dev:desktop:staging": "turbo dev:staging --filter=@multica/desktop",
-    "dev:mobile": "pnpm -C apps/mobile dev",
-    "dev:mobile:staging": "pnpm -C apps/mobile dev:staging",
-    "dev:mobile:prod": "pnpm -C apps/mobile dev:prod",
-    "ios:mobile": "pnpm -C apps/mobile ios",
-    "ios:mobile:staging": "pnpm -C apps/mobile ios:staging",
-    "ios:mobile:prod": "pnpm -C apps/mobile ios:prod",
-    "ios:mobile:device": "pnpm -C apps/mobile ios:device",
-    "ios:mobile:device:staging": "pnpm -C apps/mobile ios:device:staging",
-    "ios:mobile:device:staging:release": "pnpm -C apps/mobile ios:device:staging:release",
-    "ios:mobile:device:prod": "pnpm -C apps/mobile ios:device:prod",
-    "ios:mobile:device:prod:release": "pnpm -C apps/mobile ios:device:prod:release",
-    "build": "turbo build --filter=!@multica/mobile",
-    "typecheck": "turbo typecheck --filter=!@multica/mobile",
-    "test": "turbo test --filter=!@multica/mobile",
-    "lint": "turbo lint --filter=!@multica/mobile",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "lint": "turbo lint",
     "knip": "knip",
     "check:ui-exports": "node scripts/check-ui-wildcard-exports.mjs",
     "check:ui-radii": "node scripts/check-ui-radius-tokens.mjs",
     "clean": "turbo clean && rm -rf node_modules",
     "ui:add": "cd packages/ui && npx shadcn@latest add",
-    "generate:reserved-slugs": "node scripts/generate-reserved-slugs.mjs",
-    "dev:ui-lab": "pnpm --filter @multica/ui-lab dev"
+    "generate:reserved-slugs": "node scripts/generate-reserved-slugs.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -37,8 +22,7 @@
   "packageManager": "pnpm@10.28.2",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild",
-      "electron"
+      "esbuild"
     ],
     "overrides": {
       "@types/react": "catalog:",
@@ -50,15 +34,10 @@
       "minimatch@3>brace-expansion": "1.1.18",
       "minimatch@5>brace-expansion": "2.1.4",
       "minimatch@9>brace-expansion": "2.1.4",
-      "minimatch@10>brace-expansion": "5.0.9",
-      "builder-util-runtime": "9.7.0"
-    },
-    "patchedDependencies": {
-      "expo-modules-core@57.0.21": "apps/mobile/patches/expo-modules-core@57.0.21.patch"
+      "minimatch@10>brace-expansion": "5.0.9"
     }
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
     "@types/node": "catalog:",
     "@types/pg": "^8.20.0",
     "knip": "^6.32.2",

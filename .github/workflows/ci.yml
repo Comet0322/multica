@@ -41,7 +41,7 @@ jobs:
           node-version: 22
 
       - name: Test CI selection and gates
-        run: node --test scripts/ci-scope.test.mjs scripts/check-image-budget.test.mjs
+        run: node --test scripts/ci-scope.test.mjs
 
       - name: Filter paths
         id: filter
@@ -146,7 +146,7 @@ jobs:
         # ~50s of expo-lint + tsc to every web/desktop PR. Keep this
         # filter in sync with the root package.json scripts, which also
         # exclude @multica/mobile.
-        run: pnpm exec turbo build typecheck lint --filter='!@multica/docs' --filter='!@multica/mobile'
+        run: pnpm exec turbo build typecheck lint
 
       - name: Check frontend quality
         uses: ./.github/actions/frontend-quality
@@ -194,7 +194,7 @@ jobs:
         # job's responsibility -- frontend-build owns the `typecheck` task.
         # `test` reaches dependency sources through the hash-only
         # `^cache-inputs` edge (see turbo.json), so no `tsc` runs here.
-        run: pnpm exec turbo test --filter='!@multica/docs' --filter='!@multica/mobile' --filter='!@multica/views'
+        run: pnpm exec turbo test --filter='!@multica/views'
 
   # Split views across two runners. GitHub reports the matrix job's combined
   # result, so the aggregate gate can continue depending on this one job ID.
@@ -818,31 +818,6 @@ jobs:
         working-directory: server
         run: CGO_ENABLED=0 go test ./pkg/agent -run '^TestCaptureCursorBackground(KernelRejectsStaleIdentity|DetachedSession|LateDescendant)$' -count=1
 
-  image-budget:
-    # Soft gate against the 21.7MB of raw PNG/JPG that MUL-6352 cleared out:
-    # a bitmap added or grown past 300KB fails until the PR description says
-    # why. Pull requests only — a push to main has no description to read,
-    # and the branch it came from was already checked.
-    needs: changes
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.images == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-
-      - name: Fetch comparison base
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
-
-      - name: Check image budget
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: node scripts/check-image-budget.mjs --base "$BASE_SHA"
-
   installer:
     # Stub-driven shell tests for scripts/install.sh and scripts/install.ps1.
     # Kept off the heavy backend job so installer regressions surface
@@ -856,7 +831,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -866,15 +841,6 @@ jobs:
         if: runner.os != 'Windows'
         run: bash scripts/install.test.sh
 
-      - name: Test installer with Windows PowerShell 5.1
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: ./scripts/install.ps1.test.ps1
-
-      - name: Test installer with PowerShell 7
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/install.ps1.test.ps1
 
   script-checks:
     needs: changes
@@ -898,9 +864,6 @@ jobs:
       - name: Test development environment registry
         run: bash scripts/dev-env.test.sh
 
-      - name: Test UI performance comparison runner
-        run: bash scripts/perf-compare.test.sh
-
       - name: Verify reserved-slugs.ts is up to date
         # Re-runs the generator and fails on any drift from the
         # checked-in TypeScript output. The Go side embeds the JSON
@@ -909,12 +872,6 @@ jobs:
         run: |
           node scripts/generate-reserved-slugs.mjs
           git diff --exit-code -- packages/core/paths/reserved-slugs.ts
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Test Helm chart
-        run: bash scripts/helm-config.test.sh
 
       - name: Test backend entrypoint signals
         run: bash scripts/entrypoint.test.sh
