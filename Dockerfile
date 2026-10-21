@@ -41,6 +41,12 @@ COPY LICENSE NOTICE ./
 COPY docker/entrypoint.sh .
 RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
+# Run unprivileged. The uploads dir is created here so a fresh named volume
+# mounted at /app/data/uploads inherits this ownership.
+RUN addgroup -S -g 1001 multica && adduser -S -u 1001 -G multica multica && \
+    mkdir -p /app/data/uploads && chown -R multica:multica /app
+USER multica
+
 EXPOSE 8080
 
 ENTRYPOINT ["./entrypoint.sh"]
