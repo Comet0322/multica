@@ -1321,3 +1321,24 @@ func TestBuildClaudeArgsManagedSkillSettingsWins(t *testing.T) {
 		t.Fatalf("unrelated custom arg was dropped: %v", args)
 	}
 }
+
+// A managed daemon's credential location must never reach the agent subprocess.
+func TestMergeEnvDropsManagedDaemonCredentialPointers(t *testing.T) {
+	t.Parallel()
+	env := mergeEnv([]string{
+		"PATH=/usr/bin",
+		"MULTICA_DAEMON_TOKEN_FILE=/run/secrets/multica/token",
+		"MULTICA_DAEMON_MANAGED=true",
+		"MULTICA_TOKEN=mdt_should_not_leak",
+		"ANTHROPIC_BASE_URL=https://litellm.internal",
+	}, map[string]string{"MULTICA_TOKEN": "mat_task"})
+	joined := strings.Join(env, "\n")
+	for _, banned := range []string{"MULTICA_DAEMON_TOKEN_FILE", "MULTICA_DAEMON_MANAGED", "mdt_should_not_leak"} {
+		if strings.Contains(joined, banned) {
+			t.Errorf("agent env leaks %q:\n%s", banned, joined)
+		}
+	}
+	if !strings.Contains(joined, "MULTICA_TOKEN=mat_task") || !strings.Contains(joined, "ANTHROPIC_BASE_URL=https://litellm.internal") {
+		t.Errorf("task token / LLM gateway env must survive:\n%s", joined)
+	}
+}

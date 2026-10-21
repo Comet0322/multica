@@ -603,6 +603,9 @@ type Daemon struct {
 	// It deliberately includes preparation and local-directory waiters because
 	// restart/update barriers must not kill any claimed task.
 	activeTasks atomic.Int64
+	// draining is set when a managed daemon has been asked to stop: the claim
+	// loop stops taking new work while running tasks finish (see Run).
+	draining atomic.Bool
 	// runningTasks counts live provider execution sessions, beginning only after
 	// backend.Execute returns. It can briefly lag the server-side running state,
 	// which starts during preparation before provider launch. resourceWaitTasks
@@ -2073,11 +2076,22 @@ func (d *Daemon) clearWSHeartbeatAcks() {
 
 // Run starts the daemon: resolves auth, registers runtimes, then polls for tasks.
 func (d *Daemon) Run(ctx context.Context) error {
+	// Managed daemons drain: the shutdown signal (parent ctx) stops new claims,
+	// running tasks keep their context until they finish or DrainTimeout
+	// elapses, and only then is the daemon context cancelled. Everyone else
+	// cancels immediately, as before.
+	parent := ctx
+	if d.cfg.Managed && d.cfg.DrainTimeout > 0 {
+		ctx = context.WithoutCancel(parent)
+	}
 	// Wrap context so handleUpdate can cancel the daemon for restart.
 	ctx, cancel := context.WithCancel(ctx)
 	d.cancelFunc = cancel
 	d.setLifecycleCtx(ctx)
 	d.rootCtx = ctx
+	if d.cfg.Managed && d.cfg.DrainTimeout > 0 {
+		go d.drainOnShutdown(parent, cancel)
+	}
 
 	// Bind health port early to detect another running daemon.
 	healthLn, err := d.listenHealth()
@@ -2170,7 +2184,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 	go d.heartbeatLoop(ctx)
 	go d.gcLoop(ctx)
 	go d.autoUpdateLoop(ctx)
-	go d.tokenRenewalLoop(ctx)
+	if d.cfg.Managed {
+		go d.tokenFileLoop(ctx)
+	} else {
+		go d.tokenRenewalLoop(ctx)
+	}
 
 	// Preflight succeeded and the background loops are up: the daemon has
 	// registered its runtimes and can now claim and run tasks. Flip /health
@@ -2211,8 +2229,83 @@ func (d *Daemon) deregisterRuntimes() {
 	}
 }
 
-// resolveAuth loads the auth token from the CLI config for the active profile.
+// drainOnShutdown waits for the shutdown signal, stops new claims, lets
+// running tasks finish for up to DrainTimeout, then cancels the daemon.
+func (d *Daemon) drainOnShutdown(signalCtx context.Context, cancel context.CancelFunc) {
+	select {
+	case <-signalCtx.Done():
+	case <-d.rootCtx.Done():
+		return
+	}
+	d.draining.Store(true)
+	d.logger.Info("shutdown requested; draining", "timeout", d.cfg.DrainTimeout, "active_tasks", d.activeTasks.Load())
+	deadline := time.NewTimer(d.cfg.DrainTimeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for d.activeTasks.Load() > 0 {
+		select {
+		case <-deadline.C:
+			d.logger.Warn("drain timeout reached; cancelling running tasks", "active_tasks", d.activeTasks.Load())
+			cancel()
+			return
+		case <-d.rootCtx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+	d.logger.Info("drain complete")
+	cancel()
+}
+
+// loadTokenFile reads and validates the managed daemon token.
+func loadTokenFile(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read daemon token file: %w", err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if !strings.HasPrefix(token, "mdt_") {
+		return "", errors.New("daemon token file does not contain a daemon token (mdt_)")
+	}
+	return token, nil
+}
+
+// tokenFileLoop swaps in a rotated token when the file's content changes. A
+// failed or invalid read keeps the current token.
+func (d *Daemon) tokenFileLoop(ctx context.Context) {
+	ticker := time.NewTicker(d.cfg.TokenFilePollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			token, err := loadTokenFile(d.cfg.TokenFile)
+			if err != nil {
+				d.logger.Warn("daemon token file unreadable; keeping current token", "error", err)
+				continue
+			}
+			if token != d.client.Token() {
+				d.client.SetToken(token)
+				d.logger.Info("daemon token rotated")
+			}
+		}
+	}
+}
+
+// resolveAuth loads the auth token: from the token file for a managed daemon,
+// otherwise from the CLI config for the active profile.
 func (d *Daemon) resolveAuth() error {
+	if d.cfg.Managed {
+		token, err := loadTokenFile(d.cfg.TokenFile)
+		if err != nil {
+			return err
+		}
+		d.client.SetToken(token)
+		d.logger.Info("authenticated with daemon token")
+		return nil
+	}
 	cfg, err := cli.LoadCLIConfigForProfile(d.cfg.Profile)
 	if err != nil {
 		return fmt.Errorf("load CLI config: %w", err)
@@ -4021,7 +4114,10 @@ const DefaultTokenRenewalInterval = 3 * 24 * time.Hour
 // before creating their first workspace, and workspaceSyncLoop will
 // register runtimes once one appears.
 func (d *Daemon) preflightAuth(ctx context.Context) error {
-	d.tryRenewToken(ctx)
+	if !d.cfg.Managed {
+		// A daemon token is not a renewable PAT; the controller rotates it.
+		d.tryRenewToken(ctx)
+	}
 	err := d.syncWorkspacesFromAPI(ctx, false)
 	if d.startupMayProceedWithoutRuntimes(err) {
 		d.logger.Warn("starting with no runtimes registered: an automatic DSH runtime profile install is still running; " +
@@ -5411,7 +5507,7 @@ func (d *Daemon) runBatchPoller(pollerCtx, parentCtx context.Context, sem chan i
 	}
 
 	for {
-		if pollerCtx.Err() != nil {
+		if pollerCtx.Err() != nil || d.draining.Load() {
 			return
 		}
 
@@ -5443,6 +5539,11 @@ func (d *Daemon) runBatchPoller(pollerCtx, parentCtx context.Context, sem chan i
 			continue
 		}
 		slots := append([]int{slot}, drainAvailableSlots(sem, d.cfg.MaxConcurrentTasks-1)...)
+
+		if d.draining.Load() {
+			releaseSlots(slots)
+			return
+		}
 
 		// Auto-update barrier: refuse to claim while an update prepares to roll
 		// the process (paired with the re-check in tryAutoUpdate).

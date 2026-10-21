@@ -108,6 +108,8 @@ func init() {
 	f.Bool("no-auto-update", false, "Disable periodic CLI self-update (env: MULTICA_DAEMON_AUTO_UPDATE=false)")
 	f.Duration("auto-update-interval", 0, "How often to poll GitHub for a newer release (env: MULTICA_DAEMON_AUTO_UPDATE_INTERVAL)")
 	f.Bool("no-auto-reload", false, "Disable restarting when the multica binary on disk changes version (env: MULTICA_DAEMON_AUTO_RELOAD=false)")
+	f.Bool("managed", false, "Run as a platform-managed daemon: authenticate with the daemon token in --token-file, no self-update, drain on SIGTERM (env: MULTICA_DAEMON_MANAGED=true)")
+	f.String("token-file", "", "File holding the managed daemon token (mdt_); re-read when it changes (env: MULTICA_DAEMON_TOKEN_FILE)")
 
 	daemonLogsCmd.Flags().BoolP("follow", "f", false, "Follow log output")
 	daemonLogsCmd.Flags().IntP("lines", "n", 50, "Number of lines to show")
@@ -546,6 +548,9 @@ func runDaemonStart(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	foreground, _ := cmd.Flags().GetBool("foreground")
+	if managed, _ := cmd.Flags().GetBool("managed"); (managed || os.Getenv("MULTICA_DAEMON_MANAGED") == "true") && !foreground {
+		return fmt.Errorf("managed daemons run under a supervisor: pass --foreground")
+	}
 	if foreground {
 		return runDaemonForeground(cmd)
 	}
@@ -892,6 +897,12 @@ func buildDaemonStartArgs(cmd *cobra.Command) []string {
 	if n, _ := cmd.Flags().GetInt("max-concurrent-tasks"); n > 0 {
 		args = append(args, "--max-concurrent-tasks", strconv.Itoa(n))
 	}
+	if b, _ := cmd.Flags().GetBool("managed"); b {
+		args = append(args, "--managed")
+	}
+	if v := flagString(cmd, "token-file"); v != "" {
+		args = append(args, "--token-file", v)
+	}
 	if b, _ := cmd.Flags().GetBool("no-auto-update"); b {
 		args = append(args, "--no-auto-update")
 	}
@@ -1065,6 +1076,9 @@ func runDaemonForeground(cmd *cobra.Command) error {
 	if autoUpdateOverride > 0 {
 		overrides.AutoUpdateCheckInterval = autoUpdateOverride
 	}
+
+	overrides.Managed, _ = cmd.Flags().GetBool("managed")
+	overrides.TokenFile = flagString(cmd, "token-file")
 
 	cfg, err := daemon.LoadConfig(overrides)
 	if err != nil {
