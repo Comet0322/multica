@@ -236,9 +236,6 @@ func TestDaemonBackgroundWaitsForShutdownBeforeSpawning(t *testing.T) {
 	originalExecutable := daemonExecutable
 	daemonExecutable = func() (string, error) { return falseBin, nil }
 	t.Cleanup(func() { daemonExecutable = originalExecutable })
-	originalSync := syncDaemonAutostart
-	syncDaemonAutostart = func(string, bool) {}
-	t.Cleanup(func() { syncDaemonAutostart = originalSync })
 
 	cmd := &cobra.Command{Use: "start"}
 	cmd.Flags().String("profile", profile, "")
