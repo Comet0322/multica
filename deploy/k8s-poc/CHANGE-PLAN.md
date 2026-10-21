@@ -128,7 +128,7 @@ Needed before launch: an LLM gateway that issues short-lived, per-workspace, rat
 | 4 | A enforce for managed + C1/C2 redaction and status projection | M | 1, 2 |
 | 5 | E: controller + Sandbox template manifests (F) | L | 2, 3 |
 | 6 | C3/C4: UI hiding and admin page | M | 4 |
-| 7 | A enforce for local runtimes (after reviewing log-mode denials) | S | 1 + one release |
+| 7 | ~~A enforce for local runtimes~~ — deferred (decision 3) | S | 1 + one release |
 | — | LLM gateway | L | independent, gates GA |
 
 PRs 1 and 2 can start now in parallel. Use atomic conventional commits and the repo PR template.
@@ -138,10 +138,20 @@ PRs 1 and 2 can start now in parallel. Use atomic conventional commits and the r
 `setup.sh` and the probes are reusable. Expected flips: member claim on another runtime → 404 (T6/F1); `mdt_` for daemon A on daemon B's runtime → 404 (T8);
 member runtime view has no `daemon_id` / `device_info` / `metadata` / paths (T6); no token in `config.json` or agent env (T7); suspended-with-queued-task wakes without human action (F8); kill mid-task → retryable (T5).
 
-## 10. Open decisions for you
+## 10. Decisions (resolved)
 
-1. Platform admin source: env allowlist now, or a DB flag / company SSO group?
-2. Is per-agent granularity (D1) acceptable, given cross-issue context is out of scope?
-3. Enforce the owner rule on **local** runtimes in the same release train, or leave local daemons untouched and fix only managed ones first (lower risk, leaves F1 open for local runtimes)?
-4. Controller location: this monorepo (`server/cmd/runtime-controller`) or a separate repo/deployment owned by the platform team?
-5. LLM gateway: build, buy, or use an existing internal one?
+1. Platform admin: env email allowlist (`PLATFORM_ADMIN_EMAILS`). A DB flag / SSO group can replace it later behind the same helper.
+2. Granularity: one Sandbox per agent (D1) — no objection raised; treated as accepted.
+3. Fix **managed** runtimes only for now. PR 7 (owner rule on local runtimes) is deferred; F1 stays open for local runtimes and must be listed as a known gap in PR 4.
+4. Controller lives in this repo: `server/cmd/runtime-controller`.
+5. LLM: the company runs LiteLLM, and all pods share **one** key. Consequences below.
+6. Work happens on branches of the user's fork (`origin` = Comet0322/multica); nothing is sent to `multica-ai/multica`.
+
+### Consequence of a single shared LiteLLM key (decision 5)
+
+The agent process can read anything in its pod, so the shared key is readable by any user's agent: it can be exfiltrated and used outside the cluster, and one workspace's usage cannot be told apart or limited from another's.
+Cheap mitigations, in order of value:
+- Restrict the key in LiteLLM: model allowlist, budget, rate limit, and (if supported) source-IP allowlist to the cluster egress.
+- NetworkPolicy so pods reach LiteLLM only, plus the Multica server.
+- Put the key in an env var of the agent process only (not in a file, not in the daemon's `/proc` environ visible to the agent uid).
+- Later: LiteLLM virtual keys minted per Sandbox by the controller (key per workspace/agent with budget) — a controller change, not a Multica server change.
