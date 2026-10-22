@@ -130,6 +130,7 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 
 	tlsCfg := &tls.Config{
 		ServerName:         s.smtpHost,
+		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: s.smtpTLSInsecure, //nolint:gosec // opt-in via SMTP_TLS_INSECURE=true
 	}
 
