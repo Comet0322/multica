@@ -317,26 +317,21 @@ func TestJWTSecretBootError(t *testing.T) {
 	tests := []struct {
 		name      string
 		jwtSecret string
-		appEnv    string
 		wantErr   bool
 	}{
-		{"production_with_empty_secret_is_rejected", "", "production", true},
-		{"production_with_code_default_is_rejected", "multica-dev-secret-change-in-production", "production", true},
-		{"production_with_compose_default_is_rejected", "change-me-in-production", "production", true},
-		{"production_with_uppercase_env_is_rejected", "change-me-in-production", "PRODUCTION", true},
-		{"production_with_whitespace_env_is_rejected", "change-me-in-production", " production ", true},
-		{"production_with_strong_secret_is_accepted", strong, "production", false},
-		{"non_production_with_empty_secret_is_allowed", "", "", false},
-		{"non_production_with_weak_secret_is_allowed", "change-me-in-production", "development", false},
+		{"empty_secret_is_rejected", "", true},
+		{"code_default_is_rejected", "multica-dev-secret-change-in-production", true},
+		{"compose_default_is_rejected", "change-me-in-production", true},
+		{"strong_secret_is_accepted", strong, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := jwtSecretBootError(tt.jwtSecret, tt.appEnv)
+			err := jwtSecretBootError(tt.jwtSecret)
 			if tt.wantErr && err == nil {
-				t.Fatalf("jwtSecretBootError(%q, %q) = nil, want error", tt.jwtSecret, tt.appEnv)
+				t.Fatalf("jwtSecretBootError(%q) = nil, want error", tt.jwtSecret)
 			}
 			if !tt.wantErr && err != nil {
-				t.Fatalf("jwtSecretBootError(%q, %q) = %v, want nil", tt.jwtSecret, tt.appEnv, err)
+				t.Fatalf("jwtSecretBootError(%q) = %v, want nil", tt.jwtSecret, err)
 			}
 		})
 	}
