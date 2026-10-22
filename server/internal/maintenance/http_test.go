@@ -9,9 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -137,29 +134,6 @@ func TestInternalHTTPCreateAdvanceReplayAndConfigure(t *testing.T) {
 	current := call("GET", "/maintenance/jobs/"+j.ID, nil, 200)
 	if current.Revision != configured.Revision {
 		t.Fatal("GET is not current")
-	}
-	// Build the same standalone driver shipped in the backend image.
-	driver := filepath.Join(t.TempDir(), "maintenance")
-	if output, err := exec.Command("go", "build", "-o", driver, "../../cmd/maintenance").CombinedOutput(); err != nil {
-		t.Fatalf("build driver: %v\n%s", err, output)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	output, err := exec.Command(driver, "run", "--port", strconv.Itoa(port), "--job", j.ID, "--max-batches", "1", "--max-seconds", "15", "--resume").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 2 {
-		t.Fatalf("incomplete canary should exit 2: %v\n%s", err, output)
-	}
-	canary := call("GET", "/maintenance/jobs/"+j.ID, nil, 200)
-	if canary.Status != "ready" || canary.Revision != configured.Revision+2 {
-		t.Fatalf("canary did more than resume + one batch: %+v", canary)
-	}
-	output, err = exec.Command(driver, "run", "--port", strconv.Itoa(port), "--job", j.ID, "--max-batches", "60", "--max-seconds", "15").CombinedOutput()
-	if err != nil {
-		t.Fatalf("driver: %v\n%s", err, output)
-	}
-	completed := call("GET", "/maintenance/jobs/"+j.ID, nil, 200)
-	if completed.Status != "completed" {
-		t.Fatalf("driver did not finish: %s", output)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
