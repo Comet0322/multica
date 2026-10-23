@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/multica-ai/multica/server/internal/daemon"
 	"github.com/multica-ai/multica/server/internal/util"
 )
 
@@ -253,20 +252,6 @@ func TestLegacyV0438HandoffPayloadReachesTaskPrompt(t *testing.T) {
 		t.Fatalf("legacy handoff update queued %d tasks, want 1", len(tasks))
 	}
 
-	claimJSON, err := json.Marshal(taskToResponse(tasks[0], testWorkspaceID))
-	if err != nil {
-		t.Fatalf("marshal claim response: %v", err)
-	}
-	var claimed daemon.Task
-	if err := json.Unmarshal(claimJSON, &claimed); err != nil {
-		t.Fatalf("decode daemon task: %v", err)
-	}
-	if claimed.HandoffNote != note {
-		t.Fatalf("claimed handoff note = %q, want %q", claimed.HandoffNote, note)
-	}
-	if prompt := daemon.BuildPrompt(claimed, "codex"); !strings.Contains(prompt, note) {
-		t.Fatalf("daemon prompt dropped legacy handoff note:\n%s", prompt)
-	}
 }
 
 // TestPreviewIssueTrigger_MalformedBody verifies the endpoint rejects a

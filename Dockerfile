@@ -17,7 +17,6 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
 RUN cd server && CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o bin/server ./cmd/server
-RUN cd server && CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" -o bin/multica ./cmd/multica
 RUN cd server && CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/migrate ./cmd/migrate
 
 # --- Runtime stage ---
@@ -28,7 +27,6 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=builder /src/server/bin/server .
-COPY --from=builder /src/server/bin/multica .
 COPY --from=builder /src/server/bin/migrate .
 COPY server/migrations/ ./migrations/
 COPY LICENSE NOTICE ./

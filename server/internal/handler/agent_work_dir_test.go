@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -226,27 +225,5 @@ func TestTaskToResponseDerivesPrivateDurableWorkDir(t *testing.T) {
 	}
 	if response.RelativeDurableWorkDir != "repos/multica" {
 		t.Fatalf("relative_durable_work_dir = %q, want privacy-safe display value", response.RelativeDurableWorkDir)
-	}
-}
-
-// TestStableIDSuffixMatchesDaemon pins the handler's path validation to the
-// current readable suffixes used by execenv.PredictRootDir. The table above
-// separately pins compatibility with both historical layouts.
-func TestStableIDSuffixMatchesDaemon(t *testing.T) {
-	const (
-		workspacesRoot = "/tmp/workspaces"
-		workspaceID    = "a05b0e10-ee7a-4603-a72d-a548b2390cb2"
-		taskID         = "5c57b65b-ee7a-4603-a72d-b659c34a1dc3"
-	)
-	daemonRoot := execenv.PredictRootDir(execenv.RootDirParams{
-		WorkspacesRoot:  workspacesRoot,
-		WorkspaceID:     workspaceID,
-		WorkspaceSlug:   "asset-feed",
-		TaskID:          taskID,
-		IssueIdentifier: "MUL-6063",
-	})
-	expected := workspacesRoot + "/asset-feed-" + taskDirSegment(workspaceID) + "/mul-6063-" + taskDirSegment(taskID)
-	if daemonRoot != expected {
-		t.Fatalf("daemon PredictRootDir = %q, handler-side suffix expectation = %q", daemonRoot, expected)
 	}
 }
