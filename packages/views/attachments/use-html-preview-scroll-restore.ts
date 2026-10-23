@@ -94,6 +94,7 @@ export function useHtmlPreviewScrollRestore(
       const win = iframeElRef.current?.contentWindow;
       if (!win) return;
       try {
+        // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- target is a sandboxed iframe with an opaque origin
         win.postMessage(message, "*");
       } catch {
         // iframe gone / cross-origin teardown — nothing to do.

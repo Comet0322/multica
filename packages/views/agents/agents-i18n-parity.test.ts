@@ -152,6 +152,7 @@ describe("access-scope i18n parity across all 4 locales", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let node: any = loc as any;
         for (const p of parts) {
+          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- test-only: iterates fixed i18n fixture keys
           node = node?.[p];
         }
         expect(node, `${name}: ${key} missing`).toBeDefined();
@@ -168,6 +169,7 @@ describe("access-scope i18n parity across all 4 locales", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let node: any = loc as any;
         for (const p of parts) {
+          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- test-only: iterates fixed i18n fixture keys
           node = node?.[p];
         }
         if (typeof node === "string" && /\{count\}/.test(node) && !/\{\{count\}\}/.test(node)) {

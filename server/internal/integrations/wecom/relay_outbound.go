@@ -999,7 +999,7 @@ func (r *RelayOutbound) DeliverWecomOutbound(scopeID string, frame []byte, event
 func (r *RelayOutbound) shardFor(installationID string) int {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(installationID))
-	return int(h.Sum32() % uint32(len(r.queues)))
+	return int(h.Sum32() % util.SatUint32(len(r.queues)))
 }
 
 // perform runs one delivery under an at-most-once claim, and reports whether

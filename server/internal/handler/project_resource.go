@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/util"
 	agentpkg "github.com/multica-ai/multica/server/pkg/agent"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -591,7 +592,7 @@ func (h *Handler) CreateProjectResource(w http.ResponseWriter, r *http.Request) 
 	} else {
 		// Append after existing resources.
 		count, _ := h.Queries.CountProjectResources(r.Context(), project.ID)
-		position = int32(count)
+		position = util.SatInt32From64(count)
 	}
 
 	creator, _ := h.parseUserUUIDOrZero(userID)

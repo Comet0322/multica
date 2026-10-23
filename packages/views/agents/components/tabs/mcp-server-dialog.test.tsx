@@ -115,6 +115,7 @@ describe("McpServerDialog", () => {
         "aria-selected", "true",
       );
       await user.click(screen.getByRole("tab", { name: "Visual editor" }));
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
       await user.click(screen.getByRole("button", { name: new RegExp(`^${selected}`) }));
       await user.type(screen.getByLabelText(label), value);
       await user.click(screen.getByRole("button", { name: "Replace configuration" }));

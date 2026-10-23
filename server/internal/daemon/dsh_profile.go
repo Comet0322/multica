@@ -295,6 +295,7 @@ func dshProfileRepair() agent.ExecFormatRepair {
 // platform, including the Windows ones where a shell fixture cannot stand in
 // for a package manager.
 func dshProvisionCommand(dshPath, spec string) *exec.Cmd {
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	cmd := exec.Command(dshPath, "plugin", "--profile", dshMulticaProfileName, "add", spec)
 	cmd.Env = dshPluginEnv()
 	return cmd

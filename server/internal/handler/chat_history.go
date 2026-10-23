@@ -92,11 +92,11 @@ func (h *Handler) chatMessageHistory(r *http.Request, scope chatHistoryScope) (c
 	if scope.contextRevision.Valid {
 		messages, err = h.Queries.ListChatMessagesPageForChannelContext(r.Context(), db.ListChatMessagesPageForChannelContextParams{
 			ChatSessionID: scope.sessionID, ChannelContextRevision: scope.contextRevision,
-			PageLimit: int32(limit), BeforeCreatedAt: beforeCreatedAt, BeforeID: beforeID,
+			PageLimit: util.SatInt32(limit), BeforeCreatedAt: beforeCreatedAt, BeforeID: beforeID,
 		})
 	} else {
 		messages, err = h.Queries.ListChatMessagesPage(r.Context(), db.ListChatMessagesPageParams{
-			ChatSessionID: scope.sessionID, Limit: int32(limit),
+			ChatSessionID: scope.sessionID, Limit: util.SatInt32(limit),
 			BeforeCreatedAt: beforeCreatedAt, BeforeID: beforeID,
 		})
 	}

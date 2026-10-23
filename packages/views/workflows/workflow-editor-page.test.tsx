@@ -98,6 +98,7 @@ describe("WorkflowEditorPage", () => {
 /** A step in the list (the detail panel's status picker shares its name). */
 function stepCard(name: string) {
   const card = screen
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
     .getAllByRole("button", { name: new RegExp(`^${name}`) })
     .find((b) => b.hasAttribute("aria-pressed"));
   if (!card) throw new Error(`no step card ${name}`);

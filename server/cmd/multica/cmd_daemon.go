@@ -271,7 +271,7 @@ func openBoundedErrLog(path string) (*os.File, error) {
 		// rename failure never blocks daemon startup.
 		_ = os.Rename(path, path+".1")
 	}
-	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 }
 
 // healthPortForProfile returns the health check port for the given profile.
@@ -592,7 +592,7 @@ func runDaemonBackground(cmd *cobra.Command) error {
 
 	// Ensure daemon directory exists.
 	dir := daemonDirForProfile(profile)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create daemon directory: %w", err)
 	}
 	if err := waitForDaemonProfileRelease(profile, daemonShutdownLockWait); err != nil {
@@ -624,6 +624,7 @@ func runDaemonBackground(cmd *cobra.Command) error {
 		errLogOffset = info.Size()
 	}
 
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	child := exec.Command(exePath, args...)
 	child.Stdout = logFile
 	child.Stderr = logFile
@@ -638,6 +639,7 @@ func runDaemonBackground(cmd *cobra.Command) error {
 		if isAccessDeniedSpawnErr(err) {
 			// Retry without breakaway. Reset the cmd state — exec.Cmd is
 			// not safe to Start() twice, so build a fresh one.
+			// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 			child = exec.Command(exePath, args...)
 			child.Stdout = logFile
 			child.Stderr = logFile
@@ -666,7 +668,7 @@ func runDaemonBackground(cmd *cobra.Command) error {
 
 	// Write PID file.
 	pidPath := daemonPIDPathForProfile(profile)
-	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o644); err != nil {
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not write PID file: %v\n", err)
 	}
 
@@ -1119,8 +1121,8 @@ func runDaemonForeground(cmd *cobra.Command) error {
 
 	// Write PID file so "daemon stop" can find us.
 	if dir := daemonDirForProfile(profile); dir != "" {
-		os.MkdirAll(dir, 0o755)
-		os.WriteFile(daemonPIDPathForProfile(profile), []byte(strconv.Itoa(os.Getpid())), 0o644)
+		os.MkdirAll(dir, 0o700)
+		os.WriteFile(daemonPIDPathForProfile(profile), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	}
 	defer os.Remove(daemonPIDPathForProfile(profile))
 
@@ -1144,6 +1146,7 @@ func runDaemonForeground(cmd *cobra.Command) error {
 		}
 
 		args := buildDaemonStartArgs(cmd)
+		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 		child := exec.Command(restartBin, args...)
 		child.Env = append(os.Environ(), "MULTICA_DAEMON_HANDOFF=1")
 
@@ -1170,6 +1173,7 @@ func runDaemonForeground(cmd *cobra.Command) error {
 			// The supervisor-spawned successor re-registers on startup; do not
 			// duplicate cleanup here.
 			if isAccessDeniedSpawnErr(err) {
+				// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 				child = exec.Command(restartBin, args...)
 				child.Env = append(os.Environ(), "MULTICA_DAEMON_HANDOFF=1")
 				child.Stdout = logFile
@@ -1191,7 +1195,7 @@ func runDaemonForeground(cmd *cobra.Command) error {
 
 		// Write new PID file.
 		pidPath := daemonPIDPathForProfile(profile)
-		os.WriteFile(pidPath, []byte(strconv.Itoa(child.Process.Pid)), 0o644)
+		os.WriteFile(pidPath, []byte(strconv.Itoa(child.Process.Pid)), 0o600)
 
 		logger.Info("new daemon started", "pid", child.Process.Pid)
 	}

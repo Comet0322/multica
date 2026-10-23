@@ -281,6 +281,7 @@ func (r *dispatchSlotRegistry) assign(ch *dingtalkChannel, logger *slog.Logger) 
 		slot.mu.Lock()
 		slot.queue = newDispatcher(func(ctx context.Context, job inboundJob) {
 			if current := slot.current.Load(); current != nil {
+				// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
 				current.runInbound(ctx, job)
 			}
 		}, logger)

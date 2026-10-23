@@ -144,6 +144,7 @@ func (s *CloudFrontSigner) SignedCookies(expiry time.Time) []*http.Cookie {
 
 	encodedPolicy := cfBase64Encode([]byte(policy))
 
+	// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-sha1 -- CloudFront signed URLs mandate RSA-SHA1
 	h := sha1.New()
 	h.Write([]byte(policy))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, s.privateKey, crypto.SHA1, h.Sum(nil))
@@ -180,6 +181,7 @@ func (s *CloudFrontSigner) SignedURL(rawURL string, expiry time.Time) string {
 
 	encodedPolicy := cfBase64Encode([]byte(policy))
 
+	// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-sha1 -- CloudFront signed URLs mandate RSA-SHA1
 	h := sha1.New()
 	h.Write([]byte(policy))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, s.privateKey, crypto.SHA1, h.Sum(nil))

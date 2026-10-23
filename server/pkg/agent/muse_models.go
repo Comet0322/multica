@@ -68,6 +68,7 @@ func discoverMuseModels(ctx context.Context, runtimeCmd Command) (Catalog, error
 		if err != nil {
 			return err
 		}
+		// nosemgrep: go.lang.security.audit.dangerous-command-write.dangerous-command-write -- writes into the agent CLI the operator configured; no shell involved
 		_, err = stdin.Write(append(data, '\n'))
 		return err
 	}

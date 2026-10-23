@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	// nosemgrep: go.lang.security.audit.xss.import-text-template.import-text-template -- static CLI help text, no untrusted input
 	"text/template"
 
 	"github.com/spf13/cobra"

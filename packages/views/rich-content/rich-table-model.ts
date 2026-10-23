@@ -93,6 +93,7 @@ function standaloneTable(source: string, [start, end]: Span): string {
     prefix = prefix.replace(QUOTE_MARKER, "");
     quoteDepth++;
   }
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
   const indent = new RegExp(`^ {0,${prefix.length}}`);
   const [first = "", ...rest] = source.slice(start, end).split("\n");
   return [

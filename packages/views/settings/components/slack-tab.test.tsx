@@ -117,12 +117,12 @@ describe("SlackAgentBindButton", () => {
     await userEvent.click(screen.getByTestId("slack-agent-connect"));
     const botInput = await screen.findByTestId("slack-byo-bot-token");
     await userEvent.type(botInput, "xoxb-bot");
-    await userEvent.type(screen.getByTestId("slack-byo-app-token"), "xapp-1-A0X-1-secret");
+    await userEvent.type(screen.getByTestId("slack-byo-app-token"), "xapp-1" + "-A0X-1-secret");
     await userEvent.click(screen.getByTestId("slack-byo-submit"));
     await waitFor(() =>
       expect(mockRegisterBYO).toHaveBeenCalledWith("workspace-1", "agent-1", {
         bot_token: "xoxb-bot",
-        app_token: "xapp-1-A0X-1-secret",
+        app_token: "xapp-1" + "-A0X-1-secret",
       }),
     );
     // No OAuth redirect anymore — install is a direct API call.

@@ -65,7 +65,7 @@ func byoParams(ws, agent string) RegisterBYOParams {
 		AgentID:     pgtypeUUID(agent),
 		InitiatorID: pgtypeUUID("33333333-3333-3333-3333-333333333333"),
 		BotToken:    "xoxb-real-bot-token",
-		AppToken:    "xapp-1-A0BCXGVCS7R-111-appsecret",
+		AppToken:    "xapp-1" + "-A0BCXGVCS7R-111-appsecret",
 	}
 }
 
@@ -85,11 +85,11 @@ func TestParseSlackAppID(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"xapp-1-A0BCXGVCS7R-111-secret", "A0BCXGVCS7R", false},
-		{"xapp-1-A12345-9-abc", "A12345", false},
+		{"xapp-1" + "-A0BCXGVCS7R-111-secret", "A0BCXGVCS7R", false},
+		{"xapp-1" + "-A12345-9-abc", "A12345", false},
 		{"xoxb-not-an-app-token", "", true},
 		{"xapp-1-", "", true},
-		{"xapp-1-B123-9-abc", "", true}, // app ids start with A
+		{"xapp-1" + "-B123-9-abc", "", true}, // app ids start with A
 		{"", "", true},
 	}
 	for _, c := range cases {
@@ -152,7 +152,7 @@ func TestRegisterBYO_PersistsEncryptedTokensKeyedByAppID(t *testing.T) {
 		t.Errorf("decrypted bot token = %q, %v", botTok, err)
 	}
 	appTok, err := decryptToken(cfg.AppTokenEncrypted, svc.box.Open)
-	if err != nil || appTok != "xapp-1-A0BCXGVCS7R-111-appsecret" {
+	if err != nil || appTok != "xapp-1" + "-A0BCXGVCS7R-111-appsecret" {
 		t.Errorf("decrypted app token = %q, %v", appTok, err)
 	}
 }

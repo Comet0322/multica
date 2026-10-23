@@ -35,6 +35,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -299,7 +300,7 @@ func (o *Outbound) recordSend(ctx context.Context, lease *deliveryLease, placeho
 				TurnID:     lease.turnID,
 				OwnerToken: lease.token,
 				MessageID:  strconv.FormatInt(messageID, 10),
-				ChunksSent: int32(chunksSent),
+				ChunksSent: util.SatInt32(chunksSent),
 			})
 		}
 	case deliveryRefused:

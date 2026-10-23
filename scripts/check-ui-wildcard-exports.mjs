@@ -125,7 +125,7 @@ const wildcards = exportEntries
     return {
       dir: targetPath.slice(0, targetPath.lastIndexOf("/")),
       extension: targetPath.slice(targetPath.lastIndexOf("*") + 1),
-      prefix: subpath.replace(/^\.\//, "").replace("*", ""),
+      prefix: subpath.replace(/^\.\//, "").replaceAll("*", ""),
     };
   });
 

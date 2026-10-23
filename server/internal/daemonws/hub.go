@@ -338,9 +338,9 @@ func NewHub() *Hub {
 			// Daemon clients authenticate with Authorization headers before the
 			// upgrade. Browsers cannot set those headers through the native WS API,
 			// and DaemonAuth does not accept cookies, so cookie-based CSWSH does
-			// not apply to this endpoint. Re-evaluate this if DaemonAuth ever
-			// grows cookie fallback.
-			CheckOrigin: func(r *http.Request) bool { return true },
+			// not apply to this endpoint. Browsers always send Origin, daemons never
+			// do, so any request that carries one is refused.
+			CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" },
 		},
 		clients:            make(map[*client]bool),
 		byRuntime:          make(map[string]map[*client]bool),
@@ -415,6 +415,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, identity C
 		return
 	}
 
+	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check -- CheckOrigin refuses any request that carries an Origin header; daemons authenticate with Authorization
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("daemon websocket upgrade failed", "error", err)

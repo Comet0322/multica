@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Wire-compatible re-implementation of the Lark/Feishu long-connection
@@ -128,15 +130,15 @@ func (f *Frame) Marshal() []byte {
 	buf = protowire.AppendTag(buf, 2, protowire.VarintType)
 	buf = protowire.AppendVarint(buf, f.LogID)
 	buf = protowire.AppendTag(buf, 3, protowire.VarintType)
-	buf = protowire.AppendVarint(buf, uint64(uint32(f.Service)))
+	buf = protowire.AppendVarint(buf, util.SatUint64From64(int64(f.Service)))
 	buf = protowire.AppendTag(buf, 4, protowire.VarintType)
-	buf = protowire.AppendVarint(buf, uint64(uint32(f.Method)))
+	buf = protowire.AppendVarint(buf, util.SatUint64From64(int64(f.Method)))
 
 	// Repeated headers — emit one length-prefixed entry per FrameHeader.
 	// Empty Headers list emits nothing, matching the SDK guard.
 	for _, h := range f.Headers {
 		buf = protowire.AppendTag(buf, 5, protowire.BytesType)
-		buf = protowire.AppendVarint(buf, uint64(headerSize(h)))
+		buf = protowire.AppendVarint(buf, util.SatUint64(headerSize(h)))
 		// Header.Key (field 1) and Header.Value (field 2) are both
 		// proto2 req — emit unconditionally.
 		buf = protowire.AppendTag(buf, 1, protowire.BytesType)
@@ -221,7 +223,7 @@ func UnmarshalFrame(b []byte) (*Frame, error) {
 			if err := protowire.ParseError(m); err != nil {
 				return nil, fmt.Errorf("ws frame: consume service: %w", err)
 			}
-			f.Service = int32(v)
+			f.Service = util.SatInt32FromU64(v)
 			b = b[m:]
 		case 4: // Method int32
 			if typ != protowire.VarintType {
@@ -231,7 +233,7 @@ func UnmarshalFrame(b []byte) (*Frame, error) {
 			if err := protowire.ParseError(m); err != nil {
 				return nil, fmt.Errorf("ws frame: consume method: %w", err)
 			}
-			f.Method = int32(v)
+			f.Method = util.SatInt32FromU64(v)
 			b = b[m:]
 		case 5: // Headers (repeated)
 			if typ != protowire.BytesType {

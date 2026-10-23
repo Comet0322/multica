@@ -345,7 +345,9 @@ func (proxy *remoteMCPProxy) ServeHTTP(w http.ResponseWriter, request *http.Requ
 			w.Header().Set(header, value)
 		}
 	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(response.StatusCode)
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter, go.net.xss.no-direct-write-to-responsewriter-taint.no-direct-write-to-responsewriter-taint -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML; upstream body relayed to a local agent with nosniff; not rendered by a browser
 	_, _ = w.Write(responseBody)
 	resultClass = "success"
 }

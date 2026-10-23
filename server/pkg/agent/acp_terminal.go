@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -188,7 +189,7 @@ func (c *hermesClient) acpTerminalCreate(params json.RawMessage) (map[string]any
 			status.exitCode = &code
 		} else if exitErr, ok := err.(*exec.ExitError); ok {
 			if code := exitErr.ExitCode(); code >= 0 {
-				exitCode := uint32(code)
+				exitCode := uint32(code & math.MaxInt32)
 				status.exitCode = &exitCode
 			} else {
 				status.signal = acpProcessExitSignal(exitErr.ProcessState)

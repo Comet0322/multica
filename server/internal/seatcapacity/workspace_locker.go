@@ -1,6 +1,7 @@
 package seatcapacity
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -177,5 +178,9 @@ func (l *postgresWorkspaceLocker) dropLocalRef(workspaceID uuid.UUID, local *loc
 
 func workspaceAdvisoryLockKey(workspaceID uuid.UUID) int64 {
 	sum := sha256.Sum256(append([]byte("multica-seat-capacity:"), workspaceID[:]...))
-	return int64(binary.BigEndian.Uint64(sum[:8]))
+	var key int64
+	// The first 8 hash bytes are reinterpreted as a two's-complement key; reading
+	// them as int64 keeps the value identical to the old uint64 cast.
+	_ = binary.Read(bytes.NewReader(sum[:8]), binary.BigEndian, &key)
+	return key
 }

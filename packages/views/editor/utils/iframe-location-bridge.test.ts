@@ -13,12 +13,14 @@ const PREFIX_RE = /^<script>\(function\(\)\{[^\n]*\}\)\(\);<\/script>/;
 describe("withLocationBridge", () => {
   it("puts the bridge after a leading doctype so the document stays in standards mode", () => {
     const out = withLocationBridge("<!doctype html><p>hi</p>", "");
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- test-only: asserts on generated iframe bridge HTML with fixed inputs
     expect(out.startsWith("<!doctype html><script>")).toBe(true);
     expect(out.endsWith("<p>hi</p>")).toBe(true);
   });
 
   it("keeps comments that precede the doctype in front of it", () => {
     const out = withLocationBridge("<!-- mock -->\n<!DOCTYPE html><p>hi</p>", "");
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- test-only: asserts on generated iframe bridge HTML with fixed inputs
     expect(out.startsWith("<!-- mock -->\n<!DOCTYPE html><script>")).toBe(true);
   });
 

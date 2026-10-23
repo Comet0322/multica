@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	mathrand "math/rand/v2"
 	"strconv"
 	"sync"
 	"time"
@@ -964,7 +963,7 @@ func jitter(d time.Duration) time.Duration {
 		return d
 	}
 	delta := d / 2
-	return d - delta + time.Duration(mathrand.Int64N(int64(2*delta)+1))
+	return d - delta + time.Duration(util.RandInt63n(int64(2*delta)+1))
 }
 
 // renewalJitter uses a narrow [0.9d, 1.1d] window so replicas spread their
@@ -974,7 +973,7 @@ func renewalJitter(d time.Duration) time.Duration {
 		return d
 	}
 	delta := d / 10
-	return d - delta + time.Duration(mathrand.Int64N(int64(2*delta)+1))
+	return d - delta + time.Duration(util.RandInt63n(int64(2*delta)+1))
 }
 
 // sleep is a ctx-aware time.Sleep. Returns true iff ctx was cancelled before

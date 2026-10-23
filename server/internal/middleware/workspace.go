@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -152,7 +153,9 @@ func resolveWorkspaceUUID(queries *db.Queries) workspaceResolver {
 func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write([]byte(`{"error":"` + msg + `"}`))
+	body, _ := json.Marshal(map[string]string{"error": msg})
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- JSON body from json.Marshal with Content-Type application/json
+	_, _ = w.Write(body)
 }
 
 // RequireWorkspaceMember resolves the workspace from slug (preferred) or UUID

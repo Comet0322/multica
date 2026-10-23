@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 const (
@@ -225,12 +227,12 @@ func retryBackoff(instanceID uuid.UUID, day time.Time, attempt int) time.Duratio
 	seed := make([]byte, 0, 16+8+8)
 	seed = append(seed, instanceID[:]...)
 	var encoded [16]byte
-	binary.BigEndian.PutUint64(encoded[:8], uint64(utcDay(day).Unix()))
-	binary.BigEndian.PutUint64(encoded[8:], uint64(attempt))
+	binary.BigEndian.PutUint64(encoded[:8], util.SatUint64From64(utcDay(day).Unix()))
+	binary.BigEndian.PutUint64(encoded[8:], util.SatUint64(attempt))
 	seed = append(seed, encoded[:]...)
 	sum := sha256.Sum256(seed)
 	// [1.0, 1.25) jitter keeps the documented one-minute lower bound.
-	jitter := time.Duration(binary.BigEndian.Uint64(sum[:8]) % uint64(base/4))
+	jitter := time.Duration(util.SatInt64FromU64(binary.BigEndian.Uint64(sum[:8]) % util.SatUint64From64(int64(base/4))))
 	if base+jitter > maxRetryBackoff {
 		return maxRetryBackoff
 	}

@@ -522,16 +522,19 @@ func (h *Handler) GitHubSetupCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	settingsURL = githubSettingsURL(frontend, returnTo)
 	if installationIDStr == "" {
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=missing_params", http.StatusFound)
 		return
 	}
 	installationID, err := strconv.ParseInt(installationIDStr, 10, 64)
 	if err != nil {
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=bad_installation_id", http.StatusFound)
 		return
 	}
 	wsUUID, err := parseStrictUUID(workspaceID)
 	if err != nil {
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=bad_workspace", http.StatusFound)
 		return
 	}
@@ -561,18 +564,21 @@ func (h *Handler) GitHubSetupCallback(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("github: failed to persist installation", "err", err, "installation_id", installationID)
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=persist_failed", http.StatusFound)
 		return
 	}
 	inst, err = h.consumePendingGitHubInstallation(r.Context(), inst)
 	if err != nil {
 		slog.Error("github: failed to apply pending installation metadata", "err", err, "installation_id", installationID)
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=persist_failed", http.StatusFound)
 		return
 	}
 	h.publish(protocol.EventGitHubInstallationCreated, workspaceID, "system", "", map[string]any{
 		"installation": githubInstallationToBroadcast(inst),
 	})
+	// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
 	http.Redirect(w, r, settingsURL+"&github_connected=1", http.StatusFound)
 }
 
@@ -1909,7 +1915,7 @@ func issueNumberForPrefix(identifier, prefix string) (int32, bool) {
 	if !strings.EqualFold(gotPrefix, prefix) {
 		return 0, false
 	}
-	n, err := strconv.Atoi(numStr)
+	n, err := strconv.ParseInt(numStr, 10, 32)
 	if err != nil {
 		return 0, false
 	}

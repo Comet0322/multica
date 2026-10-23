@@ -37,7 +37,7 @@ describe("WSClient", () => {
   });
 
   it("includes client identity in the upgrade URL when configured", () => {
-    const ws = new WSClient("ws://example.test/ws", {
+    const ws = new WSClient("wss://example.test/ws", {
       identity: { platform: "desktop", version: "1.2.3", os: "macos" },
     });
     ws.setAuth("tok", "acme");
@@ -54,7 +54,7 @@ describe("WSClient", () => {
   });
 
   it("omits client_* params when identity is not configured", () => {
-    const ws = new WSClient("ws://example.test/ws");
+    const ws = new WSClient("wss://example.test/ws");
     ws.setAuth("tok", "acme");
     ws.connect();
 
@@ -65,7 +65,7 @@ describe("WSClient", () => {
   });
 
   it("only includes the identity fields that are set", () => {
-    const ws = new WSClient("ws://example.test/ws", {
+    const ws = new WSClient("wss://example.test/ws", {
       identity: { platform: "cli" },
     });
     ws.setAuth("tok", "acme");
@@ -84,7 +84,7 @@ describe("WSClient", () => {
       warn: vi.fn(),
       error: vi.fn(),
     };
-    const ws = new WSClient("ws://example.test/ws", { logger });
+    const ws = new WSClient("wss://example.test/ws", { logger });
     ws.connect();
 
     const huge = "x".repeat(5000);
@@ -105,7 +105,7 @@ describe("WSClient", () => {
       warn: vi.fn(),
       error: vi.fn(),
     };
-    const ws = new WSClient("ws://example.test/ws", { logger });
+    const ws = new WSClient("wss://example.test/ws", { logger });
     const handler = vi.fn();
     ws.on("issue:updated", handler);
     ws.connect();
@@ -143,7 +143,7 @@ describe("WSClient", () => {
       warn: vi.fn(),
       error: vi.fn(),
     };
-    const ws = new WSClient("ws://example.test/ws", { logger });
+    const ws = new WSClient("wss://example.test/ws", { logger });
 
     // A downstream consumer that assumes a string type, exactly like the
     // realtime sync's onAny dispatcher.
@@ -184,7 +184,7 @@ describe("WSClient", () => {
   });
 
   it("passes actor_id and actor_type to event handlers", () => {
-    const ws = new WSClient("ws://example.test/ws");
+    const ws = new WSClient("wss://example.test/ws");
     ws.setAuth("tok", "acme");
     ws.connect();
 
@@ -255,7 +255,7 @@ describe("WSClient", () => {
         }),
       );
 
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
       ws.connect();
       simulateDisconnect();
 
@@ -273,7 +273,7 @@ describe("WSClient", () => {
         }),
       );
 
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
       ws.connect();
 
       // Attempt 1: base = 1000 * 2^0 = 1000
@@ -308,7 +308,7 @@ describe("WSClient", () => {
         }),
       );
 
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
       ws.connect();
 
       // Drive through enough failures to exceed the cap:
@@ -339,7 +339,7 @@ describe("WSClient", () => {
         }),
       );
 
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
 
       // First disconnect: random()=0 → jitter = 1000 * 0.2 * (0*2-1) = -200 → 800ms
       ws.connect();
@@ -369,7 +369,7 @@ describe("WSClient", () => {
         }),
       );
 
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
       ws.setAuth("tok", "acme");
       ws.connect();
 
@@ -391,7 +391,7 @@ describe("WSClient", () => {
     });
 
     it("notifies reconnect when the initial connection succeeds only after a retry", () => {
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
       ws.setAuth("tok", "acme");
       const onReconnect = vi.fn();
       ws.onReconnect(onReconnect);
@@ -421,7 +421,7 @@ describe("WSClient", () => {
         warn: vi.fn(),
         error: vi.fn(),
       };
-      const ws = new WSClient("ws://example.test/ws", { logger });
+      const ws = new WSClient("wss://example.test/ws", { logger });
       ws.connect();
 
       // Drive past the old 20-attempt limit — all should schedule a reconnect.
@@ -455,7 +455,7 @@ describe("WSClient", () => {
         }),
       );
 
-      const ws = new WSClient("ws://example.test/ws");
+      const ws = new WSClient("wss://example.test/ws");
       ws.connect();
 
       // Two failures to bump the counter.
@@ -495,7 +495,7 @@ describe("WSClient session renewal", () => {
 
   it("reads the current token on every connect", () => {
     let current = "token-v1";
-    const ws = new WSClient("ws://example.test/ws", {
+    const ws = new WSClient("wss://example.test/ws", {
       getToken: () => current,
     });
     ws.setAuth("token-v1", "acme");
@@ -519,7 +519,7 @@ describe("WSClient session renewal", () => {
   });
 
   it("sends no auth frame in cookie mode, where the cookie rides the upgrade", () => {
-    const ws = new WSClient("ws://example.test/ws", {
+    const ws = new WSClient("wss://example.test/ws", {
       cookieAuth: true,
       getToken: () => "should-not-be-used",
     });

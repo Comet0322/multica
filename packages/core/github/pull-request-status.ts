@@ -230,7 +230,9 @@ export function stripIssueKeyFromTitle(title: string, identifier: string): strin
   if (!identifier) return title;
   const key = escapeRegExp(identifier);
   const stripped = title
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
     .replace(new RegExp(`^\\s*${key}(?![\\w-])\\s*:?\\s*`, "i"), "")
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
     .replace(new RegExp(`\\s*\\(${key}\\)\\s*$`, "i"), "");
   return stripped.trim() ? stripped : title;
 }

@@ -53,8 +53,8 @@ func rfc5987Encode(name string) string {
 	var b strings.Builder
 	b.Grow(len(name) * 3) // worst case: every byte encoded as %XX
 	for _, r := range name {
-		if r <= 0x7f && isAttrChar(byte(r)) {
-			b.WriteByte(byte(r))
+		if r <= 0x7f && isAttrChar(r) {
+			b.WriteRune(r)
 		} else {
 			// Encode each byte of the UTF-8 representation
 			buf := make([]byte, 4)
@@ -69,11 +69,11 @@ func rfc5987Encode(name string) string {
 }
 
 // isAttrChar returns true for chars allowed in RFC 5987 attr-char.
-func isAttrChar(c byte) bool {
+func isAttrChar(c rune) bool {
 	return (c >= 'a' && c <= 'z') ||
 		(c >= 'A' && c <= 'Z') ||
 		(c >= '0' && c <= '9') ||
-		strings.ContainsRune("!#$&+-.^_`|~", rune(c))
+		strings.ContainsRune("!#$&+-.^_`|~", c)
 }
 
 func ContentDisposition(contentType, filename string) string {

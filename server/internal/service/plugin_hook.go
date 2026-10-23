@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/plugincontract"
 	"github.com/multica-ai/multica/server/pkg/remotemcp"
@@ -548,8 +549,8 @@ func (s *PluginService) recordInvocation(ctx context.Context, invocation HookInv
 		HookKey:        invocation.Hook.Key,
 		Trigger:        invocation.Trigger,
 		Status:         status,
-		Attempt:        int32(attempt),
-		LatencyMs:      int32(latency),
+		Attempt:        util.SatInt32(attempt),
+		LatencyMs:      util.SatInt32(latency),
 	}
 	if invocation.DeliveryID != "" {
 		params.DeliveryID = pgtype.Text{String: invocation.DeliveryID, Valid: true}

@@ -76,6 +76,7 @@ export function useHtmlPreviewLocation(
       const to = splitHtmlPreviewAddress(next);
       const win = frameElRef.current?.contentWindow;
       if (win && to.hash && to.search === from.search) {
+        // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- target is a sandboxed iframe with an opaque origin
         win.postMessage({ [HTML_PREVIEW_LOCATION_KEY]: 1, type: "hash", value: to.hash }, "*");
         return;
       }

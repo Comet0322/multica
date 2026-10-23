@@ -55,6 +55,7 @@ describe("HTML block bridge", () => {
 describe("buildHtmlBlockDocument", () => {
   it("puts the theme and bridge in front of the markup and the fragment shim after it", () => {
     const doc = buildHtmlBlockDocument("<p>hi</p>", THEME);
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- test-only: asserts on generated iframe bridge HTML with fixed inputs
     expect(doc.startsWith("<style>:root{--foreground:black;--chart-1:blue}</style><script>")).toBe(true);
     expect(doc).toContain(__HTML_BLOCK_BRIDGE__);
     expect(doc).toContain("</script><p>hi</p>");

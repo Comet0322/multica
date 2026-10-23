@@ -54,6 +54,7 @@ func (h *Handler) InvokeAgentPluginHook(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// nosemgrep: trailofbits.go.invalid-usage-of-modified-variable.invalid-usage-of-modified-variable -- false positive: variable is not modified after validation
 	result, err := h.PluginService.InvokeAgentHook(
 		r.Context(), uuidToString(installation.ID), req.HookKey, task.AgentID, req.Input)
 	if err != nil {

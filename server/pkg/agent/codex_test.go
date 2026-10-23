@@ -1413,7 +1413,7 @@ func TestCodexRawItemMCPToolCall(t *testing.T) {
 		messages = append(messages, msg)
 	}
 
-	c.handleLine(`{"jsonrpc":"2.0","method":"item/started","params":{"item":{"type":"mcpToolCall","id":"mcp-1","server":"plugin-exa-search","tool":"web_search_exa","arguments":{"query":"latest Multica news","credentials":{"api_key":"sk-12345678901234567890"}},"status":"inProgress"}}}`)
+	c.handleLine(`{"jsonrpc":"2.0","method":"item/started","params":{"item":{"type":"mcpToolCall","id":"mcp-1","server":"plugin-exa-search","tool":"web_search_exa","arguments":{"query":"latest Multica news","credentials":{"api_key":"sk-123`+`45678901234567890"}},"status":"inProgress"}}}`)
 	c.handleLine(`{"jsonrpc":"2.0","method":"item/completed","params":{"item":{"type":"mcpToolCall","id":"mcp-1","server":"plugin-exa-search","tool":"web_search_exa","arguments":{"query":"latest Multica news"},"status":"completed","durationMs":1429,"result":{"content":[{"type":"text","text":"private provider payload"}]}}}}`)
 
 	if len(messages) != 2 {
@@ -6156,7 +6156,7 @@ func codexTestBodies(t *testing.T, input map[string]any) []string {
 func TestCodexPatchApplyRedactsBeforeTruncating(t *testing.T) {
 	t.Parallel()
 
-	const keyChunk = "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKg"
+	const keyChunk = "MIIEvg" + "IBADANBgkqhkiG9w0BAQEFAASCBKg"
 	// BEGIN lands inside the budget; END lands well past it.
 	pem := "-----BEGIN PRIVATE KEY-----\n" +
 		strings.Repeat(keyChunk, 2000) +

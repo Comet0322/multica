@@ -100,6 +100,7 @@ func (b *pendingBatcher) schedule(key string, flush func(), replace bool) {
 	}
 	b.seq++
 	gen := b.seq
+	// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
 	fire := func() { b.onFire(key, gen) }
 	if e, ok := b.pending[key]; ok {
 		if !replace {

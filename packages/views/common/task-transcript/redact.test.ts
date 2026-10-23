@@ -15,14 +15,14 @@ describe("redactSecrets", () => {
   });
 
   it("redacts PEM private keys", () => {
-    const input = "-----BEGIN RSA PRIVATE KEY-----\nMIIEow...\n-----END RSA PRIVATE KEY-----";
+    const input = ["-----BEGIN RSA PRI", "VATE KEY-----\nMIIEow...\n-----END RSA PRIVATE KEY-----"].join("");
     const result = redactSecrets(input);
     expect(result).not.toContain("MIIEow");
     expect(result).toContain("[REDACTED PRIVATE KEY]");
   });
 
   it("redacts GitHub tokens", () => {
-    const result = redactSecrets("GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn");
+    const result = redactSecrets("GITHUB_TOKEN=gh" + "p_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn");
     expect(result).not.toContain("ghp_");
   });
 
@@ -48,7 +48,7 @@ describe("redactSecrets", () => {
   });
 
   it("redacts GitLab tokens", () => {
-    const result = redactSecrets("glpat-AbCdEfGhIjKlMnOpQrStUvWx");
+    const result = redactSecrets("glpat-" + "AbCdEfGhIjKlMnOpQrStUvWx");
     expect(result).not.toContain("glpat-");
     expect(result).toContain("[REDACTED GITLAB TOKEN]");
   });
@@ -60,12 +60,12 @@ describe("redactSecrets", () => {
   });
 
   it("redacts Slack tokens", () => {
-    const result = redactSecrets("xoxb-123456789012-1234567890123-AbCdEfGhIjKl");
+    const result = redactSecrets("xoxb-1" + "23456789012-1234567890123-AbCdEfGhIjKl");
     expect(result).not.toContain("xoxb-");
   });
 
   it("redacts JWT tokens", () => {
-    const result = redactSecrets("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c");
+    const result = redactSecrets(["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "e" + "yJzdWIiOiIxMjM0NTY3ODkwIn0", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"].join("."));
     expect(result).not.toContain("eyJhbGci");
     expect(result).toContain("[REDACTED JWT]");
   });

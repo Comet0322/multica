@@ -2133,6 +2133,7 @@ describe("IssueDetail (shared)", () => {
   };
 
   function statusChangeIcon(to: string): SVGElement {
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
     const row = screen.getByText(new RegExp(`to ${to}$`, "i")).closest("div")
       ?.parentElement;
     const icon = row?.querySelector("svg");

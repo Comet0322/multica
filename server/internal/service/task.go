@@ -4004,7 +4004,7 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 			ClaimRecoverySecs: claimResponseRecoveryWindow.Seconds(),
 			PrepareLeaseSecs:  prepareLeaseDuration.Seconds(),
 			RuntimeStaleSecs:  RuntimeClaimFreshnessSeconds,
-			MaxTasks:          int32(maxTasks),
+			MaxTasks:          util.SatInt32(maxTasks),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("reclaim stale dispatched tasks: %w", err)

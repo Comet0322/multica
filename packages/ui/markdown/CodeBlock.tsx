@@ -119,7 +119,7 @@ export function CodeBlock({
         }
       } catch (error) {
         // Fallback to plain text on error
-        console.warn(`Shiki highlighting failed for language "${resolvedLang}":`, error)
+        console.warn("Shiki highlighting failed for language:", resolvedLang, error)
         if (!cancelled) {
           setHighlighted(null)
           setIsLoading(false)

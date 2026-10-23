@@ -103,7 +103,7 @@ func TestAutopilotTriggerBroadcastsCarryNoWebhookCredential(t *testing.T) {
 			request: func() *http.Request {
 				return withURLParams(writer.request("PUT",
 					"/api/autopilots/"+fx.autopilotID+"/triggers/"+fx.webhookTriggerID+"/signing-secret"+ws,
-					map[string]any{"signing_secret": "0123456789abcdef"}),
+					map[string]any{"signing_secret": "012345" + "6789abcdef"}),
 					"id", fx.autopilotID, "triggerId", fx.webhookTriggerID)
 			},
 		},

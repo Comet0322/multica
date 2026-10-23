@@ -149,6 +149,7 @@ func readCursorDarwinIdentity(pid int) (cursorDarwinIdentity, error) {
 	var identity cursorDarwinIdentity
 	// arg=1 includes unreaped zombies, needed to identify a root that exited
 	// while its final stream events were buffered. Executable-work scans filter them.
+	// nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- darwin syscall interop
 	n, _, errno := syscall.Syscall6(unix.SYS_PROC_INFO, 2, uintptr(pid), 17, 1, uintptr(unsafe.Pointer(&identity)), unsafe.Sizeof(identity))
 	if errno != 0 {
 		return identity, errno
@@ -164,6 +165,7 @@ func signalCursorDarwinIdentity(pid int, version uint32, sig syscall.Signal) err
 	// permissions still come from the caller's real credentials.
 	var token [8]uint32
 	token[5], token[7] = uint32(pid), version
+	// nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- darwin syscall interop
 	_, _, errno := syscall.Syscall6(unix.SYS_PROC_INFO, 0x11, 0, uintptr(sig), 0, uintptr(unsafe.Pointer(&token)), unsafe.Sizeof(token))
 	if errno != 0 {
 		return errno

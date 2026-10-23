@@ -311,7 +311,7 @@ const HeaderCommentsTruncated = "X-Comments-Truncated"
 // commentProbeLimit reads one row past the cap so a truncated read can be told
 // apart from an issue holding exactly commentHardCap comments. The difference
 // matters: exact-cap reads are complete and must not advertise data loss.
-func commentProbeLimit() int32 { return int32(commentHardCap) + 1 }
+func commentProbeLimit() int32 { return util.SatInt32(commentHardCap) + 1 }
 
 // Budgets for thread completion (completeCommentThreads).
 //
@@ -723,7 +723,7 @@ func (h *Handler) fetchCommentsForList(ctx context.Context, args fetchCommentsAr
 				HasCursor:   args.HasCursor,
 				BeforeAt:    args.BeforeAt,
 				BeforeID:    args.BeforeID,
-				ReplyLimit:  int32(args.ThreadTail) + 1,
+				ReplyLimit:  util.SatInt32(args.ThreadTail) + 1,
 			})
 			if err != nil {
 				return fetchCommentsResult{}, err
@@ -822,7 +822,7 @@ func (h *Handler) fetchCommentsForList(ctx context.Context, args fetchCommentsAr
 			AnchorID:    anchor,
 			IssueID:     issue.ID,
 			WorkspaceID: issue.WorkspaceID,
-			ReplyLimit:  int32(commentHardCap),
+			ReplyLimit:  util.SatInt32(commentHardCap),
 		})
 		if err != nil {
 			return fetchCommentsResult{}, err
@@ -888,7 +888,7 @@ func (h *Handler) fetchCommentsForList(ctx context.Context, args fetchCommentsAr
 			HasCursor:   args.HasCursor,
 			BeforeAt:    args.BeforeAt,
 			BeforeID:    args.BeforeID,
-			ThreadLimit: int32(args.RecentN),
+			ThreadLimit: util.SatInt32(args.RecentN),
 		})
 		if err != nil {
 			return fetchCommentsResult{}, err
@@ -1277,7 +1277,7 @@ func (h *Handler) addMissingCommentDescendants(
 			WorkspaceID: workspaceID,
 			ThroughAt:   through.CreatedAt,
 			ThroughID:   through.ID,
-			RowLimit:    int32(scanBudget + 1),
+			RowLimit:    util.SatInt32(scanBudget + 1),
 		})
 		if err != nil {
 			return false, err

@@ -1338,6 +1338,7 @@ func (h *Handler) GetAttachmentContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	h.setAttachmentPreviewSecurityHeaders(w)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
 	if _, err := w.Write(body); err != nil {
 		slog.Error("failed to write attachment preview body", "id", attachmentID, "error", err)
 	}

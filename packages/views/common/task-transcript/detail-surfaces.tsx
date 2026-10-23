@@ -70,6 +70,7 @@ export function renderDiffRows(lines: TraceDiffLine[], highlighted: HighlightedS
         ) : (
           // lowlight output only: text is escaped by the hast serializer and
           // the sole elements are its own `hljs-*` spans.
+          // nosemgrep: typescript.react.react-dangerouslysetinnerhtml-prop.react-dangerouslysetinnerhtml-prop, typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml -- content is highlight.js/KaTeX output, already escaped
           <span className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
         )}
       </div>

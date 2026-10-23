@@ -40,6 +40,7 @@ async function renderForm(defaultAgentId = "emacs") {
 
 async function chooseCondition(label: string) {
   fireEvent.click(screen.getByRole("button", { name: /选择条件/ }));
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
   fireEvent.click(await screen.findByRole("menuitem", { name: new RegExp(label) }));
 }
 

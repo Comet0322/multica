@@ -455,6 +455,7 @@ func probeDshMulticaProfile(ctx context.Context, executablePath string) dshProbe
 	parent := ctx
 	ctx, cancel := context.WithTimeout(parent, dshProbeTimeout)
 	defer cancel()
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	cmd := exec.CommandContext(ctx, executablePath, "--profile", dshMulticaProfileName, "--probe")
 	// processtree, not cmd.Output: `--probe` boots a whole DSH profile, so the
 	// process it starts is a tree. Killing only the direct child leaves

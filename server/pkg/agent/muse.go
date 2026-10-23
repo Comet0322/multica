@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -396,18 +397,11 @@ func museUUIDv7() string {
 	if _, err := rand.Read(b[:]); err != nil {
 		// crypto/rand failure is unrecoverable for identity generation; fall
 		// back to the clock so the run still has a monotonic, well-formed id.
-		ms := uint64(time.Now().UnixNano())
-		for i := 0; i < 8; i++ {
-			b[i] = byte(ms >> (8 * i))
-		}
+		binary.LittleEndian.PutUint64(b[:8], uint64(time.Now().UnixNano()))
 	}
-	ms := uint64(time.Now().UnixMilli())
-	b[0] = byte(ms >> 40)
-	b[1] = byte(ms >> 32)
-	b[2] = byte(ms >> 24)
-	b[3] = byte(ms >> 16)
-	b[4] = byte(ms >> 8)
-	b[5] = byte(ms)
+	var ms [8]byte
+	binary.BigEndian.PutUint64(ms[:], uint64(time.Now().UnixMilli()))
+	copy(b[:6], ms[2:])
 	b[6] = (b[6] & 0x0f) | 0x70
 	b[8] = (b[8] & 0x3f) | 0x80
 

@@ -79,6 +79,7 @@ const RAW_HTML_TAG_RE = /<(\/?[a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?\/?>/g;
 function escapeRawHtmlTagsInSegment(segment: string): string {
   return segment.replace(
     RAW_HTML_TAG_RE,
+    // nosemgrep: javascript.audit.detect-replaceall-sanitization.detect-replaceall-sanitization -- escapes angle brackets of raw HTML tags only
     (match) => match.replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
   );
 }

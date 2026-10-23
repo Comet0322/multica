@@ -183,6 +183,7 @@ function HtmlBlockBody({
     if (!active || fullscreen) return;
     // Fullscreen reports were ignored, but the bridge deduplicated them.
     // Ask again after inline layout is restored, even if its height is unchanged.
+    // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- target is a sandboxed iframe with an opaque origin
     iframeRef.current?.contentWindow?.postMessage(
       { [HTML_BLOCK_MESSAGE_KEY]: 1, type: "measure" },
       "*",

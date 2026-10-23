@@ -3,13 +3,13 @@ package ghsnapshot
 import (
 	"context"
 	"log/slog"
-	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/dbreader"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -104,7 +104,7 @@ func NewManager(client *Client, queries *db.Queries, pool TxBeginner, onApplied 
 		sweepMaxRows:  defaultSweepMaxRows,
 		chaseBackoff:  defaultChaseBackoff,
 		now:           time.Now,
-		jitter:        func() time.Duration { return time.Duration(rand.Int63n(int64(250 * time.Millisecond))) },
+		jitter:        func() time.Duration { return time.Duration(util.RandInt63n(int64(250 * time.Millisecond))) },
 		fetch:         FetchPRSnapshot,
 		queue:         make(chan address, queueBuffer),
 		active:        map[address]bool{},

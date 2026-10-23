@@ -223,7 +223,7 @@ it.each(["invitation:accepted", "invitation:declined"] as const)(
       listMyInvitations,
     } as unknown as ApiClient);
 
-    const client = new WSClient("ws://example.test/ws");
+    const client = new WSClient("wss://example.test/ws");
     client.setAuth("tok", "test-ws");
     client.connect();
     const stores = {

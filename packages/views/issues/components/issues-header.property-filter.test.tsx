@@ -80,6 +80,7 @@ function renderFilterMenu(props: IssueProperty[]) {
 
 async function openPropertySubmenu(name: string) {
   fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
   const trigger = await screen.findByRole("menuitem", { name: new RegExp(name) });
   fireEvent.click(trigger);
   await waitFor(() =>

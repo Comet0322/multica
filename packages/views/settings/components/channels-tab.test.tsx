@@ -82,6 +82,7 @@ describe("ChannelsTab", () => {
     if (kind === "pending") state.pending = true;
     else state.connectionError = true;
     renderWithI18n(<ChannelsTab />);
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
     expect(screen.getByRole("link", { name: new RegExp(`Slack ${label}`) })).toBeInTheDocument();
   });
 

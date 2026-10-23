@@ -55,7 +55,7 @@ func publishDaemonPort(profile string, record daemonPortRecord) error {
 	if dir == "" {
 		return fmt.Errorf("resolve daemon profile directory")
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(dir, ".daemon.port-*")

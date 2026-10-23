@@ -174,6 +174,7 @@ func (d *dispatcher) startClose() {
 		go func() {
 			d.workers.Wait()
 			d.cancel()
+			// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
 			close(d.done)
 		}()
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/integrations/dingtalk"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -348,7 +349,7 @@ func (h *Handler) listDingTalkGroups(
 			IncludeInactive:      includeInactive,
 			ActiveSince:          activeSince,
 			PageOffset:           int32(pageOffset),
-			PageLimit:            int32(pageLimit + boolToInt(includeInactive)),
+			PageLimit:            util.SatInt32(pageLimit + boolToInt(includeInactive)),
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list dingtalk groups")

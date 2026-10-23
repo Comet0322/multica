@@ -75,6 +75,7 @@ export function CodeBlockStatic({
     >
       <code
         className={cn("hljs", language && `language-${language}`)}
+        // nosemgrep: typescript.react.react-dangerouslysetinnerhtml-prop.react-dangerouslysetinnerhtml-prop, typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml -- content is highlight.js/KaTeX output, already escaped
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </pre>

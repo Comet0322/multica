@@ -13,6 +13,7 @@ export function stripQuickCreatePrefix(title: string, identifier?: string): stri
   if (!normalized) return "";
 
   if (identifier) {
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
     const exactPrefix = new RegExp(
       `^Created\\s+${escapeRegExp(identifier)}:\\s*`,
       "i",

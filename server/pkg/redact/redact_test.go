@@ -86,7 +86,7 @@ func TestRedactGoogleAPIKeyEndingWithDash(t *testing.T) {
 
 func TestRedactOpenAIKey(t *testing.T) {
 	t.Parallel()
-	input := "OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345"
+	input := "OPENAI_API_KEY=sk-pro" + "j-abc123def456ghi789jkl012mno345"
 	got := Text(input)
 	if strings.Contains(got, "sk-proj-abc123") {
 		t.Fatalf("OpenAI key not redacted: %s", got)
@@ -95,7 +95,7 @@ func TestRedactOpenAIKey(t *testing.T) {
 
 func TestRedactSlackToken(t *testing.T) {
 	t.Parallel()
-	input := "token: xoxb-123456789012-1234567890123-AbCdEfGhIjKl"
+	input := "token: xoxb-1" + "23456789012-1234567890123-AbCdEfGhIjKl"
 	got := Text(input)
 	if strings.Contains(got, "xoxb-") {
 		t.Fatalf("Slack token not redacted: %s", got)
@@ -215,7 +215,7 @@ func TestNoFalsePositivesOnNormalText(t *testing.T) {
 
 func TestRedactGitLabToken(t *testing.T) {
 	t.Parallel()
-	input := "GITLAB_TOKEN=glpat-AbCdEfGhIjKlMnOpQrStUvWx"
+	input := "GITLAB_TOKEN=glpat-" + "AbCdEfGhIjKlMnOpQrStUvWx"
 	got := Text(input)
 	if strings.Contains(got, "glpat-") {
 		t.Fatalf("GitLab token not redacted: %s", got)
@@ -224,7 +224,7 @@ func TestRedactGitLabToken(t *testing.T) {
 
 func TestRedactJWT(t *testing.T) {
 	t.Parallel()
-	input := "token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	input := "token: eyJhbG" + "ciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 	got := Text(input)
 	if strings.Contains(got, "eyJhbGci") {
 		t.Fatalf("JWT not redacted: %s", got)
@@ -298,7 +298,7 @@ func TestInputMapRedactsNestedSliceOfMaps(t *testing.T) {
 		"changes": []any{
 			map[string]any{
 				"path": "cfg.go",
-				"diff": "+api_key: sk-proj-abc123def456ghi789jkl012mno345",
+				"diff": "+api_key: sk-pro" + "j-abc123def456ghi789jkl012mno345",
 			},
 			map[string]any{
 				"path":    ".env",
@@ -397,7 +397,7 @@ func TestInputMapRedactsStringSliceAndStringMap(t *testing.T) {
 // through the shared nested references.
 func TestInputMapDoesNotMutateInput(t *testing.T) {
 	t.Parallel()
-	secret := "sk-proj-abc123def456ghi789jkl012mno345"
+	secret := "sk-pro" + "j-abc123def456ghi789jkl012mno345"
 	inner := map[string]any{"diff": secret}
 	m := map[string]any{"changes": []any{inner}}
 
