@@ -347,6 +347,11 @@ func runRepoCheckout(cmd *cobra.Command, args []string) error {
 	if daemonPort == "" {
 		return fmt.Errorf("MULTICA_DAEMON_PORT not set (this command is intended to be run by an agent inside a daemon task)")
 	}
+	// The port is spliced into a URL that carries the task token, so anything
+	// other than a plain port number (e.g. "1@host") must never reach it.
+	if port, err := strconv.Atoi(daemonPort); err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("MULTICA_DAEMON_PORT must be a port number between 1 and 65535")
+	}
 
 	workspaceID := os.Getenv("MULTICA_WORKSPACE_ID")
 	agentName := os.Getenv("MULTICA_AGENT_NAME")

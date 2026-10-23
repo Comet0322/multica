@@ -282,7 +282,7 @@ func seedCodexUserSkill(src, dst, name string) error {
 	}
 	// A hidden sibling is owned and reclaimed with the per-task skills tree.
 	// Keeping dst a link also preserves junction-based hydration on Windows.
-	overlay := filepath.Join(filepath.Dir(dst), ".multica-normalized", name)
+	overlay := filepath.Join(filepath.Dir(dst), ".multica-normalized", sanitizeSkillName(name))
 	if err := os.RemoveAll(overlay); err != nil {
 		return err
 	}
