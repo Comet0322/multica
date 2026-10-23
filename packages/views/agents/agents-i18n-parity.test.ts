@@ -150,11 +150,11 @@ describe("access-scope i18n parity across all 4 locales", () => {
       for (const key of ALL_NEW_KEYS) {
         const parts = key.split(".");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let node: any = loc as any;
-        for (const p of parts) {
-          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- test-only: iterates fixed i18n fixture keys
-          node = node?.[p];
-        }
+        const node: any = parts.reduce<unknown>((current, part) => (
+          current !== null && typeof current === "object" && Object.hasOwn(current, part)
+            ? (current as Record<string, unknown>)[part]
+            : undefined
+        ), loc);
         expect(node, `${name}: ${key} missing`).toBeDefined();
         expect(typeof node, `${name}: ${key} not a string`).toBe("string");
         expect(String(node).length > 0, `${name}: ${key} is empty`).toBe(true);
@@ -167,11 +167,11 @@ describe("access-scope i18n parity across all 4 locales", () => {
       for (const key of ["row_actions.set_access_applies_to", "row_actions.set_access_skipped", "row_actions.set_access_bulk_partial"]) {
         const parts = key.split(".");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let node: any = loc as any;
-        for (const p of parts) {
-          // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- test-only: iterates fixed i18n fixture keys
-          node = node?.[p];
-        }
+        const node: any = parts.reduce<unknown>((current, part) => (
+          current !== null && typeof current === "object" && Object.hasOwn(current, part)
+            ? (current as Record<string, unknown>)[part]
+            : undefined
+        ), loc);
         if (typeof node === "string" && /\{count\}/.test(node) && !/\{\{count\}\}/.test(node)) {
           throw new Error(`${name}: ${key} uses {count} instead of {{count}}`);
         }
