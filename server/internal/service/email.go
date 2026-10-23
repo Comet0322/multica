@@ -132,10 +132,8 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 		ServerName: s.smtpHost,
 		MinVersion: tls.VersionTLS12,
 	}
-	if s.smtpTLSInsecure {
-		// Opt-in via SMTP_TLS_INSECURE for self-signed relays.
-		tlsCfg.InsecureSkipVerify = true
-	}
+	// Opt-in via SMTP_TLS_INSECURE for self-signed relays.
+	tlsCfg.InsecureSkipVerify = s.smtpTLSInsecure
 
 	var conn net.Conn
 	var err error
