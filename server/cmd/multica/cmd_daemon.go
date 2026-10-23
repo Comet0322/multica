@@ -625,8 +625,8 @@ func runDaemonBackground(cmd *cobra.Command) error {
 		errLogOffset = info.Size()
 	}
 
-	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	child := exec.Command(exePath, args...)
 	child.Stdout = logFile
 	child.Stderr = logFile
@@ -641,8 +641,8 @@ func runDaemonBackground(cmd *cobra.Command) error {
 		if isAccessDeniedSpawnErr(err) {
 			// Retry without breakaway. Reset the cmd state — exec.Cmd is
 			// not safe to Start() twice, so build a fresh one.
-			// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 			// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
+			// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 			child = exec.Command(exePath, args...)
 			child.Stdout = logFile
 			child.Stderr = logFile
@@ -1150,8 +1150,8 @@ func runDaemonForeground(cmd *cobra.Command) error {
 		}
 
 		args := buildDaemonStartArgs(cmd)
-		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 		// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
+		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 		child := exec.Command(restartBin, args...)
 		child.Env = append(os.Environ(), "MULTICA_DAEMON_HANDOFF=1")
 
@@ -1178,8 +1178,8 @@ func runDaemonForeground(cmd *cobra.Command) error {
 			// The supervisor-spawned successor re-registers on startup; do not
 			// duplicate cleanup here.
 			if isAccessDeniedSpawnErr(err) {
-				// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 				// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
+				// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 				child = exec.Command(restartBin, args...)
 				child.Env = append(os.Environ(), "MULTICA_DAEMON_HANDOFF=1")
 				child.Stdout = logFile

@@ -134,8 +134,8 @@ func runPreparationProcess(ctx context.Context, command []string, request prepar
 		return nil, fmt.Errorf("execenv: encode preparation request: %w", err)
 	}
 
-	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
 	cmd := exec.Command(command[0], command[1:]...)
 	controller, err := newPreparationProcessController(cmd)
 	if err != nil {
