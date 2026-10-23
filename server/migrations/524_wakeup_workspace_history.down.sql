@@ -1,1 +1,0 @@
-DROP INDEX CONCURRENTLY IF EXISTS issue_wakeup_workspace_history_idx;

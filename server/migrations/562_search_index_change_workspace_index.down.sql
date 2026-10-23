@@ -1,1 +1,0 @@
-DROP INDEX CONCURRENTLY IF EXISTS idx_search_index_change_workspace_xid;

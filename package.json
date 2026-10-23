@@ -13,8 +13,7 @@
     "check:ui-exports": "node scripts/check-ui-wildcard-exports.mjs",
     "check:ui-radii": "node scripts/check-ui-radius-tokens.mjs",
     "clean": "turbo clean && rm -rf node_modules",
-    "ui:add": "cd packages/ui && npx shadcn@latest add",
-    "generate:reserved-slugs": "node scripts/generate-reserved-slugs.mjs"
+    "ui:add": "cd packages/ui && npx shadcn@latest add"
   },
   "engines": {
     "node": ">=22"
@@ -52,9 +51,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@types/pg": "^8.20.0",
     "knip": "^6.32.2",
-    "pg": "^8.20.0",
     "turbo": "^2.5.4",
     "typescript": "catalog:",
     "vite": "^8.1.6"

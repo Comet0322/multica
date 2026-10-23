@@ -1,1 +1,0 @@
--- Intentionally empty: the up migration is a no-op.

@@ -1,2 +1,0 @@
--- Intentionally empty. Rolling back the feature cleanup must not recreate an
--- unused receipt table or restore delivery rows that the cleanup removed.
