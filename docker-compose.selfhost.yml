@@ -5,8 +5,7 @@
 # TLS and forwards to 127.0.0.1:8080 (backend) and 127.0.0.1:3000 (frontend).
 # Do NOT change these bindings to 0.0.0.0 — Docker bypasses host firewalls
 # (UFW/iptables) by default, so the raw ports would be exposed to the internet
-# while any deployment credentials remain weak. See:
-#   apps/docs/content/docs/self-host-quickstart.mdx
+# while any deployment credentials remain weak.
 #
 # Usage:
 #   cp .env.example .env
@@ -19,16 +18,8 @@
 # The published values above are HOST ports; the containers always listen on
 # 8080 / 3000 internally, so changing them never needs a rebuild. PORT is the
 # variable to edit; BACKEND_PORT, API_PORT and SERVER_PORT are optional aliases
-# that override it in that order. Keep this alias order identical to Makefile
-# and scripts/local-env.sh. The web dev fallback intentionally omits PORT
-# because Next uses that variable for its own frontend listener.
-#
-# Note that *which source* wins differs per entry point — Compose lets the
-# calling environment outrank this file, while make lets the included env file
-# outrank the environment. Nothing re-derives the published port from the inputs
-# any more: `make selfhost` (via scripts/selfhost-wait.sh) and both installers
-# read it back with `docker compose port`, so the health check and the printed
-# URL always match what was actually published.
+# that override it in that order. Compose lets the calling environment outrank
+# the env file. Read the published port back with `docker compose port`.
 
 name: multica
 
@@ -53,7 +44,7 @@ services:
       retries: 5
 
   backend:
-    image: ${MULTICA_BACKEND_IMAGE:-ghcr.io/multica-ai/multica-backend}:${MULTICA_IMAGE_TAG:-latest}
+    image: ${MULTICA_BACKEND_IMAGE:-multica-backend}:${MULTICA_IMAGE_TAG:-dev}
     depends_on:
       postgres:
         condition: service_healthy
@@ -219,7 +210,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ${MULTICA_WEB_IMAGE:-ghcr.io/multica-ai/multica-web}:${MULTICA_IMAGE_TAG:-latest}
+    image: ${MULTICA_WEB_IMAGE:-multica-web}:${MULTICA_IMAGE_TAG:-dev}
     depends_on:
       - backend
     ports:
