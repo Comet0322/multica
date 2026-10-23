@@ -289,7 +289,7 @@ func TestOnMessage_HandlerError_IssueCommandGetsErrorReply(t *testing.T) {
 	sent := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -379,7 +379,7 @@ func TestOnMessage_ReturnsBeforeBotNameLookupAndQueuesCallbackSnapshot(t *testin
 	releaseLookup := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}

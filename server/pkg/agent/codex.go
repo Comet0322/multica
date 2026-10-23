@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/redact"
 )
 
@@ -669,8 +670,7 @@ func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *
 	if updated == existing {
 		return nil
 	}
-	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	if err := os.WriteFile(configPath, []byte(updated), 0o600); err != nil {
+	if err := util.WriteFile(configPath, []byte(updated), 0o600); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	// os.WriteFile applies the mode only when creating a new file; if the
@@ -4130,8 +4130,7 @@ func codexSessionRoot(codexHome string) string {
 	}
 	if codexHome != "" {
 		dir := filepath.Join(codexHome, "sessions")
-		// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if info, err := util.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
 	}

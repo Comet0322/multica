@@ -10,11 +10,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// daemonTokenCachePrefix namespaces daemon-token cache keys separately
+// daemonAuthCachePrefix namespaces daemon-token cache keys separately
 // from PAT (mul:auth:pat:*) so the two key spaces can't collide and an
 // invalidation on one kind of token doesn't accidentally hit the other.
-// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
-const daemonTokenCachePrefix = "mul:auth:daemon:"
+const daemonAuthCachePrefix = "mul:auth:daemon:"
 
 // DaemonTokenIdentity is what DaemonAuth needs from the cached lookup —
 // the workspace_id and daemon_id that the middleware injects into the
@@ -43,7 +42,7 @@ func NewDaemonTokenCache(rdb redis.UniversalClient) *DaemonTokenCache {
 	return &DaemonTokenCache{rdb: rdb}
 }
 
-func daemonTokenCacheKey(hash string) string { return daemonTokenCachePrefix + hash }
+func daemonTokenCacheKey(hash string) string { return daemonAuthCachePrefix + hash }
 
 // Get returns the cached identity for a token hash. ok=false on cache
 // miss or any Redis / decode error — a dead Redis must not take down

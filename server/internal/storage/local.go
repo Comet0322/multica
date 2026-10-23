@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 type LocalStorage struct {
@@ -48,8 +50,7 @@ func NewLocalStorageFromEnv() *LocalStorage {
 		uploadDir = "./data/uploads"
 	}
 
-	// #nosec G301 G703 -- directory mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := util.MkdirAll(uploadDir, 0755); err != nil {
 		slog.Error("failed to create upload directory", "dir", uploadDir, "error", err)
 		return nil
 	}

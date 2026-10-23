@@ -55,7 +55,7 @@ func TestBotNameInGroupSelectsExactRobotIdentityAndRefreshes401(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case accessTokenPath:
+		case oauthAccessPath:
 			mints++
 			_, _ = fmt.Fprintf(w, `{"accessToken":"tok-%d","expireIn":7200}`, mints)
 		case groupBotsPath:
@@ -112,7 +112,7 @@ func TestBotNameInGroupRejectsInvalidAndMissingIdentities(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == accessTokenPath {
+				if r.URL.Path == oauthAccessPath {
 					_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 					return
 				}
@@ -140,7 +140,7 @@ func TestBotNameInGroupClassifiesOnlyChatManagePermission(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == accessTokenPath {
+				if r.URL.Path == oauthAccessPath {
 					_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 					return
 				}
@@ -162,7 +162,7 @@ func TestBotNameResolverCachesSuccessfulIdentityAcrossGroups(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -192,7 +192,7 @@ func TestBotNameResolverSharesCacheBetweenChannelCredentialsAndInstallation(t *t
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -221,7 +221,7 @@ func TestBotNameResolverCachesTransientAndBrieflyCachesPermissionFailure(t *test
 	groupCalls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -272,7 +272,7 @@ func TestBotNameResolverRefreshesSuccessfulNameAfterTTL(t *testing.T) {
 	groupCalls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -308,7 +308,7 @@ func TestBotNameResolverRefreshesSuccessfulNameAfterTTL(t *testing.T) {
 func TestBotNameResolverTimesOutDetachedLookup(t *testing.T) {
 	groupStarted := make(chan struct{})
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -338,7 +338,7 @@ func TestBotNameResolverCallerCancellationDoesNotCancelSharedLookup(t *testing.T
 	finished := make(chan struct{})
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
-		case accessTokenPath:
+		case oauthAccessPath:
 			close(started)
 			<-release
 			return &http.Response{
@@ -384,7 +384,7 @@ func TestBotNameResolverCollapsesLookupsAndBoundsCache(t *testing.T) {
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -445,7 +445,7 @@ func TestBotNameResolverRetriesGroupSpecificFailureForAnotherGroup(t *testing.T)
 	var groupCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}

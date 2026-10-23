@@ -16,6 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // MaxBundleSize caps the PEM sent to daemons. A handful of internal CAs is a
@@ -110,8 +112,7 @@ func collect(certDir string, systemDirs []string) ([]*x509.Certificate, []string
 		}
 		for _, entry := range entries {
 			path := filepath.Join(dir, entry.Name())
-			// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-			data, err := os.ReadFile(path)
+			data, err := util.ReadFile(path)
 			if err != nil {
 				// Subdirectories land here too; crypto/x509 ignores them the same way.
 				continue

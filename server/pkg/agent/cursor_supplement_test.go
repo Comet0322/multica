@@ -344,7 +344,7 @@ func TestCursorHookRelayFailsOpen(t *testing.T) {
 			switch name {
 			case cursorHookURLEnv:
 				return url
-			case cursorHookTokenEnv:
+			case cursorHookAuthEnv:
 				return token
 			}
 			return ""

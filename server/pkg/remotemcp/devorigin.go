@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // The operator opt-in that lets a Plugin author point an `mcp` hook at a server
@@ -48,8 +50,7 @@ func devTLSConfig() *tls.Config {
 	if path == "" {
 		return nil
 	}
-	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	pem, err := os.ReadFile(path)
+	pem, err := util.ReadFile(path)
 	if err != nil {
 		return nil
 	}

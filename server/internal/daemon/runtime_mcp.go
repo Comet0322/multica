@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // runtimeLocalMcpServerSummary is the intentionally non-secret inventory
@@ -121,8 +123,7 @@ func codebuddyUserMcpConfigPath(home string) string {
 		filepath.Join(home, ".codebuddy.json"),
 	}
 	for _, candidate := range candidates {
-		// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := util.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
 	}
@@ -310,8 +311,7 @@ func loadRuntimeMcpServerConfigs(provider string) (map[string]any, bool, error) 
 	}
 
 	servers := map[string]any{}
-	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	raw, err := os.ReadFile(path)
+	raw, err := util.ReadFile(path)
 	if err == nil {
 		cfg, err := unmarshalRuntimeMcpConfig(raw, format)
 		if err != nil {
@@ -461,8 +461,7 @@ func listRuntimeLocalMcpServers(provider string) ([]runtimeLocalMcpServerSummary
 	}
 
 	out := make([]runtimeLocalMcpServerSummary, 0)
-	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	raw, err := os.ReadFile(path)
+	raw, err := util.ReadFile(path)
 	if err == nil {
 		cfg, err := unmarshalRuntimeMcpConfig(raw, format)
 		if err != nil {

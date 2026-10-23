@@ -11,6 +11,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/pelletier/go-toml/v2/unstable"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Codex filters environment variables before running shell tool subprocesses.
@@ -288,8 +290,7 @@ func EnsureCodexShellEnvPolicyConfig(configPath string, includeOnly []string, lo
 	if updated == string(data) {
 		return nil
 	}
-	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+	if err := util.WriteFile(configPath, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	if logger != nil {

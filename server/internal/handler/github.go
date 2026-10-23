@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"slices"
 	"sort"
@@ -613,6 +614,15 @@ func (h *Handler) consumePendingGitHubInstallation(ctx context.Context, inst db.
 	return refreshed, nil
 }
 
+// appendURLPath returns a copy of u with elems appended to its path. Unlike
+// url.URL.JoinPath it keeps the path rooted when u has no path of its own.
+func appendURLPath(u *url.URL, elems ...string) *url.URL {
+	c := *u
+	c.Path = path.Join("/", u.Path, path.Join(elems...))
+	c.RawPath = ""
+	return &c
+}
+
 // fetchInstallationAccount tries to enrich the installation row with the
 // account name + avatar from GitHub.
 //
@@ -634,12 +644,11 @@ func fetchInstallationAccount(ctx context.Context, installationID int64) (login,
 	login = "unknown"
 	accountType = "User"
 	avatar = nil
-	endpoint := fmt.Sprintf("%s/app/installations/%d", strings.TrimRight(githubAPIBase, "/"), installationID)
-	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/"), nil)
 	if err != nil {
 		return
 	}
+	req.URL = appendURLPath(req.URL, "app", "installations", strconv.FormatInt(installationID, 10))
 	req.Header.Set("Accept", "application/vnd.github+json")
 	if token, err := signGitHubAppJWT(time.Now()); err != nil {
 		// Misconfigured private key is operator-actionable — log so the
@@ -649,7 +658,6 @@ func fetchInstallationAccount(ctx context.Context, installationID int64) (login,
 	} else if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
@@ -879,19 +887,16 @@ func fetchGitHubInstallationRepositories(
 	}
 	defer revokeGitHubInstallationToken(client, tokenBody.Token)
 
-	repositoriesEndpoint := fmt.Sprintf(
-		"%s/installation/repositories?page=%d&per_page=%d",
-		strings.TrimRight(githubAPIBase, "/"),
-		page,
-		perPage,
-	)
-	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
-	repositoriesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, repositoriesEndpoint, nil)
+	repositoriesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/"), nil)
 	if err != nil {
 		return GitHubRepositoriesResponse{}, err
 	}
+	repositoriesReq.URL = appendURLPath(repositoriesReq.URL, "installation", "repositories")
+	repositoriesReq.URL.RawQuery = url.Values{
+		"page":     {strconv.Itoa(page)},
+		"per_page": {strconv.Itoa(perPage)},
+	}.Encode()
 	setGitHubAPIHeaders(repositoriesReq, tokenBody.Token)
-	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	repositoriesResp, err := client.Do(repositoriesReq)
 	if err != nil {
 		return GitHubRepositoriesResponse{}, fmt.Errorf("list installation repositories: %w", err)

@@ -27,12 +27,11 @@ var errUnauthorized = errors.New("dingtalk: unauthorized (access token expired o
 // per-installation region split.
 const defaultAPIBase = "https://api.dingtalk.com"
 
-// accessTokenPath mints an enterprise-internal-app access_token from the app's
+// oauthAccessPath mints an enterprise-internal-app access_token from the app's
 // AppKey/AppSecret. The response carries the token and its lifetime in seconds.
-// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
-const accessTokenPath = "/v1.0/oauth2/accessToken"
+const oauthAccessPath = "/v1.0/oauth2/accessToken"
 
-// accessTokenResponse is the success shape of accessTokenPath.
+// accessTokenResponse is the success shape of oauthAccessPath.
 type accessTokenResponse struct {
 	AccessToken string `json:"accessToken"`
 	ExpireIn    int64  `json:"expireIn"`
@@ -90,7 +89,7 @@ func fetchAccessToken(ctx context.Context, httpClient *http.Client, baseURL, app
 	if err != nil {
 		return "", 0, fmt.Errorf("dingtalk: marshal access token request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+accessTokenPath, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+oauthAccessPath, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", 0, fmt.Errorf("dingtalk: build access token request: %w", err)
 	}

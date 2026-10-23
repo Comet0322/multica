@@ -17,6 +17,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/agent"
 )
 
@@ -956,8 +957,7 @@ func canonicalExecutablePath(path string) string {
 }
 
 func isExecutableFile(path string) bool {
-	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	info, err := os.Stat(path)
+	info, err := util.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
 	}
@@ -1196,8 +1196,7 @@ func dshDesktopBinDirs(root string) []string {
 
 // isExistingDir reports whether path is a directory that exists.
 func isExistingDir(path string) bool {
-	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	info, err := os.Stat(path)
+	info, err := util.Stat(path)
 	return err == nil && info.IsDir()
 }
 

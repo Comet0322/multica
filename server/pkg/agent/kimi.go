@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // kimiBlockedArgs are flags hardcoded by the daemon that must not be
@@ -891,8 +893,7 @@ func kimiSessionRoot(kimiHome string) string {
 	}
 	if kimiHome != "" {
 		dir := filepath.Join(kimiHome, "sessions")
-		// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if info, err := util.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
 	}

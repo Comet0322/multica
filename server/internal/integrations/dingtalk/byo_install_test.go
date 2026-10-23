@@ -26,7 +26,7 @@ func dingtalkMockServer(t *testing.T, tokenOK bool) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path != accessTokenPath {
+		if r.URL.Path != oauthAccessPath {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"code":"unknownPath","message":"unknown"}`))
 			return

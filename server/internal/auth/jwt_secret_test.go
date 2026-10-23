@@ -13,7 +13,7 @@ func TestValidateJWTSecret(t *testing.T) {
 		wantErr bool
 	}{
 		{"empty_is_rejected", "", true},
-		{"code_default_is_rejected", defaultJWTSecret, true},
+		{"code_default_is_rejected", defaultJWTKey, true},
 		{"compose_template_default_is_rejected", "change-me-in-production", true},
 		{"whitespace_wrapped_weak_value_is_rejected", "  change-me-in-production \n", true},
 		{"strong_random_value_is_accepted", strong, false},

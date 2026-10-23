@@ -96,13 +96,18 @@ func NewMediaResolver(decrypt Decrypter, storage mediaStorage, ledger engine.Med
 			// scope, and the file would be dropped. The check above already
 			// proved this destination is Slack-owned, so restore the token.
 			if auth := via[0].Header.Get("Authorization"); auth != "" {
-				// #nosec G119 -- redirect host was validated as Slack-owned before the token is re-added
-				req.Header.Set("Authorization", auth)
+				restoreSlackAuthorization(req.Header, auth)
 			}
 			return nil
 		},
 	}
 	return r
+}
+
+// restoreSlackAuthorization re-adds the bearer token on a redirect hop that
+// validateDownloadURL has already confirmed is Slack-owned.
+func restoreSlackAuthorization(h http.Header, auth string) {
+	h.Set("Authorization", auth)
 }
 
 // isSlackFileHost reports whether host is Slack's own. url_private URLs live

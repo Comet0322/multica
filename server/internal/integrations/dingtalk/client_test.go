@@ -11,7 +11,7 @@ import (
 
 func TestFetchAccessToken_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != accessTokenPath {
+		if r.URL.Path != oauthAccessPath {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -59,7 +59,7 @@ func downloadTestServer(t *testing.T, onDownload func(w http.ResponseWriter, r *
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case accessTokenPath:
+		case oauthAccessPath:
 			*tokenMints++
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(fmt.Sprintf(`{"accessToken":"tok-%d","expireIn":7200}`, *tokenMints)))

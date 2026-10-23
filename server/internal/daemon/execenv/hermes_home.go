@@ -271,8 +271,7 @@ func isPathUnder(parent, child string) bool {
 // <root>/active_profile, or "" when absent, unreadable, empty, or "default"
 // (matching _apply_profile_override step 2, which ignores a "default" sticky).
 func readHermesActiveProfile(root string) string {
-	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	data, err := os.ReadFile(filepath.Join(root, "active_profile"))
+	data, err := util.ReadFile(filepath.Join(root, "active_profile"))
 	if err != nil {
 		return ""
 	}

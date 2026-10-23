@@ -370,7 +370,15 @@ func collectLocalSkillFiles(skillDir string, includeContent bool) ([]SkillFileDa
 		walkRoot = resolved
 	}
 
-	err := filepath.WalkDir(walkRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+	// Reads go through a root-scoped handle so a file swapped for a symlink
+	// mid-walk cannot pull in content from outside the skill directory.
+	root, err := os.OpenRoot(walkRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	err = filepath.WalkDir(walkRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}
@@ -440,8 +448,7 @@ func collectLocalSkillFiles(skillDir string, includeContent bool) ([]SkillFileDa
 		// UTF-8 but contains NUL — UTF-16LE text made of ASCII characters is a
 		// realistic example — still comes back different from what went in.
 		// Require both: valid UTF-8 AND NUL-free.
-		// #nosec G122 G304 -- walks a daemon-owned tree; no other user can swap entries; path derives from operator config or a daemon-owned directory
-		content, err := os.ReadFile(path)
+		content, err := root.ReadFile(rel)
 		if err != nil {
 			return nil
 		}

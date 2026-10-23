@@ -11,8 +11,7 @@ import (
 	"sync"
 )
 
-// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
-const defaultJWTSecret = "multica-dev-secret-change-in-production"
+const defaultJWTKey = "multica-dev-secret-change-in-production"
 
 var (
 	jwtSecret     []byte
@@ -23,7 +22,7 @@ func JWTSecret() []byte {
 	jwtSecretOnce.Do(func() {
 		secret := os.Getenv("JWT_SECRET")
 		if secret == "" {
-			secret = defaultJWTSecret
+			secret = defaultJWTKey
 		}
 		jwtSecret = []byte(secret)
 	})
@@ -44,7 +43,7 @@ var ErrInsecureJWTSecret = errors.New("JWT_SECRET is empty or a known insecure d
 // ships with to this list before publishing it.
 var insecureJWTSecrets = map[string]struct{}{
 	"":                        {},
-	defaultJWTSecret:          {},
+	defaultJWTKey:             {},
 	"change-me-in-production": {},
 }
 

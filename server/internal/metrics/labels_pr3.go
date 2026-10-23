@@ -120,13 +120,7 @@ var (
 		"other":      "other",
 	}
 
-	// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
-	knownWebhookRateLimitGates = map[string]string{
-		"absolute_ip":       "absolute_ip",
-		"bad_credential_ip": "bad_credential_ip",
-		"worker_trigger":    "worker_trigger",
-		"other":             "other",
-	}
+	knownWebhookRateLimitGates = identityLabels("absolute_ip", "bad_credential_ip", "worker_trigger", "other")
 
 	knownEmailRateLimitActions = map[string]string{
 		"workspace_invitation": "workspace_invitation",
@@ -235,6 +229,15 @@ var (
 		"other":       "other",
 	}
 )
+
+// identityLabels builds an allow-list whose normalized form is the label itself.
+func identityLabels(labels ...string) map[string]string {
+	m := make(map[string]string, len(labels))
+	for _, l := range labels {
+		m[l] = l
+	}
+	return m
+}
 
 func normalizeFromAllowList(value string, allowList map[string]string, fallback string) string {
 	value = strings.ToLower(strings.TrimSpace(value))

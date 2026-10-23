@@ -24,7 +24,7 @@ func TestSender_EmojiReactionCredentialAndTerminalFailures(t *testing.T) {
 			var tokenCalls, reactionCalls int
 			client := NewClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				status, body := tc.reactionStatus, `{"success":true}`
-				if r.URL.Path == accessTokenPath {
+				if r.URL.Path == oauthAccessPath {
 					tokenCalls++
 					status = tc.tokenStatus
 					body = `{"accessToken":"token","expireIn":7200}`

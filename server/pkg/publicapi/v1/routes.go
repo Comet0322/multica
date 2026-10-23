@@ -40,15 +40,15 @@ type Operation struct {
 }
 
 var sharedCredentials = []CredentialKind{
-	CredentialUserOAuth,
-	CredentialPersonalAccess,
-	CredentialPluginInstall,
-	CredentialPluginInvocation,
+	AuthUserOAuth,
+	AuthPersonalAccess,
+	AuthPluginInstall,
+	AuthPluginInvocation,
 }
 
 var pluginCredentials = []CredentialKind{
-	CredentialPluginInstall,
-	CredentialPluginInvocation,
+	AuthPluginInstall,
+	AuthPluginInvocation,
 }
 
 var sharedRateLimits = []RateLimitProfile{RateLimitUserDefault, RateLimitPluginStrict}

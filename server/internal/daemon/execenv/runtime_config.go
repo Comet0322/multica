@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/agent"
 )
 
@@ -265,8 +266,7 @@ func writeRuntimeConfigFile(path, brief string) error {
 		// The managed separator (if any) lives in existingStr[:start] and
 		// is preserved untouched.
 		newContent := existingStr[:start] + block + existingStr[end:]
-		// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-		return os.WriteFile(path, []byte(newContent), 0o644)
+		return util.WriteFile(path, []byte(newContent), 0o644)
 	}
 
 	// No marker block present. Append the fixed managed separator followed
@@ -274,8 +274,7 @@ func writeRuntimeConfigFile(path, brief string) error {
 	// that already end in two or more newlines — so the byte boundary
 	// between user content and the managed region is deterministic, which
 	// is what lets Cleanup roll back to the user's exact original bytes.
-	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	return os.WriteFile(path, []byte(existingStr+runtimeManagedSeparator+block), 0o644)
+	return util.WriteFile(path, []byte(existingStr+runtimeManagedSeparator+block), 0o644)
 }
 
 // locateMarkerBlock finds the [start, end) byte range of the Multica marker
@@ -395,8 +394,7 @@ func CleanupRuntimeConfig(workDir, provider string) error {
 	// without any normalisation. An empty `remainder` here means the
 	// user's original file was empty; we still write it (zero-byte file)
 	// so the file's existence is preserved.
-	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	return os.WriteFile(path, []byte(remainder), 0o644)
+	return util.WriteFile(path, []byte(remainder), 0o644)
 }
 
 // buildMetaSkillContent generates the meta skill markdown that teaches the

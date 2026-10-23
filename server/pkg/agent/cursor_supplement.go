@@ -30,9 +30,8 @@ import (
 const CursorHookHelperArg = "__multica_cursor_hook"
 
 const (
-	cursorHookURLEnv = "MULTICA_CURSOR_HOOK_URL"
-	// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
-	cursorHookTokenEnv = "MULTICA_CURSOR_HOOK_TOKEN"
+	cursorHookURLEnv  = "MULTICA_CURSOR_HOOK_URL"
+	cursorHookAuthEnv = "MULTICA_CURSOR_HOOK_TOKEN"
 	// Cursor drops, rather than truncates, additional_context longer than
 	// 10,000 JavaScript string units.
 	cursorHookContextLimit    = 10000
@@ -192,7 +191,7 @@ func (s *cursorSupplementSession) removeHooksFile() {
 
 // env returns the variables Cursor passes on to the hook relay.
 func (s *cursorSupplementSession) env() []string {
-	return []string{cursorHookURLEnv + "=" + s.url, cursorHookTokenEnv + "=" + s.token}
+	return []string{cursorHookURLEnv + "=" + s.url, cursorHookAuthEnv + "=" + s.token}
 }
 
 func (s *cursorSupplementSession) tag() string {
@@ -455,7 +454,7 @@ func RunCursorHookRelay(stdin io.Reader, stdout io.Writer, getenv func(string) s
 }
 
 func cursorHookRelay(stdin io.Reader, getenv func(string) string) string {
-	endpoint, token := getenv(cursorHookURLEnv), getenv(cursorHookTokenEnv)
+	endpoint, token := getenv(cursorHookURLEnv), getenv(cursorHookAuthEnv)
 	if endpoint == "" || token == "" || !loopbackHTTPURL(endpoint) {
 		return cursorHookRelayEmptyReply
 	}

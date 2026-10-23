@@ -1060,6 +1060,14 @@ func (d *Daemon) cleanTaskArtifactsMatching(ctx context.Context, taskDir string,
 		return
 	}
 
+	// Removal goes through a root-scoped handle so a path swapped for a symlink
+	// mid-walk can never redirect the delete outside the task directory.
+	root, err := os.OpenRoot(absRoot)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+
 	walkErr := filepath.WalkDir(absRoot, func(path string, entry os.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return context.Cause(ctx)
@@ -1118,8 +1126,7 @@ func (d *Daemon) cleanTaskArtifactsMatching(ctx context.Context, taskDir string,
 		if ctx.Err() != nil {
 			return context.Cause(ctx)
 		}
-		// #nosec G122 -- walks a daemon-owned tree; no other user can swap entries
-		if rmErr := os.RemoveAll(path); rmErr != nil {
+		if rmErr := root.RemoveAll(rel); rmErr != nil {
 			d.logger.Warn("gc: artifact remove failed", "path", path, "error", rmErr)
 			return filepath.SkipDir
 		}

@@ -210,7 +210,7 @@ func TestGroupPresenceObserverRecordsExactBotWithoutChangingRouting(t *testing.T
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -259,7 +259,7 @@ func TestGroupPresenceObserverSkipsDirectMessagesAndRejectsMalformedGroupRaw(t *
 func TestGroupPresenceObserverPersistsPermissionIssueAndPropagatesDatabaseError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == oauthAccessPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}

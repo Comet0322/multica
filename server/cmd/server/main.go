@@ -163,6 +163,9 @@ func envNonNegativeInt(name string, def int) int {
 // internal caller of pkg/llm runs under a far tighter deadline (8s for chat
 // quick actions, 20s for title generation), so a budget past 5 cannot finish —
 // it only converts a retryable upstream failure into a deadline-exceeded one.
+// devDatabaseUser is the local-development login used when DATABASE_URL is unset.
+const devDatabaseUser = "multica"
+
 const maxLLMRetriesLimit = 5
 
 // parseLLMMaxRetries turns the raw MULTICA_LLM_MAX_RETRIES value into the
@@ -369,8 +372,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://" + devDatabaseUser + ":" + devDatabaseUser + "@localhost:5432/multica?sslmode=disable"
 	}
 
 	startupSettings := dbstartup.SettingsFromEnv()

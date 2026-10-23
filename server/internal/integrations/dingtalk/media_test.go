@@ -86,7 +86,7 @@ func newMediaTestEnv(t *testing.T, files map[string][]byte) *mediaTestEnv {
 	t.Cleanup(fileHost.Close)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case accessTokenPath:
+		case oauthAccessPath:
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 		case messageFilesDownloadPath:
 			resolves.Add(1)

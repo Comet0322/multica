@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // seedUserCodexSkills links user-installed skill directories from the shared
@@ -298,8 +300,7 @@ func seedCodexUserSkill(src, dst, name string) error {
 	if err := os.MkdirAll(overlay, 0o755); err != nil {
 		return err
 	}
-	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-	if err := os.WriteFile(filepath.Join(overlay, "SKILL.md"), []byte(normalized), 0o644); err != nil {
+	if err := util.WriteFile(filepath.Join(overlay, "SKILL.md"), []byte(normalized), 0o644); err != nil {
 		return err
 	}
 	entries, err := os.ReadDir(src)

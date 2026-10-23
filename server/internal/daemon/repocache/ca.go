@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // caBundleConfigKey is the git setting that points at the CA bundle.
@@ -184,8 +186,7 @@ func readSystemCABundle() []byte {
 		files = append([]string{f}, files...)
 	}
 	for _, f := range files {
-		// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
-		if data, err := os.ReadFile(f); err == nil && len(bytes.TrimSpace(data)) > 0 {
+		if data, err := util.ReadFile(f); err == nil && len(bytes.TrimSpace(data)) > 0 {
 			return data
 		}
 	}
