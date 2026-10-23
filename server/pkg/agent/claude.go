@@ -840,6 +840,7 @@ func captureClaudeUsageSnapshot(env []string, cwd, sessionID string) (*claudeUsa
 	if err != nil {
 		return nil, err
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open Claude session: %w", err)

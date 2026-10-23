@@ -384,6 +384,7 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		if err != nil {
 			return nil, fmt.Errorf("%s session directory: %w", label, err)
 		}
+		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("%s session directory: %w", label, err)
 		}
@@ -1351,9 +1352,11 @@ func newPiSessionPath() (string, error) {
 // exist at path. Pi refuses to start when --session points at a missing
 // file; paths that already exist (a resumed session) are left untouched.
 func ensurePiSessionFile(path string) error {
+	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
+	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return err

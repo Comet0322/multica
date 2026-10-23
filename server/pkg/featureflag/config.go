@@ -88,6 +88,7 @@ func (rc ruleConfig) toRule() Rule {
 // operators can drop a flags file in place before authoring any flag
 // without breaking server startup.
 func LoadRulesFromYAMLFile(path string) (map[string]Rule, error) {
+	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("featureflag: read %s: %w", path, err)

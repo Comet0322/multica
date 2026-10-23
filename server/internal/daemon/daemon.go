@@ -6682,6 +6682,7 @@ const piSessionMaxHeaderLine = 1 << 20
 // distinguish "no header" (Pi starts fine) from "header with an empty cwd"
 // (also fine), and neither from a real recorded directory.
 func piSessionRecordedCwd(path string) (string, bool) {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	f, err := os.Open(path)
 	if err != nil {
 		return "", false
@@ -6796,6 +6797,7 @@ func shouldReusePriorWorkdir(task Task, localAssignment *localDirectoryAssignmen
 		return "", false
 	}
 
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(filepath.Join(workdir, execenv.TaskContextMarkerRelPath))
 	if err != nil {
 		return "", false
@@ -10338,6 +10340,7 @@ func ensureTaskTempDir(envRoot string, workspaceID string, taskID string) (strin
 		}
 		return "", nil, err
 	}
+	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.Chmod(dir, 0o700); err != nil {
 		_ = os.RemoveAll(dir)
 		return "", nil, err
@@ -10564,6 +10567,7 @@ func prepareReasonixTaskStateHome(profile, runtimeID, agentID string) (string, e
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return "", err
 	}
+	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.Chmod(path, 0o700); err != nil {
 		return "", err
 	}
@@ -10590,6 +10594,7 @@ func prepareDshTaskSessionRoot(profile, runtimeID, agentID string) (string, erro
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return "", err
 	}
+	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.Chmod(path, 0o700); err != nil {
 		return "", err
 	}

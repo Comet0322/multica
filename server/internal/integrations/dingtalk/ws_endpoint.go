@@ -59,6 +59,7 @@ func openConnection(ctx context.Context, httpClient *http.Client, apiBase, appKe
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
+	// #nosec G117 -- credential is sent to its own provider by design
 	reqBody, err := json.Marshal(openConnectionRequest{
 		ClientID:      appKey,
 		ClientSecret:  appSecret,

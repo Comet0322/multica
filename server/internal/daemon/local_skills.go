@@ -348,6 +348,7 @@ func readLocalSkillMainFile(skillDir string) (string, error) {
 	if info.Size() > maxLocalSkillFileSize {
 		return "", fmt.Errorf("SKILL.md exceeds %d bytes", maxLocalSkillFileSize)
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	content, err := os.ReadFile(mainPath)
 	if err != nil {
 		return "", err
@@ -439,6 +440,7 @@ func collectLocalSkillFiles(skillDir string, includeContent bool) ([]SkillFileDa
 		// UTF-8 but contains NUL — UTF-16LE text made of ASCII characters is a
 		// realistic example — still comes back different from what went in.
 		// Require both: valid UTF-8 AND NUL-free.
+		// #nosec G122 G304 -- walks a daemon-owned tree; no other user can swap entries; path derives from operator config or a daemon-owned directory
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return nil

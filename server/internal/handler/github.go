@@ -523,18 +523,21 @@ func (h *Handler) GitHubSetupCallback(w http.ResponseWriter, r *http.Request) {
 	settingsURL = githubSettingsURL(frontend, returnTo)
 	if installationIDStr == "" {
 		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
+		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=missing_params", http.StatusFound)
 		return
 	}
 	installationID, err := strconv.ParseInt(installationIDStr, 10, 64)
 	if err != nil {
 		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
+		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=bad_installation_id", http.StatusFound)
 		return
 	}
 	wsUUID, err := parseStrictUUID(workspaceID)
 	if err != nil {
 		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
+		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=bad_workspace", http.StatusFound)
 		return
 	}
@@ -565,6 +568,7 @@ func (h *Handler) GitHubSetupCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("github: failed to persist installation", "err", err, "installation_id", installationID)
 		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
+		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=persist_failed", http.StatusFound)
 		return
 	}
@@ -572,6 +576,7 @@ func (h *Handler) GitHubSetupCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("github: failed to apply pending installation metadata", "err", err, "installation_id", installationID)
 		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
+		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
 		http.Redirect(w, r, settingsURL+"&github_error=persist_failed", http.StatusFound)
 		return
 	}
@@ -579,6 +584,7 @@ func (h *Handler) GitHubSetupCallback(w http.ResponseWriter, r *http.Request) {
 		"installation": githubInstallationToBroadcast(inst),
 	})
 	// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
+	// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
 	http.Redirect(w, r, settingsURL+"&github_connected=1", http.StatusFound)
 }
 
@@ -629,6 +635,7 @@ func fetchInstallationAccount(ctx context.Context, installationID int64) (login,
 	accountType = "User"
 	avatar = nil
 	endpoint := fmt.Sprintf("%s/app/installations/%d", strings.TrimRight(githubAPIBase, "/"), installationID)
+	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return
@@ -642,6 +649,7 @@ func fetchInstallationAccount(ctx context.Context, installationID int64) (login,
 	} else if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
@@ -877,11 +885,13 @@ func fetchGitHubInstallationRepositories(
 		page,
 		perPage,
 	)
+	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	repositoriesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, repositoriesEndpoint, nil)
 	if err != nil {
 		return GitHubRepositoriesResponse{}, err
 	}
 	setGitHubAPIHeaders(repositoriesReq, tokenBody.Token)
+	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	repositoriesResp, err := client.Do(repositoriesReq)
 	if err != nil {
 		return GitHubRepositoriesResponse{}, fmt.Errorf("list installation repositories: %w", err)

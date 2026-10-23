@@ -736,6 +736,7 @@ func kimiSessionWireLogs(root, sessionID string) []string {
 // partial write, and reporting the records we could read beats reporting
 // nothing.
 func accumulateKimiWireUsage(usage map[string]TokenUsage, path string, scan kimiUsageScan) {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	file, err := os.Open(path)
 	if err != nil {
 		return
@@ -831,6 +832,7 @@ func scanKimiMainTurnFailure(scan kimiUsageScan) (string, bool) {
 // an oversized context.append ahead of the terminal event must not hide the
 // failed outcome (review on #9057).
 func kimiWireTurnFailure(path string, scan kimiUsageScan) (string, bool) {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	file, err := os.Open(path)
 	if err != nil {
 		return "", false
@@ -889,6 +891,7 @@ func kimiSessionRoot(kimiHome string) string {
 	}
 	if kimiHome != "" {
 		dir := filepath.Join(kimiHome, "sessions")
+		// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}

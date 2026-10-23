@@ -190,6 +190,7 @@ func (c *PostHogClient) send(batch []Event) {
 		})
 	}
 
+	// #nosec G117 -- credential is sent to its own provider by design
 	body, err := json.Marshal(capturePayload{APIKey: c.cfg.APIKey, Batch: items})
 	if err != nil {
 		c.failed.Add(uint64(len(batch)))

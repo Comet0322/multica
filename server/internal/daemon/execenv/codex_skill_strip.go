@@ -69,6 +69,7 @@ func stripSkillsConfigEntries(content string) string {
 // dropping `[[skills.config]]` entries inherited from the shared
 // `~/.codex/config.toml`. No-op if the file doesn't exist or doesn't change.
 func sanitizeCopiedCodexConfig(configPath string) error {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -80,6 +81,7 @@ func sanitizeCopiedCodexConfig(configPath string) error {
 	if stripped == string(data) {
 		return nil
 	}
+	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	if err := os.WriteFile(configPath, []byte(stripped), 0o644); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}

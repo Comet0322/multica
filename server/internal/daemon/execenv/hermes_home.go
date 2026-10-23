@@ -271,6 +271,7 @@ func isPathUnder(parent, child string) bool {
 // <root>/active_profile, or "" when absent, unreadable, empty, or "default"
 // (matching _apply_profile_override step 2, which ignores a "default" sticky).
 func readHermesActiveProfile(root string) string {
+	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	data, err := os.ReadFile(filepath.Join(root, "active_profile"))
 	if err != nil {
 		return ""
@@ -349,6 +350,7 @@ func prepareHermesHome(hermesHome, sourceHome string, sourceMustExist bool, work
 	}
 	// Tighten perms on reuse too — MkdirAll leaves an existing dir's mode alone,
 	// and the derived config below can hold inline api_key secrets.
+	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.Chmod(hermesHome, 0o700); err != nil {
 		return hermesSessionMount{}, fmt.Errorf("chmod hermes-home dir: %w", err)
 	}
@@ -406,6 +408,7 @@ func writeDerivedHermesEnv(sharedHome, hermesHome string) error {
 	dst := filepath.Join(hermesHome, ".env")
 
 	var body []byte
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	src, err := os.ReadFile(filepath.Join(sharedHome, ".env"))
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -596,6 +599,7 @@ func writeDerivedHermesConfig(sharedHome, hermesHome string, env map[string]stri
 	srcConfig := filepath.Join(sharedHome, "config.yaml")
 	dstConfig := filepath.Join(hermesHome, "config.yaml")
 
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(srcConfig)
 	if err != nil {
 		if !os.IsNotExist(err) {

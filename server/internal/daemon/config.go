@@ -956,6 +956,7 @@ func canonicalExecutablePath(path string) string {
 }
 
 func isExecutableFile(path string) bool {
+	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
@@ -1195,6 +1196,7 @@ func dshDesktopBinDirs(root string) []string {
 
 // isExistingDir reports whether path is a directory that exists.
 func isExistingDir(path string) bool {
+	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
 }
@@ -1349,6 +1351,7 @@ var resolveAgentsViaLoginShell = func(names []string) map[string]string {
 	defer cancel()
 
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	cmd := exec.CommandContext(ctx, shell, "-ilc", buildLoginShellResolveScript(safe))
 	cmd.WaitDelay = loginShellResolveWaitDelay
 	raw, err := cmd.Output()

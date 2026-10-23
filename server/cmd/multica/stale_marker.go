@@ -53,6 +53,7 @@ func leftoverDaemonTaskMarkerPath() string {
 // exactly where a leftover is possible. The root marker has neither field, so
 // either one present is enough to separate them.
 func markerIsTaskScoped(markerPath string) bool {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
 		return false

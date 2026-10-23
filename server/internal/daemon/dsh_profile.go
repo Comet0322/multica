@@ -98,6 +98,7 @@ func dshMulticaProfilePresent() bool {
 	if path == "" {
 		return false
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// Missing is the only negative answer. A permission error or a file
@@ -296,6 +297,7 @@ func dshProfileRepair() agent.ExecFormatRepair {
 // for a package manager.
 func dshProvisionCommand(dshPath, spec string) *exec.Cmd {
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	cmd := exec.Command(dshPath, "plugin", "--profile", dshMulticaProfileName, "add", spec)
 	cmd.Env = dshPluginEnv()
 	return cmd

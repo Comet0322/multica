@@ -993,6 +993,7 @@ func openclawStatConfigPath(path string) (string, bool, error) {
 }
 
 func openclawConfigPathExists(path string) (bool, error) {
+	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil

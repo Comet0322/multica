@@ -96,6 +96,7 @@ func NewMediaResolver(decrypt Decrypter, storage mediaStorage, ledger engine.Med
 			// scope, and the file would be dropped. The check above already
 			// proved this destination is Slack-owned, so restore the token.
 			if auth := via[0].Header.Get("Authorization"); auth != "" {
+				// #nosec G119 -- redirect host was validated as Slack-owned before the token is re-added
 				req.Header.Set("Authorization", auth)
 			}
 			return nil

@@ -34,6 +34,7 @@ func resolveWith(osExecutable func() (string, error), args []string) (string, er
 	}
 	if fallbackErr == nil {
 		var info os.FileInfo
+		// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 		info, fallbackErr = os.Stat(candidate)
 		if fallbackErr == nil && !info.Mode().IsRegular() {
 			fallbackErr = fmt.Errorf("%s is not a regular file", candidate)

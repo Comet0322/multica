@@ -30,7 +30,8 @@ import (
 const CursorHookHelperArg = "__multica_cursor_hook"
 
 const (
-	cursorHookURLEnv   = "MULTICA_CURSOR_HOOK_URL"
+	cursorHookURLEnv = "MULTICA_CURSOR_HOOK_URL"
+	// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 	cursorHookTokenEnv = "MULTICA_CURSOR_HOOK_TOKEN"
 	// Cursor drops, rather than truncates, additional_context longer than
 	// 10,000 JavaScript string units.
@@ -154,6 +155,7 @@ func CursorHooksInstallable(cwd string) error {
 		return fmt.Errorf("inspect cursor dir: %w", err)
 	}
 	path := filepath.Join(dir, "hooks.json")
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	existing, err := os.ReadFile(path)
 	switch {
 	case err == nil && !bytes.Contains(existing, []byte(CursorHookHelperArg)):
@@ -168,6 +170,7 @@ func (s *cursorSupplementSession) writeHooksFile() error {
 	if err := CursorHooksInstallable(filepath.Dir(filepath.Dir(s.hooksPath))); err != nil {
 		return err
 	}
+	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
 	if err := os.MkdirAll(filepath.Dir(s.hooksPath), 0o755); err != nil {
 		return fmt.Errorf("create .cursor dir: %w", err)
 	}

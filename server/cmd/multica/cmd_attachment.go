@@ -78,6 +78,7 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 	if isHTTPURL(path) {
 		return fmt.Errorf("upload accepts a local file path, not a URL: %s", path)
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read file %s: %w", path, err)
@@ -168,12 +169,14 @@ func runAttachmentDownload(cmd *cobra.Command, args []string) error {
 	// `-o ./attachments` in a clean workdir).
 	outputDir, _ := cmd.Flags().GetString("output-dir")
 	if outputDir != "" {
+		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
 		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			return fmt.Errorf("create output directory: %w", err)
 		}
 	}
 	destPath := filepath.Join(outputDir, filename)
 
+	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.WriteFile(destPath, data, 0o644); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}

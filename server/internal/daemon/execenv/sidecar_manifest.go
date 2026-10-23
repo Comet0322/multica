@@ -227,6 +227,7 @@ func writeSidecarManifest(envRoot string, m *sidecarManifest) error {
 	if err != nil {
 		return fmt.Errorf("marshal sidecar manifest: %w", err)
 	}
+	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
 	return os.WriteFile(filepath.Join(envRoot, sidecarManifestFile), data, 0o644)
 }
 
@@ -243,6 +244,7 @@ func CleanupSidecars(envRoot string) error {
 		return nil
 	}
 	manifestPath := filepath.Join(envRoot, sidecarManifestFile)
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(manifestPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -378,6 +380,7 @@ func removeReusedManagedSkillDirs(envRoot, skillsParent string) error {
 	if envRoot == "" || skillsParent == "" {
 		return nil
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(filepath.Join(envRoot, sidecarManifestFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil

@@ -36,6 +36,7 @@ func (c *SkillBundleCache) Load(workspaceID string, ref SkillRefData) (SkillData
 		return SkillData{}, false
 	}
 	keyPath := c.bundlePath(workspaceID, ref)
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
 		return SkillData{}, false
@@ -56,6 +57,7 @@ func (c *SkillBundleCache) Store(workspaceID string, bundle SkillData) error {
 	dir := filepath.Dir(c.bundlePath(workspaceID, ref))
 	tmp, err := os.MkdirTemp(filepath.Dir(dir), ".bundle-*")
 	if err != nil {
+		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
 		if mkErr := os.MkdirAll(filepath.Dir(dir), 0o755); mkErr != nil {
 			return mkErr
 		}
@@ -70,6 +72,7 @@ func (c *SkillBundleCache) Store(workspaceID string, bundle SkillData) error {
 	if err != nil {
 		return err
 	}
+	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.WriteFile(filepath.Join(tmp, "bundle.json"), data, 0o644); err != nil {
 		return err
 	}

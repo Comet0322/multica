@@ -35,6 +35,7 @@ func isMultipartForm(r *http.Request) bool {
 // legacy pre-on_conflict client for it to stay compatible with.
 func (h *Handler) importSkillFromArchive(w http.ResponseWriter, r *http.Request, workspaceID string, workspaceUUID, creatorUUID pgtype.UUID, creatorID string) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImportArchiveUploadSize)
+	// #nosec G120 -- body is bounded by http.MaxBytesReader immediately above
 	if err := r.ParseMultipartForm(maxImportArchiveUploadSize); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload or file exceeds the size limit")
 		return

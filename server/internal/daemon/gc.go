@@ -1118,6 +1118,7 @@ func (d *Daemon) cleanTaskArtifactsMatching(ctx context.Context, taskDir string,
 		if ctx.Err() != nil {
 			return context.Cause(ctx)
 		}
+		// #nosec G122 -- walks a daemon-owned tree; no other user can swap entries
 		if rmErr := os.RemoveAll(path); rmErr != nil {
 			d.logger.Warn("gc: artifact remove failed", "path", path, "error", rmErr)
 			return filepath.SkipDir
@@ -1659,6 +1660,7 @@ func runGitCommandContext(parent context.Context, barePath string, timeout time.
 	defer cancel()
 
 	cmdArgs := append([]string{"-C", barePath}, args...)
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	cmd := exec.Command("git", cmdArgs...)
 	out, err := processtree.CombinedOutput(ctx, cmd, 5*time.Second)
 	return strings.TrimSpace(string(out)), err

@@ -251,6 +251,7 @@ func resolveSkillContentFlag(cmd *cobra.Command) (string, bool, error) {
 		return skillContentBytesToString(data, "stdin content for --content-stdin")
 	}
 	if filePath != "" {
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			return "", false, fmt.Errorf("read file for --content-file: %w", err)
@@ -516,6 +517,7 @@ func runSkillImport(cmd *cobra.Command, _ []string) error {
 
 	var result map[string]any
 	if importFile != "" {
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		fileData, readErr := os.ReadFile(importFile)
 		if readErr != nil {
 			return fmt.Errorf("read skill archive: %w", readErr)

@@ -614,6 +614,7 @@ var userCodexMcpServersTableHeaderRe = regexp.MustCompile(
 // whether to surface or warn — same fail-soft contract the prior argv
 // path had.
 func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *slog.Logger) error {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read config.toml: %w", err)
@@ -668,6 +669,7 @@ func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *
 	if updated == existing {
 		return nil
 	}
+	// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	if err := os.WriteFile(configPath, []byte(updated), 0o600); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
@@ -4091,6 +4093,7 @@ func findCodexSessionRollouts(root, threadID string) []string {
 // canonical session_meta first; the line cap prevents a malformed legacy file
 // without metadata from turning ownership checks into a full multi-GB scan.
 func readCodexRolloutThreadID(path string) (string, bool) {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	f, err := os.Open(path)
 	if err != nil {
 		return "", false
@@ -4127,6 +4130,7 @@ func codexSessionRoot(codexHome string) string {
 	}
 	if codexHome != "" {
 		dir := filepath.Join(codexHome, "sessions")
+		// #nosec G703 -- path comes from operator-controlled environment/config or a daemon-built directory, not request input
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
@@ -4196,6 +4200,7 @@ func parseCodexSessionFile(path string) *codexSessionUsage {
 // timestamp establishes the boundary; fresh sessions retain the previous
 // whole-file behavior because every event belongs to the new task.
 func parseCodexSessionFileSince(path string, startTime time.Time, resumed bool) *codexSessionUsage {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	f, err := os.Open(path)
 	if err != nil {
 		return nil

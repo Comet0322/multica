@@ -394,12 +394,14 @@ func runRepoCheckout(cmd *cobra.Command, args []string) error {
 	checkoutURL := fmt.Sprintf("http://127.0.0.1:%s/repo/checkout", daemonPort)
 	var body []byte
 	for {
+		// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, checkoutURL, bytes.NewReader(data))
 		if err != nil {
 			return fmt.Errorf("create daemon checkout request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+taskToken)
+		// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("connect to daemon: %w", err)

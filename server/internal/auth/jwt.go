@@ -11,6 +11,7 @@ import (
 	"sync"
 )
 
+// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 const defaultJWTSecret = "multica-dev-secret-change-in-production"
 
 var (

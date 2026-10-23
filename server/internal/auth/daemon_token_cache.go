@@ -13,6 +13,7 @@ import (
 // daemonTokenCachePrefix namespaces daemon-token cache keys separately
 // from PAT (mul:auth:pat:*) so the two key spaces can't collide and an
 // invalidation on one kind of token doesn't accidentally hit the other.
+// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 const daemonTokenCachePrefix = "mul:auth:daemon:"
 
 // DaemonTokenIdentity is what DaemonAuth needs from the cached lookup —

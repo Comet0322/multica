@@ -56,6 +56,7 @@ func (h *Handler) PublishPluginPackage(w http.ResponseWriter, r *http.Request) {
 	// Bounded before the multipart reader sees it: ParseMultipartForm would
 	// otherwise spool an unbounded upload to a temp file first.
 	r.Body = http.MaxBytesReader(w, r.Body, plugincontract.MaxBundleSize+multipartOverheadBytes)
+	// #nosec G120 -- body is bounded by http.MaxBytesReader immediately above
 	if err := r.ParseMultipartForm(plugincontract.MaxBundleSize + multipartOverheadBytes); err != nil {
 		writeError(w, http.StatusRequestEntityTooLarge, "the Plugin package upload is too large or malformed")
 		return

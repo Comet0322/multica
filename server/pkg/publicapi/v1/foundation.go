@@ -13,9 +13,11 @@ const (
 type CredentialKind string
 
 const (
-	CredentialUserOAuth        CredentialKind = "user_oauth"
-	CredentialPersonalAccess   CredentialKind = "personal_access_token"
-	CredentialPluginInstall    CredentialKind = "plugin_installation"
+	// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
+	CredentialUserOAuth      CredentialKind = "user_oauth"
+	CredentialPersonalAccess CredentialKind = "personal_access_token"
+	CredentialPluginInstall  CredentialKind = "plugin_installation"
+	// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 	CredentialPluginInvocation CredentialKind = "plugin_invocation"
 )
 

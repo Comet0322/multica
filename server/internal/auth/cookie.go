@@ -255,6 +255,7 @@ func SetAuthCookies(w http.ResponseWriter, token string) error {
 
 	readable := func(name, value string) {
 		// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- double-submit CSRF cookie must be readable by the frontend; Secure is set from deployment config; plain-HTTP self-host needs it off
+		// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
 			Value:    value,
@@ -269,6 +270,7 @@ func SetAuthCookies(w http.ResponseWriter, token string) error {
 	}
 
 	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is set from deployment config; plain-HTTP self-host needs it off
+	// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
 	http.SetCookie(w, &http.Cookie{
 		Name:     AuthCookieName,
 		Value:    token,
@@ -312,6 +314,7 @@ func ClearAuthCookies(w http.ResponseWriter) {
 
 	expire := func(name string, httpOnly bool) {
 		// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- double-submit CSRF cookie must be readable by the frontend; Secure is set from deployment config; plain-HTTP self-host needs it off
+		// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
 			Value:    "",

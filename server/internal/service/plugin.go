@@ -93,6 +93,7 @@ func devHookClient(devOrigins []string, caPath string) *http.Client {
 	if len(devOrigins) == 0 || strings.TrimSpace(caPath) == "" {
 		return nil
 	}
+	// #nosec G304 G703 -- path derives from operator config or a daemon-owned directory; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	pem, err := os.ReadFile(caPath)
 	if err != nil {
 		slog.Warn("plugins: MULTICA_PLUGIN_DEV_CA could not be read; dev hook endpoints will not be trusted", "path", caPath, "error", err)

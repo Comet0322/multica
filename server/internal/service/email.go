@@ -129,8 +129,9 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 	addr := net.JoinHostPort(s.smtpHost, s.smtpPort)
 
 	tlsCfg := &tls.Config{
-		ServerName:         s.smtpHost,
-		MinVersion:         tls.VersionTLS12,
+		ServerName: s.smtpHost,
+		MinVersion: tls.VersionTLS12,
+		// #nosec G402 -- opt-in via SMTP_TLS_INSECURE for self-signed relays
 		InsecureSkipVerify: s.smtpTLSInsecure, //nolint:gosec // opt-in via SMTP_TLS_INSECURE=true
 	}
 

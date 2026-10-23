@@ -444,6 +444,7 @@ func checkDirReadWrite(dir string) error {
 // path not in a repo, exec failure) so the caller can treat "not a git
 // tree" and "can't tell" the same way: skip the git-specific path.
 func isGitWorkTree(ctx context.Context, path string) bool {
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	cmd := exec.CommandContext(ctx, "git", "-C", path, "rev-parse", "--is-inside-work-tree")
 	out, err := cmd.Output()
 	if err != nil {

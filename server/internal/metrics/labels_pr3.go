@@ -120,6 +120,7 @@ var (
 		"other":      "other",
 	}
 
+	// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 	knownWebhookRateLimitGates = map[string]string{
 		"absolute_ip":       "absolute_ip",
 		"bad_credential_ip": "bad_credential_ip",

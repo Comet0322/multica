@@ -112,6 +112,7 @@ func (c Command) Argv(args ...string) []string {
 func (c Command) exec(ctx context.Context, args ...string) *exec.Cmd {
 	warnLaunchPrefixOverlap(c.Prefix, args, c.logger)
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	return newRuntimeCmd(exec.CommandContext(ctx, c.Path, c.Argv(args...)...))
 }
 
@@ -271,6 +272,7 @@ func (c Command) execVia(ctx context.Context, choose invocationChooser, lookedUp
 	warnLaunchPrefixOverlap(c.Prefix, args, logger)
 	argv0, cmdArgs := choose(c.Path, lookedUp, c.Argv(args...), logger)
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	return newRuntimeCmd(exec.CommandContext(ctx, argv0, cmdArgs...)), argv0, cmdArgs
 }
 

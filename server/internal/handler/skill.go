@@ -1009,6 +1009,7 @@ func parseClawHubSlug(raw string) (string, error) {
 
 func searchClawHubSkills(httpClient *http.Client, query string) ([]SkillSearchCandidateResponse, error) {
 	searchURL := clawHubAPIBase + "/search?q=" + url.QueryEscape(query)
+	// #nosec G704 -- request host is fixed (GitHub/ClawHub API base, or loopback daemon port validated as an integer)
 	resp, err := httpClient.Get(searchURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach ClawHub: %w", err)

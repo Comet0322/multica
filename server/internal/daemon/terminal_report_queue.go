@@ -200,6 +200,7 @@ func ensureTerminalReportDir(dir string) error {
 	}
 	// Tighten an existing directory as well as a newly-created one. Terminal
 	// payloads may include private prompts, results, paths, and error details.
+	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return fmt.Errorf("secure terminal report queue: %w", err)
 	}
@@ -218,6 +219,7 @@ func (s *terminalReportStore) enqueue(report terminalTaskReport) error {
 	}
 	name := terminalReportFileName(report.taskID)
 	path := filepath.Join(s.dir, name)
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	if existingBody, readErr := os.ReadFile(path); readErr == nil {
 		existing, decodeErr := decodePersistedTerminalReport(existingBody)
 		if decodeErr != nil {
@@ -353,6 +355,7 @@ func (s *terminalReportStore) recoverTempFiles(entries []os.DirEntry) error {
 			continue
 		}
 		tempPath := filepath.Join(s.dir, name)
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		body, err := os.ReadFile(tempPath)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("read interrupted terminal report %s: %w", name, err))
@@ -375,6 +378,7 @@ func (s *terminalReportStore) recoverTempFiles(entries []os.DirEntry) error {
 			continue
 		}
 		targetPath := filepath.Join(s.dir, targetName)
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		if existingBody, readErr := os.ReadFile(targetPath); readErr == nil {
 			existing, decodeErr := decodePersistedTerminalReport(existingBody)
 			if decodeErr != nil {
@@ -460,6 +464,7 @@ func (s *terminalReportStore) recordPermanentRejection(item pendingTerminalTaskR
 		return false, err
 	}
 	path := filepath.Join(s.dir, item.fileName)
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return false, fmt.Errorf("read rejected terminal report: %w", err)
@@ -501,6 +506,7 @@ func (s *terminalReportStore) recordPermanentRejection(item pendingTerminalTaskR
 		return false, fmt.Errorf("create failed terminal report queue: %w", err)
 	}
 	failedPath := filepath.Join(s.failedDir(), item.fileName)
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	if existingBody, readErr := os.ReadFile(failedPath); readErr == nil {
 		existing, decodeErr := decodePersistedTerminalReport(existingBody)
 		if decodeErr != nil {

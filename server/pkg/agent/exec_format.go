@@ -196,6 +196,7 @@ func npmPackagePostinstall(execPath string) (name, root, script string, ok bool)
 		return "", "", "", false
 	}
 	root = filepath.Dir(dir)
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
 		return "", "", "", false

@@ -60,6 +60,7 @@ func reasonixOwnerPermissions(path string) (map[string]any, error) {
 	if path == "" {
 		return nil, nil
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil

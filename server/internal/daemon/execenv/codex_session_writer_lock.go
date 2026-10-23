@@ -45,6 +45,7 @@ func AcquireCodexSessionWriterLock(ctx context.Context, store string, onWait fun
 	}
 
 	path := codexSessionWriterLockPath(store)
+	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create Codex session writer lock directory: %w", err)
 	}

@@ -124,6 +124,7 @@ func enableWorktreeConfigContext(ctx context.Context, barePath string) error {
 		if err := runGitContext(ctx, "config", "--file", lockPath, "extensions.worktreeConfig", "true"); err != nil {
 			return nil, err
 		}
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		return os.ReadFile(lockPath)
 	})
 }
@@ -146,6 +147,7 @@ func editGitConfigFile(path string, edit func([]byte, string) ([]byte, error)) e
 // The rename argument lets tests place another writer exactly at lock handoff.
 func editGitConfigFileWithRename(path string, edit func([]byte, string) ([]byte, error), rename func(string, string) error) error {
 	lockPath := path + ".lock"
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("lock Git config: %w", err)
@@ -156,6 +158,7 @@ func editGitConfigFileWithRename(path string, edit func([]byte, string) ([]byte,
 			_ = os.Remove(lockPath)
 		}
 	}()
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	contents, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		_ = f.Close()

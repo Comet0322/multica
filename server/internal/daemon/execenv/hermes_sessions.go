@@ -185,6 +185,7 @@ func hermesStoreHasSessionDB(storeDir string) bool {
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
 		return false
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	db, err := os.Open(path)
 	if err != nil {
 		return false

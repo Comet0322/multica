@@ -345,6 +345,7 @@ func (m *Manager) runClaimed(
 	hbCtx, hbCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer hbCancel()
 	hbDone := make(chan struct{})
+	// #nosec G118 -- cancel function is handed to the ordered shutdown sequence
 	go m.runHeartbeats(hbCtx, hbDone, job, c, log)
 
 	start := time.Now()

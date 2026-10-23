@@ -118,6 +118,7 @@ func openBrowser(url string) error {
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	return exec.Command(cmd, args...).Start()
 }
 

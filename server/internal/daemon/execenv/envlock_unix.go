@@ -16,6 +16,7 @@ import (
 // another marker file: it answers "is the previous execution still alive?"
 // without a heartbeat, a PID table, or a stale-state cleanup path.
 func openLockFile(path string) (*os.File, error) {
+	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
 	return os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 }
 

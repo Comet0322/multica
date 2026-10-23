@@ -75,6 +75,7 @@ func resolveTextFlag(cmd *cobra.Command, flagName string) (string, bool, error) 
 		if err := ensureFileFlagWithinWorkdir(cmd, fileFlag, flagName, filePath); err != nil {
 			return "", false, err
 		}
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			return "", false, fmt.Errorf("read file for --%s: %w", fileFlag, err)
@@ -1339,6 +1340,7 @@ func collectLocalAttachments(cmd *cobra.Command, attachments []string) ([]pendin
 		if err := ensureAttachmentWithinWorkdir(cmd, filePath); err != nil {
 			return nil, err
 		}
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		data, readErr := os.ReadFile(filePath)
 		if readErr != nil {
 			return nil, fmt.Errorf("read attachment %s: %w", filePath, readErr)

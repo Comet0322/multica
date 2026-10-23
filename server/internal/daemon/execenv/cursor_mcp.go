@@ -180,12 +180,14 @@ func resolveCursorMcpAuthSource(source string) (string, error) {
 }
 
 func copyCursorMcpAuthFile(target, source string) error {
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	in, err := os.Open(source)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err

@@ -210,6 +210,7 @@ func loadOpenclawDiscoveryCache(cachePath, bin string, now time.Time) (openclawD
 	if cachePath == "" {
 		return openclawDiscoveryCacheEntry{}, false
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	raw, err := os.ReadFile(cachePath)
 	if err != nil {
 		return openclawDiscoveryCacheEntry{}, false

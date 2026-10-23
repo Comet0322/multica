@@ -139,6 +139,7 @@ var pgBigmOperatorClass = extensionOperatorClass{
 // migrations costs one to_regclass lookup each, and only on a database where
 // they are still pending: a fresh self-hosted install, which is exactly where an
 // interrupted build would otherwise leave a permanently unusable index.
+// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 var concurrentIndexCleanups = map[string]string{
 	"563_search_index_change_changed_at_index":                  "idx_search_index_change_changed_at",
 	"562_search_index_change_workspace_index":                   "idx_search_index_change_workspace_xid",
@@ -806,6 +807,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
+		// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
 	}
 
@@ -1004,6 +1006,7 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 			}
 		}
 
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		sql, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read migration %q: %w", file, err)

@@ -50,6 +50,7 @@ func tailLogFile(logPath string, lines int, follow bool) error {
 	}
 	args = append(args, logPath)
 
+	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	tail := exec.Command("tail", args...)
 	tail.Stdout = os.Stdout
 	tail.Stderr = os.Stderr

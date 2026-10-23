@@ -326,6 +326,7 @@ func main() {
 	selfhosttelemetry.LogStartupStatus(slog.Default(), telemetryConfig)
 	// Warn about missing configuration
 	if err := jwtSecretBootError(os.Getenv("JWT_SECRET")); err != nil {
+		// #nosec G706 -- logged text is a fixed server-side message
 		slog.Error(
 			"refusing to start: " + err.Error() +
 				"; generate a strong secret with `openssl rand -hex 32` and set JWT_SECRET (see .env.example)",
@@ -368,6 +369,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
+		// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
 	}
 
@@ -706,7 +708,9 @@ func main() {
 	}
 
 	// Start background workers.
+	// #nosec G118 -- cancel function is handed to the ordered shutdown sequence
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	// #nosec G118 -- cancel function is handed to the ordered shutdown sequence
 	autopilotCtx, autopilotCancel := context.WithCancel(context.Background())
 	telemetryWorker := selfhosttelemetry.New(pool, version, telemetryConfig, slog.Default())
 	// Reuse the router's services here. In particular, the router wires the

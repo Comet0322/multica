@@ -247,8 +247,10 @@ func runtimeConfigPath(workDir, provider string) string {
 func writeRuntimeConfigFile(path, brief string) error {
 	block := runtimeMarkerBegin + "\n" + strings.TrimRight(brief, "\n") + "\n" + runtimeMarkerEnd + "\n"
 
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	existing, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
+		// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
 		return os.WriteFile(path, []byte(block), 0o644)
 	}
 	if err != nil {
@@ -263,6 +265,7 @@ func writeRuntimeConfigFile(path, brief string) error {
 		// The managed separator (if any) lives in existingStr[:start] and
 		// is preserved untouched.
 		newContent := existingStr[:start] + block + existingStr[end:]
+		// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 		return os.WriteFile(path, []byte(newContent), 0o644)
 	}
 
@@ -271,6 +274,7 @@ func writeRuntimeConfigFile(path, brief string) error {
 	// that already end in two or more newlines — so the byte boundary
 	// between user content and the managed region is deterministic, which
 	// is what lets Cleanup roll back to the user's exact original bytes.
+	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	return os.WriteFile(path, []byte(existingStr+runtimeManagedSeparator+block), 0o644)
 }
 
@@ -351,6 +355,7 @@ func CleanupRuntimeConfig(workDir, provider string) error {
 	if path == "" {
 		return nil
 	}
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	existing, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -390,6 +395,7 @@ func CleanupRuntimeConfig(workDir, provider string) error {
 	// without any normalisation. An empty `remainder` here means the
 	// user's original file was empty; we still write it (zero-byte file)
 	// so the file's existence is preserved.
+	// #nosec G306 G703 -- file mode is intentional: shared with agent CLIs and the web server user; path comes from operator-controlled environment/config or a daemon-built directory, not request input
 	return os.WriteFile(path, []byte(remainder), 0o644)
 }
 

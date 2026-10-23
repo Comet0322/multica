@@ -465,6 +465,7 @@ func daemonTaskContextMarkerPath() string {
 		// normal user's machine), which would refuse their PAT for no reason;
 		// the daemon writes this marker world-readable in the agent's own
 		// workdir, so a legitimate agent can always read it.
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		if data, err := os.ReadFile(markerPath); err == nil {
 			var marker struct {
 				ManagedBy string `json:"managed_by"`
@@ -958,6 +959,7 @@ func runAgentAvatar(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("file too large: %d bytes (max 5MB)", info.Size())
 	}
 
+	// #nosec G304 -- path derives from operator config or a daemon-owned directory
 	fileData, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -1342,6 +1344,7 @@ func resolveCustomEnv(cmd *cobra.Command) (map[string]string, bool, error) {
 		if filePath == "" {
 			return nil, false, fmt.Errorf("--custom-env-file: path must not be empty")
 		}
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		buf, err := os.ReadFile(filePath)
 		if err != nil {
 			// Filesystem errors may include the path but not the contents —
@@ -1473,6 +1476,7 @@ func resolveMcpJSONObject(cmd *cobra.Command, prefix string, allowNull bool) (js
 		if filePath == "" {
 			return nil, false, fmt.Errorf("--%s-file: path must not be empty", prefix)
 		}
+		// #nosec G304 -- path derives from operator config or a daemon-owned directory
 		buf, err := os.ReadFile(filePath)
 		if err != nil {
 			// Filesystem errors may include the path but not the contents —

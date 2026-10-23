@@ -29,6 +29,7 @@ const defaultAPIBase = "https://api.dingtalk.com"
 
 // accessTokenPath mints an enterprise-internal-app access_token from the app's
 // AppKey/AppSecret. The response carries the token and its lifetime in seconds.
+// #nosec G101 -- identifier names an environment variable or credential kind; it holds no secret value
 const accessTokenPath = "/v1.0/oauth2/accessToken"
 
 // accessTokenResponse is the success shape of accessTokenPath.
