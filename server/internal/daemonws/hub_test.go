@@ -726,3 +726,33 @@ func (p *localFirstDaemonRelayPublisher) PublishWithID(scopeType, scopeID, exclu
 	}
 	return nil
 }
+
+func TestHandleWebSocketRefusesBrowserOrigins(t *testing.T) {
+	M.Reset()
+	defer M.Reset()
+
+	hub := NewHub()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hub.HandleWebSocket(w, r, ClientIdentity{RuntimeIDs: []string{"runtime-1"}})
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("daemon-style dial (no Origin) failed: %v", err)
+	}
+	conn.Close()
+
+	for _, origin := range []string{"http://evil.example", server.URL} {
+		header := http.Header{"Origin": []string{origin}}
+		conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
+		if err == nil {
+			conn.Close()
+			t.Fatalf("dial with Origin %q succeeded; want it refused", origin)
+		}
+		if resp == nil || resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("Origin %q: response = %+v, want 403", origin, resp)
+		}
+	}
+}

@@ -32,8 +32,7 @@ function loadBridge(token = TOKEN) {
 describe("buildScrollBridge", () => {
   it("wraps the script in <script> tags", () => {
     const out = buildScrollBridge(TOKEN);
-    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- test-only: asserts on generated iframe bridge HTML with fixed inputs
-    expect(out.startsWith("<script>")).toBe(true);
+    expect(out).toMatch(/^<script>/);
     expect(out.endsWith("</script>")).toBe(true);
   });
 

@@ -2133,8 +2133,7 @@ describe("IssueDetail (shared)", () => {
   };
 
   function statusChangeIcon(to: string): SVGElement {
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
-    const row = screen.getByText(new RegExp(`to ${to}$`, "i")).closest("div")
+    const row = screen.getByText((content) => content.toLowerCase().endsWith(`to ${to}`.toLowerCase())).closest("div")
       ?.parentElement;
     const icon = row?.querySelector("svg");
     if (!icon) throw new Error(`no status glyph for the "${to}" activity row`);

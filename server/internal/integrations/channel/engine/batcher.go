@@ -92,34 +92,38 @@ func (b *pendingBatcher) ScheduleIfAbsent(key string, flush func()) {
 }
 
 func (b *pendingBatcher) schedule(key string, flush func(), replace bool) {
-	b.mu.Lock()
-	if b.stopped {
-		b.mu.Unlock()
+	if !b.arm(key, flush, replace) {
 		flush()
-		return
+	}
+}
+
+// arm records the window for key under the lock. It returns false when the
+// batcher is stopped, so the caller runs flush itself once the lock is released.
+func (b *pendingBatcher) arm(key string, flush func(), replace bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopped {
+		return false
 	}
 	b.seq++
 	gen := b.seq
-	// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
 	fire := func() { b.onFire(key, gen) }
 	if e, ok := b.pending[key]; ok {
 		if !replace {
-			b.mu.Unlock()
-			return
+			return true
 		}
 		e.timer.Stop()
 		e.flush = flush
 		e.gen = gen
 		e.timer = b.afterFunc(b.window, fire)
-		b.mu.Unlock()
-		return
+		return true
 	}
 	b.pending[key] = &pendingEntry{
 		flush: flush,
 		gen:   gen,
 		timer: b.afterFunc(b.window, fire),
 	}
-	b.mu.Unlock()
+	return true
 }
 
 // onFire runs the flush for key if it is still the live, armed generation. It

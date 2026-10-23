@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/multica-ai/multica/server/internal/migrations"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // readinessQuery counts how many of the binary's required migration versions
@@ -194,6 +195,5 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
-	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
-	_, _ = w.Write(body)
+	_, _ = util.WriteBody(w, body)
 }

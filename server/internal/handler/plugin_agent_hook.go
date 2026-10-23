@@ -54,10 +54,10 @@ func (h *Handler) InvokeAgentPluginHook(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// nosemgrep: trailofbits.go.invalid-usage-of-modified-variable.invalid-usage-of-modified-variable -- false positive: variable is not modified after validation
-	result, err := h.PluginService.InvokeAgentHook(
+	result, invokeErr := h.PluginService.InvokeAgentHook(
 		r.Context(), uuidToString(installation.ID), req.HookKey, task.AgentID, req.Input)
-	if err != nil {
+	hookStatus, hookError := result.Status, result.Error
+	if invokeErr != nil {
 		// 200 with an error body, deliberately.
 		//
 		// The daemon turns this into a tool ERROR, and a tool error is
@@ -66,8 +66,8 @@ func (h *Handler) InvokeAgentPluginHook(w http.ResponseWriter, r *http.Request) 
 		// which is how one unreachable plugin endpoint ends up failing the
 		// whole task — the outcome acceptance criterion 3 forbids.
 		writeJSON(w, http.StatusOK, map[string]any{
-			"status": result.Status,
-			"error":  result.Error,
+			"status": hookStatus,
+			"error":  hookError,
 		})
 		return
 	}

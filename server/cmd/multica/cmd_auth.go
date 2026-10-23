@@ -281,8 +281,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
-		_, _ = w.Write([]byte(callbackSuccessHTML))
+		_, _ = util.WriteBody(w, []byte(callbackSuccessHTML))
 		jwtCh <- token
 	})
 

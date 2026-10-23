@@ -218,22 +218,23 @@ export function derivePullRequestVerdict(input: PullRequestVerdictInput): PullRe
 
 // Row copy
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 // A PR titled "MUL-1: fix x" or "fix x (MUL-1)" repeats the issue it is listed
 // under. Drop that one key — a leading "MUL-1:" / "MUL-1 " or a trailing
 // "(MUL-1)" — so the truncated title spends its width on what the PR does.
 // Other keys, and titles that are nothing but the key, stay as written.
 export function stripIssueKeyFromTitle(title: string, identifier: string): string {
   if (!identifier) return title;
-  const key = escapeRegExp(identifier);
-  const stripped = title
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
-    .replace(new RegExp(`^\\s*${key}(?![\\w-])\\s*:?\\s*`, "i"), "")
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
-    .replace(new RegExp(`\\s*\\(${key}\\)\\s*$`, "i"), "");
+  const key = identifier.toLowerCase();
+  let stripped = title;
+  const leading = title.trimStart();
+  if (leading.toLowerCase().startsWith(key) && !/[\w-]/.test(leading.charAt(key.length))) {
+    stripped = leading.slice(key.length).trimStart();
+    if (stripped.startsWith(":")) stripped = stripped.slice(1).trimStart();
+  }
+  const trailing = stripped.trimEnd();
+  if (trailing.toLowerCase().endsWith(`(${key})`)) {
+    stripped = trailing.slice(0, trailing.length - key.length - 2).trimEnd();
+  }
   return stripped.trim() ? stripped : title;
 }
 

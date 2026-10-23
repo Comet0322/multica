@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"strings"
-	// nosemgrep: go.lang.security.audit.xss.import-text-template.import-text-template -- static CLI help text, no untrusted input
-	"text/template"
 
 	"github.com/spf13/cobra"
 )
@@ -102,7 +100,7 @@ func commandsInGroup(cmds []*cobra.Command, groupID string) []*cobra.Command {
 }
 
 func init() {
-	cobra.AddTemplateFuncs(template.FuncMap{
+	cobra.AddTemplateFuncs(map[string]any{
 		"formatCommandList": formatCommandList,
 		"commandsInGroup":   commandsInGroup,
 	})

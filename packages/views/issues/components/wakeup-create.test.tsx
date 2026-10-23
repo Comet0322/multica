@@ -40,8 +40,7 @@ async function renderForm(defaultAgentId = "emacs") {
 
 async function chooseCondition(label: string) {
   fireEvent.click(screen.getByRole("button", { name: /选择条件/ }));
-  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
-  fireEvent.click(await screen.findByRole("menuitem", { name: new RegExp(label) }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: (accessibleName) => accessibleName.includes(label) }));
 }
 
 beforeEach(() => {
@@ -146,7 +145,7 @@ describe("platform conditions in the form", () => {
     await renderForm();
     fireEvent.click(screen.getByRole("button", { name: /选择条件/ }));
     for (const label of ["字段变为某个值", "子任务完成", "关联 PR 的 CI 结束", "其他任务的状态变化"]) {
-      expect(await screen.findByRole("menuitem", { name: new RegExp(label) })).toBeVisible();
+      expect(await screen.findByRole("menuitem", { name: (accessibleName) => accessibleName.includes(label) })).toBeVisible();
     }
     for (const group of ["协作", "运行与子任务", "关联"]) expect(screen.getByText(group)).toBeVisible();
   });

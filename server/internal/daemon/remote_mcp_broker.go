@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -337,8 +338,8 @@ func (proxy *remoteMCPProxy) ServeHTTP(w http.ResponseWriter, request *http.Requ
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-	} else if contentType := response.Header.Get("Content-Type"); contentType != "" {
-		w.Header().Set("Content-Type", contentType)
+	} else {
+		w.Header().Set("Content-Type", relayableRemoteMCPContentType(response.Header.Get("Content-Type")))
 	}
 	for _, header := range []string{"Mcp-Session-Id", "Mcp-Protocol-Version"} {
 		if value := response.Header.Get(header); value != "" {
@@ -346,10 +347,40 @@ func (proxy *remoteMCPProxy) ServeHTTP(w http.ResponseWriter, request *http.Requ
 		}
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	relayType := w.Header().Get("Content-Type")
+	if len(responseBody) > 0 && relayType == "application/json" && !json.Valid(responseBody) {
+		resultClass = "remote_error"
+		writeRemoteMCPError(w, rpcRequest.ID, -32000, "Remote MCP service returned an invalid response")
+		return
+	}
 	w.WriteHeader(response.StatusCode)
-	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter, go.net.xss.no-direct-write-to-responsewriter-taint.no-direct-write-to-responsewriter-taint -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML; upstream body relayed to a local agent with nosniff; not rendered by a browser
-	_, _ = w.Write(responseBody)
+	relayRemoteMCPBody(w, relayType, responseBody)
 	resultClass = "success"
+}
+
+// relayRemoteMCPBody forwards an already-validated upstream body. JSON bodies
+// go through the encoder as raw JSON; event streams are copied through as
+// received. An empty body (a 202 for a notification) writes nothing.
+func relayRemoteMCPBody(w http.ResponseWriter, contentType string, body []byte) {
+	if len(body) == 0 {
+		return
+	}
+	if contentType == "application/json" {
+		_ = json.NewEncoder(w).Encode(json.RawMessage(body))
+		return
+	}
+	_, _ = io.Copy(w, bytes.NewReader(body))
+}
+
+// relayableRemoteMCPContentType limits what the broker repeats to the agent:
+// the MCP transports are JSON and server-sent events, so any other upstream
+// type (HTML in particular) is relayed as JSON instead of being echoed.
+func relayableRemoteMCPContentType(upstream string) string {
+	mediaType, _, err := mime.ParseMediaType(upstream)
+	if err == nil && mediaType == "text/event-stream" {
+		return "text/event-stream"
+	}
+	return "application/json"
 }
 
 func decodeRemoteMCPSSEData(contentType string, raw []byte) ([]byte, error) {

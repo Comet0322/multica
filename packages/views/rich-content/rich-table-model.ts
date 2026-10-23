@@ -83,6 +83,12 @@ function tableSpans(markdown: string): Span[] {
 
 const QUOTE_MARKER = /^ {0,3}> ?/;
 
+function stripLeadingSpaces(line: string, max: number): string {
+  let i = 0;
+  while (i < max && line.charCodeAt(i) === 32) i++;
+  return line.slice(i);
+}
+
 // A table inside a blockquote or list item starts after the container's
 // markers, and every later line repeats them; without them it is a table again.
 function standaloneTable(source: string, [start, end]: Span): string {
@@ -93,15 +99,13 @@ function standaloneTable(source: string, [start, end]: Span): string {
     prefix = prefix.replace(QUOTE_MARKER, "");
     quoteDepth++;
   }
-  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- interpolated value is regex-escaped or numeric
-  const indent = new RegExp(`^ {0,${prefix.length}}`);
   const [first = "", ...rest] = source.slice(start, end).split("\n");
   return [
     first,
     ...rest.map((line) => {
       let unquoted = line;
       for (let i = 0; i < quoteDepth; i++) unquoted = unquoted.replace(QUOTE_MARKER, "");
-      return unquoted.replace(indent, "");
+      return stripLeadingSpaces(unquoted, prefix.length);
     }),
   ].join("\n");
 }

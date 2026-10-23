@@ -128,8 +128,7 @@ function renderMenu({
 async function openSubmenu(name: "From" | "Status" | "Priority") {
   fireEvent.click(screen.getByRole("button", { name: "Filter inbox" }));
   const trigger = await screen.findByRole("menuitem", {
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test-only: pattern built from fixed fixture text
-    name: new RegExp(`^${name}`),
+    name: (accessibleName) => accessibleName.startsWith(name),
   });
   fireEvent.click(trigger);
 }

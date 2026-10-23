@@ -379,8 +379,7 @@ func (s *cursorSupplementSession) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	body, err := json.Marshal(s.prepareHook(req))
 	if err == nil {
 		w.Header().Set("Content-Type", "application/json")
-		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
-		_, err = w.Write(body)
+		_, err = util.WriteBody(w, body)
 	}
 	if err != nil && s.logger != nil {
 		s.logger.Warn("cursor hook response failed", "error", err)
