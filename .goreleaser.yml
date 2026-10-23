@@ -24,7 +24,6 @@ builds:
     goos:
       - darwin
       - linux
-      - windows
     goarch:
       - amd64
       - arm64
@@ -40,10 +39,6 @@ archives:
       - NOTICE
     formats:
       - tar.gz
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
   # Versioned archive name used by current CLI / install scripts /
   # desktop bootstrap going forward.
@@ -54,10 +49,6 @@ archives:
       - NOTICE
     formats:
       - tar.gz
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
     name_template: "{{ .ProjectName }}-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
 
 checksum:
