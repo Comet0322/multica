@@ -440,8 +440,7 @@ func stripLegacySandboxDirectives(content string) string {
 // Windows no-native-sandbox fallback alike — so that every unsandboxed task is
 // visible in daemon logs.
 func ensureCodexSandboxConfig(configPath string, policy codexSandboxPolicy, detectedVersion string, logger *slog.Logger) error {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(configPath)
+	data, err := util.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read config.toml: %w", err)
 	}

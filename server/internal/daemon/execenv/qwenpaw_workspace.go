@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // prepareQwenpawWorkspace creates a per-task QwenPaw workspace directory and
@@ -53,8 +55,7 @@ func prepareQwenpawWorkspace(qwenpawWorkspace string, workspaceSkills []SkillCon
 	// Write skills into <workspace>/skills/.
 	// QwenPaw's store.py reads workspace skills from the "skills" directory
 	// via get_workspace_skills_dir(); see qwenpaw/agents/skill_system/store.py.
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+	if err := util.MkdirAll(skillsDir, 0o755); err != nil {
 		return fmt.Errorf("create qwenpaw skills dir: %w", err)
 	}
 
@@ -64,26 +65,22 @@ func prepareQwenpawWorkspace(qwenpawWorkspace string, workspaceSkills []SkillCon
 		slug := slugs[i]
 		skillDir := filepath.Join(skillsDir, slug)
 
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		if err := util.MkdirAll(skillDir, 0o755); err != nil {
 			return fmt.Errorf("create skill dir for %q: %w", skill.Name, err)
 		}
 
 		body := ensureSkillFrontmatter(skill.Content, slug, skill.Description)
-		// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		if err := util.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
 			return fmt.Errorf("write SKILL.md for %q: %w", skill.Name, err)
 		}
 
 		// Write supporting files.
 		for _, f := range skill.Files {
 			fpath := filepath.Join(skillDir, f.Path)
-			// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-			if err := os.MkdirAll(filepath.Dir(fpath), 0o755); err != nil {
+			if err := util.MkdirAll(filepath.Dir(fpath), 0o755); err != nil {
 				return fmt.Errorf("create dir for skill file %q: %w", f.Path, err)
 			}
-			// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-			if err := os.WriteFile(fpath, []byte(f.Content), 0o644); err != nil {
+			if err := util.WriteFile(fpath, []byte(f.Content), 0o644); err != nil {
 				return fmt.Errorf("write skill file %q: %w", f.Path, err)
 			}
 		}
@@ -125,8 +122,7 @@ func prepareQwenpawWorkspace(qwenpawWorkspace string, workspaceSkills []SkillCon
 	if err != nil {
 		return fmt.Errorf("marshal skill manifest: %w", err)
 	}
-	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.WriteFile(manifestPath, data, 0o644); err != nil {
+	if err := util.WriteFile(manifestPath, data, 0o644); err != nil {
 		return fmt.Errorf("write skill manifest: %w", err)
 	}
 

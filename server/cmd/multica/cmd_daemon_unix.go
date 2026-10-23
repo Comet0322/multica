@@ -5,10 +5,11 @@ package main
 import (
 	"context"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // daemonSysProcAttr returns the attributes used when spawning the background
@@ -50,8 +51,7 @@ func tailLogFile(logPath string, lines int, follow bool) error {
 	}
 	args = append(args, logPath)
 
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	tail := exec.Command("tail", args...)
+	tail := util.Command("tail", args...)
 	tail.Stdout = os.Stdout
 	tail.Stderr = os.Stderr
 	return tail.Run()

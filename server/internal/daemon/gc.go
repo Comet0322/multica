@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/daemon/processtree"
 	"github.com/multica-ai/multica/server/internal/daemon/repocache"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // reposDirName is the bare-repo cache directory inside the workspaces root.
@@ -1667,8 +1667,7 @@ func runGitCommandContext(parent context.Context, barePath string, timeout time.
 	defer cancel()
 
 	cmdArgs := append([]string{"-C", barePath}, args...)
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", cmdArgs...)
+	cmd := util.Command("git", cmdArgs...)
 	out, err := processtree.CombinedOutput(ctx, cmd, 5*time.Second)
 	return strings.TrimSpace(string(out)), err
 }

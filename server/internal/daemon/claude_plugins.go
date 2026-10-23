@@ -2,10 +2,11 @@ package daemon
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 type claudePluginInstall struct {
@@ -36,8 +37,7 @@ type claudePluginManifest struct {
 // deliberate: recursively scanning ~/.claude/plugins would surface both the
 // marketplace checkout and every cached version of the same plugin.
 func listEnabledClaudePlugins(home string) []claudePluginInstall {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	settingsRaw, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	settingsRaw, err := util.ReadFile(filepath.Join(home, ".claude", "settings.json"))
 	if err != nil {
 		return nil
 	}
@@ -46,8 +46,7 @@ func listEnabledClaudePlugins(home string) []claudePluginInstall {
 		return nil
 	}
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	installedRaw, err := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
+	installedRaw, err := util.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
 	if err != nil {
 		return nil
 	}
@@ -94,8 +93,7 @@ func listEnabledClaudePlugins(home string) []claudePluginInstall {
 }
 
 func readClaudePluginManifest(installPath string) (claudePluginManifest, bool) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	raw, err := os.ReadFile(filepath.Join(installPath, ".claude-plugin", "plugin.json"))
+	raw, err := util.ReadFile(filepath.Join(installPath, ".claude-plugin", "plugin.json"))
 	if err != nil {
 		return claudePluginManifest{}, false
 	}

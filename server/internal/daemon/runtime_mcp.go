@@ -369,8 +369,7 @@ func loadClaudePluginMcpServerConfigs(home string) map[string]any {
 			filepath.Join(plugin.InstallPath, ".mcp.json"),
 		)
 		for _, path := range paths {
-			// #nosec G304 -- path derives from operator config or a daemon-owned directory
-			raw, err := os.ReadFile(path)
+			raw, err := util.ReadFile(path)
 			if err != nil {
 				continue
 			}
@@ -530,8 +529,7 @@ func listClaudePluginMcpServers(home string) []runtimeLocalMcpServerSummary {
 			filepath.Join(plugin.InstallPath, ".mcp.json"),
 		)
 		for _, path := range paths {
-			// #nosec G304 -- path derives from operator config or a daemon-owned directory
-			raw, err := os.ReadFile(path)
+			raw, err := util.ReadFile(path)
 			if err != nil {
 				continue
 			}

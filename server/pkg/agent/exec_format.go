@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // ExplainExecError annotates err with an actionable diagnosis when the OS
@@ -196,8 +197,7 @@ func npmPackagePostinstall(execPath string) (name, root, script string, ok bool)
 		return "", "", "", false
 	}
 	root = filepath.Dir(dir)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	data, err := util.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
 		return "", "", "", false
 	}

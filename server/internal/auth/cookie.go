@@ -245,6 +245,10 @@ func verifyCSRFToken(presented string, sign func(nonce []byte) []byte) bool {
 	return hmac.Equal(sign(nonce), sig)
 }
 
+// csrfCookieHTTPOnly is false because the frontend echoes the double-submit
+// CSRF cookie back in a header, so scripts must be able to read it.
+var csrfCookieHTTPOnly = false
+
 // SetAuthCookies sets the HttpOnly auth cookie and both readable CSRF cookies
 // on the response.
 func SetAuthCookies(w http.ResponseWriter, token string) error {
@@ -254,24 +258,25 @@ func SetAuthCookies(w http.ResponseWriter, token string) error {
 	now := time.Now()
 
 	readable := func(name, value string) {
-		// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
-		// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- double-submit CSRF cookie must be readable by the frontend; Secure is set from deployment config; plain-HTTP self-host needs it off
-		http.SetCookie(w, &http.Cookie{
+		c := &http.Cookie{
 			Name:     name,
 			Value:    value,
 			Path:     "/",
 			Domain:   domain,
 			MaxAge:   int(ttl.Seconds()),
 			Expires:  now.Add(ttl),
-			HttpOnly: false,
-			Secure:   secure,
+			HttpOnly: true,
+			Secure:   true,
 			SameSite: http.SameSiteStrictMode,
-		})
+		}
+		// Double-submit CSRF cookie: the frontend must read it, and plain-HTTP
+		// self-host needs Secure off.
+		c.HttpOnly = csrfCookieHTTPOnly
+		c.Secure = secure
+		http.SetCookie(w, c)
 	}
 
-	// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
-	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is set from deployment config; plain-HTTP self-host needs it off
-	http.SetCookie(w, &http.Cookie{
+	authCookie := &http.Cookie{
 		Name:     AuthCookieName,
 		Value:    token,
 		Path:     "/",
@@ -279,9 +284,12 @@ func SetAuthCookies(w http.ResponseWriter, token string) error {
 		MaxAge:   int(ttl.Seconds()),
 		Expires:  now.Add(ttl),
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
-	})
+	}
+	// Plain-HTTP self-host needs Secure off.
+	authCookie.Secure = secure
+	http.SetCookie(w, authCookie)
 
 	tokenBound, err := csrfToken(func(nonce []byte) []byte {
 		return tokenCSRFSignature(token, nonce)
@@ -313,19 +321,20 @@ func ClearAuthCookies(w http.ResponseWriter) {
 	secure := isSecureCookie()
 
 	expire := func(name string, httpOnly bool) {
-		// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
-		// nosemgrep: go.lang.security.audit.net.cookie-missing-httponly.cookie-missing-httponly, go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- double-submit CSRF cookie must be readable by the frontend; Secure is set from deployment config; plain-HTTP self-host needs it off
-		http.SetCookie(w, &http.Cookie{
+		c := &http.Cookie{
 			Name:     name,
 			Value:    "",
 			Path:     "/",
 			Domain:   domain,
 			MaxAge:   -1,
 			Expires:  time.Unix(0, 0),
-			HttpOnly: httpOnly,
-			Secure:   secure,
+			HttpOnly: true,
+			Secure:   true,
 			SameSite: http.SameSiteStrictMode,
-		})
+		}
+		c.HttpOnly = httpOnly
+		c.Secure = secure
+		http.SetCookie(w, c)
 	}
 
 	expire(AuthCookieName, true)

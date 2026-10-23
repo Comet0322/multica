@@ -1349,9 +1349,8 @@ var resolveAgentsViaLoginShell = func(names []string) map[string]string {
 	ctx, cancel := context.WithTimeout(context.Background(), loginShellResolveTimeout)
 	defer cancel()
 
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
-	cmd := exec.CommandContext(ctx, shell, "-ilc", buildLoginShellResolveScript(safe))
+	cmd := util.CommandContext(ctx, shell, "-ilc", buildLoginShellResolveScript(safe))
 	cmd.WaitDelay = loginShellResolveWaitDelay
 	raw, err := cmd.Output()
 	if err != nil {

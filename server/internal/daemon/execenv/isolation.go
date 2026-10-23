@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // PreparationHelperArg selects the private execution-environment helper mode
@@ -134,9 +135,8 @@ func runPreparationProcess(ctx context.Context, command []string, request prepar
 		return nil, fmt.Errorf("execenv: encode preparation request: %w", err)
 	}
 
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
-	cmd := exec.Command(command[0], command[1:]...)
+	cmd := util.Command(command[0], command[1:]...)
 	controller, err := newPreparationProcessController(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("execenv: create preparation process controller: %w", err)

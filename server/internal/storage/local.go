@@ -105,8 +105,7 @@ func (s *LocalStorage) GetReader(ctx context.Context, key string) (io.ReadCloser
 	if !isUnder(s.uploadDir, filePath) {
 		return nil, fmt.Errorf("local GetReader: key escapes upload dir: %q", key)
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.Open(filePath)
+	f, err := util.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("local GetReader: %w", err)
 	}
@@ -167,8 +166,7 @@ func (s *LocalStorage) Upload(ctx context.Context, key string, data []byte, cont
 	// that field.
 	if filename != "" {
 		body, _ := json.Marshal(localMeta{Filename: filename, ContentType: contentType})
-		// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-		if err := os.WriteFile(dest+metaSuffix, body, 0644); err != nil {
+		if err := util.WriteFile(dest+metaSuffix, body, 0644); err != nil {
 			slog.Error("local storage meta write failed", "key", key, "error", err)
 		}
 	}
@@ -186,8 +184,7 @@ func (s *LocalStorage) UploadStream(ctx context.Context, key string, data io.Rea
 	}
 	if filename != "" {
 		body, _ := json.Marshal(localMeta{Filename: filename, ContentType: contentType})
-		// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-		if err := os.WriteFile(dest+metaSuffix, body, 0644); err != nil {
+		if err := util.WriteFile(dest+metaSuffix, body, 0644); err != nil {
 			slog.Error("local storage meta write failed", "key", key, "error", err)
 		}
 	}
@@ -207,15 +204,13 @@ func (s *LocalStorage) UploadStream(ctx context.Context, key string, data io.Rea
 // temp file and the existing object survives untouched. Both upload paths go
 // through here so neither can reintroduce the destructive shape.
 func writeAtomic(dest string, src io.Reader) error {
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+	if err := util.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("local storage MkdirAll: %w", err)
 	}
 	tmp := tempPath(dest)
 	// 0644 at open, matching the mode the direct write used (os.CreateTemp
 	// would make it 0600 and need a chmod that some mounts refuse).
-	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := util.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("local storage create temp: %w", err)
 	}
@@ -320,8 +315,7 @@ func isUnder(dir, target string) bool {
 }
 
 func readLocalMeta(filePath string) (localMeta, bool) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	body, err := os.ReadFile(filePath + metaSuffix)
+	body, err := util.ReadFile(filePath + metaSuffix)
 	if err != nil {
 		return localMeta{}, false
 	}

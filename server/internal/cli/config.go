@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 const (
@@ -313,8 +315,7 @@ func LoadCLIConfigForProfile(profile string) (CLIConfig, error) {
 	if err != nil {
 		return CLIConfig{}, err
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return CLIConfig{}, nil
@@ -353,8 +354,7 @@ func SaveCLIConfigForProfile(cfg CLIConfig, profile string) error {
 			return fmt.Errorf("resolve task-local CLI config root: %w", err)
 		}
 		for current := dir; ; current = filepath.Dir(current) {
-			// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-			if err := os.Chmod(current, 0o700); err != nil {
+			if err := util.Chmod(current, 0o700); err != nil {
 				return fmt.Errorf("restrict task-local CLI config directory: %w", err)
 			}
 			if current == root {

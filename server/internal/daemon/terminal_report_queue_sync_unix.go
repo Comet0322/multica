@@ -2,11 +2,12 @@
 
 package daemon
 
-import "os"
+import (
+	"github.com/multica-ai/multica/server/internal/util"
+)
 
 func syncTerminalReportDir(path string) error {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	dir, err := os.Open(path)
+	dir, err := util.Open(path)
 	if err != nil {
 		return err
 	}

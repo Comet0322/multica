@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // antigravityBackend implements Backend by spawning Google's Antigravity CLI
@@ -289,8 +291,7 @@ func readAntigravitySelectedModel(logPath, streamModel, configuredModel string) 
 		return model
 	}
 	if logPath != "" {
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		if data, err := os.ReadFile(logPath); err == nil {
+		if data, err := util.ReadFile(logPath); err == nil {
 			matches := antigravitySelectedModelRe.FindAllSubmatch(data, -1)
 			if len(matches) > 0 {
 				return strings.TrimSpace(string(matches[len(matches)-1][1]))
@@ -624,8 +625,7 @@ func antigravityPrintTimedOut(logPath string) bool {
 	if logPath == "" {
 		return false
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(logPath)
+	data, err := util.ReadFile(logPath)
 	if err != nil {
 		return false
 	}
@@ -638,8 +638,7 @@ func antigravityProviderError(logPath string) string {
 	if logPath == "" {
 		return ""
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(logPath)
+	data, err := util.ReadFile(logPath)
 	if err != nil {
 		return ""
 	}
@@ -657,8 +656,7 @@ func readAntigravityConversationID(logPath string) string {
 	if logPath == "" {
 		return ""
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(logPath)
+	data, err := util.ReadFile(logPath)
 	if err != nil {
 		return ""
 	}
@@ -727,8 +725,7 @@ func readAntigravityTranscriptOutput(logPath, conversationID string) string {
 	transcriptPath := filepath.Join(
 		appDataDir, "brain", conversationID, ".system_generated", "logs", "transcript.jsonl",
 	)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.Open(transcriptPath)
+	f, err := util.Open(transcriptPath)
 	if err != nil {
 		return ""
 	}
@@ -774,8 +771,7 @@ func readAntigravityAppDataDir(logPath string) string {
 	if logPath == "" {
 		return ""
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(logPath)
+	data, err := util.ReadFile(logPath)
 	if err != nil {
 		return ""
 	}

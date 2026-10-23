@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/runtimeapps"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // RepoContextForEnv describes a workspace repo available for checkout.
@@ -457,8 +458,7 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 	if params.EnvRootPreclaimed {
 		// The caller holds the claim and already reset the root; just make sure
 		// the directory is there before populating it.
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		if err := os.MkdirAll(envRoot, 0o755); err != nil {
+		if err := util.MkdirAll(envRoot, 0o755); err != nil {
 			return nil, fmt.Errorf("execenv: create env root %s: %w", envRoot, err)
 		}
 	} else {
@@ -498,8 +498,7 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 		workDir = params.LocalWorkDir
 	}
 	for _, dir := range scratchDirs {
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := util.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("execenv: create directory %s: %w", dir, err)
 		}
 	}
@@ -507,8 +506,7 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 	if err := os.MkdirAll(multicaConfigRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("execenv: create task-local Multica config directory: %w", err)
 	}
-	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.Chmod(multicaConfigRoot, 0o700); err != nil {
+	if err := util.Chmod(multicaConfigRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("execenv: restrict task-local Multica config directory: %w", err)
 	}
 
@@ -548,8 +546,7 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 		workDir = localWorktree.WorkDir
 		// The resource may point at a subdirectory that holds only ignored
 		// files, in which case git doesn't materialise it in the worktree.
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		if err := os.MkdirAll(workDir, 0o755); err != nil {
+		if err := util.MkdirAll(workDir, 0o755); err != nil {
 			return nil, fmt.Errorf("execenv: create worktree workdir %s: %w", workDir, err)
 		}
 	}
@@ -848,8 +845,7 @@ func Reuse(params ReuseParams, logger *slog.Logger) *Environment {
 			logger.Warn("execenv: restore task-local Multica config directory failed; forcing fresh prepare", "error", err)
 			return nil
 		}
-		// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-		if err := os.Chmod(env.MulticaConfigRoot, 0o700); err != nil {
+		if err := util.Chmod(env.MulticaConfigRoot, 0o700); err != nil {
 			logger.Warn("execenv: restrict task-local Multica config directory failed; forcing fresh prepare", "error", err)
 			return nil
 		}
@@ -1139,16 +1135,14 @@ func WriteGCMeta(envRoot string, meta GCMeta, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("marshal gc meta: %w", err)
 	}
-	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-	return os.WriteFile(filepath.Join(envRoot, gcMetaFile), data, 0o644)
+	return util.WriteFile(filepath.Join(envRoot, gcMetaFile), data, 0o644)
 }
 
 // ReadGCMeta reads GC metadata from a task directory root. Pre-v2 meta files
 // (no kind field) are normalized to GCKindIssue so the legacy issue path
 // keeps working without a migration.
 func ReadGCMeta(envRoot string) (*GCMeta, error) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(filepath.Join(envRoot, gcMetaFile))
+	data, err := util.ReadFile(filepath.Join(envRoot, gcMetaFile))
 	if err != nil {
 		return nil, err
 	}
@@ -1204,16 +1198,14 @@ func WriteManagedEnvProvenance(envRoot string, p ManagedEnvProvenance) error {
 	if err != nil {
 		return fmt.Errorf("marshal managed env provenance: %w", err)
 	}
-	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-	return os.WriteFile(filepath.Join(envRoot, managedEnvProvenanceFile), data, 0o644)
+	return util.WriteFile(filepath.Join(envRoot, managedEnvProvenanceFile), data, 0o644)
 }
 
 // ReadManagedEnvProvenance reads the Prepare-time reuse-eligibility marker from
 // an env root. A missing or malformed file returns an error; callers fail
 // closed (no reuse) on any error.
 func ReadManagedEnvProvenance(envRoot string) (*ManagedEnvProvenance, error) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(filepath.Join(envRoot, managedEnvProvenanceFile))
+	data, err := util.ReadFile(filepath.Join(envRoot, managedEnvProvenanceFile))
 	if err != nil {
 		return nil, err
 	}
@@ -1441,8 +1433,7 @@ const envRootLockFile = ".task_lock"
 // Holding the lock also serialises everything below it, which is what makes
 // repairing a torn marker safe: no other execution can be mid-claim.
 func claimEnvRoot(envRoot, workspaceID, taskID string) (lockFile *os.File, reset bool, err error) {
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(envRoot, 0o755); err != nil {
+	if err := util.MkdirAll(envRoot, 0o755); err != nil {
 		return nil, false, fmt.Errorf("create env root %s: %w", envRoot, err)
 	}
 
@@ -1610,8 +1601,7 @@ type EnvRootOwner struct {
 
 // ReadEnvRootOwner reads both current JSON markers and legacy plain task IDs.
 func ReadEnvRootOwner(envRoot string) (*EnvRootOwner, error) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	b, err := os.ReadFile(filepath.Join(envRoot, envRootOwnerFile))
+	b, err := util.ReadFile(filepath.Join(envRoot, envRootOwnerFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return &EnvRootOwner{}, nil
 	}

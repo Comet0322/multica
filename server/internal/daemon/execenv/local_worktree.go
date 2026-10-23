@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Local worktree mode gives every task on a local_directory resource its own
@@ -984,8 +986,7 @@ func seedSnapshotIndex(gitRoot, path string) bool {
 	if !filepath.IsAbs(src) {
 		src = filepath.Join(gitRoot, src)
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	in, err := os.Open(src)
+	in, err := util.Open(src)
 	if err != nil {
 		return false
 	}
@@ -994,8 +995,7 @@ func seedSnapshotIndex(gitRoot, path string) bool {
 	if err != nil {
 		return false
 	}
-	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
-	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	out, err := util.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return false
 	}
@@ -1862,8 +1862,7 @@ func runGitEnv(dir string, extraEnv []string, args ...string) (string, error) {
 	defer cancel()
 
 	full := append([]string{"-C", dir}, args...)
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := util.CommandContext(ctx, "git", full...)
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
 	}
@@ -1901,8 +1900,7 @@ func runGitStdout(dir string, args ...string) (string, error) {
 	defer cancel()
 
 	full := append([]string{"-C", dir}, args...)
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := util.CommandContext(ctx, "git", full...)
 	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.Output()
 	if err != nil {

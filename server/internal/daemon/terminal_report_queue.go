@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 const (
@@ -200,8 +202,7 @@ func ensureTerminalReportDir(dir string) error {
 	}
 	// Tighten an existing directory as well as a newly-created one. Terminal
 	// payloads may include private prompts, results, paths, and error details.
-	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := util.Chmod(dir, 0o700); err != nil {
 		return fmt.Errorf("secure terminal report queue: %w", err)
 	}
 	return nil
@@ -219,8 +220,7 @@ func (s *terminalReportStore) enqueue(report terminalTaskReport) error {
 	}
 	name := terminalReportFileName(report.taskID)
 	path := filepath.Join(s.dir, name)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	if existingBody, readErr := os.ReadFile(path); readErr == nil {
+	if existingBody, readErr := util.ReadFile(path); readErr == nil {
 		existing, decodeErr := decodePersistedTerminalReport(existingBody)
 		if decodeErr != nil {
 			return fmt.Errorf("existing terminal report %s is unreadable: %w", name, decodeErr)
@@ -355,8 +355,7 @@ func (s *terminalReportStore) recoverTempFiles(entries []os.DirEntry) error {
 			continue
 		}
 		tempPath := filepath.Join(s.dir, name)
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		body, err := os.ReadFile(tempPath)
+		body, err := util.ReadFile(tempPath)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("read interrupted terminal report %s: %w", name, err))
 			continue
@@ -378,8 +377,7 @@ func (s *terminalReportStore) recoverTempFiles(entries []os.DirEntry) error {
 			continue
 		}
 		targetPath := filepath.Join(s.dir, targetName)
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		if existingBody, readErr := os.ReadFile(targetPath); readErr == nil {
+		if existingBody, readErr := util.ReadFile(targetPath); readErr == nil {
 			existing, decodeErr := decodePersistedTerminalReport(existingBody)
 			if decodeErr != nil {
 				errs = append(errs, fmt.Errorf("decode terminal report while recovering %s: %w", targetName, decodeErr))
@@ -464,8 +462,7 @@ func (s *terminalReportStore) recordPermanentRejection(item pendingTerminalTaskR
 		return false, err
 	}
 	path := filepath.Join(s.dir, item.fileName)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	body, err := os.ReadFile(path)
+	body, err := util.ReadFile(path)
 	if err != nil {
 		return false, fmt.Errorf("read rejected terminal report: %w", err)
 	}
@@ -506,8 +503,7 @@ func (s *terminalReportStore) recordPermanentRejection(item pendingTerminalTaskR
 		return false, fmt.Errorf("create failed terminal report queue: %w", err)
 	}
 	failedPath := filepath.Join(s.failedDir(), item.fileName)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	if existingBody, readErr := os.ReadFile(failedPath); readErr == nil {
+	if existingBody, readErr := util.ReadFile(failedPath); readErr == nil {
 		existing, decodeErr := decodePersistedTerminalReport(existingBody)
 		if decodeErr != nil {
 			return false, fmt.Errorf("existing failed terminal report is unreadable: %w", decodeErr)

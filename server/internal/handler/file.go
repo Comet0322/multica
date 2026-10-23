@@ -386,10 +386,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	workspaceID := h.resolveWorkspaceID(r)
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
-
-	// #nosec G120 -- body is bounded by http.MaxBytesReader immediately above
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	if err := parseBoundedMultipartForm(w, r, maxUploadSize, maxUploadSize); err != nil {
 		writeError(w, http.StatusBadRequest, "file too large or invalid multipart form")
 		return
 	}

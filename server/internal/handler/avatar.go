@@ -368,8 +368,7 @@ func (h *Handler) ServeAvatar(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setAvatarCacheControl(w, h.avatarRedirectMaxAge())
-		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
-		http.Redirect(w, r, h.CFSigner.SignedURL(objectURL, time.Now().Add(h.attachmentDownloadURLTTL())), http.StatusFound)
+		redirectFound(w, h.CFSigner.SignedURL(objectURL, time.Now().Add(h.attachmentDownloadURLTTL())))
 	case attachmentDownloadModePresign:
 		presigner, ok := h.Storage.(storage.DownloadPresigner)
 		if !ok {
@@ -386,8 +385,7 @@ func (h *Handler) ServeAvatar(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setAvatarCacheControl(w, h.avatarRedirectMaxAge())
-		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
-		http.Redirect(w, r, signedURL, http.StatusFound)
+		redirectFound(w, signedURL)
 	case attachmentDownloadModeProxy:
 		h.proxyAvatar(w, r, key, contentType)
 	default:

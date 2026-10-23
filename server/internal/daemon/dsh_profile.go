@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/multica-ai/multica/server/internal/daemon/processtree"
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/agent"
 	"github.com/multica-ai/multica/server/pkg/redact"
 )
@@ -98,8 +99,7 @@ func dshMulticaProfilePresent() bool {
 	if path == "" {
 		return false
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFile(path)
 	if err != nil {
 		// Missing is the only negative answer. A permission error or a file
 		// that is not a regular file stays "installed": this daemon will not
@@ -296,9 +296,8 @@ func dshProfileRepair() agent.ExecFormatRepair {
 // platform, including the Windows ones where a shell fixture cannot stand in
 // for a package manager.
 func dshProvisionCommand(dshPath, spec string) *exec.Cmd {
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
-	cmd := exec.Command(dshPath, "plugin", "--profile", dshMulticaProfileName, "add", spec)
+	cmd := util.Command(dshPath, "plugin", "--profile", dshMulticaProfileName, "add", spec)
 	cmd.Env = dshPluginEnv()
 	return cmd
 }

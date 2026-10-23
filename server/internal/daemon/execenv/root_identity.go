@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 const (
@@ -91,8 +93,7 @@ func stableIdentityKey(value string) string {
 
 func readTaskRootRecord(recordDir string) (taskRootRecord, error) {
 	recordPath := filepath.Join(recordDir, taskRootRecordFile)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(recordPath)
+	data, err := util.ReadFile(recordPath)
 	if err != nil {
 		return taskRootRecord{}, err
 	}
@@ -105,8 +106,7 @@ func readTaskRootRecord(recordDir string) (taskRootRecord, error) {
 
 func installTaskRootRecord(recordDir string, record taskRootRecord) error {
 	parent := filepath.Dir(recordDir)
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(parent, 0o755); err != nil {
+	if err := util.MkdirAll(parent, 0o755); err != nil {
 		return fmt.Errorf("execenv: create task root index: %w", err)
 	}
 	tmpDir, err := os.MkdirTemp(parent, taskRootPendingPrefix)
@@ -118,8 +118,7 @@ func installTaskRootRecord(recordDir string, record taskRootRecord) error {
 	if err != nil {
 		return fmt.Errorf("execenv: encode task root record: %w", err)
 	}
-	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.WriteFile(filepath.Join(tmpDir, taskRootRecordFile), data, 0o644); err != nil {
+	if err := util.WriteFile(filepath.Join(tmpDir, taskRootRecordFile), data, 0o644); err != nil {
 		return fmt.Errorf("execenv: write task root record: %w", err)
 	}
 	if err := renameTaskRootRecord(tmpDir, recordDir); err != nil {

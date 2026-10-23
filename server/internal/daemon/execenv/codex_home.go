@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Files to symlink from the shared ~/.codex/ into the per-task CODEX_HOME.
@@ -172,8 +174,7 @@ func classifyPerTaskWindowsSandbox(configFile string, configSyncErr error, share
 	if configSyncErr != nil {
 		return windowsSandboxUndecidable
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(configFile)
+	data, err := util.ReadFile(configFile)
 	switch {
 	case err == nil:
 		return windowsSandboxFromConfig(string(data))
@@ -203,8 +204,7 @@ func prepareCodexHomeWithOpts(codexHome string, opts CodexHomeOptions, logger *s
 		freshHome = true
 	}
 
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(codexHome, 0o755); err != nil {
+	if err := util.MkdirAll(codexHome, 0o755); err != nil {
 		return fmt.Errorf("create codex-home dir: %w", err)
 	}
 
@@ -582,8 +582,7 @@ func prepareCodexSessionsDir(codexHome, sharedHome string, opts CodexHomeOptions
 		if storeDir == "" {
 			// No stable per-issue key (e.g. a non-issue task). Fall back to an
 			// empty local dir rather than re-exposing the whole shared history.
-			// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-			return os.MkdirAll(dst, 0o755)
+			return util.MkdirAll(dst, 0o755)
 		}
 		return linkCodexSessionsToStore(dst, storeDir, sharedSessions, opts.ResumeSessionID, logger)
 	}
@@ -591,8 +590,7 @@ func prepareCodexSessionsDir(codexHome, sharedHome string, opts CodexHomeOptions
 	fi, err := os.Lstat(dst)
 	switch {
 	case os.IsNotExist(err):
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		return os.MkdirAll(dst, 0o755) // fresh managed task — empty local dir
+		return util.MkdirAll(dst, 0o755) // fresh managed task — empty local dir
 	case err != nil:
 		return fmt.Errorf("stat sessions dir %s: %w", dst, err)
 	}
@@ -600,8 +598,7 @@ func prepareCodexSessionsDir(codexHome, sharedHome string, opts CodexHomeOptions
 	if fi.Mode()&os.ModeSymlink == 0 {
 		// Already a real directory (task-local, authoritative). Ensure it
 		// exists (no-op) and leave its contents alone.
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		return os.MkdirAll(dst, 0o755)
+		return util.MkdirAll(dst, 0o755)
 	}
 
 	// A symlink/junction. If it already points at this issue's store (a home
@@ -632,8 +629,7 @@ func prepareCodexSessionsDir(codexHome, sharedHome string, opts CodexHomeOptions
 	}
 	logger.Info("execenv: migrated codex-home sessions from shared symlink to task-local dir",
 		"codex_home", codexHome, "resume_session", false)
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	return os.MkdirAll(dst, 0o755)
+	return util.MkdirAll(dst, 0o755)
 }
 
 // linkCodexSessionsToStore points codex-home/sessions (dst) at the per-issue
@@ -650,8 +646,7 @@ func prepareCodexSessionsDir(codexHome, sharedHome string, opts CodexHomeOptions
 // store. Both paths are on the shared volume, so the link is zero-copy and never
 // puts a (possibly gigabyte) rollout on initialize's critical path.
 func linkCodexSessionsToStore(dst, storeDir, sharedSessions, resumeID string, logger *slog.Logger) error {
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+	if err := util.MkdirAll(storeDir, 0o755); err != nil {
 		return fmt.Errorf("create codex session store %s: %w", storeDir, err)
 	}
 	if resumeID != "" && len(findCodexRollouts(storeDir, resumeID)) == 0 {
@@ -730,8 +725,7 @@ func resetCodexSessionState(codexHome string, logger *slog.Logger) {
 // so the store can live on the shared Codex volume while the task home lives
 // under WorkspacesRoot (see linkCodexSessionsToStore).
 func ensureCodexSessionsLink(dst, src string) error {
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(src, 0o755); err != nil {
+	if err := util.MkdirAll(src, 0o755); err != nil {
 		return fmt.Errorf("create codex session store %s: %w", src, err)
 	}
 	if fi, err := os.Lstat(dst); err == nil {
@@ -817,8 +811,7 @@ func exposeResumeRollout(sharedSessions, localSessions, sessionID string, logger
 			rel = filepath.Base(src)
 		}
 		dst := filepath.Join(localSessions, rel)
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		if err := util.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fmt.Errorf("create rollout dir %s: %w", filepath.Dir(dst), err)
 		}
 		if err := linkCodexRollout(src, dst); err != nil {
@@ -858,8 +851,7 @@ func linkCodexRollout(src, dst string) error {
 // auth.json and the machine's session history along with it.
 func syncCodexReferencedFiles(codexHome, sharedHome string) error {
 	configPath := filepath.Join(codexHome, "config.toml")
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(configPath)
+	data, err := util.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -1039,8 +1031,7 @@ func materialiseInCodexHome(codexHome, relPath, src, key string) error {
 		return fmt.Errorf("stat %s copy %s: %w", key, relPath, err)
 	}
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	in, err := os.Open(src)
+	in, err := util.Open(src)
 	if err != nil {
 		return fmt.Errorf("open %s %s: %w", key, src, err)
 	}
@@ -1137,8 +1128,7 @@ func codexModelsCacheConfigFingerprint(sharedHome string) (string, error) {
 
 	for _, name := range codexModelsCacheConfigFiles {
 		path := filepath.Join(sharedHome, name)
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		data, err := os.ReadFile(path)
+		data, err := util.ReadFile(path)
 		if os.IsNotExist(err) {
 			fmt.Fprintf(h, "%s\x00missing\x00", name)
 			continue
@@ -1166,8 +1156,7 @@ func codexModelsCacheConfigFingerprint(sharedHome string) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			// #nosec G304 -- path derives from operator config or a daemon-owned directory
-			data, err := os.ReadFile(resolved)
+			data, err := util.ReadFile(resolved)
 			if err != nil {
 				return "", fmt.Errorf("read model_catalog_json %s: %w", resolved, err)
 			}
@@ -1196,8 +1185,7 @@ func readCodexModelsCacheBinding(path string) (fingerprint string, bound bool, e
 		}
 		return "", false, nil
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFile(path)
 	if err != nil {
 		return "", false, fmt.Errorf("read codex models cache binding %s: %w", path, err)
 	}
@@ -1208,8 +1196,7 @@ func writeCodexModelsCacheBinding(path, fingerprint string) error {
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("remove prior codex models cache binding %s: %w", path, err)
 	}
-	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := util.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return fmt.Errorf("create codex models cache binding %s: %w", path, err)
 	}
@@ -1249,12 +1236,10 @@ func resolveCodexConfigPath(configPath, sharedHome, key string) (string, error) 
 func exposeSharedCodexPluginCache(codexHome, sharedHome string) error {
 	src := filepath.Join(sharedHome, "plugins", "cache")
 	dst := filepath.Join(codexHome, "plugins", "cache")
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(src, 0o755); err != nil {
+	if err := util.MkdirAll(src, 0o755); err != nil {
 		return fmt.Errorf("create shared plugin cache dir: %w", err)
 	}
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := util.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("create codex plugin dir: %w", err)
 	}
 
@@ -1413,15 +1398,13 @@ func seedCopiedFile(src, dst string) error {
 
 // copyFile copies src to dst unconditionally.
 func copyFile(src, dst string) error {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	in, err := os.Open(src)
+	in, err := util.Open(src)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", src, err)
 	}
 	defer in.Close()
 
-	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	out, err := util.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", dst, err)
 	}

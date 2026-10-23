@@ -13,6 +13,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/skill"
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/agent"
 )
 
@@ -348,8 +349,7 @@ func readLocalSkillMainFile(skillDir string) (string, error) {
 	if info.Size() > maxLocalSkillFileSize {
 		return "", fmt.Errorf("SKILL.md exceeds %d bytes", maxLocalSkillFileSize)
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	content, err := os.ReadFile(mainPath)
+	content, err := util.ReadFile(mainPath)
 	if err != nil {
 		return "", err
 	}

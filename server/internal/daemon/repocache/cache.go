@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/daemon/processtree"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // gitEnv returns an environment for git subprocesses that contact remotes.
@@ -72,8 +73,7 @@ var agentGitExcludePatterns = []string{
 const repoCacheGitTimeout = 10 * time.Minute
 
 func newGitCommand(args ...string) *exec.Cmd {
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", args...)
+	cmd := util.Command("git", args...)
 	// A daemon can outlive the checkout it was launched from. Run Git from the
 	// filesystem root instead of inheriting a cwd that may have been deleted.
 	cmd.Dir = filepath.VolumeName(os.TempDir()) + string(os.PathSeparator)
@@ -360,8 +360,7 @@ func (c *Cache) Sync(workspaceID string, repos []RepoInfo) error {
 // clone, fetch, and ref-layout migration.
 func (c *Cache) SyncContext(ctx context.Context, workspaceID string, repos []RepoInfo) error {
 	wsDir := filepath.Join(c.root, workspaceID)
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+	if err := util.MkdirAll(wsDir, 0o755); err != nil {
 		return fmt.Errorf("create workspace cache dir: %w", err)
 	}
 
@@ -442,8 +441,7 @@ func MarkUsed(barePath string, logger *slog.Logger) {
 		return
 	}
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.WriteFile(filepath.Join(barePath, lastUsedFile), []byte(stamp), 0o644); err != nil && logger != nil {
+	if err := util.WriteFile(filepath.Join(barePath, lastUsedFile), []byte(stamp), 0o644); err != nil && logger != nil {
 		logger.Warn("repo cache: write last-used stamp failed", "repo", barePath, "error", err)
 	}
 }
@@ -457,8 +455,7 @@ func MarkUsed(barePath string, logger *slog.Logger) {
 // force a full re-clone of each. Callers must stamp an unknown repo and let it
 // age from now.
 func LastUsed(barePath string) (time.Time, bool) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(filepath.Join(barePath, lastUsedFile))
+	data, err := util.ReadFile(filepath.Join(barePath, lastUsedFile))
 	if err != nil {
 		return time.Time{}, false
 	}
@@ -1847,16 +1844,14 @@ func (c *Cache) WriteCoAuthoredByState(workspaceID string, enabled bool) error {
 	if enabled {
 		value = coAuthoredByStateEnabled
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	if current, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(current)) == value {
+	if current, err := util.ReadFile(path); err == nil && strings.TrimSpace(string(current)) == value {
 		// Already published. The daemon republishes on every workspace sync so
 		// the file survives cache GC and daemon restarts; skipping the rewrite
 		// keeps that cheap.
 		return nil
 	}
 	dir := filepath.Dir(path)
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := util.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create workspace cache dir: %w", err)
 	}
 	tmp, err := os.CreateTemp(dir, coAuthoredByStateFile+".*")
@@ -1916,8 +1911,7 @@ func (c *Cache) readCoAuthoredByState(workspaceID string) (enabled, ok bool) {
 	if path == "" {
 		return false, false
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	contents, err := os.ReadFile(path)
+	contents, err := util.ReadFile(path)
 	if err != nil {
 		return false, false
 	}
@@ -1998,8 +1992,7 @@ func (c *Cache) ReconcileCoAuthoredByHookInCheckout(checkoutPath, workspaceID st
 // directory it did not find.
 func (c *Cache) reconcileHookAt(hooksDir, workspaceID string, enabled bool) error {
 	hookPath := filepath.Join(hooksDir, "prepare-commit-msg")
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	current, err := os.ReadFile(hookPath)
+	current, err := util.ReadFile(hookPath)
 	switch {
 	case err == nil && !isDaemonInstalledHook(current):
 		return nil // user or third-party hook: not ours to reconcile
@@ -2022,8 +2015,7 @@ func (c *Cache) reconcileHookAt(hooksDir, workspaceID string, enabled bool) erro
 	if exists && string(current) == want {
 		return nil
 	}
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+	if err := util.MkdirAll(hooksDir, 0o755); err != nil {
 		return fmt.Errorf("create hooks dir: %w", err)
 	}
 	if err := writeHookFile(hookPath, want); err != nil {
@@ -2112,8 +2104,7 @@ func installCoAuthoredByHookContext(ctx context.Context, worktreePath, statePath
 	}
 
 	hooksDir := filepath.Join(commonDir, "hooks")
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+	if err := util.MkdirAll(hooksDir, 0o755); err != nil {
 		return fmt.Errorf("create hooks dir: %w", err)
 	}
 
@@ -2143,8 +2134,7 @@ func writeHookFile(hookPath, contents string) error {
 		_ = os.Remove(tmpName)
 		return err
 	}
-	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.Chmod(tmpName, 0o755); err != nil {
+	if err := util.Chmod(tmpName, 0o755); err != nil {
 		_ = os.Remove(tmpName)
 		return err
 	}
@@ -2190,8 +2180,7 @@ func removeCoAuthoredByHookContext(ctx context.Context, worktreePath string) err
 	}
 
 	hookPath := filepath.Join(commonDir, "hooks", "prepare-commit-msg")
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	contents, err := os.ReadFile(hookPath)
+	contents, err := util.ReadFile(hookPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -2226,19 +2215,16 @@ func excludeFromGitContext(ctx context.Context, worktreePath, pattern string) er
 
 	excludePath := filepath.Join(gitDir, "info", "exclude")
 
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+	if err := util.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
 		return fmt.Errorf("create info dir: %w", err)
 	}
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	existing, _ := os.ReadFile(excludePath)
+	existing, _ := util.ReadFile(excludePath)
 	if strings.Contains(string(existing), pattern) {
 		return nil
 	}
 
-	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
-	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := util.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open exclude file: %w", err)
 	}

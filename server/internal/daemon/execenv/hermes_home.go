@@ -349,8 +349,7 @@ func prepareHermesHome(hermesHome, sourceHome string, sourceMustExist bool, work
 	}
 	// Tighten perms on reuse too — MkdirAll leaves an existing dir's mode alone,
 	// and the derived config below can hold inline api_key secrets.
-	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.Chmod(hermesHome, 0o700); err != nil {
+	if err := util.Chmod(hermesHome, 0o700); err != nil {
 		return hermesSessionMount{}, fmt.Errorf("chmod hermes-home dir: %w", err)
 	}
 	if err := prepareHermesTaskLocalState(hermesHome); err != nil {
@@ -407,8 +406,7 @@ func writeDerivedHermesEnv(sharedHome, hermesHome string) error {
 	dst := filepath.Join(hermesHome, ".env")
 
 	var body []byte
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	src, err := os.ReadFile(filepath.Join(sharedHome, ".env"))
+	src, err := util.ReadFile(filepath.Join(sharedHome, ".env"))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("read shared .env: %w", err)
@@ -598,8 +596,7 @@ func writeDerivedHermesConfig(sharedHome, hermesHome string, env map[string]stri
 	srcConfig := filepath.Join(sharedHome, "config.yaml")
 	dstConfig := filepath.Join(hermesHome, "config.yaml")
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(srcConfig)
+	data, err := util.ReadFile(srcConfig)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("read shared config: %w", err)

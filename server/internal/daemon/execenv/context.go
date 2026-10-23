@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	skillpkg "github.com/multica-ai/multica/server/internal/skill"
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/agent"
 	"gopkg.in/yaml.v3"
 )
@@ -56,8 +57,7 @@ func EnsureWorkspacesRootMarker(workspacesRoot string) error {
 		return errors.New("execenv: workspaces root is required")
 	}
 	path := filepath.Join(workspacesRoot, TaskContextMarkerRelPath)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	if existing, err := os.ReadFile(path); err == nil {
+	if existing, err := util.ReadFile(path); err == nil {
 		var marker taskContextMarkerFile
 		if json.Unmarshal(existing, &marker) == nil {
 			if marker.ManagedBy == TaskContextMarkerManagedBy {
@@ -78,8 +78,7 @@ func EnsureWorkspacesRootMarker(workspacesRoot string) error {
 	if err != nil {
 		return fmt.Errorf("marshal workspaces root marker: %w", err)
 	}
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := util.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create workspaces root marker dir: %w", err)
 	}
 	if err := writeWorkspacesRootMarkerAtomic(path, data); err != nil {
@@ -109,8 +108,7 @@ func writeWorkspacesRootMarkerAtomic(path string, data []byte) error {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp workspaces root marker: %w", err)
 	}
-	// #nosec G302 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.Chmod(tmpPath, 0o644); err != nil {
+	if err := util.Chmod(tmpPath, 0o644); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("chmod temp workspaces root marker: %w", err)
 	}
@@ -217,8 +215,7 @@ func writeTaskContextMarker(workDir string, ctx TaskContextForEnv, manifest *sid
 	if err := recordWriteFile(filepath.Join(workDir, TaskContextMarkerRelPath), data, 0o644, manifest); err != nil {
 		if errors.Is(err, errPathPreExists) {
 			path := filepath.Join(workDir, TaskContextMarkerRelPath)
-			// #nosec G304 -- path derives from operator config or a daemon-owned directory
-			existing, readErr := os.ReadFile(path)
+			existing, readErr := util.ReadFile(path)
 			if readErr != nil {
 				return fmt.Errorf("read existing task context marker: %w", readErr)
 			}
@@ -226,8 +223,7 @@ func writeTaskContextMarker(workDir string, ctx TaskContextForEnv, manifest *sid
 			if json.Unmarshal(existing, &marker) != nil || marker.ManagedBy != TaskContextMarkerManagedBy {
 				return fmt.Errorf("write task context marker: %w", err)
 			}
-			// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-			if writeErr := os.WriteFile(path, data, 0o644); writeErr != nil {
+			if writeErr := util.WriteFile(path, data, 0o644); writeErr != nil {
 				return fmt.Errorf("refresh task context marker: %w", writeErr)
 			}
 			if manifest != nil {

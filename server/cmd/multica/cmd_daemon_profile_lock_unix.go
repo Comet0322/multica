@@ -6,11 +6,12 @@ import (
 	"os"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 func tryLockDaemonProfile(path string) (*os.File, bool, error) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := util.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, false, err
 	}

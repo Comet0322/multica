@@ -37,6 +37,33 @@ func Stat(path string) (os.FileInfo, error) {
 	return os.Stat(clean)
 }
 
+// Open is os.Open on a validated path.
+func Open(path string) (*os.File, error) {
+	clean, err := CleanPath(path)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	return os.Open(filepath.Clean(clean))
+}
+
+// OpenFile is os.OpenFile on a validated path.
+func OpenFile(path string, flag int, perm os.FileMode) (*os.File, error) {
+	clean, err := CleanPath(path)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	return os.OpenFile(filepath.Clean(clean), flag, perm)
+}
+
+// Chmod is os.Chmod on a validated path.
+func Chmod(path string, mode os.FileMode) error {
+	clean, err := CleanPath(path)
+	if err != nil {
+		return &os.PathError{Op: "chmod", Path: path, Err: err}
+	}
+	return os.Chmod(clean, mode)
+}
+
 // ReadFile is os.ReadFile on a validated path.
 func ReadFile(path string) ([]byte, error) {
 	clean, err := CleanPath(path)

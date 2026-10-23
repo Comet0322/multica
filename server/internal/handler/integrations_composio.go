@@ -123,14 +123,10 @@ func (h *Handler) ComposioCallback(w http.ResponseWriter, r *http.Request) {
 		// Every failure (tampered/expired state, non-success status, write
 		// error) collapses to the generic failure redirect — we never tell the
 		// browser which check failed.
-		// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
-		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
-		http.Redirect(w, r, h.Composio.CallbackRedirect(slug, false), http.StatusFound)
+		redirectFound(w, h.Composio.CallbackRedirect(slug, false))
 		return
 	}
-	// #nosec G710 -- redirect base is the configured frontend URL; user data is escaped or covered by a signed state
-	// nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- redirect target is built from the configured frontend URL and a signed state
-	http.Redirect(w, r, h.Composio.CallbackRedirect(slug, true), http.StatusFound)
+	redirectFound(w, h.Composio.CallbackRedirect(slug, true))
 }
 
 // ListComposioConnections (GET /api/integrations/composio/connections) returns

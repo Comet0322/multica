@@ -261,8 +261,7 @@ func removeTOMLByteRanges(content []byte, ranges []tomlByteRange) ([]byte, error
 // the task-local config with one validated daemon-managed policy. The source
 // config in the user's shared Codex home is never modified.
 func EnsureCodexShellEnvPolicyConfig(configPath string, includeOnly []string, logger *slog.Logger) error {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(configPath)
+	data, err := util.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read config.toml: %w", err)
 	}

@@ -117,8 +117,7 @@ func (c *Cache) SetExtraCACerts(pemCerts string) error {
 func machineCATrust(ownPath string) ([]byte, error) {
 	out, err := runGitOutputWithTimeout(gitConfigReadTimeout, "config", "--type=path", "--get", caBundleConfigKey)
 	if configured := strings.TrimSpace(string(out)); err == nil && configured != "" && filepath.Clean(configured) != filepath.Clean(ownPath) {
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		data, err := os.ReadFile(configured)
+		data, err := util.ReadFile(configured)
 		if err != nil {
 			return nil, fmt.Errorf("read %s from git config: %w", caBundleConfigKey, err)
 		}
@@ -141,8 +140,7 @@ func writeBundleIfChanged(path string, base, extra []byte) error {
 		}
 		bundle.Write(extra)
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, bundle.Bytes()) {
+	if current, err := util.ReadFile(path); err == nil && bytes.Equal(current, bundle.Bytes()) {
 		return nil
 	}
 	if err := writeFileAtomic(path, bundle.Bytes()); err != nil {

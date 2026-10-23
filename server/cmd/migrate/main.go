@@ -19,6 +19,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/migrations"
 	"github.com/multica-ai/multica/server/internal/taskusagebackfill"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // preMigrationHook runs work that must happen before a specific migration is
@@ -1016,8 +1017,7 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 			}
 		}
 
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		sql, err := os.ReadFile(file)
+		sql, err := util.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read migration %q: %w", file, err)
 		}

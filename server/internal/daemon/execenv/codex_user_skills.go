@@ -92,8 +92,7 @@ func seedUserCodexSkills(codexHome string, workspaceSkills []SkillContextForEnv,
 		// parent is normally absent here; createDirLink needs it to exist.
 		// Created lazily so a task with no eligible user skills still gets no
 		// skills directory at all.
-		// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-		if err := os.MkdirAll(targetSkillsDir, 0o755); err != nil {
+		if err := util.MkdirAll(targetSkillsDir, 0o755); err != nil {
 			return fmt.Errorf("create codex skills dir %s: %w", targetSkillsDir, err)
 		}
 		dst := filepath.Join(targetSkillsDir, name)
@@ -272,8 +271,7 @@ func expandAliasesOf(n, target *yaml.Node) {
 }
 
 func seedCodexUserSkill(src, dst, name string) error {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(filepath.Join(src, "SKILL.md"))
+	data, err := util.ReadFile(filepath.Join(src, "SKILL.md"))
 	if err != nil {
 		return err
 	}
@@ -296,8 +294,7 @@ func seedCodexUserSkill(src, dst, name string) error {
 			_ = os.RemoveAll(overlay)
 		}
 	}()
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(overlay, 0o755); err != nil {
+	if err := util.MkdirAll(overlay, 0o755); err != nil {
 		return err
 	}
 	if err := util.WriteFile(filepath.Join(overlay, "SKILL.md"), []byte(normalized), 0o644); err != nil {

@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // tryLockPiSessionFile takes a non-blocking exclusive lock on the transcript.
@@ -13,8 +15,7 @@ import (
 // to this JSONL, so the lock must cover the complete child-process lifetime.
 // The kernel releases it if the daemon dies.
 func tryLockPiSessionFile(path string) (*os.File, bool, error) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	f, err := util.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, false, err
 	}

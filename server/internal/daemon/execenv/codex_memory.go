@@ -6,6 +6,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Disable native Codex memory in task-local configuration by default to keep
@@ -239,8 +241,7 @@ func ensureCodexMemoryConfig(configPath string, logger *slog.Logger) error {
 		return nil
 	}
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(configPath)
+	data, err := util.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read config.toml: %w", err)
 	}
@@ -289,8 +290,7 @@ func ensureCodexMemoryConfig(configPath string, logger *slog.Logger) error {
 		return nil
 	}
 
-	// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-	if err := os.WriteFile(configPath, []byte(existing), 0o644); err != nil {
+	if err := util.WriteFile(configPath, []byte(existing), 0o644); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	return nil

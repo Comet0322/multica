@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // daemonIDFileName is the file that stores this machine's stable daemon
@@ -43,8 +44,7 @@ func EnsureDaemonID(profile string) (string, error) {
 	}
 	path := filepath.Join(dir, daemonIDFileName)
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := util.ReadFile(path); err == nil {
 		if id := strings.TrimSpace(string(data)); id != "" {
 			if _, perr := uuid.Parse(id); perr == nil {
 				return id, nil
@@ -54,8 +54,7 @@ func EnsureDaemonID(profile string) (string, error) {
 		return "", fmt.Errorf("read daemon id file: %w", err)
 	}
 
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := util.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create profile directory: %w", err)
 	}
 
@@ -89,8 +88,7 @@ func promoteProfileDaemonID(profile, targetPath string) (string, bool) {
 		return "", false
 	}
 	src := filepath.Join(profileDir, daemonIDFileName)
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(src)
+	data, err := util.ReadFile(src)
 	if err != nil {
 		return "", false
 	}
@@ -106,8 +104,7 @@ func promoteProfileDaemonID(profile, targetPath string) (string, bool) {
 
 // writeDaemonIDFile writes the UUID to path atomically with 0600 mode.
 func writeDaemonIDFile(path, id string) error {
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := util.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create parent directory: %w", err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".daemon-*.id.tmp")
@@ -216,8 +213,7 @@ func LegacyDaemonUUIDs() ([]string, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		// #nosec G304 -- path derives from operator config or a daemon-owned directory
-		data, err := os.ReadFile(filepath.Join(profilesDir, entry.Name(), daemonIDFileName))
+		data, err := util.ReadFile(filepath.Join(profilesDir, entry.Name(), daemonIDFileName))
 		if err != nil {
 			continue
 		}

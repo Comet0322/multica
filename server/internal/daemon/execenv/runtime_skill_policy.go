@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 const claudeRuntimeSkillSettingsFile = "claude-runtime-skill-settings.json"
@@ -134,8 +136,7 @@ func ensureCodexDisabledSkillsConfig(configPath, codexHome string, disabled []Ru
 	if len(paths) == 0 {
 		return nil
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	file, err := os.OpenFile(configPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	file, err := util.OpenFile(configPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/taskfailure"
 )
 
@@ -840,8 +841,7 @@ func captureClaudeUsageSnapshot(env []string, cwd, sessionID string) (*claudeUsa
 	if err != nil {
 		return nil, err
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.Open(path)
+	f, err := util.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open Claude session: %w", err)
 	}

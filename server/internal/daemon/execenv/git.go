@@ -4,27 +4,26 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // detectGitRepo checks if dir is inside a git repository (regular or bare).
 // Returns the git root path and true if found.
 func detectGitRepo(dir string) (string, bool) {
 	// Try regular repo first.
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	cmd := util.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
 
 	if out, err := cmd.Output(); err == nil {
 		return strings.TrimSpace(string(out)), true
 	}
 
 	// Try bare repo: git-dir is "." for bare repos when -C points at the repo.
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd = exec.Command("git", "-C", dir, "rev-parse", "--is-bare-repository")
+	cmd = util.Command("git", "-C", dir, "rev-parse", "--is-bare-repository")
 
 	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) == "true" {
 		return dir, true
@@ -35,8 +34,7 @@ func detectGitRepo(dir string) (string, bool) {
 
 // fetchOrigin runs `git fetch origin` to ensure the local repo has the latest remote refs.
 func fetchOrigin(gitRoot string) error {
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", "-C", gitRoot, "fetch", "origin")
+	cmd := util.Command("git", "-C", gitRoot, "fetch", "origin")
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git fetch origin: %s: %w", strings.TrimSpace(string(out)), err)
@@ -48,8 +46,7 @@ func fetchOrigin(gitRoot string) error {
 // Falls back to "origin/main", then "HEAD".
 func getRemoteDefaultBranch(gitRoot string) string {
 	// Try symbolic-ref of origin/HEAD (set by `git clone` or `git remote set-head`).
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", "-C", gitRoot, "symbolic-ref", "refs/remotes/origin/HEAD")
+	cmd := util.Command("git", "-C", gitRoot, "symbolic-ref", "refs/remotes/origin/HEAD")
 
 	if out, err := cmd.Output(); err == nil {
 		ref := strings.TrimSpace(string(out))
@@ -61,16 +58,14 @@ func getRemoteDefaultBranch(gitRoot string) string {
 	}
 
 	// Fallback: check if origin/main exists.
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd = exec.Command("git", "-C", gitRoot, "rev-parse", "--verify", "origin/main")
+	cmd = util.Command("git", "-C", gitRoot, "rev-parse", "--verify", "origin/main")
 
 	if err := cmd.Run(); err == nil {
 		return "origin/main"
 	}
 
 	// Fallback: check if origin/master exists.
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd = exec.Command("git", "-C", gitRoot, "rev-parse", "--verify", "origin/master")
+	cmd = util.Command("git", "-C", gitRoot, "rev-parse", "--verify", "origin/master")
 
 	if err := cmd.Run(); err == nil {
 		return "origin/master"
@@ -96,8 +91,7 @@ func setupGitWorktree(gitRoot, worktreePath, branchName, baseRef string) error {
 }
 
 func runGitWorktreeAdd(gitRoot, worktreePath, branchName, baseRef string) error {
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", "-C", gitRoot, "worktree", "add", "-b", branchName, worktreePath, baseRef)
+	cmd := util.Command("git", "-C", gitRoot, "worktree", "add", "-b", branchName, worktreePath, baseRef)
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree add: %s: %w", strings.TrimSpace(string(out)), err)
@@ -108,8 +102,7 @@ func runGitWorktreeAdd(gitRoot, worktreePath, branchName, baseRef string) error 
 // removeGitWorktree removes a worktree and its branch. Best-effort: logs errors.
 func removeGitWorktree(gitRoot, worktreePath, branchName string, logger *slog.Logger) {
 	// Remove the worktree.
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
+	cmd := util.Command("git", "-C", gitRoot, "worktree", "remove", "--force", worktreePath)
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		logger.Warn("execenv: git worktree remove failed", "output", strings.TrimSpace(string(out)), "error", err)
@@ -117,8 +110,7 @@ func removeGitWorktree(gitRoot, worktreePath, branchName string, logger *slog.Lo
 
 	// Delete the branch (best-effort).
 	if branchName != "" {
-		// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-		cmd = exec.Command("git", "-C", gitRoot, "branch", "-D", branchName)
+		cmd = util.Command("git", "-C", gitRoot, "branch", "-D", branchName)
 
 		if out, err := cmd.CombinedOutput(); err != nil {
 			logger.Warn("execenv: git branch delete failed", "branch", branchName, "output", strings.TrimSpace(string(out)), "error", err)
@@ -129,8 +121,7 @@ func removeGitWorktree(gitRoot, worktreePath, branchName string, logger *slog.Lo
 // excludeFromGit adds a pattern to the worktree's .git/info/exclude file.
 func excludeFromGit(worktreePath, pattern string) error {
 	// Resolve the actual git dir for this worktree.
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	cmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--git-dir")
+	cmd := util.Command("git", "-C", worktreePath, "rev-parse", "--git-dir")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -145,20 +136,17 @@ func excludeFromGit(worktreePath, pattern string) error {
 	excludePath := filepath.Join(gitDir, "info", "exclude")
 
 	// Ensure the info directory exists.
-	// #nosec G301 -- directory mode is intentional: shared with agent CLIs and the web server user
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+	if err := util.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
 		return fmt.Errorf("create info dir: %w", err)
 	}
 
 	// Check if pattern is already present.
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	existing, _ := os.ReadFile(excludePath)
+	existing, _ := util.ReadFile(excludePath)
 	if strings.Contains(string(existing), pattern) {
 		return nil
 	}
 
-	// #nosec G302 G304 -- file mode is intentional: shared with agent CLIs and the web server user; path derives from operator config or a daemon-owned directory
-	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := util.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open exclude file: %w", err)
 	}

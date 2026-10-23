@@ -615,8 +615,7 @@ var userCodexMcpServersTableHeaderRe = regexp.MustCompile(
 // whether to surface or warn — same fail-soft contract the prior argv
 // path had.
 func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *slog.Logger) error {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	data, err := os.ReadFile(configPath)
+	data, err := util.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read config.toml: %w", err)
 	}
@@ -4093,8 +4092,7 @@ func findCodexSessionRollouts(root, threadID string) []string {
 // canonical session_meta first; the line cap prevents a malformed legacy file
 // without metadata from turning ownership checks into a full multi-GB scan.
 func readCodexRolloutThreadID(path string) (string, bool) {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.Open(path)
+	f, err := util.Open(path)
 	if err != nil {
 		return "", false
 	}
@@ -4199,8 +4197,7 @@ func parseCodexSessionFile(path string) *codexSessionUsage {
 // timestamp establishes the boundary; fresh sessions retain the previous
 // whole-file behavior because every event belongs to the new task.
 func parseCodexSessionFileSince(path string, startTime time.Time, resumed bool) *codexSessionUsage {
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	f, err := os.Open(path)
+	f, err := util.Open(path)
 	if err != nil {
 		return nil
 	}

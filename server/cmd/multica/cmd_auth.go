@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"time"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/auth"
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // loginTokenPrefixes are the token prefixes `multica login --token` accepts.
@@ -118,8 +118,7 @@ func openBrowser(url string) error {
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
-	// #nosec G204 -- daemon launches the operator-configured agent CLI; arguments are not shell-interpreted
-	return exec.Command(cmd, args...).Start()
+	return util.Command(cmd, args...).Start()
 }
 
 func runAuthLogin(cmd *cobra.Command, args []string) error {

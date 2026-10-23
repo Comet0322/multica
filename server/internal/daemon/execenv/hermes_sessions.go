@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Persist Hermes ACP session databases by agent, profile, and conversation under
@@ -185,8 +186,7 @@ func hermesStoreHasSessionDB(storeDir string) bool {
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
 		return false
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	db, err := os.Open(path)
+	db, err := util.Open(path)
 	if err != nil {
 		return false
 	}

@@ -5,8 +5,6 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	// #nosec G505 -- CloudFront signed URLs require RSA-SHA1
-	"crypto/sha1"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -145,9 +143,9 @@ func (s *CloudFrontSigner) SignedCookies(expiry time.Time) []*http.Cookie {
 
 	encodedPolicy := cfBase64Encode([]byte(policy))
 
-	// #nosec G401 -- CloudFront signed URLs require RSA-SHA1
-	// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-sha1 -- CloudFront signed URLs mandate RSA-SHA1
-	h := sha1.New()
+	// CloudFront signed URLs mandate RSA-SHA1. crypto/x509 (imported here) links
+	// the SHA-1 implementation in.
+	h := crypto.SHA1.New()
 	h.Write([]byte(policy))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, s.privateKey, crypto.SHA1, h.Sum(nil))
 	if err != nil {
@@ -157,8 +155,7 @@ func (s *CloudFrontSigner) SignedCookies(expiry time.Time) []*http.Cookie {
 	encodedSig := cfBase64Encode(sig)
 
 	cookieAttrs := func(name, value string) *http.Cookie {
-		// #nosec G124 -- Secure follows the deployment scheme; the double-submit CSRF cookie must be readable by the frontend
-		return &http.Cookie{
+		c := &http.Cookie{
 			Name:     name,
 			Value:    value,
 			Domain:   s.cookieDomain,
@@ -166,8 +163,11 @@ func (s *CloudFrontSigner) SignedCookies(expiry time.Time) []*http.Cookie {
 			Expires:  expiry,
 			Secure:   true,
 			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
+			SameSite: http.SameSiteLaxMode,
 		}
+		// CloudFront serves these cross-site, so they must be SameSite=None.
+		c.SameSite = http.SameSiteNoneMode
+		return c
 	}
 
 	return []*http.Cookie{
@@ -184,9 +184,9 @@ func (s *CloudFrontSigner) SignedURL(rawURL string, expiry time.Time) string {
 
 	encodedPolicy := cfBase64Encode([]byte(policy))
 
-	// #nosec G401 -- CloudFront signed URLs require RSA-SHA1
-	// nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-sha1 -- CloudFront signed URLs mandate RSA-SHA1
-	h := sha1.New()
+	// CloudFront signed URLs mandate RSA-SHA1. crypto/x509 (imported here) links
+	// the SHA-1 implementation in.
+	h := crypto.SHA1.New()
 	h.Write([]byte(policy))
 	sig, err := rsa.SignPKCS1v15(rand.Reader, s.privateKey, crypto.SHA1, h.Sum(nil))
 	if err != nil {

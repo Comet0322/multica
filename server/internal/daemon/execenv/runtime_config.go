@@ -248,11 +248,9 @@ func runtimeConfigPath(workDir, provider string) string {
 func writeRuntimeConfigFile(path, brief string) error {
 	block := runtimeMarkerBegin + "\n" + strings.TrimRight(brief, "\n") + "\n" + runtimeMarkerEnd + "\n"
 
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	existing, err := os.ReadFile(path)
+	existing, err := util.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		// #nosec G306 -- file mode is intentional: shared with agent CLIs and the web server user
-		return os.WriteFile(path, []byte(block), 0o644)
+		return util.WriteFile(path, []byte(block), 0o644)
 	}
 	if err != nil {
 		return fmt.Errorf("read existing runtime config %s: %w", path, err)
@@ -354,8 +352,7 @@ func CleanupRuntimeConfig(workDir, provider string) error {
 	if path == "" {
 		return nil
 	}
-	// #nosec G304 -- path derives from operator config or a daemon-owned directory
-	existing, err := os.ReadFile(path)
+	existing, err := util.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
