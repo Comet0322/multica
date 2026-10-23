@@ -669,8 +669,7 @@ HTTP requests (Plugin API, issues, comments, uploads) work on LAN out of the box
 
    ```bash
    # In .env
-   # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- ws:// is only for a trusted LAN without a reverse proxy; prefer wss:// behind a proxy (option 1)
-   NEXT_PUBLIC_WS_URL=ws://<lan-ip>:8080/ws
+   NEXT_PUBLIC_WS_URL=<ws-scheme>://<lan-ip>:8080/ws   # <ws-scheme> is plain `ws` on a trusted LAN; use `wss` behind a proxy
 
    # Rebuild the web image so the build-time value is baked in
    docker compose -f docker-compose.selfhost.yml -f docker-compose.selfhost.build.yml up -d --build

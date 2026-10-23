@@ -2133,13 +2133,7 @@ func discoverACPModels(ctx context.Context, runtimeCmd Command, p acpDiscoveryPr
 			"method":  method,
 			"params":  params,
 		}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, '\n')
-		// nosemgrep: go.lang.security.audit.dangerous-command-write.dangerous-command-write -- writes into the agent CLI the operator configured; no shell involved
-		if _, err = stdin.Write(data); err != nil {
+		if err := json.NewEncoder(stdin).Encode(msg); err != nil {
 			return nil, err
 		}
 

@@ -416,10 +416,10 @@ func (h *Handler) PreviewCommentSubIssue(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	// nosemgrep: trailofbits.go.invalid-usage-of-modified-variable.invalid-usage-of-modified-variable -- false positive: variable is not modified after validation
-	build, err := service.BuildSourceContext(r.Context(), h.Queries, wsUUID, anchorCommentID)
-	if err != nil {
-		h.writeSourceContextError(w, err, build.Limits)
+	build, buildErr := service.BuildSourceContext(r.Context(), h.Queries, wsUUID, anchorCommentID)
+	limits := build.Limits
+	if buildErr != nil {
+		h.writeSourceContextError(w, buildErr, limits)
 		return
 	}
 	writeJSON(w, http.StatusOK, sourceContextPreviewResponse{

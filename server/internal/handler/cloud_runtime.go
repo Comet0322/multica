@@ -13,6 +13,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/multica-ai/multica/server/internal/cloudruntime"
 	"github.com/multica-ai/multica/server/internal/logger"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 const maxCloudRuntimeRequestBodySize = 1 << 20
@@ -187,8 +188,7 @@ func writeCloudRuntimeResponse(w http.ResponseWriter, resp *cloudruntime.Respons
 	if json.Valid(body) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
-		_, _ = w.Write(body)
+		_, _ = util.WriteBody(w, body)
 		return
 	}
 	writeJSON(w, resp.StatusCode, map[string]string{"error": string(body)})

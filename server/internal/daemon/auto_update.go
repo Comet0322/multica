@@ -3,11 +3,11 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // Indirections over the real release / version helpers so tests can run the
@@ -23,8 +23,7 @@ var (
 // detectSelfVersion runs `<path> --version` and returns the version field.
 // Indirection so tests never fork a real process.
 var detectSelfVersion = func(ctx context.Context, path string) (string, error) {
-	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- daemon launches the configured agent CLI by design; arguments are not shell-interpreted
-	cmd := exec.CommandContext(ctx, path, "--version")
+	cmd := util.CommandContext(ctx, path, "--version")
 	// Context cancellation only kills the direct child; a descendant that
 	// inherited our stdout pipe keeps Output() blocked past the deadline.
 	// WaitDelay force-closes the pipes after the kill — without it a replaced

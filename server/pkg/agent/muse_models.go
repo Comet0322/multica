@@ -64,13 +64,7 @@ func discoverMuseModels(ctx context.Context, runtimeCmd Command) (Catalog, error
 	scanner.Buffer(make([]byte, 0, 1024*1024), 4*1024*1024)
 
 	write := func(payload map[string]any) error {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		// nosemgrep: go.lang.security.audit.dangerous-command-write.dangerous-command-write -- writes into the agent CLI the operator configured; no shell involved
-		_, err = stdin.Write(append(data, '\n'))
-		return err
+		return json.NewEncoder(stdin).Encode(payload)
 	}
 
 	call := func(method string, params map[string]any) (json.RawMessage, error) {

@@ -365,10 +365,9 @@ func persistSelfHostConfigIfReachable(serverURL, appURL, profile string, probe f
 // back into the localhost path for the local-dev case.
 //
 // A user-supplied URL is run through normalizeAPIBaseURL, the same path
-// nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- ws:// is only accepted as the documented daemon address form and normalized to http(s)
-// resolveServerURL uses: MULTICA_SERVER_URL is documented as a ws:// daemon
-// address (e.g. ws://localhost:8080/ws), so the ws/wss form and a trailing /ws
-// are accepted and converted to the http(s) base that the reachability probe
+// resolveServerURL uses: MULTICA_SERVER_URL is documented as a WebSocket daemon
+// address (the ws or wss scheme with a trailing /ws path), so that form and a
+// trailing /ws are accepted and converted to the http(s) base that the reachability probe
 // and the stored server_url expect.
 func resolveSelfHostServerURL(cmd *cobra.Command, existing cli.CLIConfig) (serverURL string, userProvided bool) {
 	if v := cli.FlagOrEnv(cmd, "server-url", "MULTICA_SERVER_URL", ""); v != "" {
@@ -376,8 +375,7 @@ func resolveSelfHostServerURL(cmd *cobra.Command, existing cli.CLIConfig) (serve
 	}
 	if !cmd.Flags().Changed("port") && existing.ServerURL != "" {
 		// `config set server_url` stores the value as-is, so it may be the
-		// nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- ws:// is only accepted as the documented daemon address form and normalized to http(s)
-		// documented ws:// daemon form; normalize it to the http(s) base the
+		// documented WebSocket daemon form; normalize it to the http(s) base the
 		// probe and stored server_url expect, like resolveServerURL does.
 		return normalizeAPIBaseURL(existing.ServerURL), true
 	}
@@ -393,8 +391,7 @@ func resolveSelfHostServerURL(cmd *cobra.Command, existing cli.CLIConfig) (serve
 //
 // Mirrors resolveSelfHostServerURL so re-running setup self-host keeps a
 // configured remote frontend instead of resetting it to localhost. Unlike
-// nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- ws:// is only accepted as the documented daemon address form and normalized to http(s)
-// server_url, app_url is a plain frontend URL rather than a ws:// daemon
+// server_url, app_url is a plain frontend URL rather than a WebSocket daemon
 // address, so it is used as-is without normalizeAPIBaseURL.
 func resolveSelfHostAppURL(cmd *cobra.Command, existing cli.CLIConfig) string {
 	if v := cli.FlagOrEnv(cmd, "app-url", "MULTICA_APP_URL", ""); v != "" {

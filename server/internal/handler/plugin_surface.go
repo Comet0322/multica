@@ -265,8 +265,7 @@ func (h *Handler) ServePluginSurface(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 	w.Header().Set("Content-Security-Policy", pluginSurfaceCSP(scopes))
 	w.WriteHeader(http.StatusOK)
-	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
-	_, _ = w.Write([]byte(document))
+	_, _ = util.WriteBody(w, []byte(document))
 }
 
 func pluginSurfaceCSP(scopes []string) string {

@@ -169,16 +169,17 @@ func (d *dispatcher) drainAndClose(ctx context.Context) bool {
 // closing state before a reconnect decides whether the queue can be reused.
 func (d *dispatcher) startClose() {
 	d.mu.Lock()
-	if !d.closed {
-		d.closed = true
-		go func() {
-			d.workers.Wait()
-			d.cancel()
-			// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
-			close(d.done)
-		}()
-	}
+	already := d.closed
+	d.closed = true
 	d.mu.Unlock()
+	if already {
+		return
+	}
+	go func() {
+		d.workers.Wait()
+		d.cancel()
+		close(d.done)
+	}()
 }
 
 func (d *dispatcher) waitClosed(ctx context.Context) bool {

@@ -164,3 +164,92 @@ func TestDecodeRemoteMCPSSEData(t *testing.T) {
 		t.Fatalf("decodeRemoteMCPSSEData = %q, %v", raw, err)
 	}
 }
+
+func TestRelayableRemoteMCPContentType(t *testing.T) {
+	for upstream, want := range map[string]string{
+		"application/json":                 "application/json",
+		"application/json; charset=utf-8":  "application/json",
+		"text/event-stream":                "text/event-stream",
+		"Text/Event-Stream; charset=utf-8": "text/event-stream",
+		"text/html":                        "application/json",
+		"":                                 "application/json",
+		"not a media type":                 "application/json",
+	} {
+		if got := relayableRemoteMCPContentType(upstream); got != want {
+			t.Errorf("relayableRemoteMCPContentType(%q) = %q, want %q", upstream, got, want)
+		}
+	}
+}
+
+func remoteMCPProxyForUpstream(t *testing.T, handler http.HandlerFunc) (*remoteMCPProxy, func()) {
+	t.Helper()
+	upstream := httptest.NewServer(handler)
+	endpoint, _ := url.Parse(upstream.URL)
+	return &remoteMCPProxy{
+		endpoint: endpoint, client: upstream.Client(), path: "/capability",
+		semaphore: make(chan struct{}, remoteMCPMaxConcurrency),
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}, upstream.Close
+}
+
+func serveRemoteMCPRequest(proxy *remoteMCPProxy, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/capability", bytes.NewBufferString(body))
+	response := httptest.NewRecorder()
+	proxy.ServeHTTP(response, request)
+	return response
+}
+
+func TestRemoteMCPProxyRelaysJSONAsJSONWhateverTheUpstreamClaims(t *testing.T) {
+	proxy, closeUpstream := remoteMCPProxyForUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"ok":true}}`))
+	})
+	defer closeUpstream()
+
+	response := serveRemoteMCPRequest(proxy, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if got := response.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	var decoded struct {
+		Result struct{ OK bool } `json:"result"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil || !decoded.Result.OK {
+		t.Fatalf("body = %q (%v)", response.Body.String(), err)
+	}
+}
+
+func TestRemoteMCPProxyRejectsNonJSONBody(t *testing.T) {
+	proxy, closeUpstream := remoteMCPProxyForUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><script>alert(1)</script></html>`))
+	})
+	defer closeUpstream()
+
+	response := serveRemoteMCPRequest(proxy, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+	if strings.Contains(response.Body.String(), "<script>") {
+		t.Fatalf("upstream HTML reached the agent: %q", response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "invalid response") {
+		t.Fatalf("body = %q, want an invalid-response error", response.Body.String())
+	}
+}
+
+func TestRemoteMCPProxyPassesEventStreamsThrough(t *testing.T) {
+	const stream = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n\n"
+	proxy, closeUpstream := remoteMCPProxyForUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(stream))
+	})
+	defer closeUpstream()
+
+	response := serveRemoteMCPRequest(proxy, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+	if got := response.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if response.Body.String() != stream {
+		t.Fatalf("stream changed: %q", response.Body.String())
+	}
+}

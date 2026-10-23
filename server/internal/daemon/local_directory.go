@@ -460,9 +460,9 @@ func isGitWorkTree(ctx context.Context, path string) bool {
 // daemon writes at task-prepare time can race with a sibling task on the
 // same path.
 //
-// Implementation: per-key sync.Mutex inside a map guarded by mu. When a
-// task can't take the lock immediately, the waiter blocks on the per-key
-// Mutex itself — that gives FIFO-ish behaviour from the Go scheduler
+// Implementation: a per-key one-slot channel inside a map guarded by mu. When a
+// task can't take the key immediately, the waiter blocks sending on that
+// channel — that gives FIFO-ish behaviour from the Go scheduler
 // (sufficient for our load; the issue body asks for a wait queue, not a
 // strict-priority queue). Holder bookkeeping (current holder task id) is
 // surfaced via Holder so callers can build a UI-friendly wait_reason.
@@ -472,9 +472,9 @@ type LocalPathLocker struct {
 }
 
 type pathLockEntry struct {
-	mu       sync.Mutex // serialises holders for this key
-	mu2      sync.Mutex // guards holderID under contention
-	holderID string     // current owner, for UI hints; empty when free
+	sem      chan struct{} // capacity 1; a send takes the key, a receive frees it
+	mu2      sync.Mutex    // guards holderID under contention
+	holderID string        // current owner, for UI hints; empty when free
 }
 
 // NewLocalPathLocker returns an empty locker. Safe for concurrent use.
@@ -493,9 +493,7 @@ func (l *LocalPathLocker) Holder(realPath string) string {
 	if !ok {
 		return ""
 	}
-	entry.mu2.Lock()
-	defer entry.mu2.Unlock()
-	return entry.holderID
+	return entry.getHolder()
 }
 
 // Acquire takes the lock for realPath on behalf of taskID. If the lock is
@@ -509,9 +507,7 @@ func (l *LocalPathLocker) Holder(realPath string) string {
 //
 // Acquire is cancellable via ctx. When ctx is cancelled while the goroutine
 // is blocked on the lock, Acquire returns ctx.Err() and the lock is NOT
-// taken. This is the same contract as sync.Mutex.Lock paired with
-// context-aware cancellation — a daemon shutdown won't wedge inside the
-// per-path wait queue.
+// taken — a daemon shutdown won't wedge inside the per-path wait queue.
 func (l *LocalPathLocker) Acquire(ctx context.Context, realPath, taskID string, onWait func(holder string)) (func(), error) {
 	if realPath == "" {
 		return nil, errors.New("local_directory: realpath required for lock")
@@ -523,54 +519,46 @@ func (l *LocalPathLocker) Acquire(ctx context.Context, realPath, taskID string, 
 	l.mu.Lock()
 	entry, ok := l.locks[realPath]
 	if !ok {
-		entry = &pathLockEntry{}
+		entry = &pathLockEntry{sem: make(chan struct{}, 1)}
 		l.locks[realPath] = entry
 	}
 	l.mu.Unlock()
 
-	// Try the fast path first — no allocation, no waiter goroutine.
-	if entry.mu.TryLock() {
-		entry.mu2.Lock()
-		entry.holderID = taskID
-		entry.mu2.Unlock()
-		return l.releaser(realPath, entry), nil
-	}
-
-	// Slow path: somebody else holds the lock. Fire onWait once with the
-	// current holder so the daemon can stamp the server-side wait state,
-	// then block until either we win the lock or ctx is cancelled.
-	if onWait != nil {
-		entry.mu2.Lock()
-		holder := entry.holderID
-		entry.mu2.Unlock()
-		onWait(holder)
-	}
-
-	acquired := make(chan struct{})
-	go func() {
-		entry.mu.Lock()
-		// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
-		close(acquired)
-	}()
-
+	// Try the fast path first — no waiter, no onWait callback.
 	select {
-	case <-acquired:
-		entry.mu2.Lock()
-		entry.holderID = taskID
-		entry.mu2.Unlock()
+	case entry.sem <- struct{}{}:
+		entry.setHolder(taskID)
+		return l.releaser(realPath, entry), nil
+	default:
+	}
+
+	// Slow path: somebody else holds the key. Fire onWait once with the
+	// current holder so the daemon can stamp the server-side wait state,
+	// then block until either we win the key or ctx is cancelled. The
+	// channel send is the acquire, so a cancelled wait never owns the key and
+	// nothing needs releasing on that path.
+	if onWait != nil {
+		onWait(entry.getHolder())
+	}
+	select {
+	case entry.sem <- struct{}{}:
+		entry.setHolder(taskID)
 		return l.releaser(realPath, entry), nil
 	case <-ctx.Done():
-		// We lost the wait — the goroutine above will still complete and
-		// take the lock. Spin off a clean-up goroutine that releases it
-		// the moment the acquire returns so a future caller isn't stuck
-		// behind a phantom holder. The bookkeeping is best-effort: no
-		// holder id is set, since this task never owned the lock.
-		go func() {
-			<-acquired
-			entry.mu.Unlock()
-		}()
 		return nil, ctx.Err()
 	}
+}
+
+func (e *pathLockEntry) setHolder(id string) {
+	e.mu2.Lock()
+	e.holderID = id
+	e.mu2.Unlock()
+}
+
+func (e *pathLockEntry) getHolder() string {
+	e.mu2.Lock()
+	defer e.mu2.Unlock()
+	return e.holderID
 }
 
 // releaser returns the unlock callback. Idempotent via a once flag so a
@@ -580,16 +568,14 @@ func (l *LocalPathLocker) releaser(realPath string, entry *pathLockEntry) func()
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			entry.mu2.Lock()
-			entry.holderID = ""
-			entry.mu2.Unlock()
-			entry.mu.Unlock()
+			entry.setHolder("")
+			<-entry.sem
 			// We deliberately keep the entry in the map even when nothing
 			// is queued. The cost is one *pathLockEntry per distinct path
 			// the daemon has ever served, which is bounded by the number
 			// of local_directory project resources a workspace has — tiny
 			// in practice. Pruning would race with a sibling caller that
-			// just looked up the same entry and is about to TryLock.
+			// just looked up the same entry and is about to acquire it.
 			_ = realPath
 		})
 	}

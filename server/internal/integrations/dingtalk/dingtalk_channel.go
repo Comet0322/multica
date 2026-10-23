@@ -272,19 +272,14 @@ func (r *dispatchSlotRegistry) assign(ch *dingtalkChannel, logger *slog.Logger) 
 	slot := r.byAppID[ch.appID]
 	if slot != nil {
 		slot.mu.Lock()
-	}
-	if slot == nil || slot.queue.isClosed() {
-		if slot != nil {
+		if slot.queue.isClosed() {
 			slot.mu.Unlock()
+			slot = nil
 		}
-		slot = &dispatchSlot{}
+	}
+	if slot == nil {
+		slot = newDispatchSlot(logger)
 		slot.mu.Lock()
-		slot.queue = newDispatcher(func(ctx context.Context, job inboundJob) {
-			if current := slot.current.Load(); current != nil {
-				// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- lock is released on every path; reviewed
-				current.runInbound(ctx, job)
-			}
-		}, logger)
 		r.byAppID[ch.appID] = slot
 	}
 	slot.current.Store(ch)
@@ -292,6 +287,18 @@ func (r *dispatchSlotRegistry) assign(ch *dingtalkChannel, logger *slog.Logger) 
 	ch.slot = slot
 	ch.releaseDispatchSlot = func() { r.release(ch.appID, slot) }
 	slot.mu.Unlock()
+}
+
+// newDispatchSlot builds a slot whose queue forwards each job to whichever
+// channel currently owns the slot.
+func newDispatchSlot(logger *slog.Logger) *dispatchSlot {
+	slot := &dispatchSlot{}
+	slot.queue = newDispatcher(func(ctx context.Context, job inboundJob) {
+		if current := slot.current.Load(); current != nil {
+			current.runInbound(ctx, job)
+		}
+	}, logger)
+	return slot
 }
 
 func (r *dispatchSlotRegistry) release(appID string, slot *dispatchSlot) {
