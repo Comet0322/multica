@@ -925,7 +925,7 @@ func fetchGitHubDefaultBranch(ctx context.Context, httpClient *http.Client, owne
 	resp, err := doGitHubAPIGet(ctx, httpClient, apiURL)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		return "main"
 	}
@@ -1295,7 +1295,7 @@ func addSupportingFilesViaCrawl(ctx context.Context, httpClient *http.Client, re
 	dirResp, err := doGitHubAPIGet(ctx, httpClient, apiURL)
 	if err != nil || dirResp.StatusCode != http.StatusOK {
 		if dirResp != nil {
-			dirResp.Body.Close()
+			_ = dirResp.Body.Close()
 		}
 		// A cancelled context (overall deadline / client disconnect) must abort
 		// rather than being swallowed as "no supporting files", which would
@@ -1633,7 +1633,7 @@ func collectGitHubFiles(ctx context.Context, httpClient *http.Client, entries []
 				attrs := []any{"url", subURL}
 				if subResp != nil {
 					attrs = append(attrs, "status", subResp.StatusCode)
-					subResp.Body.Close()
+					_ = subResp.Body.Close()
 				}
 				if err != nil {
 					attrs = append(attrs, "error", err)
@@ -1643,11 +1643,11 @@ func collectGitHubFiles(ctx context.Context, httpClient *http.Client, entries []
 			}
 			var subEntries []githubContentEntry
 			if err := json.NewDecoder(subResp.Body).Decode(&subEntries); err != nil {
-				subResp.Body.Close()
+				_ = subResp.Body.Close()
 				slog.Warn("github import: failed to decode subdirectory listing", "url", subURL, "error", err)
 				continue
 			}
-			subResp.Body.Close()
+			_ = subResp.Body.Close()
 			collectGitHubFiles(ctx, httpClient, subEntries, out, subURL)
 		}
 	}
@@ -1725,7 +1725,7 @@ func collectGitHubSkillMdPaths(ctx context.Context, httpClient *http.Client, ent
 			attrs := []any{"url", subURL}
 			if subResp != nil {
 				attrs = append(attrs, "status", subResp.StatusCode)
-				subResp.Body.Close()
+				_ = subResp.Body.Close()
 			}
 			if err != nil {
 				attrs = append(attrs, "error", err)
@@ -1736,11 +1736,11 @@ func collectGitHubSkillMdPaths(ctx context.Context, httpClient *http.Client, ent
 
 		var subEntries []githubContentEntry
 		if err := json.NewDecoder(subResp.Body).Decode(&subEntries); err != nil {
-			subResp.Body.Close()
+			_ = subResp.Body.Close()
 			slog.Warn("github import: failed to decode skill metadata subdirectory", "url", subURL, "error", err)
 			continue
 		}
-		subResp.Body.Close()
+		_ = subResp.Body.Close()
 		collectGitHubSkillMdPaths(ctx, httpClient, subEntries, out, subURL)
 	}
 }

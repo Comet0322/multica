@@ -205,7 +205,7 @@ func (b *kimiBackend) Execute(ctx context.Context, prompt string, opts ExecOptio
 		defer close(msgCh)
 		defer close(resCh)
 		defer func() {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			releaseProcessGroup(cmd)
 		}()
@@ -443,7 +443,7 @@ func (b *kimiBackend) Execute(ctx context.Context, prompt string, opts ExecOptio
 		duration := time.Since(startTime)
 		b.cfg.Logger.Info("kimi finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 
-		stdin.Close()
+		_ = stdin.Close()
 		cancel()
 
 		<-readerDone

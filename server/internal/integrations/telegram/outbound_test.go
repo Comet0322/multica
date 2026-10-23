@@ -152,7 +152,7 @@ func newTelegramOutboundQueries(t *testing.T) *fakeTelegramOutboundQueries {
 		installation: db.ChannelInstallation{
 			ID:     telegramTestUUID(1),
 			Status: "active",
-			Config: []byte(`{"bot_token_encrypted":"MTIzOn`+`NlY3JldA=="}`),
+			Config: []byte(`{"bot_token_encrypted":"MTIzOn` + `NlY3JldA=="}`),
 		},
 	}
 }

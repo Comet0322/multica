@@ -1311,7 +1311,7 @@ func (c *Client) postJSONViaObserved(ctx context.Context, httpClient *http.Clien
 	stats.observeResponseStarted()
 	respReader := stats.wrap(resp.Body)
 	if respBody == nil {
-		io.Copy(io.Discard, respReader)
+		_, _ = io.Copy(io.Discard, respReader)
 		return nil
 	}
 	if decode, ok := respBody.(responseDecoder); ok {
@@ -1348,7 +1348,7 @@ func (c *Client) getJSONWithToken(ctx context.Context, path, token string, respB
 		return &requestError{Method: http.MethodGet, Path: path, StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(data))}
 	}
 	if respBody == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(respBody)
@@ -1382,7 +1382,7 @@ func (c *Client) postJSONWithToken(ctx context.Context, path, token string, reqB
 		return &requestError{Method: http.MethodPost, Path: path, StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(data))}
 	}
 	if respBody == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(respBody)

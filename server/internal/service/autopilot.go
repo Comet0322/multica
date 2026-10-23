@@ -639,7 +639,7 @@ func (s *AutopilotService) dispatchAutopilotRun(
 	}
 
 	// Update last_run_at on the autopilot.
-	s.Queries.UpdateAutopilotLastRunAt(ctx, autopilot.ID)
+	_ = s.Queries.UpdateAutopilotLastRunAt(ctx, autopilot.ID)
 
 	// Publish run start event.
 	s.Bus.Publish(events.Event{
@@ -1289,7 +1289,7 @@ func (s *AutopilotService) handleDispatchSkip(ctx context.Context, ap db.Autopil
 	// the success path: from the scheduler's / UI's point of view we did
 	// evaluate the trigger this tick, even though the post-admission gate
 	// caught a late readiness regression.
-	s.Queries.UpdateAutopilotLastRunAt(ctx, ap.ID)
+	_ = s.Queries.UpdateAutopilotLastRunAt(ctx, ap.ID)
 	s.publishRunDone(util.UUIDToString(ap.WorkspaceID), updated, "skipped")
 	return run, skipErr.code
 }
@@ -1549,7 +1549,7 @@ func (s *AutopilotService) recordSkippedRun(
 
 	// Bump last_run_at so scheduler advancement and "last seen" UI both
 	// reflect that we did evaluate the trigger this tick.
-	s.Queries.UpdateAutopilotLastRunAt(ctx, autopilot.ID)
+	_ = s.Queries.UpdateAutopilotLastRunAt(ctx, autopilot.ID)
 
 	s.publishRunDone(util.UUIDToString(autopilot.WorkspaceID), run, "skipped")
 	return &run, nil

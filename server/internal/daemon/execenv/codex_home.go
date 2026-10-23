@@ -970,7 +970,7 @@ func openVerifiedCodexHomeRoot(codexHome, key string) (*os.Root, error) {
 		return nil, fmt.Errorf("open codex home %s: %w", codexHome, err)
 	}
 	if err := verifyCodexHomeRoot(root, codexHome, key); err != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, err
 	}
 	return root, nil

@@ -496,7 +496,7 @@ func (s *RegistrationService) BeginInstall(ctx context.Context, p BeginInstallPa
 	// expiry — the worst case is a session that quietly times out
 	// after Lark's window closes, which we surface to the user as
 	// RegistrationReasonExpired on the next status read.
-	go s.runPolling(sess)
+	go s.runPolling(context.WithoutCancel(ctx), sess)
 
 	return BeginInstallResult{
 		SessionID:           sessionID,
@@ -558,10 +558,10 @@ func (s *RegistrationService) GetSession(ctx context.Context, workspaceID pgtype
 // SDK: wait → poll → branch on result. On any terminal outcome we
 // either record the installation+binding (success) or mark the session
 // errored.
-func (s *RegistrationService) runPolling(sess *registrationSession) {
+func (s *RegistrationService) runPolling(parent context.Context, sess *registrationSession) {
 	// Bound the entire polling life by Lark's expiry — once that
 	// window closes, no further poll can succeed.
-	ctx, cancel := context.WithDeadline(context.Background(), sess.expiresAt)
+	ctx, cancel := context.WithDeadline(parent, sess.expiresAt)
 	defer cancel()
 
 	interval := sess.interval

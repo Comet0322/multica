@@ -380,7 +380,7 @@ func (d *Daemon) healthHandler(startedAt time.Time) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -397,7 +397,7 @@ func (d *Daemon) shutdownHandler() http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "shutting down"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "shutting down"})
 		if d.cancelFunc != nil {
 			// Cancel asynchronously so the response flushes first; otherwise
 			// srv.Close() races with the writer.
@@ -418,7 +418,7 @@ func (d *Daemon) serveHealth(ctx context.Context, ln net.Listener, startedAt tim
 
 	go func() {
 		<-ctx.Done()
-		srv.Close()
+		_ = srv.Close()
 	}()
 
 	d.logger.Info("health server listening", "addr", ln.Addr().String())
@@ -552,6 +552,6 @@ func (d *Daemon) repoCheckoutHandler() http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		_ = json.NewEncoder(w).Encode(result)
 	}
 }

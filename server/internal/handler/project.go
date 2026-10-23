@@ -528,7 +528,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var rawFields map[string]json.RawMessage
-	json.Unmarshal(bodyBytes, &rawFields)
+	_ = json.Unmarshal(bodyBytes, &rawFields)
 
 	params := db.UpdateProjectParams{ID: prevProject.ID}
 	_, params.DescriptionSet = rawFields["description"]

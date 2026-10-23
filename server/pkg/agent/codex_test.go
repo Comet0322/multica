@@ -1413,7 +1413,7 @@ func TestCodexRawItemMCPToolCall(t *testing.T) {
 		messages = append(messages, msg)
 	}
 
-	c.handleLine(`{"jsonrpc":"2.0","method":"item/started","params":{"item":{"type":"mcpToolCall","id":"mcp-1","server":"plugin-exa-search","tool":"web_search_exa","arguments":{"query":"latest Multica news","credentials":{"api_key":"sk-123`+`45678901234567890"}},"status":"inProgress"}}}`)
+	c.handleLine(`{"jsonrpc":"2.0","method":"item/started","params":{"item":{"type":"mcpToolCall","id":"mcp-1","server":"plugin-exa-search","tool":"web_search_exa","arguments":{"query":"latest Multica news","credentials":{"api_key":"sk-123` + `45678901234567890"}},"status":"inProgress"}}}`)
 	c.handleLine(`{"jsonrpc":"2.0","method":"item/completed","params":{"item":{"type":"mcpToolCall","id":"mcp-1","server":"plugin-exa-search","tool":"web_search_exa","arguments":{"query":"latest Multica news"},"status":"completed","durationMs":1429,"result":{"content":[{"type":"text","text":"private provider payload"}]}}}}`)
 
 	if len(messages) != 2 {

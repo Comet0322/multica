@@ -146,19 +146,19 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 		return nil, fmt.Errorf("smtp dial %s: %w", addr, err)
 	}
 	if err = conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("smtp set deadline: %w", err)
 	}
 
 	c, err := smtp.NewClient(conn, s.smtpHost)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("smtp client: %w", err)
 	}
 
 	if s.smtpEHLOName != "" {
 		if err = c.Hello(s.smtpEHLOName); err != nil {
-			c.Close()
+			_ = c.Close()
 			return nil, fmt.Errorf("smtp EHLO %s: %w", s.smtpEHLOName, err)
 		}
 	}
@@ -166,7 +166,7 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 	if !s.smtpTLSImplicit {
 		if ok, _ := c.Extension("STARTTLS"); ok {
 			if err = c.StartTLS(tlsCfg); err != nil {
-				c.Close()
+				_ = c.Close()
 				return nil, fmt.Errorf("smtp starttls: %w", err)
 			}
 		}
@@ -273,7 +273,7 @@ func (s *EmailService) sendSMTP(to, subject, htmlBody string) error {
 				return fmt.Errorf("smtp auth: %w", authErr)
 			}
 
-			c.Close()
+			_ = c.Close()
 			c, err = s.openSMTPClient()
 			if err != nil {
 				return fmt.Errorf("smtp auth: plain auth failed (%v); login reconnect failed: %w", authErr, err)

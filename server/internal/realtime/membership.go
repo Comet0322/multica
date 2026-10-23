@@ -139,11 +139,11 @@ func (h *Hub) stopClient(client *Client, notice []byte, deadline time.Time) {
 		return
 	}
 	if len(notice) != 0 && time.Now().Before(deadline) && client.writeMu.TryLock() {
-		client.conn.SetWriteDeadline(deadline)
+		_ = client.conn.SetWriteDeadline(deadline)
 		_ = client.conn.WriteMessage(websocket.TextMessage, notice)
 		client.writeMu.Unlock()
 	}
-	client.conn.Close()
+	_ = client.conn.Close()
 }
 
 // Capture the bounded batch BEFORE querying membership. A successful lookup
@@ -176,7 +176,7 @@ drain:
 	defer c.writeMu.Unlock()
 	// One deadline bounds the whole batch instead of allowing each frame a
 	// fresh timeout. A revocation can still interrupt it via conn.Close.
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	for _, frame := range batch {
 		if c.stopped.Load() {
 			return false

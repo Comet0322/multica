@@ -1111,7 +1111,7 @@ func printAgentSkillsMutationResult(cmd *cobra.Command, agentID string, result j
 	output, _ := cmd.Flags().GetString("output")
 	if output == "json" {
 		var pretty any
-		json.Unmarshal(result, &pretty)
+		_ = json.Unmarshal(result, &pretty)
 		return cli.PrintJSON(os.Stdout, pretty)
 	}
 

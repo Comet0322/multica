@@ -14,7 +14,7 @@ func tryLockDaemonProfile(path string) (*os.File, bool, error) {
 		return nil, false, err
 	}
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		f.Close()
+		_ = f.Close()
 		if err == unix.EWOULDBLOCK {
 			return nil, false, nil
 		}

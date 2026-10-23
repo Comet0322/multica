@@ -70,7 +70,7 @@ func decryptToFile(aesKey string, src io.Reader, dir string) (f *os.File, size i
 	// the moment the process lets go of it, including on a crash. Nothing
 	// with decrypted attachment content is left behind for anyone to find.
 	if err := os.Remove(out.Name()); err != nil {
-		out.Close()
+		_ = out.Close()
 		return nil, 0, fmt.Errorf("wecom: media temp file: %w", err)
 	}
 	if err := out.Chmod(0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -80,7 +80,7 @@ func decryptToFile(aesKey string, src io.Reader, dir string) (f *os.File, size i
 	}
 	defer func() {
 		if err != nil {
-			out.Close()
+			_ = out.Close()
 		}
 	}()
 

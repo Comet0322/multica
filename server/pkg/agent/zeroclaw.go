@@ -367,7 +367,7 @@ func (b *zeroclawBackend) Execute(ctx context.Context, prompt string, opts ExecO
 		defer msgStream.close()
 		defer close(resCh)
 		defer func() {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			releaseProcessGroup(cmd)
 		}()
@@ -547,12 +547,12 @@ func (b *zeroclawBackend) Execute(ctx context.Context, prompt string, opts ExecO
 		duration := time.Since(startTime)
 		b.cfg.Logger.Info("zeroclaw finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 
-		stdin.Close()
+		_ = stdin.Close()
 		cancel()
 
 		// ZeroClaw's ACP server may keep the process — and the stdout/stderr
 		// pipes — open briefly after session/prompt returns. Bound the drain.
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), zeroclawReaderDrainGrace)
+		drainCtx, drainCancel := context.WithTimeout(context.WithoutCancel(ctx), zeroclawReaderDrainGrace)
 		select {
 		case <-readerDone:
 		case <-drainCtx.Done():

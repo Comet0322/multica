@@ -289,8 +289,8 @@ func startCollector(cmd *exec.Cmd, env []string) (*collector, error) {
 	}
 	errR, errW, err := os.Pipe()
 	if err != nil {
-		outR.Close()
-		outW.Close()
+		_ = outR.Close()
+		_ = outW.Close()
 		return nil, fmt.Errorf("collect stderr pipe: %w", err)
 	}
 
@@ -305,17 +305,17 @@ func startCollector(cmd *exec.Cmd, env []string) (*collector, error) {
 	// direct child — is what finish() gets to reap.
 	if startErr := startOwnedProcessTree(cmd, slog.Default()); startErr != nil {
 		releaseProcessGroup(cmd)
-		outR.Close()
-		outW.Close()
-		errR.Close()
-		errW.Close()
+		_ = outR.Close()
+		_ = outW.Close()
+		_ = errR.Close()
+		_ = errW.Close()
 		return nil, startErr
 	}
 
 	// Drop the parent's write ends immediately: otherwise EOF can never arrive
 	// no matter how thoroughly the child tree is reaped.
-	outW.Close()
-	errW.Close()
+	_ = outW.Close()
+	_ = errW.Close()
 
 	c := &collector{
 		cmd:      cmd,
@@ -385,8 +385,8 @@ func (c *collector) finish() {
 		// harmless — snapshot takes the buffer's mutex, so one still appending
 		// cannot race a caller reading it — and they end when the descendant
 		// finally does.
-		c.outR.Close()
-		c.errR.Close()
+		_ = c.outR.Close()
+		_ = c.errR.Close()
 		// Only now: on Windows closing the job handle is what kills anything
 		// still inside it, so it must not run while the tree could still be
 		// serving output.

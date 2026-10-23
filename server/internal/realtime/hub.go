@@ -745,7 +745,7 @@ func authenticateToken(tokenStr string, pr PATResolver, ctx context.Context) (st
 // connection. closed=true means the connection is already torn down and the
 // caller must return without writing anything further.
 func firstMessageAuth(conn *websocket.Conn) (token, errMsg string, closed bool) {
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	defer conn.SetReadDeadline(time.Time{})
 
 	_, raw, err := conn.ReadMessage()
@@ -756,7 +756,7 @@ func firstMessageAuth(conn *websocket.Conn) (token, errMsg string, closed bool) 
 			// Counted separately to keep the breach out of ordinary churn.
 			M.InboundTooLargeTotal.Add(1)
 			slog.Warn("ws: pre-auth frame exceeded read limit", "limit_bytes", inboundReadLimit)
-			conn.Close()
+			_ = conn.Close()
 			return "", "", true
 		}
 		return "", `{"error":"auth timeout or read error"}`, false
@@ -790,7 +790,7 @@ func writeWSAuthFrame(conn wsMessageWriter, payload []byte, frame string, attrs 
 
 func writeWSAuthErrorAndClose(conn *websocket.Conn, payload []byte, attrs ...any) {
 	writeWSAuthFrame(conn, payload, "auth_error", attrs...)
-	conn.Close()
+	_ = conn.Close()
 }
 
 // HandleWebSocket upgrades an HTTP connection to WebSocket with cookie or
@@ -883,7 +883,7 @@ func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, resolveSlug
 			"workspace_id", workspaceID,
 			"user_id", userID,
 		) {
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 	}
@@ -931,12 +931,12 @@ type subPayload struct {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 
@@ -1105,7 +1105,7 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	for {
@@ -1114,8 +1114,8 @@ func (c *Client) writePump() {
 			if !ok {
 				c.writeMu.Lock()
 				if !c.stopped.Load() {
-					c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-					c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+					_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+					_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				}
 				c.writeMu.Unlock()
 				return
@@ -1129,7 +1129,7 @@ func (c *Client) writePump() {
 				c.writeMu.Unlock()
 				return
 			}
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := c.conn.WriteMessage(websocket.PingMessage, nil)
 			c.writeMu.Unlock()
 			if err != nil {

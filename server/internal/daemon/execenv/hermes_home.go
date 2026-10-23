@@ -873,11 +873,11 @@ func writeFileAtomic(dst string, data []byte, perm os.FileMode) error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once renamed
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("write temp for %s: %w", dst, err)
 	}
 	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("chmod temp for %s: %w", dst, err)
 	}
 	if err := tmp.Close(); err != nil {

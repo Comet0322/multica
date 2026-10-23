@@ -29,7 +29,7 @@ func exactArgs(n int) cobra.PositionalArgs {
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Error: accepts %d args, received %d\n\n", n, len(args))
 			}
-			cmd.Help()
+			_ = cmd.Help()
 			return errSilent
 		}
 		return nil

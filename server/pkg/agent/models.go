@@ -2102,7 +2102,7 @@ func discoverACPModels(ctx context.Context, runtimeCmd Command, p acpDiscoveryPr
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		stdin.Close()
+		_ = stdin.Close()
 		return fail("stdout setup", err)
 	}
 	// Discard stderr; noisy logs here don't help us and we don't

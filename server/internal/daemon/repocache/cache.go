@@ -598,12 +598,12 @@ func gitCloneBareContext(ctx context.Context, url, dest string) error {
 	args := append(caCloneArgs(), "clone", "--bare", url, dest)
 	if out, err := runGitCombinedOutputContext(ctx, args...); err != nil {
 		// Clean up partial clone.
-		os.RemoveAll(dest)
+		_ = os.RemoveAll(dest)
 		return fmt.Errorf("git clone --bare: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	// Record the CA bundle before the refspec migration below fetches again.
 	if err := configureRepoCABundleContext(ctx, dest); err != nil {
-		os.RemoveAll(dest)
+		_ = os.RemoveAll(dest)
 		return err
 	}
 	// `git clone --bare` populates refs/heads/* as a snapshot and defaults to
@@ -611,7 +611,7 @@ func gitCloneBareContext(ctx context.Context, url, dest string) error {
 	// remote-tracking layout immediately so subsequent fetches write to
 	// refs/remotes/origin/* and can't conflict with worktree-locked heads.
 	if err := ensureRemoteTrackingLayoutContext(ctx, dest); err != nil {
-		os.RemoveAll(dest)
+		_ = os.RemoveAll(dest)
 		return fmt.Errorf("configure fetch refspec: %w", err)
 	}
 	return nil
@@ -1859,16 +1859,16 @@ func (c *Cache) WriteCoAuthoredByState(workspaceID string, enabled bool) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.WriteString(value + "\n"); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("write co-authored-by state: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("write co-authored-by state: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("publish co-authored-by state: %w", err)
 	}
 	return nil
@@ -2125,20 +2125,20 @@ func writeHookFile(hookPath, contents string) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.WriteString(contents); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Chmod(tmpName, 0o755); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, hookPath); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	return nil

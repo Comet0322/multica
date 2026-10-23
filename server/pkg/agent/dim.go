@@ -127,7 +127,7 @@ func dimVersionSupported(version string) bool {
 		return false
 	}
 	var reqMaj, reqMin, reqPat int
-	fmt.Sscanf(dimMinVersion, "%d.%d.%d", &reqMaj, &reqMin, &reqPat)
+	_, _ = fmt.Sscanf(dimMinVersion, "%d.%d.%d", &reqMaj, &reqMin, &reqPat)
 	if maj != reqMaj {
 		return maj > reqMaj
 	}
@@ -313,7 +313,7 @@ func (b *dimBackend) Execute(ctx context.Context, prompt string, opts ExecOption
 			// SIGKILL the descendants, orphaning them to PPID=1.
 			signalProcessGroup(cmd, syscall.SIGKILL)
 			cancel()
-			stdin.Close()
+			_ = stdin.Close()
 			waitDone := make(chan struct{})
 			go func() { _ = cmd.Wait(); close(waitDone) }()
 			select {
@@ -527,7 +527,7 @@ func (b *dimBackend) Execute(ctx context.Context, prompt string, opts ExecOption
 				finalError = fmt.Sprintf("dim could not set session config %s=%s: %v", cfgOpt.id, cfgOpt.value, err)
 				// Best-effort close so a partially configured session is not
 				// left behind for the next resume to inherit.
-				closeCtx, closeCancel := context.WithTimeout(context.Background(), dimSessionCloseTimeout)
+				closeCtx, closeCancel := context.WithTimeout(context.WithoutCancel(ctx), dimSessionCloseTimeout)
 				_, _ = c.request(closeCtx, "session/close", map[string]any{"sessionId": sessionID})
 				closeCancel()
 				if setupFailureWithholdsSessionID(opts) {
@@ -550,7 +550,7 @@ func (b *dimBackend) Execute(ctx context.Context, prompt string, opts ExecOption
 				finalError = fmt.Sprintf("dim could not switch to model %q: %v", opts.Model, err)
 				// Close the session so a partially configured one (permission/mode
 				// set, model not) is not left for the next resume to inherit.
-				closeCtx, closeCancel := context.WithTimeout(context.Background(), dimSessionCloseTimeout)
+				closeCtx, closeCancel := context.WithTimeout(context.WithoutCancel(ctx), dimSessionCloseTimeout)
 				_, _ = c.request(closeCtx, "session/close", map[string]any{"sessionId": sessionID})
 				closeCancel()
 				if setupFailureWithholdsSessionID(opts) {
@@ -641,17 +641,17 @@ func (b *dimBackend) Execute(ctx context.Context, prompt string, opts ExecOption
 		// timeout. Bounded and best-effort — a miss just means the next run
 		// waits up to 5s for the lock.
 		if sessionID != "" {
-			closeCtx, closeCancel := context.WithTimeout(context.Background(), dimSessionCloseTimeout)
+			closeCtx, closeCancel := context.WithTimeout(context.WithoutCancel(ctx), dimSessionCloseTimeout)
 			_, _ = c.request(closeCtx, "session/close", map[string]any{"sessionId": sessionID})
 			closeCancel()
 		}
 
-		stdin.Close()
+		_ = stdin.Close()
 		cancel()
 
 		// Dim's ACP server may keep the process — and the stdout/stderr
 		// pipes — open briefly after session/prompt returns. Bound the drain.
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), dimReaderDrainGrace)
+		drainCtx, drainCancel := context.WithTimeout(context.WithoutCancel(ctx), dimReaderDrainGrace)
 		select {
 		case <-readerDone:
 		case <-drainCtx.Done():

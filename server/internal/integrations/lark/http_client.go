@@ -811,7 +811,7 @@ func (c *httpAPIClient) downloadMessageResourceStreamOnce(ctx context.Context, c
 		return DownloadedResourceStream{}, fmt.Errorf("lark http client: download resource: http do: %w", err)
 	}
 	closeWithCancel := func() {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if cancel != nil {
 			cancel()
 		}

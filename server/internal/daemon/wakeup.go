@@ -231,7 +231,7 @@ func (d *Daemon) runTaskWakeupConnection(ctx context.Context, runtimeIDs []strin
 		// slots (MUL-4257, Sol-Boy review). With the conn closed here,
 		// runWSWriter's next write errors and it DISCARDS the queue instead of
 		// delivering it.
-		conn.Close()
+		_ = conn.Close()
 		// Detach RPC (fails pending → HTTP fallback, now safe since the queued
 		// frame will be dropped), and flip the send-closed flag under sendMu so
 		// any in-flight guarded send finishes before we close writes.
@@ -271,10 +271,10 @@ func (d *Daemon) runWSWriter(conn *websocket.Conn, writes <-chan *wsOutbound, do
 		if !item.beginWrite() {
 			continue
 		}
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteMessage(websocket.TextMessage, item.data); err != nil {
 			d.logger.Debug("task wakeup websocket write failed", "error", err)
-			conn.Close()
+			_ = conn.Close()
 			// Drain remaining frames so the producers don't block forever
 			// while waiting for runTaskWakeupConnection to close the channel.
 			for range writes {

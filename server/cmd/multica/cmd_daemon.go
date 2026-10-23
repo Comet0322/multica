@@ -645,15 +645,15 @@ func runDaemonBackground(cmd *cobra.Command) error {
 			child.Stderr = logFile
 			child.SysProcAttr = daemonSysProcAttr(false)
 			if err := child.Start(); err != nil {
-				logFile.Close()
+				_ = logFile.Close()
 				return fmt.Errorf("start daemon (no breakaway): %w", err)
 			}
 		} else {
-			logFile.Close()
+			_ = logFile.Close()
 			return fmt.Errorf("start daemon: %w", err)
 		}
 	}
-	logFile.Close()
+	_ = logFile.Close()
 	pid := child.Process.Pid
 
 	// Watch for early death instead of Release()ing right away: a child that
@@ -1121,8 +1121,8 @@ func runDaemonForeground(cmd *cobra.Command) error {
 
 	// Write PID file so "daemon stop" can find us.
 	if dir := daemonDirForProfile(profile); dir != "" {
-		os.MkdirAll(dir, 0o700)
-		os.WriteFile(daemonPIDPathForProfile(profile), []byte(strconv.Itoa(os.Getpid())), 0o600)
+		_ = os.MkdirAll(dir, 0o700)
+		_ = os.WriteFile(daemonPIDPathForProfile(profile), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	}
 	defer os.Remove(daemonPIDPathForProfile(profile))
 
@@ -1180,22 +1180,22 @@ func runDaemonForeground(cmd *cobra.Command) error {
 				child.Stderr = logFile
 				child.SysProcAttr = daemonSysProcAttr(false)
 				if err := child.Start(); err != nil {
-					logFile.Close()
+					_ = logFile.Close()
 					logger.Error("failed to start new daemon (no breakaway)", "error", err)
 					return fmt.Errorf("failed to start new daemon at %s without breakaway: %w", restartBin, err)
 				}
 			} else {
-				logFile.Close()
+				_ = logFile.Close()
 				logger.Error("failed to start new daemon", "error", err)
 				return fmt.Errorf("failed to start new daemon at %s: %w", restartBin, err)
 			}
 		}
-		logFile.Close()
-		child.Process.Release()
+		_ = logFile.Close()
+		_ = child.Process.Release()
 
 		// Write new PID file.
 		pidPath := daemonPIDPathForProfile(profile)
-		os.WriteFile(pidPath, []byte(strconv.Itoa(child.Process.Pid)), 0o600)
+		_ = os.WriteFile(pidPath, []byte(strconv.Itoa(child.Process.Pid)), 0o600)
 
 		logger.Info("new daemon started", "pid", child.Process.Pid)
 	}
@@ -1376,7 +1376,7 @@ func runDaemonStop(cmd *cobra.Command, _ []string) error {
 		h := checkDaemonHealthOnPort(ctx2, healthPort)
 		cancel2()
 		if !daemonAlive(h) {
-			os.Remove(daemonPIDPathForProfile(profile))
+			_ = os.Remove(daemonPIDPathForProfile(profile))
 			fmt.Fprintln(os.Stderr, "Daemon stopped.")
 			return nil
 		}

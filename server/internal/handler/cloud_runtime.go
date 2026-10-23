@@ -188,7 +188,7 @@ func writeCloudRuntimeResponse(w http.ResponseWriter, resp *cloudruntime.Respons
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- body is JSON/validated or served with a restrictive Content-Type; not user-controlled HTML
-		w.Write(body)
+		_, _ = w.Write(body)
 		return
 	}
 	writeJSON(w, resp.StatusCode, map[string]string{"error": string(body)})

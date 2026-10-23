@@ -77,7 +77,7 @@ func RateLimit(rdb redis.UniversalClient, limit int, window time.Duration, trust
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(window.Seconds())))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
-				json.NewEncoder(w).Encode(map[string]string{"error": "too many requests"})
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "too many requests"})
 				return
 			}
 

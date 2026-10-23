@@ -375,12 +375,12 @@ func openMedia(ctx context.Context, hc *http.Client, rawURL string) (io.ReadClos
 		return nil, mediaHeaders{}, fmt.Errorf("wecom: media download: %w", stripURL(err))
 	}
 	if resp.ContentLength > maxMediaBytes {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, mediaHeaders{}, errMediaTooLarge
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, mediaHeaders{}, fmt.Errorf("wecom: media download: http %d %s: %s",
 			resp.StatusCode, http.StatusText(resp.StatusCode), strings.TrimSpace(string(snippet)))
 	}

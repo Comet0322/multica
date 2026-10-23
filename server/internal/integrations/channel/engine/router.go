@@ -272,7 +272,7 @@ func (r *Router) Handle(ctx context.Context, msg channel.InboundMessage) error {
 	// blocks the connector ACK path.
 	if res.Outcome == OutcomeIngested && res.runScheduled && set.Typing != nil {
 		go func() {
-			tctx, cancel := context.WithTimeout(context.Background(), r.replyTimeout)
+			tctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.replyTimeout)
 			defer cancel()
 			set.Typing.OnIngested(tctx, inst, msg, res.ChatSessionID, res.ChatMessageID)
 		}()

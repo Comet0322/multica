@@ -65,7 +65,7 @@ func publishDaemonPort(profile string, record daemonPortRecord) error {
 	tmp := f.Name()
 	defer os.Remove(tmp)
 	if err := f.Chmod(0o600); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	data, err := json.Marshal(record)

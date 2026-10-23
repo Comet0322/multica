@@ -163,7 +163,7 @@ func acquireGitRootFileLock(gitRoot string, logger *slog.Logger) (*os.File, erro
 	for {
 		ok, lockErr := lockFileExclusiveNonBlocking(f)
 		if lockErr != nil {
-			f.Close()
+			_ = f.Close()
 			return nil, fmt.Errorf("execenv: lock %s: %w", path, lockErr)
 		}
 		if ok {
@@ -177,7 +177,7 @@ func acquireGitRootFileLock(gitRoot string, logger *slog.Logger) (*os.File, erro
 			}
 		}
 		if time.Now().After(deadline) {
-			f.Close()
+			_ = f.Close()
 			// Deliberately NOT "delete the lock file if nothing is running".
 			// The lock binds to an open file description, not to a path:
 			// unlinking it leaves the holder locking the old inode while the
@@ -236,7 +236,7 @@ func lockGitRoot(gitRoot string, logger *slog.Logger) (func(), error) {
 		if unlockErr := unlockFile(f); unlockErr != nil && logger != nil {
 			logger.Warn("execenv: release git repository lock failed", "git_root", gitRoot, "error", unlockErr)
 		}
-		f.Close()
+		_ = f.Close()
 	}, nil
 }
 

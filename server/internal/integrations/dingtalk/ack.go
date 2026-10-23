@@ -81,7 +81,7 @@ func (n *ackNotifier) OnIngested(ctx context.Context, inst engine.ResolvedInstal
 	if alreadySettled {
 		return
 	}
-	n.react(ctx, state.inst, state.msg, emotionAcknowledged, false)
+	_ = n.react(ctx, state.inst, state.msg, emotionAcknowledged, false)
 	// A clear may win while the add is in flight. Give that completed add one
 	// bounded recall; this does not require shared batch/generation identities.
 	n.mu.Lock()
@@ -177,7 +177,7 @@ func (n *ackNotifier) OnReplyDelivered(ctx context.Context, inst engine.Resolved
 	if !ok {
 		return
 	}
-	n.react(ctx, inst, source.message, emotionDone, false)
+	_ = n.react(ctx, inst, source.message, emotionDone, false)
 }
 
 func (n *ackNotifier) react(ctx context.Context, inst engine.ResolvedInstallation, msg channel.InboundMessage, name string, recall bool) error {

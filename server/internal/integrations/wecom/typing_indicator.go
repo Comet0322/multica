@@ -485,7 +485,7 @@ func (m *TypingIndicatorManager) handleTaskFailed(e events.Event) {
 		}
 		bound = found
 	}
-	m.sayAsPlainMessage(ctx, sessionID, bound, taskID,
+	_ = m.sayAsPlainMessage(ctx, sessionID, bound, taskID,
 		failureText(e, localeFor(ctx, m.languages, bound.InstallationID, bound.ChatType, bound.ChatID)))
 }
 

@@ -55,7 +55,7 @@ type AgentRuntimeResponse struct {
 func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
 	var metadata any
 	if rt.Metadata != nil {
-		json.Unmarshal(rt.Metadata, &metadata)
+		_ = json.Unmarshal(rt.Metadata, &metadata)
 	}
 	if metadata == nil {
 		metadata = map[string]any{}

@@ -223,7 +223,7 @@ func (b *traecliBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 		defer msgStream.close()
 		defer close(resCh)
 		defer func() {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			releaseProcessGroup(cmd)
 		}()
@@ -396,7 +396,7 @@ func (b *traecliBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 		duration := time.Since(startTime)
 		b.cfg.Logger.Info("traecli finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 
-		stdin.Close()
+		_ = stdin.Close()
 		cancel()
 
 		// traecli ACP may keep the process — and the stdout/stderr pipes — open
@@ -405,7 +405,7 @@ func (b *traecliBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 		// stderr copier, but no longer than the grace window (CommandContext
 		// cancellation tears the process down). Draining stderr is what makes
 		// the provider-error promotion below see a terminal marker.
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), traecliReaderDrainGrace)
+		drainCtx, drainCancel := context.WithTimeout(context.WithoutCancel(ctx), traecliReaderDrainGrace)
 		select {
 		case <-readerDone:
 		case <-drainCtx.Done():

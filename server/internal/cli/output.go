@@ -15,7 +15,7 @@ func PrintTable(w io.Writer, headers []string, rows [][]string) {
 	for _, row := range rows {
 		fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
-	tw.Flush()
+	_ = tw.Flush()
 }
 
 // PrintJSON writes v as indented JSON to w.

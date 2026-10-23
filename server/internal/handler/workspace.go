@@ -111,14 +111,14 @@ type WorkspaceResponse struct {
 func (h *Handler) workspaceToResponse(w db.Workspace) WorkspaceResponse {
 	var settings any
 	if w.Settings != nil {
-		json.Unmarshal(w.Settings, &settings)
+		_ = json.Unmarshal(w.Settings, &settings)
 	}
 	if settings == nil {
 		settings = map[string]any{}
 	}
 	var repos any
 	if w.Repos != nil {
-		json.Unmarshal(w.Repos, &repos)
+		_ = json.Unmarshal(w.Repos, &repos)
 	}
 	if repos == nil {
 		repos = []any{}

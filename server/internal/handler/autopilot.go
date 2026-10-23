@@ -319,11 +319,11 @@ func webhookPathForToken(token string) string {
 func runToResponse(r db.AutopilotRun) AutopilotRunResponse {
 	var payload any
 	if r.TriggerPayload != nil {
-		json.Unmarshal(r.TriggerPayload, &payload)
+		_ = json.Unmarshal(r.TriggerPayload, &payload)
 	}
 	var result any
 	if r.Result != nil {
-		json.Unmarshal(r.Result, &result)
+		_ = json.Unmarshal(r.Result, &result)
 	}
 	return AutopilotRunResponse{
 		ID:             uuidToString(r.ID),
@@ -1063,7 +1063,7 @@ func (h *Handler) UpdateAutopilot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var rawFields map[string]json.RawMessage
-	json.Unmarshal(bodyBytes, &rawFields)
+	_ = json.Unmarshal(bodyBytes, &rawFields)
 
 	params := db.UpdateAutopilotParams{
 		ID:                 prev.ID,
@@ -1751,14 +1751,14 @@ func (h *Handler) createWebhookTriggerWithMintedToken(
 			CreatedByID:   publisherID,
 		})
 		if err != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			if isUniqueViolation(err) {
 				continue // token collision: retry with a fresh token
 			}
 			return db.AutopilotTrigger{}, err
 		}
 		if err := h.recordAutopilotRuleVersion(ctx, qtx, ap, "member", publisherID); err != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			return db.AutopilotTrigger{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {

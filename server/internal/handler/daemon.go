@@ -1752,7 +1752,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.MaxTasks == 0 {
-		writeMeasuredJSON(w, http.StatusOK, map[string]any{"tasks": []AgentTaskResponse{}})
+		_, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"tasks": []AgentTaskResponse{}})
 		return
 	}
 	maxTasks := req.MaxTasks
@@ -1774,7 +1774,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		idByKey[util.UUIDToString(ruid)] = ruid
 	}
 	if len(idByKey) == 0 {
-		writeMeasuredJSON(w, http.StatusOK, map[string]any{"tasks": []AgentTaskResponse{}})
+		_, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"tasks": []AgentTaskResponse{}})
 		return
 	}
 	ids := make([]pgtype.UUID, 0, len(idByKey))
@@ -1830,7 +1830,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		authorized = append(authorized, rt.ID)
 	}
 	if len(authorized) == 0 {
-		writeMeasuredJSON(w, http.StatusOK, map[string]any{"tasks": []AgentTaskResponse{}})
+		_, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"tasks": []AgentTaskResponse{}})
 		return
 	}
 
@@ -1960,7 +1960,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		// Keep the next claim off this connection while recovery is running.
 		w.Header().Set("Connection", "close")
 	}
-	writeMeasuredJSON(w, http.StatusOK, response)
+	_, _ = writeMeasuredJSON(w, http.StatusOK, response)
 	if len(out) != len(claimed) {
 		// Deliver successful payloads before batch recovery side effects. Cache
 		// invalidation, event listeners and cross-node wakeups can use their own
@@ -5391,7 +5391,7 @@ func (h *Handler) AckTaskCancelled(w http.ResponseWriter, r *http.Request) {
 func taskMessageToPayload(m db.TaskMessage, taskID, issueID string) protocol.TaskMessagePayload {
 	var input map[string]any
 	if m.Input != nil {
-		json.Unmarshal(m.Input, &input)
+		_ = json.Unmarshal(m.Input, &input)
 	}
 	createdAt := ""
 	if m.CreatedAt.Valid {

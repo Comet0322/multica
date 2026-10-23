@@ -211,7 +211,7 @@ func (b *qoderBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 		defer msgStream.close()
 		defer close(resCh)
 		defer func() {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			releaseProcessGroup(cmd)
 		}()
@@ -393,7 +393,7 @@ func (b *qoderBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 		duration := time.Since(startTime)
 		b.cfg.Logger.Info("qoder finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 
-		stdin.Close()
+		_ = stdin.Close()
 		cancel()
 
 		// Qoder ACP may keep the process — and the stdout/stderr pipes — open
@@ -404,7 +404,7 @@ func (b *qoderBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 		// what actually tears the process down. Draining stderr here is what
 		// makes the provider-error promotion below see a terminal marker before
 		// we decide the final status.
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), qoderReaderDrainGrace)
+		drainCtx, drainCancel := context.WithTimeout(context.WithoutCancel(ctx), qoderReaderDrainGrace)
 		select {
 		case <-readerDone:
 		case <-drainCtx.Done():

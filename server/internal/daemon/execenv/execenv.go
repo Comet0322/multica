@@ -1383,11 +1383,11 @@ func LockEnvRootForReuse(wsRoot *os.Root, rel, envRoot string) (*EnvRootClaim, o
 	}
 	locked, err := lockFileExclusiveNonBlocking(lock)
 	if err != nil {
-		lock.Close()
+		_ = lock.Close()
 		return nil, nil, fmt.Errorf("execenv: lock env root %s: %w", envRoot, err)
 	}
 	if !locked {
-		lock.Close()
+		_ = lock.Close()
 		return nil, nil, fmt.Errorf("execenv: reuse %s: %w", envRoot, ErrEnvRootBusy)
 	}
 	return &EnvRootClaim{rootDir: envRoot, lock: lock}, info, nil
@@ -1442,11 +1442,11 @@ func claimEnvRoot(envRoot, workspaceID, taskID string) (lockFile *os.File, reset
 	}
 	locked, err := lockFileExclusiveNonBlocking(lockFile)
 	if err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, false, fmt.Errorf("lock env root %s: %w", envRoot, err)
 	}
 	if !locked {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, false, fmt.Errorf("env root %s is held by a running execution; refusing to reset it for task %s", envRoot, taskID)
 	}
 	// Past this point we are the only execution touching this env root, in this
@@ -1539,15 +1539,15 @@ func writeEnvRootOwner(envRoot, workspaceID, taskID string) error {
 	defer os.Remove(tmpPath)
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("write temp env root owner for %s: %w", envRoot, err)
 	}
 	if err := tmp.Chmod(0o644); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("chmod temp env root owner for %s: %w", envRoot, err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("sync temp env root owner for %s: %w", envRoot, err)
 	}
 	if err := tmp.Close(); err != nil {

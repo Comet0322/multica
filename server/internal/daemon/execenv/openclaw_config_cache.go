@@ -307,11 +307,11 @@ func storeOpenclawDiscoveryCache(cachePath, bin, activeConfigPath string, agents
 	// 0o600 — the entry holds config paths and the user's agent ids, which is
 	// the same posture the per-task wrapper already uses.
 	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("chmod openclaw discovery cache temp: %w", err)
 	}
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("write openclaw discovery cache temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

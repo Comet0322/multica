@@ -158,12 +158,12 @@ func editGitConfigFileWithRename(path string, edit func([]byte, string) ([]byte,
 	}()
 	contents, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if info, err := os.Stat(path); err == nil {
 		if err := f.Chmod(info.Mode().Perm()); err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 	}

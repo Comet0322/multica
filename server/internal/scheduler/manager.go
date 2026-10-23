@@ -342,7 +342,7 @@ func (m *Manager) runClaimed(
 	runCtx, cancel := context.WithTimeout(ctx, job.RunTimeout)
 	defer cancel()
 
-	hbCtx, hbCancel := context.WithCancel(context.Background())
+	hbCtx, hbCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer hbCancel()
 	hbDone := make(chan struct{})
 	go m.runHeartbeats(hbCtx, hbDone, job, c, log)

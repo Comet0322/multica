@@ -154,7 +154,7 @@ const runtimeConfigGatewayTokenMask = "***"
 func (h *Handler) agentToResponse(a db.Agent) AgentResponse {
 	var rc any
 	if a.RuntimeConfig != nil {
-		json.Unmarshal(a.RuntimeConfig, &rc)
+		_ = json.Unmarshal(a.RuntimeConfig, &rc)
 	}
 	if rc == nil {
 		rc = map[string]any{}
@@ -815,7 +815,7 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 	_ = json.Unmarshal(t.Context, &cancellation)
 	var result any
 	if t.Result != nil {
-		json.Unmarshal(t.Result, &result)
+		_ = json.Unmarshal(t.Result, &result)
 	}
 	failureReason := ""
 	if t.FailureReason.Valid {

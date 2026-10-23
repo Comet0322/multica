@@ -56,14 +56,14 @@ func LockTaskTempDir(dir string) (*os.File, error) {
 	}
 	locked, err := lockFileExclusiveNonBlocking(lock)
 	if err != nil {
-		lock.Close()
+		_ = lock.Close()
 		_ = os.Remove(claim)
 		return nil, fmt.Errorf("lock task temp dir %s: %w", dir, err)
 	}
 	if !locked {
 		// Unreachable in practice: the directory was just created by
 		// os.MkdirTemp under a name nobody else knows yet.
-		lock.Close()
+		_ = lock.Close()
 		_ = os.Remove(claim)
 		return nil, fmt.Errorf("task temp dir %s is already locked", dir)
 	}
@@ -133,7 +133,7 @@ func RemoveTaskTempDir(dir string) error {
 		// legacy branch disabled by default, means it never gets reclaimed at
 		// all. Restoring it keeps the retry available for the next cycle.
 		if restored, rerr := openLockFile(lockPath); rerr == nil {
-			restored.Close()
+			_ = restored.Close()
 		}
 		return err
 	}
@@ -319,7 +319,7 @@ func classifyTaskTempDir(dir string, logger *slog.Logger) taskTempVerdict {
 	}
 	locked, err := lockFileExclusiveNonBlocking(lock)
 	if err != nil || !locked {
-		lock.Close()
+		_ = lock.Close()
 		return taskTempInUse
 	}
 	// Release immediately: RemoveTaskTempDir deletes this very file, and on

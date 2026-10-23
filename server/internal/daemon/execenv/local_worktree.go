@@ -339,7 +339,7 @@ func PrepareLocalWorktree(params LocalWorktreeParams, logger *slog.Logger) (*Loc
 		// Prepare wipes and recreates envRoot, so an existing worktree path
 		// means a stale registration in the user's repo pointing here. Remove
 		// both rather than failing the task.
-		removeLocalWorktreeDir(gitRoot, worktreePath, logger)
+		_ = removeLocalWorktreeDir(gitRoot, worktreePath, logger)
 	}
 
 	// Self-heal registrations orphaned by a crashed daemon: their env roots are
@@ -409,7 +409,7 @@ func PrepareLocalWorktree(params LocalWorktreeParams, logger *slog.Logger) (*Loc
 	// it because THIS turn could not start would destroy the very thing the
 	// task was meant to build on.
 	rollback := func() {
-		removeLocalWorktreeDir(gitRoot, worktreePath, logger)
+		_ = removeLocalWorktreeDir(gitRoot, worktreePath, logger)
 		if createdBranch {
 			dropBranch(gitRoot, actualBranch, logger)
 		}
@@ -727,7 +727,7 @@ func (w *LocalWorktree) Discard(logger *slog.Logger) {
 		return
 	}
 	defer unlock()
-	removeLocalWorktreeDir(w.GitRoot, w.Path, logger)
+	_ = removeLocalWorktreeDir(w.GitRoot, w.Path, logger)
 	// Same rule as every other teardown: a branch this prepare did not create
 	// belongs to the turns before it and outlives this task.
 	if w.createdBranch {

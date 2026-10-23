@@ -3173,7 +3173,7 @@ func profileSetSignature(profiles []RuntimeProfile) string {
 			fmt.Fprintf(h, "%s%s", a, sep)
 		}
 		// Record list end so [a,b] and [ab] hash differently.
-		h.Write([]byte("\x1e"))
+		_, _ = h.Write([]byte("\x1e"))
 	}
 	return strconv.FormatUint(h.Sum64(), 16)
 }
@@ -4315,7 +4315,7 @@ func (d *Daemon) syncWorkspacesFromAPI(ctx context.Context, reconcileProfiles bo
 
 		d.applyGitCACerts(resp.CACerts)
 		if d.repoCache != nil && len(resp.Repos) > 0 {
-			go d.syncWorkspaceRepos(id, resp.Repos)
+			go func() { _ = d.syncWorkspaceReposContext(context.WithoutCancel(ctx), id, resp.Repos) }()
 		}
 
 		// Tell the server about any tasks the previous daemon process was

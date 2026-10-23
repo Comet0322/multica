@@ -636,7 +636,7 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		defer close(msgCh)
 		defer close(resCh)
 		defer func() {
-			stdin.Close()
+			_ = stdin.Close()
 			// Cancellation must be reachable before Wait. A pathological child
 			// can close stdout/stderr (so the pipe drain succeeds) but keep the
 			// process alive; waiting first would then block until the overall
@@ -930,7 +930,7 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		// process alive while stdout/stderr drain; cancelling at the prompt
 		// response boundary can truncate final notifications that arrive just
 		// after the response.
-		stdin.Close()
+		_ = stdin.Close()
 
 		// Wait for the stdout reader and stderr copier so all output is
 		// accumulated and the provider-error sniffer

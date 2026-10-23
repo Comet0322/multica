@@ -152,7 +152,7 @@ func TestRegisterBYO_PersistsEncryptedTokensKeyedByAppID(t *testing.T) {
 		t.Errorf("decrypted bot token = %q, %v", botTok, err)
 	}
 	appTok, err := decryptToken(cfg.AppTokenEncrypted, svc.box.Open)
-	if err != nil || appTok != "xapp-1" + "-A0BCXGVCS7R-111-appsecret" {
+	if err != nil || appTok != "xapp-1"+"-A0BCXGVCS7R-111-appsecret" {
 		t.Errorf("decrypted app token = %q, %v", appTok, err)
 	}
 }

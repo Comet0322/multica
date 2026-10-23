@@ -242,7 +242,7 @@ func (d *Daemon) gcWorkspace(ctx context.Context, wsDir string, stats *gcStats) 
 	if cleanedHere > 0 {
 		remaining, _ := os.ReadDir(wsDir)
 		if len(remaining) == 0 {
-			os.Remove(wsDir)
+			_ = os.Remove(wsDir)
 		}
 	}
 }
@@ -1326,7 +1326,7 @@ func (d *Daemon) pruneRepoWorktreesContext(ctx context.Context, workspacesRoot s
 		}
 		// Drop the per-workspace directory once its last repo is gone.
 		if remaining, err := os.ReadDir(wsRepoDir); err == nil && len(remaining) == 0 {
-			os.Remove(wsRepoDir)
+			_ = os.Remove(wsRepoDir)
 		}
 	}
 }

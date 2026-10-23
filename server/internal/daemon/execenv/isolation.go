@@ -151,14 +151,14 @@ func runPreparationProcess(ctx context.Context, command []string, request prepar
 	cmd.Stderr = &stderr
 
 	if err := cmd.Start(); err != nil {
-		stdin.Close()
+		_ = stdin.Close()
 		return nil, fmt.Errorf("execenv: start preparation helper: %w", err)
 	}
 	// The helper blocks decoding stdin. Attach it to the platform's process-tree
 	// boundary before releasing the finite request payload, so it cannot spawn a
 	// descendant in the gap between Start and ownership setup.
 	if err := controller.attach(cmd); err != nil {
-		stdin.Close()
+		_ = stdin.Close()
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		_ = controller.finish()

@@ -233,7 +233,7 @@ func (b *reasonixBackend) Execute(ctx context.Context, prompt string, opts ExecO
 		defer close(msgCh)
 		defer close(resCh)
 		defer func() {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			releaseProcessGroup(cmd)
 		}()
@@ -449,7 +449,7 @@ func (b *reasonixBackend) Execute(ctx context.Context, prompt string, opts ExecO
 		duration := time.Since(startTime)
 		b.cfg.Logger.Info("reasonix finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 
-		stdin.Close()
+		_ = stdin.Close()
 		cancel()
 
 		<-readerDone
