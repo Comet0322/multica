@@ -3575,7 +3575,6 @@ export function createEnDict(
           "Gemini runtime model list now includes Gemini 3 and CLI aliases",
           "Chat focus button disabled on pages without an anchor",
           "Onboarding pin sync, welcome layout and runtime bootstrap state",
-          "`install.ps1` OS architecture detection hardened for more Windows setups",
           "`/download` falls back to the previous release within a 1h freshness window",
         ],
       },
@@ -3751,7 +3750,7 @@ export function createEnDict(
         title: "One-Click Setup, Self-Hosting & Stability",
         changes: [],
         features: [
-          "One-click install & setup — `curl | bash` installs CLI, `--with-server` bootstraps full self-hosting, `multica setup` configures your environment",
+          "One-click setup — `--with-server` bootstraps full self-hosting, `multica setup` configures your environment",
           "Self-hosted storage — local file fallback when S3 is unavailable, plus custom S3 endpoint support (MinIO)",
           "Inline property editing (priority, status, lead) on project list page",
         ],
