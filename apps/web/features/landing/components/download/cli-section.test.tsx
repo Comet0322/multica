@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CliSection } from "./cli-section";
 
@@ -24,19 +23,16 @@ vi.mock("../../i18n", () => ({
   }),
 }));
 
-const WINDOWS_CMD =
-  "irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex";
+const BUILD_CMD =
+  "cd server && go build -o /usr/local/bin/multica ./cmd/multica";
 
 describe("CliSection", () => {
   // The switch itself is covered in @multica/views; this checks the landing
   // dictionary is wired into it and the daemon block stays shared.
-  it("wires the platform switch into the install block", async () => {
-    const user = userEvent.setup();
+  it("wires the platform switch into the install block", () => {
     render(<CliSection />);
 
-    await user.click(screen.getByRole("tab", { name: "Windows" }));
-
-    expect(screen.getByText(WINDOWS_CMD)).toBeInTheDocument();
+    expect(screen.getByText(BUILD_CMD)).toBeInTheDocument();
     expect(screen.getByText("multica setup")).toBeInTheDocument();
   });
 });
