@@ -108,9 +108,6 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "agent_timeout:", agentTimeoutDisplay(cfg.AgentTimeout))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "codex_semantic_inactivity_timeout:", valueOrDefault(cfg.CodexSemanticInactivityTimeout, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "codex_handshake_timeout:", valueOrDefault(cfg.CodexHandshakeTimeout, "(not set)"))
-	fmt.Fprintf(os.Stdout, "%-34s %t\n", "disable_auto_update:", cfg.DisableAutoUpdate)
-	fmt.Fprintf(os.Stdout, "%-34s %s\n", "auto_update_check_interval:", valueOrDefault(cfg.AutoUpdateCheckInterval, "(not set)"))
-	fmt.Fprintf(os.Stdout, "%-34s %t\n", "disable_auto_reload:", cfg.DisableAutoReload)
 	return nil
 }
 
@@ -240,18 +237,6 @@ func applyConfigSet(cfg *cli.CLIConfig, key, value string) error {
 		}
 	case "codex_handshake_timeout":
 		if err := assignPositiveDuration(&cfg.CodexHandshakeTimeout, key, value); err != nil {
-			return err
-		}
-	case "disable_auto_update":
-		if err := assignBool(&cfg.DisableAutoUpdate, key, value); err != nil {
-			return err
-		}
-	case "auto_update_check_interval":
-		if err := assignPositiveDuration(&cfg.AutoUpdateCheckInterval, key, value); err != nil {
-			return err
-		}
-	case "disable_auto_reload":
-		if err := assignBool(&cfg.DisableAutoReload, key, value); err != nil {
 			return err
 		}
 	default:

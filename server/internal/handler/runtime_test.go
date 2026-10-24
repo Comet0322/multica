@@ -57,12 +57,6 @@ func TestRuntimeHandlersRejectMalformedRuntimeID(t *testing.T) {
 			handle: testHandler.InitiateListModels,
 		},
 		{
-			name:   "update",
-			method: "POST",
-			path:   "/api/runtimes/not-a-uuid/update",
-			handle: testHandler.InitiateUpdate,
-		},
-		{
 			name:   "local skills",
 			method: "POST",
 			path:   "/api/runtimes/not-a-uuid/local-skills",

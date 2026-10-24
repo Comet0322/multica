@@ -76,9 +76,6 @@ func TestRunConfigShowIncludesProfileAndDefaults(t *testing.T) {
 		"agent_timeout:",
 		"codex_semantic_inactivity_timeout:",
 		"codex_handshake_timeout:",
-		"disable_auto_update:",
-		"auto_update_check_interval:",
-		"disable_auto_reload:",
 	} {
 		if !strings.Contains(out, key) {
 			t.Fatalf("runConfigShow output missing %q:\n%s", key, out)
@@ -86,9 +83,6 @@ func TestRunConfigShowIncludesProfileAndDefaults(t *testing.T) {
 	}
 	if !strings.Contains(out, "(not set)") {
 		t.Fatalf("runConfigShow output missing (not set) placeholder:\n%s", out)
-	}
-	if !strings.Contains(out, "disable_auto_update:") || !strings.Contains(out, "false") {
-		t.Fatalf("runConfigShow disable_auto_update default should print false:\n%s", out)
 	}
 	if !strings.Contains(out, "Profile:      empty") {
 		t.Fatalf("runConfigShow missing profile header:\n%s", out)
@@ -194,8 +188,7 @@ func TestRunConfigSetRejectsUnknownKey(t *testing.T) {
 // TestApplyConfigSetSupportsDaemonKeys locks in the daemon keys added
 // for issue #3824 (device_name, runtime_name, max_concurrent_tasks,
 // poll_interval) plus the follow-up knobs that use the same shape
-// (heartbeat_interval, codex_*, disable_auto_update,
-// auto_update_check_interval). applyConfigSet is the split-out validator
+// (heartbeat_interval, codex_*). applyConfigSet is the split-out validator
 // so tests don't have to touch disk on every case.
 func TestApplyConfigSetSupportsDaemonKeys(t *testing.T) {
 	t.Parallel()
@@ -212,9 +205,6 @@ func TestApplyConfigSetSupportsDaemonKeys(t *testing.T) {
 		{"heartbeat_interval", "5s"},
 		{"codex_semantic_inactivity_timeout", "15m"},
 		{"codex_handshake_timeout", "45s"},
-		{"disable_auto_update", "true"},
-		{"auto_update_check_interval", "12h"},
-		{"disable_auto_reload", "true"},
 	}
 	for _, p := range pairs {
 		if err := applyConfigSet(&cfg, p.key, p.val); err != nil {
@@ -229,10 +219,7 @@ func TestApplyConfigSetSupportsDaemonKeys(t *testing.T) {
 		cfg.WSClaimPollInterval != "3m" ||
 		cfg.HeartbeatInterval != "5s" ||
 		cfg.CodexSemanticInactivityTimeout != "15m" ||
-		cfg.CodexHandshakeTimeout != "45s" ||
-		cfg.DisableAutoUpdate != true ||
-		cfg.AutoUpdateCheckInterval != "12h" ||
-		cfg.DisableAutoReload != true {
+		cfg.CodexHandshakeTimeout != "45s" {
 		t.Fatalf("cfg after set = %+v", cfg)
 	}
 }
@@ -269,7 +256,6 @@ func TestApplyConfigSetPositiveDurationRoundTripsToDaemonResolver(t *testing.T) 
 		{"heartbeat_interval", func(cfg cli.CLIConfig) string { return cfg.HeartbeatInterval }},
 		{"codex_semantic_inactivity_timeout", func(cfg cli.CLIConfig) string { return cfg.CodexSemanticInactivityTimeout }},
 		{"codex_handshake_timeout", func(cfg cli.CLIConfig) string { return cfg.CodexHandshakeTimeout }},
-		{"auto_update_check_interval", func(cfg cli.CLIConfig) string { return cfg.AutoUpdateCheckInterval }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.key, func(t *testing.T) {
@@ -357,9 +343,6 @@ func TestApplyConfigSetRejectsBadValues(t *testing.T) {
 		{"codex handshake bad", "codex_handshake_timeout", "10", "duration"},
 		{"agent_timeout bad duration", "agent_timeout", "abc", "duration"},
 		{"agent_timeout negative", "agent_timeout", "-1s", ">= 0"},
-		{"disable_auto_update bad bool", "disable_auto_update", "maybe", "true"},
-		{"auto_update_check_interval zero", "auto_update_check_interval", "0s", "positive"},
-		{"disable_auto_reload bad bool", "disable_auto_reload", "maybe", "true"},
 	}
 	for _, tc := range cases {
 		tc := tc

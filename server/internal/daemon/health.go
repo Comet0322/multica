@@ -81,12 +81,7 @@ type HealthResponse struct {
 	// render as an absent runtime, which is what made GH #6077 unactionable for
 	// the reporter (MUL-5439).
 	SkippedAgents map[string]string `json:"skipped_agents,omitempty"`
-	// ReloadPendingReason explains why the daemon has confirmed a multica
-	// version change on disk but hasn't restarted into it yet — it was busy at
-	// the last barrier check and will retry when idle. Omitted when empty, so
-	// older consumers see no change. Diagnostic only: nothing keys off it.
-	ReloadPendingReason string            `json:"reload_pending_reason,omitempty"`
-	Workspaces          []healthWorkspace `json:"workspaces"`
+	Workspaces    []healthWorkspace `json:"workspaces"`
 }
 
 type healthWorkspace struct {
@@ -238,8 +233,7 @@ func (d *Daemon) repoCheckoutAuthErrorMessage(result repoCheckoutAuthResult) str
 	}
 	b.WriteString(" and will fail every time, not intermittently. List every copy on PATH with `")
 	b.WriteString(repoCheckoutListBinariesCommand())
-	b.WriteString("`, check each one's version, then upgrade the stale one with `multica update`")
-	b.WriteString(" — it handles Homebrew and direct installs on every platform.")
+	b.WriteString("`, check each one's version, then replace the stale one with the current release.")
 	// os.Executable() reports where this process was STARTED from, which is not
 	// a promise about the bytes on disk now: the daemon deliberately supports a
 	// binary being replaced out of band while a restart is deferred (see
@@ -249,11 +243,6 @@ func (d *Daemon) repoCheckoutAuthErrorMessage(result repoCheckoutAuthResult) str
 	if selfBin, err := resolveSelfExecutable(); err == nil {
 		b.WriteString(" This daemon started from ")
 		b.WriteString(selfBin)
-		if pending := d.reloadPending(); pending != "" {
-			b.WriteString(", whose on-disk copy has since changed (")
-			b.WriteString(pending)
-			b.WriteString(")")
-		}
 		b.WriteString("; check that copy's version before running it directly.")
 	}
 	return b.String()
@@ -362,8 +351,7 @@ func (d *Daemon) healthHandler(startedAt time.Time) http.HandlerFunc {
 			Agents:                agents,
 			SkippedAgents:         d.skippedAgentsSnapshot(),
 
-			ReloadPendingReason: d.reloadPending(),
-			Workspaces:          wsList,
+			Workspaces: wsList,
 		}
 		if reporter, ok := d.repoCache.(interface{ Activity() repocache.Activity }); ok {
 			activity := reporter.Activity()

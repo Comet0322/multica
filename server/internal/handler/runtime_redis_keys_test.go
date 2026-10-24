@@ -19,15 +19,6 @@ func TestRuntimePendingRedisKeysShareClusterHashTag(t *testing.T) {
 			localSkillImportPendingKey("runtime-1"),
 			localSkillImportKey("req-1"),
 		},
-		"update claim": {
-			updatePendingKey("runtime-1"),
-			updateKey("req-1"),
-		},
-		"update active guard": {
-			updateActiveKey("runtime-1"),
-			updateKey("req-1"),
-			updatePendingKey("runtime-1"),
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			want := redisClusterHashTag(keys[0])

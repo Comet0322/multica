@@ -1165,7 +1165,7 @@ func resolvePropertyFilterValue(ctx context.Context, client *cli.APIClient, dire
 		// value that genuinely has spaces around it.
 		return raw, nil
 	default: // a property type only a newer backend knows about
-		return "", fmt.Errorf("--property %s: this CLI does not know how to filter %s properties; update with `multica update`, or use the %s unset filter", property.Name, property.Type, propertyNoValueSentinel)
+		return "", fmt.Errorf("--property %s: this CLI does not know how to filter %s properties; upgrade the CLI, or use the %s unset filter", property.Name, property.Type, propertyNoValueSentinel)
 	}
 }
 

@@ -723,12 +723,11 @@ func (c *Client) GetTaskStatus(ctx context.Context, taskID string) (string, erro
 	return resp.Status, nil
 }
 
-// HeartbeatResponse, PendingUpdate, etc. alias the wire types so HTTP and WS
+// HeartbeatResponse, PendingModelList, etc. alias the wire types so HTTP and WS
 // heartbeat paths share a single type and a single decoder shape. Aliases
 // (rather than wrappers) keep call sites unchanged.
 type (
 	HeartbeatResponse       = protocol.DaemonHeartbeatAckPayload
-	PendingUpdate           = protocol.DaemonHeartbeatPendingUpdate
 	PendingModelList        = protocol.DaemonHeartbeatPendingModelList
 	PendingLocalSkills      = protocol.DaemonHeartbeatPendingLocalSkills
 	PendingLocalSkillImport = protocol.DaemonHeartbeatPendingLocalSkillImport
@@ -743,11 +742,6 @@ func (c *Client) SendHeartbeat(ctx context.Context, runtimeID string) (*Heartbea
 		return nil, err
 	}
 	return &resp, nil
-}
-
-// ReportUpdateResult sends the CLI update result back to the server.
-func (c *Client) ReportUpdateResult(ctx context.Context, runtimeID, updateID string, result map[string]any) error {
-	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/runtimes/%s/update/%s/result", runtimeID, updateID), result, nil)
 }
 
 // ReportModelListResult sends the model-discovery result back to the server.
