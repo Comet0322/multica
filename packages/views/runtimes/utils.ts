@@ -92,7 +92,7 @@ function stripVersionPrefix(v: string): string {
 // True iff `latest` is strictly newer than `current` by dotted-numeric
 // comparison. Non-numeric / missing segments compare as 0 ("0.2" < "0.2.1").
 // Used by the runtime-list CLI column to decide whether to surface the ↑
-// marker; same logic also lives inline in update-section.tsx for now.
+// marker.
 export function isVersionNewer(latest: string, current: string): boolean {
   const l = stripVersionPrefix(latest).split(".").map(Number);
   const c = stripVersionPrefix(current).split(".").map(Number);

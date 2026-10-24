@@ -89,8 +89,7 @@ const (
 	// base. Reclaiming those is therefore an operator's explicit call, made
 	// when no pre-lock daemon is running here. Dirs that DO carry the lock are
 	// reclaimed on liveness and never touch this knob.
-	DefaultGCTaskTempLegacyTTL     = time.Duration(0)
-	DefaultAutoUpdateCheckInterval = 6 * time.Hour // how often the daemon polls GitHub for a newer CLI release
+	DefaultGCTaskTempLegacyTTL = time.Duration(0)
 )
 
 // DefaultGCArtifactPatterns lists basename matches that the GC loop treats as
@@ -130,9 +129,6 @@ type Config struct {
 	GCHermesMemoryTTL              time.Duration         // reclaim a per-agent Hermes memory store (<profile dir>/hermes-state/<agent>/<profile>) untouched for at least this long, so a deleted agent's memory does not sit on disk forever (default: 90d, set 0 to disable)
 	GCHermesSessionTTL             time.Duration         // reclaim a per-conversation Hermes session store (<profile dir>/hermes-sessions/<agent>/<profile>/<conversation>) untouched for at least this long, so a done or abandoned conversation's transcript does not accumulate forever (default: 14d, set 0 to disable)
 	GCTaskTempLegacyTTL            time.Duration         // reclaim a per-task temp dir (<temp base>/multica-task-*) that carries no execution lock — i.e. left by a daemon predating the lock — once nothing inside it has been touched for this long. Dirs that DO carry the lock are reclaimed on liveness, never on age, so this knob does not apply to them. Neither does it reclaim a dir holding no task content — an old empty leftover, or a shell left by a daemon that died between creating the dir and publishing its lock — because holding no content is exactly what a dir currently being published looks like (default: 0, disabled — see DefaultGCTaskTempLegacyTTL)
-	AutoUpdateEnabled              bool                  // periodically check for a newer CLI release and self-update when idle (default: true on Multica Cloud, false on self-host)
-	AutoUpdateCheckInterval        time.Duration         // how often the auto-update loop polls for a new release (default: 6h)
-	AutoReloadEnabled              bool                  // restart when the multica binary on disk no longer matches the running version (default: true for CLI-launched daemons)
 	PollInterval                   time.Duration
 	WSClaimPollInterval            time.Duration // upper bound for healthy WS batch-claim safety polls; actual sleeps use downward-only jitter
 	HeartbeatInterval              time.Duration
@@ -191,15 +187,6 @@ type Overrides struct {
 	// AllowNoAgents is reserved for read-only local configuration probes. Daemon
 	// startup keeps the default false and still refuses to run with no agent CLI.
 	AllowNoAgents bool
-	// DisableAutoUpdate, when true, forces the auto-update poller off. There
-	// is no symmetric "force on" override because the env/default already
-	// resolves to enabled; the flag exists so users can opt out from the CLI.
-	DisableAutoUpdate       bool
-	AutoUpdateCheckInterval time.Duration // 0 = use env/default
-	// DisableAutoReload, when true, forces the on-disk version watcher off.
-	// Single-direction for the same reason as DisableAutoUpdate: the
-	// env/default already resolves to enabled.
-	DisableAutoReload bool
 }
 
 // LoadConfig builds the daemon configuration from environment variables
@@ -592,38 +579,6 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	gcRepoMaintenanceEnabled := boolFromEnv("MULTICA_GC_REPO_MAINTENANCE_ENABLED", true)
 	gcArtifactPatterns := patternsFromEnv("MULTICA_GC_ARTIFACT_PATTERNS", DefaultGCArtifactPatterns)
 
-	// Auto-update config: default -> env override -> CLI override.
-	//
-	// Default is opt-in on Multica Cloud (api.multica.ai) and opt-out for
-	// self-hosted instances. Self-host operators frequently run a fork with
-	// their own patches, and silently upgrading their daemon to an upstream
-	// GitHub release would clobber that work; they also commonly stay on an
-	// older server build, which a fresh CLI may no longer talk to. Keeping
-	// auto-update off by default for self-host avoids both footguns (MUL-2381).
-	// Operators on either side can flip the default with MULTICA_DAEMON_AUTO_UPDATE.
-	autoUpdateEnabled := boolFromEnv("MULTICA_DAEMON_AUTO_UPDATE", isOfficialCloudServer(serverBaseURL))
-	if overrides.DisableAutoUpdate {
-		autoUpdateEnabled = false
-	}
-	autoUpdateInterval, err := durationFromEnv("MULTICA_DAEMON_AUTO_UPDATE_INTERVAL", DefaultAutoUpdateCheckInterval)
-	if err != nil {
-		return Config{}, err
-	}
-	if overrides.AutoUpdateCheckInterval > 0 {
-		autoUpdateInterval = overrides.AutoUpdateCheckInterval
-	}
-
-	// Auto-reload is deliberately NOT gated on autoUpdateEnabled. "Don't pull
-	// new versions from GitHub" and "follow the binary I replaced myself" are
-	// different concerns, and the self-host rationale for defaulting the former
-	// off (don't clobber my fork) argues the opposite way for the latter: an
-	// operator who installed a build by hand wants the daemon to run it.
-	// Default on for every CLI-launched daemon; Desktop opts out at the loop.
-	autoReloadEnabled := boolFromEnv("MULTICA_DAEMON_AUTO_RELOAD", true)
-	if overrides.DisableAutoReload {
-		autoReloadEnabled = false
-	}
-
 	return Config{
 		ServerBaseURL:                   serverBaseURL,
 		DaemonID:                        daemonID,
@@ -647,9 +602,6 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		GCHermesMemoryTTL:               gcHermesMemoryTTL,
 		GCHermesSessionTTL:              gcHermesSessionTTL,
 		GCTaskTempLegacyTTL:             gcTaskTempLegacyTTL,
-		AutoUpdateEnabled:               autoUpdateEnabled,
-		AutoUpdateCheckInterval:         autoUpdateInterval,
-		AutoReloadEnabled:               autoReloadEnabled,
 		HealthPort:                      healthPort,
 		MaxConcurrentTasks:              maxConcurrentTasks,
 		PollInterval:                    pollInterval,

@@ -263,11 +263,7 @@ export function RuntimeDetailPage({
                         })
                       : t(($) => $.machine.metrics.workload_idle)}
                   </span>
-                  <MachineCliSection
-                    machine={machine}
-                    currentUserId={currentUserId}
-                    canManagePublicRuntimes={isAdmin}
-                  />
+                  <MachineCliSection machine={machine} />
                   {machine.lastSeenAt && (
                     <span>{timeAgo(machine.lastSeenAt)}</span>
                   )}

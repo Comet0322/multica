@@ -274,27 +274,7 @@
     }
   },
   "update": {
-    "cli_version_label": "Version du CLI :",
-    "version_unknown": "inconnue",
-    "managed_by_desktop": "Géré par l'application de bureau",
-    "managed_by_desktop_title": "Le binaire du CLI est géré par Multica Desktop — mettez Desktop à jour pour mettre à niveau le CLI.",
-    "read_only": "Lecture seule",
-    "read_only_title": "Seuls les propriétaires du runtime et les administrateurs de l'espace de travail peuvent mettre le CLI à jour.",
-    "local_build": "Build local",
-    "local_build_title": "Ce runtime annonce une version hors publication : Multica ne peut donc pas savoir si une mise à niveau est disponible. Mettez-le à jour depuis la machine elle-même.",
-    "latest": "À jour",
-    "available": "disponible",
-    "action": "Mettre à jour",
-    "retry": "Réessayer",
-    "unknown_error": "Erreur inconnue",
-    "initiate_failed": "Échec du lancement de la mise à jour",
-    "status": {
-      "pending": "En attente du daemon...",
-      "running": "Mise à jour...",
-      "completed": "Mise à jour terminée. Le daemon redémarre...",
-      "failed": "Échec de la mise à jour",
-      "timeout": "Délai dépassé"
-    }
+    "cli_version_label": "Version du CLI :"
   },
   "charts": {
     "heatmap_less": "Moins",

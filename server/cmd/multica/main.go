@@ -71,7 +71,6 @@ func init() {
 	setupCmd.GroupID = groupAdditional
 	attachmentCmd.GroupID = groupAdditional
 	configCmd.GroupID = groupAdditional
-	updateCmd.GroupID = groupAdditional
 	versionCmd.GroupID = groupAdditional
 
 	rootCmd.AddCommand(issueCmd)
@@ -93,7 +92,6 @@ func init() {
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(attachmentCmd)
 	rootCmd.AddCommand(configCmd)
-	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	initHelp(rootCmd)
@@ -112,7 +110,6 @@ func main() {
 		agent.RunCursorHookRelay(os.Stdin, os.Stdout, os.Getenv)
 		return
 	}
-	cli.CleanupStaleUpdateArtifacts()
 	if err := rootCmd.Execute(); err != nil {
 		if err != errSilent {
 			fmt.Fprintln(os.Stderr, cli.FormatError(err, debugFlag))

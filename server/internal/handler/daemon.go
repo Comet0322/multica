@@ -1192,9 +1192,6 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 	// in the WS path and would be redundant noise on the HTTP path where the
 	// caller already knows which runtime it asked about.
 	resp := map[string]any{"status": ack.Status}
-	if ack.PendingUpdate != nil {
-		resp["pending_update"] = ack.PendingUpdate
-	}
 	if ack.PendingModelList != nil {
 		resp["pending_model_list"] = ack.PendingModelList
 	}
@@ -1384,28 +1381,6 @@ func (h *Handler) processHeartbeat(ctx context.Context, runtimeID string, suppor
 		RuntimeID:          runtimeID,
 		Status:             "ok",
 		ServerCapabilities: []string{protocol.DaemonCapabilityRPCV1},
-	}
-
-	probeUpdateCtx, cancelProbeUpdate := context.WithTimeout(ctx, heartbeatHasPendingTimeout)
-	hasUpdate, probeUpdateErr := h.UpdateStore.HasPending(probeUpdateCtx, runtimeID)
-	cancelProbeUpdate()
-	switch {
-	case probeUpdateErr == nil && hasUpdate:
-		pending, popUpdateErr := h.UpdateStore.PopPending(ctx, runtimeID)
-		if popUpdateErr != nil {
-			slog.Warn("update PopPending failed", "error", popUpdateErr, "runtime_id", runtimeID)
-		} else if pending != nil {
-			ack.PendingUpdate = &protocol.DaemonHeartbeatPendingUpdate{
-				ID:            pending.ID,
-				TargetVersion: pending.TargetVersion,
-			}
-		}
-	case probeUpdateErr != nil:
-		if errors.Is(probeUpdateErr, context.DeadlineExceeded) || errors.Is(probeUpdateErr, context.Canceled) {
-			slog.Warn("update HasPending timed out", "runtime_id", runtimeID)
-		} else {
-			slog.Warn("update HasPending failed", "error", probeUpdateErr, "runtime_id", runtimeID)
-		}
 	}
 
 	// Probe then claim the model list queue. Same pattern as the local-skill

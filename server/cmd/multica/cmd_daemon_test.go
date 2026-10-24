@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"text/template"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -129,23 +128,6 @@ func TestBuildDaemonStartArgsForwardsWorkspacesRoot(t *testing.T) {
 	args := buildDaemonStartArgs(cmd)
 	want := []string{"daemon", "start", "--foreground", "--workspaces-root", "/Volumes/Agent Workspaces"}
 	if strings.Join(args, "\x00") != strings.Join(want, "\x00") {
-		t.Fatalf("buildDaemonStartArgs() = %q, want %q", args, want)
-	}
-}
-
-// TestBuildDaemonStartArgsForwardsNoAutoReload matters because `daemon start`
-// re-execs itself as a foreground child: a flag the parent parsed but doesn't
-// forward is silently dropped, so the opt-out would appear to work and not.
-func TestBuildDaemonStartArgsForwardsNoAutoReload(t *testing.T) {
-	cmd := &cobra.Command{}
-	cmd.Flags().Bool("no-auto-reload", false, "")
-	if err := cmd.Flags().Set("no-auto-reload", "true"); err != nil {
-		t.Fatalf("set flag: %v", err)
-	}
-
-	args := buildDaemonStartArgs(cmd)
-	want := []string{"daemon", "start", "--foreground", "--no-auto-reload"}
-	if strings.Join(args, " ") != strings.Join(want, " ") {
 		t.Fatalf("buildDaemonStartArgs() = %q, want %q", args, want)
 	}
 }
@@ -865,32 +847,6 @@ func writeDiskUsageFile(t *testing.T, path string) {
 	}
 	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestVersionTemplateMatchesDaemonProbe pins a contract that spans two packages
-// and would otherwise break in silence.
-//
-// The daemon's auto-reload check runs `<binary> --version` and parses the result
-// back into a version string it compares against its own compile-time version
-// (MUL-3269). That only works while cobra's version template keeps rendering
-// "multica <version> ..." as its first line — a reasonable-looking edit here
-// would leave the daemon reading a version that never matches, restarting on
-// every check, and nothing else in the suite would notice.
-func TestVersionTemplateMatchesDaemonProbe(t *testing.T) {
-	tmpl, err := template.New("version").Parse(rootCmd.VersionTemplate())
-	if err != nil {
-		t.Fatalf("parse version template: %v", err)
-	}
-	var rendered bytes.Buffer
-	if err := tmpl.Execute(&rendered, rootCmd); err != nil {
-		t.Fatalf("render version template: %v", err)
-	}
-
-	if got := daemon.ParseSelfVersion(rendered.String()); got != version {
-		t.Fatalf("daemon.ParseSelfVersion(%q) = %q, want the build version %q — "+
-			"the --version template and the auto-reload probe have diverged",
-			rendered.String(), got, version)
 	}
 }
 

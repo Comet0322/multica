@@ -252,9 +252,6 @@ const (
 	// RuntimeLookupSourceRuntimeLocalSkillImportPoll is the browser polling a
 	// local skill import, which the UI allows up to ten of concurrently.
 	RuntimeLookupSourceRuntimeLocalSkillImportPoll = "runtime_local_skill_import_poll"
-	// RuntimeLookupSourceRuntimeUpdatePoll is the browser polling CLI update
-	// progress.
-	RuntimeLookupSourceRuntimeUpdatePoll = "runtime_update_poll"
 	// RuntimeLookupSourceRuntimeAPI is every other runtime-scoped API call:
 	// reads, management, and the read-access gate itself.
 	RuntimeLookupSourceRuntimeAPI = "runtime_api"
@@ -299,7 +296,6 @@ func AllRuntimeLookupSources() []string {
 		RuntimeLookupSourceRuntimeModelPoll,
 		RuntimeLookupSourceRuntimeLocalSkillPoll,
 		RuntimeLookupSourceRuntimeLocalSkillImportPoll,
-		RuntimeLookupSourceRuntimeUpdatePoll,
 		RuntimeLookupSourceRuntimeAPI,
 		RuntimeLookupSourceIssue,
 		RuntimeLookupSourceComment,

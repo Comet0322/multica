@@ -274,27 +274,7 @@
     }
   },
   "update": {
-    "cli_version_label": "CLI Version:",
-    "version_unknown": "unknown",
-    "managed_by_desktop": "Managed by Desktop",
-    "managed_by_desktop_title": "The CLI binary is managed by Multica Desktop — update Desktop to upgrade the CLI.",
-    "read_only": "Read-only",
-    "read_only_title": "Only runtime owners and workspace admins can update the CLI.",
-    "local_build": "Local build",
-    "local_build_title": "This runtime reports a non-release version, so Multica cannot tell whether an upgrade is available. Update it from the machine itself.",
-    "latest": "Latest",
-    "available": "available",
-    "action": "Update",
-    "retry": "Retry",
-    "unknown_error": "Unknown error",
-    "initiate_failed": "Failed to initiate update",
-    "status": {
-      "pending": "Waiting for daemon...",
-      "running": "Updating...",
-      "completed": "Update complete. Daemon is restarting...",
-      "failed": "Update failed",
-      "timeout": "Timeout"
-    }
+    "cli_version_label": "CLI Version:"
   },
   "charts": {
     "heatmap_less": "Less",

@@ -314,8 +314,6 @@ func TestCLIConfig_DaemonKnobs_RoundTrip(t *testing.T) {
 		AgentTimeout:                   &zero,
 		CodexSemanticInactivityTimeout: "15m",
 		CodexHandshakeTimeout:          "45s",
-		DisableAutoUpdate:              true,
-		AutoUpdateCheckInterval:        "12h",
 	}
 	if err := SaveCLIConfig(original); err != nil {
 		t.Fatal(err)
@@ -327,9 +325,7 @@ func TestCLIConfig_DaemonKnobs_RoundTrip(t *testing.T) {
 	}
 	if loaded.HeartbeatInterval != "5s" ||
 		loaded.CodexSemanticInactivityTimeout != "15m" ||
-		loaded.CodexHandshakeTimeout != "45s" ||
-		!loaded.DisableAutoUpdate ||
-		loaded.AutoUpdateCheckInterval != "12h" {
+		loaded.CodexHandshakeTimeout != "45s" {
 		t.Errorf("scalar knobs lost on round-trip: %+v", loaded)
 	}
 	if loaded.AgentTimeout == nil || *loaded.AgentTimeout != "0s" {

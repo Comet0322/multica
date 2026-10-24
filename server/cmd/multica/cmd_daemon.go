@@ -107,9 +107,6 @@ func init() {
 	f.Duration("codex-semantic-inactivity-timeout", 0, "Codex semantic inactivity timeout (env: MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT)")
 	f.Duration("codex-handshake-timeout", 0, "Codex app-server startup RPC timeout (env: MULTICA_CODEX_HANDSHAKE_TIMEOUT)")
 	f.Int("max-concurrent-tasks", 0, "Maximum concurrent runs (env: MULTICA_DAEMON_MAX_CONCURRENT_TASKS)")
-	f.Bool("no-auto-update", false, "Disable periodic CLI self-update (env: MULTICA_DAEMON_AUTO_UPDATE=false)")
-	f.Duration("auto-update-interval", 0, "How often to poll GitHub for a newer release (env: MULTICA_DAEMON_AUTO_UPDATE_INTERVAL)")
-	f.Bool("no-auto-reload", false, "Disable restarting when the multica binary on disk changes version (env: MULTICA_DAEMON_AUTO_RELOAD=false)")
 
 	daemonLogsCmd.Flags().BoolP("follow", "f", false, "Follow log output")
 	daemonLogsCmd.Flags().IntP("lines", "n", 50, "Number of lines to show")
@@ -130,9 +127,6 @@ func init() {
 	rf.Duration("codex-semantic-inactivity-timeout", 0, "Codex semantic inactivity timeout (env: MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT)")
 	rf.Duration("codex-handshake-timeout", 0, "Codex app-server startup RPC timeout (env: MULTICA_CODEX_HANDSHAKE_TIMEOUT)")
 	rf.Int("max-concurrent-tasks", 0, "Maximum concurrent runs (env: MULTICA_DAEMON_MAX_CONCURRENT_TASKS)")
-	rf.Bool("no-auto-update", false, "Disable periodic CLI self-update (env: MULTICA_DAEMON_AUTO_UPDATE=false)")
-	rf.Duration("auto-update-interval", 0, "How often to poll GitHub for a newer release (env: MULTICA_DAEMON_AUTO_UPDATE_INTERVAL)")
-	rf.Bool("no-auto-reload", false, "Disable restarting when the multica binary on disk changes version (env: MULTICA_DAEMON_AUTO_RELOAD=false)")
 
 	df := daemonDiskUsageCmd.Flags()
 	df.Bool("by-workspace", false, "Aggregate output by workspace instead of by run")
@@ -902,15 +896,6 @@ func buildDaemonStartArgs(cmd *cobra.Command) []string {
 	if n, _ := cmd.Flags().GetInt("max-concurrent-tasks"); n > 0 {
 		args = append(args, "--max-concurrent-tasks", strconv.Itoa(n))
 	}
-	if b, _ := cmd.Flags().GetBool("no-auto-update"); b {
-		args = append(args, "--no-auto-update")
-	}
-	if d, _ := cmd.Flags().GetDuration("auto-update-interval"); d > 0 {
-		args = append(args, "--auto-update-interval", d.String())
-	}
-	if b, _ := cmd.Flags().GetBool("no-auto-reload"); b {
-		args = append(args, "--no-auto-reload")
-	}
 
 	// Forward global persistent flags.
 	if v, _ := cmd.Flags().GetString("server-url"); v != "" {
@@ -1050,30 +1035,6 @@ func runDaemonForeground(cmd *cobra.Command) error {
 	maxFlag, _ := cmd.Flags().GetInt("max-concurrent-tasks")
 	if n := resolveDaemonIntOverride(maxFlag, "MULTICA_DAEMON_MAX_CONCURRENT_TASKS", fileCfg.MaxConcurrentTasks); n > 0 {
 		overrides.MaxConcurrentTasks = n
-	}
-	// --no-auto-update / MULTICA_DAEMON_AUTO_UPDATE=false / config.json
-	// disable_auto_update are all single-direction: none of them can force
-	// auto-update *on*, they can only turn it off. Env "true" is not
-	// treated as an override signal here — LoadConfig honors the raw env
-	// itself for the affirmative case.
-	noAutoUpdateFlag, _ := cmd.Flags().GetBool("no-auto-update")
-	if resolveDaemonDisableSignal(noAutoUpdateFlag, "MULTICA_DAEMON_AUTO_UPDATE", fileCfg.DisableAutoUpdate) {
-		overrides.DisableAutoUpdate = true
-	}
-	// Same single-direction shape for the on-disk version watcher, resolved
-	// through its own env var: turning off GitHub polling must not also stop the
-	// daemon from following a binary the operator replaced by hand.
-	noAutoReloadFlag, _ := cmd.Flags().GetBool("no-auto-reload")
-	if resolveDaemonDisableSignal(noAutoReloadFlag, "MULTICA_DAEMON_AUTO_RELOAD", fileCfg.DisableAutoReload) {
-		overrides.DisableAutoReload = true
-	}
-	autoUpdateFlag, _ := cmd.Flags().GetDuration("auto-update-interval")
-	autoUpdateOverride, err := resolveDaemonDurationOverride(autoUpdateFlag, "MULTICA_DAEMON_AUTO_UPDATE_INTERVAL", fileCfg.AutoUpdateCheckInterval)
-	if err != nil {
-		return err
-	}
-	if autoUpdateOverride > 0 {
-		overrides.AutoUpdateCheckInterval = autoUpdateOverride
 	}
 
 	cfg, err := daemon.LoadConfig(overrides)
@@ -1786,34 +1747,6 @@ func resolveDaemonAgentTimeoutOverride(cmd *cobra.Command, envName string, cfgVa
 		return nil, fmt.Errorf("config value %q for %s must be >= 0", *cfgValue, envName)
 	}
 	return &parsed, nil
-}
-
-// resolveDaemonDisableSignal resolves a single-direction disable signal —
-// auto-update (--no-auto-update) and auto-reload (--no-auto-reload) share the
-// shape. Precedence, using auto-update as the example:
-//
-//  1. --no-auto-update flag passed -> disable.
-//  2. MULTICA_DAEMON_AUTO_UPDATE explicitly set to a falsy value ->
-//     disable. Env values other than false/0/no/off are handled inside
-//     daemon.LoadConfig (they may enable auto-update on self-host, which
-//     is not something we can express via CLI overrides today).
-//  3. config.json disable_auto_update=true (only when both flag and env
-//     are silent) -> disable.
-//  4. Otherwise -> leave the override off; LoadConfig picks the default.
-func resolveDaemonDisableSignal(flagValue bool, envName string, cfgValue bool) bool {
-	if flagValue {
-		return true
-	}
-	if v := strings.TrimSpace(os.Getenv(envName)); v != "" {
-		switch strings.ToLower(v) {
-		case "false", "0", "no", "off":
-			return true
-		}
-		// Env is set to something other than a falsy value — leave the
-		// override off and let LoadConfig read the raw env itself.
-		return false
-	}
-	return cfgValue
 }
 
 // --- daemon disk-usage ---

@@ -461,12 +461,9 @@ func TestHeartbeatRoundTrip(t *testing.T) {
 			t.Errorf("identity workspace = %q, want ws-1", identity.WorkspaceID)
 		}
 		return &protocol.DaemonHeartbeatAckPayload{
-			RuntimeID: runtimeID,
-			Status:    "ok",
-			PendingUpdate: &protocol.DaemonHeartbeatPendingUpdate{
-				ID:            "update-1",
-				TargetVersion: "0.1.99",
-			},
+			RuntimeID:        runtimeID,
+			Status:           "ok",
+			PendingModelList: &protocol.DaemonHeartbeatPendingModelList{ID: "models-1"},
 		}, nil
 	})
 
@@ -518,8 +515,8 @@ func TestHeartbeatRoundTrip(t *testing.T) {
 	if ack.RuntimeID != "runtime-1" {
 		t.Fatalf("ack runtime_id = %q, want runtime-1", ack.RuntimeID)
 	}
-	if ack.PendingUpdate == nil || ack.PendingUpdate.ID != "update-1" {
-		t.Fatalf("ack pending_update = %+v, want update-1", ack.PendingUpdate)
+	if ack.PendingModelList == nil || ack.PendingModelList.ID != "models-1" {
+		t.Fatalf("ack pending_model_list = %+v, want models-1", ack.PendingModelList)
 	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("HeartbeatHandler invocations = %d, want 1", got)
