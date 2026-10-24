@@ -21,8 +21,7 @@ const PLATFORM_TABS = {
 /**
  * Scenario-first CLI section. Copy leans into servers / remote dev
  * boxes / headless setups rather than positioning CLI as a
- * lightweight Desktop. Two copy-and-paste command blocks; the install one
- * carries the platform switch, since install.sh and install.ps1 differ.
+ * lightweight Desktop. Two copy-and-paste command blocks.
  */
 export function CliSection() {
   const { t } = useLocale();

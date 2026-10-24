@@ -3555,7 +3555,6 @@ export function createZhDict(
           "Gemini Runtime 模型列表补上 Gemini 3 及若干 CLI 别名",
           "没有锚点的页面上 Chat focus 按钮改为禁用",
           "修复 Onboarding 中 Pin 同步、欢迎页布局与 Runtime bootstrap 状态",
-          "`install.ps1` 的系统架构探测更稳健,覆盖更多 Windows 环境",
           "`/download` 在 1 小时新鲜度窗口内可回退到上一版本,避免撞上半发布状态",
         ],
       },
@@ -3731,7 +3730,7 @@ export function createZhDict(
         title: "一键安装、自部署与稳定性",
         changes: [],
         features: [
-          "一键安装与配置——`curl | bash` 安装 CLI，`--with-server` 完整自部署，`multica setup` 配置连接环境",
+          "一键配置——`--with-server` 完整自部署，`multica setup` 配置连接环境",
           "自部署存储——无 S3 时本地文件存储回退，支持自定义 S3 端点（MinIO）",
           "项目列表页支持行内编辑属性（优先级、状态、负责人）",
         ],
