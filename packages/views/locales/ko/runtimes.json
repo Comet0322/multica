@@ -262,27 +262,7 @@
     }
   },
   "update": {
-    "cli_version_label": "CLI 버전:",
-    "version_unknown": "알 수 없음",
-    "managed_by_desktop": "데스크톱에서 관리",
-    "managed_by_desktop_title": "CLI 바이너리는 Multica Desktop에서 관리합니다. CLI를 업그레이드하려면 Desktop을 업데이트하세요.",
-    "read_only": "읽기 전용",
-    "read_only_title": "런타임 소유자와 워크스페이스 관리자만 CLI를 업데이트할 수 있습니다.",
-    "local_build": "로컬 빌드",
-    "local_build_title": "이 런타임은 릴리스 버전이 아닌 버전을 보고하므로 Multica가 업그레이드 가능 여부를 판단할 수 없습니다. 머신에서 직접 업데이트하세요.",
-    "latest": "최신",
-    "available": "사용 가능",
-    "action": "업데이트",
-    "retry": "다시 시도",
-    "unknown_error": "알 수 없는 오류",
-    "initiate_failed": "업데이트를 시작하지 못했습니다",
-    "status": {
-      "pending": "데몬 대기 중...",
-      "running": "업데이트 중...",
-      "completed": "업데이트 완료. 데몬을 다시 시작하는 중...",
-      "failed": "업데이트 실패",
-      "timeout": "시간 초과"
-    }
+    "cli_version_label": "CLI 버전:"
   },
   "charts": {
     "heatmap_less": "적음",

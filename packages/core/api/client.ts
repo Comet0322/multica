@@ -84,7 +84,6 @@ import type {
   DashboardRunTimeDaily,
   DashboardFailureDaily,
   DashboardFailureByAgent,
-  RuntimeUpdate,
   RuntimeModelListRequest,
   RuntimeLocalSkillListRequest,
   CreateRuntimeLocalSkillImportRequest,
@@ -2657,23 +2656,6 @@ export class ApiClient {
       [],
       { endpoint: "GET /api/dashboard/failures/by-agent" },
     );
-  }
-
-  async initiateUpdate(
-    runtimeId: string,
-    targetVersion: string,
-  ): Promise<RuntimeUpdate> {
-    return this.fetch(`/api/runtimes/${runtimeId}/update`, {
-      method: "POST",
-      body: JSON.stringify({ target_version: targetVersion }),
-    });
-  }
-
-  async getUpdateResult(
-    runtimeId: string,
-    updateId: string,
-  ): Promise<RuntimeUpdate> {
-    return this.fetch(`/api/runtimes/${runtimeId}/update/${updateId}`);
   }
 
   // Both discovery endpoints feed a UI state machine (poll while

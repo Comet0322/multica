@@ -262,27 +262,7 @@
     }
   },
   "update": {
-    "cli_version_label": "CLI バージョン:",
-    "version_unknown": "不明",
-    "managed_by_desktop": "デスクトップで管理",
-    "managed_by_desktop_title": "CLI バイナリは Multica Desktop で管理されています。CLI をアップグレードするには Desktop を更新してください。",
-    "read_only": "読み取り専用",
-    "read_only_title": "CLI を更新できるのは、ランタイムの所有者とワークスペース管理者のみです。",
-    "local_build": "ローカルビルド",
-    "local_build_title": "このランタイムはリリース版ではないバージョンを報告しているため、Multica はアップグレードの有無を判断できません。マシン上で直接更新してください。",
-    "latest": "最新",
-    "available": "利用可能",
-    "action": "更新",
-    "retry": "再試行",
-    "unknown_error": "不明なエラー",
-    "initiate_failed": "更新を開始できませんでした",
-    "status": {
-      "pending": "デーモンを待っています...",
-      "running": "更新中...",
-      "completed": "更新が完了しました。デーモンを再起動しています...",
-      "failed": "更新に失敗しました",
-      "timeout": "タイムアウト"
-    }
+    "cli_version_label": "CLI バージョン:"
   },
   "charts": {
     "heatmap_less": "少ない",
