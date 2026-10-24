@@ -1810,7 +1810,7 @@ LIMIT %s OFFSET %s`, whereSql, orderBy, limitRef, offsetRef)
 	}
 
 	// Get the true total count for pagination awareness.
-	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM issue i WHERE %s`, whereSql)
+	countQuery := strings.Join([]string{"SELECT COUNT(*) FROM issue i WHERE", whereSql}, " ")
 	// Count query uses the same args minus the OFFSET and LIMIT params (last two added).
 	countArgs := args[:filterArgCount]
 	var total int64
