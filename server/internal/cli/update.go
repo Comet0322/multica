@@ -346,17 +346,6 @@ func GetBrewPrefix() string {
 	return strings.TrimSpace(string(out))
 }
 
-// UpdateViaBrew runs `brew upgrade multica-ai/tap/multica`.
-// Returns the combined output and any error.
-func UpdateViaBrew() (string, error) {
-	cmd := exec.Command("brew", "upgrade", "multica-ai/tap/multica")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("brew upgrade failed: %w", err)
-	}
-	return string(out), nil
-}
-
 func updateDownloadTimeoutOrDefault(timeout time.Duration) time.Duration {
 	if timeout <= 0 {
 		return DefaultUpdateDownloadTimeout
