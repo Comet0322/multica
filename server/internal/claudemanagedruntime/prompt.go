@@ -55,9 +55,6 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 		p.WriteString("This is a follow-up on the same issue. If the earlier conversation is not in your context, rely on the issue and comments below.\n")
 	}
 	fmt.Fprintf(&p, "\nRun: %s\nIssue: %s\n\n%s\n\n%s\n", t.ID, t.IssueIdentifier, issue.Title, issue.Description)
-	if t.IssueIdentifier != "" {
-		fmt.Fprintf(&p, "\nWhen you change code, push a new branch named %s (never the default branch), open a pull request whose title starts with \"%s: \", and put the pull request link in your final summary. Multica links the pull request to this issue through that identifier.\n", BranchName(t.IssueIdentifier, issue.Title), t.IssueIdentifier)
-	}
 	if t.Agent != nil {
 		fmt.Fprintf(&p, "\nAgent instructions:\n%s\n", t.Agent.Instructions)
 	}
@@ -109,6 +106,13 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 	}
 	for _, repo := range t.Repos {
 		fmt.Fprintf(&p, "\nAvailable repository: %s (%s)\n", repo.URL, repo.Description)
+	}
+	// Vaults can give the session tools that reach other repositories (a
+	// GitHub MCP server), so the run is told exactly which one it may change.
+	if len(r.Resources) == 0 {
+		p.WriteString("\nNo repository is mounted for this run. Do not create branches, commits or pull requests in any repository, including repositories your tools can reach; describe the change you would make in your final summary instead.\n")
+	} else if t.IssueIdentifier != "" {
+		fmt.Fprintf(&p, "\nChange only the mounted repository %s. When you change code, push a new branch named %s (never the default branch), open a pull request in that repository whose title starts with \"%s: \", and put the pull request link in your final summary. Multica links the pull request to this issue through that identifier.\n", r.Resources[0]["url"], BranchName(t.IssueIdentifier, issue.Title), t.IssueIdentifier)
 	}
 	r.Prompt = p.String()
 	return r, nil

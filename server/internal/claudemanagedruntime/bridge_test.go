@@ -1077,3 +1077,28 @@ func TestCheckValidatesVaults(t *testing.T) {
 		t.Fatalf("mismatched vault accepted: %v", err)
 	}
 }
+
+// A vault can hand the session a GitHub MCP server that reaches repositories
+// beyond the mounted one, so the prompt names the one repository it may change
+// and forbids changes when none is mounted.
+func TestPromptScopesChangesToTheMountedRepository(t *testing.T) {
+	h := setup(t)
+	h.task.IssueIdentifier = "MUL-1"
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.prompt, "No repository is mounted") || strings.Contains(h.prompt, "push a new branch") {
+		t.Fatalf("unmounted run may change repositories:\n%s", h.prompt)
+	}
+
+	h = setup(t)
+	h.task.IssueIdentifier = "MUL-1"
+	h.task.Agent.RuntimeConfig = json.RawMessage(`{"claude_agent_id":"agent_1","repository":{"url":"https://github.com/owner/repo"}}`)
+	h.b.cfg.GitHubTokens = map[string]string{"https://github.com/owner/repo": "token"}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h.prompt, "Change only the mounted repository https://github.com/owner/repo") || strings.Contains(h.prompt, "No repository is mounted") {
+		t.Fatalf("mounted run not scoped to its repository:\n%s", h.prompt)
+	}
+}

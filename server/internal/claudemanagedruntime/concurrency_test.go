@@ -289,7 +289,10 @@ func TestFollowUpSkipsSessionWithoutFingerprint(t *testing.T) {
 }
 
 func TestPromptAsksForLinkableBranch(t *testing.T) {
-	h := setupMulti(t, 1, newTask("task-1", ""))
+	task := newTask("task-1", "")
+	task.Agent.RuntimeConfig = json.RawMessage(`{"claude_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app"}}`)
+	h := setupMulti(t, 1, task)
+	h.b.cfg.GitHubTokens = map[string]string{"https://github.com/acme/app": "tok-a"}
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
