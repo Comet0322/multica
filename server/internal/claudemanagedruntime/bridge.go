@@ -624,28 +624,52 @@ func (b *Bridge) cancelActive(ctx context.Context) error {
 	}
 	return firstErr
 }
+
+// Claude has no cancel endpoint: an interrupt stops the current turn and the
+// session becomes idle. Sessions are never archived or deleted so their
+// history stays available.
+var (
+	cancelConfirmWait = 3 * time.Second
+	cancelConfirmPoll = 250 * time.Millisecond
+)
+
+// cancelSession interrupts a session and confirms it stopped. An error leaves
+// the session queued for retry; a missing session counts as already stopped.
 func (b *Bridge) cancelSession(ctx context.Context, sessionID string) error {
-	if err := b.anthropic.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(sessionID)+"/cancel", map[string]any{}, nil); err != nil {
-		var ae *apiError
-		if errors.As(err, &ae) && ae.Status == 404 {
+	path := "/sessions/" + url.PathEscape(sessionID)
+	interrupt := map[string]any{"events": []map[string]string{{"type": "user.interrupt"}}}
+	if err := b.anthropic.call(ctx, http.MethodPost, path+"/events", interrupt, nil); err != nil {
+		return ignoreMissing(err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, cancelConfirmWait)
+	defer cancel()
+	for {
+		var s struct {
+			Status string `json:"status"`
+		}
+		if err := b.anthropic.call(ctx, http.MethodGet, path, nil, &s); err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("waiting for Claude cancellation")
+			}
+			return ignoreMissing(err)
+		}
+		if s.Status == "idle" || s.Status == "terminated" {
 			return nil
 		}
-		return err
-	}
-	var s struct {
-		Status string `json:"status"`
-	}
-	if err := b.anthropic.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(sessionID), nil, &s); err != nil {
-		var ae *apiError
-		if errors.As(err, &ae) && ae.Status == 404 {
-			return nil
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for Claude cancellation")
+		case <-time.After(cancelConfirmPoll):
 		}
-		return err
 	}
-	if s.Status != "idle" && s.Status != "terminated" {
-		return fmt.Errorf("waiting for Claude cancellation")
+}
+
+func ignoreMissing(err error) error {
+	var ae *apiError
+	if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
+		return nil
 	}
-	return nil
+	return err
 }
 func (b *Bridge) deliver(ctx context.Context, r *run) error {
 	body := map[string]any{"session_id": r.SessionID}

@@ -148,11 +148,16 @@ func setup(t *testing.T) *harness {
 			}
 			json.NewEncoder(w).Encode(map[string]any{"data": data, "next_page": nil})
 		case r.URL.Path == "/sessions/sess_1/events" && r.Method == "POST":
-			h.sends++
 			var req struct {
 				Events []event `json:"events"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
+			if len(req.Events) == 1 && req.Events[0].Type == "user.interrupt" {
+				h.cancels++
+				io.WriteString(w, `{"data":[]}`)
+				return
+			}
+			h.sends++
 			h.prompt = req.Events[0].text()
 			h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": h.prompt}}})
 			if h.lostSend {
@@ -165,9 +170,6 @@ func setup(t *testing.T) *harness {
 				t.Error("event ID used as page cursor")
 			}
 			json.NewEncoder(w).Encode(map[string]any{"data": h.events})
-		case strings.HasSuffix(r.URL.Path, "/cancel"):
-			h.cancels++
-			io.WriteString(w, `{"status":"canceling"}`)
 		case r.URL.Path == "/sessions/sess_1":
 			json.NewEncoder(w).Encode(map[string]any{"status": "idle", "metadata": h.priorMetadata})
 		default:
