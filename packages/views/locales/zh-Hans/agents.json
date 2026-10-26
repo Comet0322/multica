@@ -281,6 +281,7 @@
     "integrations": "集成",
     "runtime_config": "路由",
     "qoder_agent": "Qoder Cloud Agents",
+    "claude_agent": "Claude 智能体",
     "discard_dialog_title": "放弃未保存的修改？",
     "discard_dialog_description": "当前 tab 有未保存的修改，离开会丢弃这些修改。",
     "discard_keep": "继续编辑",

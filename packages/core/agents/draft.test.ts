@@ -13,6 +13,7 @@ import {
 
 const draft = (): AgentDraft => ({
   qoderAgentId: "",
+  claudeAgentId: "",
   name: "Old name",
   description: "Old description",
   instructions: "Old instructions",
@@ -320,6 +321,23 @@ it("persists a per-agent QCA binding and clears it on runtime change", () => {
   const current = { ...draft(), qoderAgentId: "agent_qca" };
   expect(buildCreateAgentRequest({ draft: current, runtimeId: current.runtimeId }).runtime_config).toEqual({ qoder_agent_id: "agent_qca" });
   expect(applyDraftRuntimeChange(current, "another-runtime").qoderAgentId).toBe("");
+});
+
+it("binds a Claude Managed Agents runtime to its Claude agent only", () => {
+  const current: AgentDraft = {
+    ...draft(),
+    qoderAgentId: "agent_qca",
+    claudeAgentId: "agent_claude",
+    thinkingLevel: "high",
+  };
+  const request = buildCreateAgentRequest({
+    draft: current,
+    runtimeId: "rt-claude",
+    runtimeProvider: "claude_managed",
+  });
+  expect(request.runtime_config).toEqual({ claude_agent_id: "agent_claude" });
+  expect(request.thinking_level).toBeUndefined();
+  expect(applyDraftRuntimeChange(current, "another-runtime").claudeAgentId).toBe("");
 });
 
 it("drops settings a Qoder runtime cannot run from a draft started elsewhere", () => {

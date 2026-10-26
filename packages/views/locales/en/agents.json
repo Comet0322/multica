@@ -293,6 +293,7 @@
     "integrations": "Integrations",
     "runtime_config": "Routing",
     "qoder_agent": "Qoder Cloud Agents",
+    "claude_agent": "Claude agent",
     "discard_dialog_title": "Discard unsaved changes?",
     "discard_dialog_description": "You have unsaved changes in this tab. Leaving now will discard them.",
     "discard_keep": "Keep editing",

@@ -273,6 +273,7 @@
     "integrations": "連携",
     "runtime_config": "ルーティング",
     "qoder_agent": "Qoder Cloud Agents",
+    "claude_agent": "Claude エージェント",
     "discard_dialog_title": "保存していない変更を破棄しますか？",
     "discard_dialog_description": "このタブに保存していない変更があります。今移動すると変更は破棄されます。",
     "discard_keep": "編集を続ける",

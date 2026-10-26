@@ -55,6 +55,11 @@ import {
 } from "./machine-cli-section";
 import { isQoderLocator, QoderDetailPage } from "./qoder-detail-page";
 import {
+  ClaudeManagedPage,
+  isClaudeManagedLocator,
+  isManagedClaudeRuntime,
+} from "./claude-managed-page";
+import {
   HealthIcon,
   ProviderIconStack,
   machineIcon,
@@ -216,6 +221,12 @@ export function RuntimeDetailPage({
       machine.runtimes.every((runtime) => runtime.provider === "qoder_cloud"))
   ) {
     return <QoderDetailPage />;
+  }
+  if (
+    isClaudeManagedLocator(machineLocator, runtimes) ||
+    (machine?.runtimes.length && machine.runtimes.every(isManagedClaudeRuntime))
+  ) {
+    return <ClaudeManagedPage />;
   }
 
   const segments = [{ href: paths.runtimes(), label: t(($) => $.page.title) }];
