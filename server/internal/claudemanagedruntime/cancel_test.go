@@ -39,13 +39,15 @@ func (f *fakeCancelSession) serve(t *testing.T) *httptest.Server {
 				w.WriteHeader(f.interrupt)
 				return
 			}
-			io.WriteString(w, `{"data":[]}`)
+			json.NewEncoder(w).Encode(fixture(t, "events_interrupt.json"))
 		case r.Method == http.MethodGet && r.URL.Path == "/sessions/sess_1":
 			status := f.statuses[0]
 			if len(f.statuses) > 1 {
 				f.statuses = f.statuses[1:]
 			}
-			json.NewEncoder(w).Encode(map[string]string{"id": "sess_1", "status": status})
+			session := fixture(t, "session_get.json")
+			session["status"] = status
+			json.NewEncoder(w).Encode(session)
 		case strings.HasPrefix(r.URL.Path, "/sessions/sess_down"):
 			w.WriteHeader(http.StatusServiceUnavailable)
 		default:

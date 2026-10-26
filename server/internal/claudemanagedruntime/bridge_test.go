@@ -49,6 +49,9 @@ type harness struct {
 	initialEcho string
 	// remoteStatus is sess_1's status; empty reads as idle.
 	remoteStatus string
+	// history, when set, replaces the session's event history whenever a
+	// prompt is submitted, e.g. with a recorded one.
+	history func(prompt string) []map[string]any
 }
 
 func setup(t *testing.T) *harness {
@@ -136,7 +139,11 @@ func setup(t *testing.T) *harness {
 				if h.initialEcho != "" {
 					echo = h.initialEcho
 				}
-				h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": echo}}})
+				if h.history != nil {
+					h.events = h.history(echo)
+				} else {
+					h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": echo}}})
+				}
 			}
 			h.remote = append(h.remote, map[string]any{"id": "sess_1", "agent": map[string]string{"id": input.Agent}, "created_at": time.Now().UTC().Format(time.RFC3339), "metadata": input.Metadata})
 			h.remoteStatus = "running"
@@ -144,7 +151,10 @@ func setup(t *testing.T) *harness {
 				http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
 				return
 			}
-			io.WriteString(w, `{"id":"sess_1","status":"idle"}`)
+			session := fixture(t, "session_create.json")
+			session["agent"].(map[string]any)["id"] = input.Agent
+			session["metadata"] = input.Metadata
+			json.NewEncoder(w).Encode(session)
 		case r.URL.Path == "/sessions" && r.Method == "GET":
 			query := r.URL.Query()
 			h.listQueries = append(h.listQueries, query)
@@ -177,29 +187,35 @@ func setup(t *testing.T) *harness {
 			if len(req.Events) == 1 && req.Events[0].Type == "user.interrupt" {
 				h.cancels++
 				h.remoteStatus = "idle"
-				io.WriteString(w, `{"data":[]}`)
+				json.NewEncoder(w).Encode(fixture(t, "events_interrupt.json"))
 				return
 			}
 			h.sends++
 			h.remoteStatus = "running"
 			h.prompt = req.Events[0].text()
-			h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": h.prompt}}})
+			if h.history != nil {
+				h.events = h.history(h.prompt)
+			} else {
+				h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": h.prompt}}})
+			}
 			if h.lostSend {
 				http.Error(w, "unknown", 502)
 				return
 			}
-			io.WriteString(w, `{"data":[]}`)
+			json.NewEncoder(w).Encode(fixture(t, "events_send.json"))
 		case r.URL.Path == "/sessions/sess_1/events" && r.Method == "GET":
 			if r.URL.Query().Get("page") != "" {
 				t.Error("event ID used as page cursor")
 			}
 			json.NewEncoder(w).Encode(map[string]any{"data": h.events})
 		case r.URL.Path == "/sessions/sess_1":
-			status := h.remoteStatus
-			if status == "" {
-				status = "idle"
+			session := fixture(t, "session_get.json")
+			session["status"] = "idle"
+			if h.remoteStatus != "" {
+				session["status"] = h.remoteStatus
 			}
-			json.NewEncoder(w).Encode(map[string]any{"status": status, "metadata": h.priorMetadata})
+			session["metadata"] = h.priorMetadata
+			json.NewEncoder(w).Encode(session)
 		default:
 			t.Errorf("unexpected Claude request %s", r.URL)
 			http.NotFound(w, r)
@@ -515,8 +531,11 @@ func TestRegistrationAndShutdown(t *testing.T) {
 		if r.URL.Path != "/agents/agent_1" && r.URL.Path != "/environments/env_1" {
 			t.Error("unexpected remote validation")
 		}
-		id := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/agents/"), "/environments/")
-		json.NewEncoder(w).Encode(map[string]string{"id": id})
+		if r.URL.Path == "/environments/env_1" {
+			json.NewEncoder(w).Encode(fixture(t, "environment_get.json"))
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"id": "agent_1"})
 	}))
 	defer q.Close()
 	h.b.anthropic.base = q.URL
