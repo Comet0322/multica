@@ -36,11 +36,13 @@ type run struct {
 	Resources          []map[string]any `json:"resources,omitempty"`
 	Phase              string           `json:"phase"`
 	Cursor             string           `json:"cursor,omitempty"`
-	Seq                int              `json:"seq"`
-	Started            bool             `json:"started"`
-	Output             string           `json:"output,omitempty"`
-	Failure            string           `json:"failure,omitempty"`
-	Outcome            string           `json:"outcome,omitempty"`
+	// CursorAt is the processed_at of the Cursor event; empty when it had none.
+	CursorAt string `json:"cursor_at,omitempty"`
+	Seq      int    `json:"seq"`
+	Started  bool   `json:"started"`
+	Output   string `json:"output,omitempty"`
+	Failure  string `json:"failure,omitempty"`
+	Outcome  string `json:"outcome,omitempty"`
 }
 
 func save(path string, j *journal) error {

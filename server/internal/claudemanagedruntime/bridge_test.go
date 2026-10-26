@@ -117,17 +117,7 @@ func setup(t *testing.T) *harness {
 			if r.URL.Query().Get("page") != "" {
 				t.Error("event ID used as page cursor")
 			}
-			events := h.events
-			after := r.URL.Query().Get("after_id")
-			if after != "" {
-				for i, e := range events {
-					if e["id"] == after {
-						events = events[i+1:]
-						break
-					}
-				}
-			}
-			json.NewEncoder(w).Encode(map[string]any{"data": events, "has_more": false})
+			json.NewEncoder(w).Encode(map[string]any{"data": h.events})
 		case strings.HasSuffix(r.URL.Path, "/cancel"):
 			h.cancels++
 			io.WriteString(w, `{"status":"canceling"}`)
@@ -299,7 +289,7 @@ func TestAPIRejectsRedirectsAndRedactsErrors(t *testing.T) {
 	}
 }
 
-func TestOpaquePaginationWithEmptyProjectedPage(t *testing.T) {
+func TestOpaquePageCursorSurvivesRestart(t *testing.T) {
 	h := setup(t)
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
@@ -308,15 +298,15 @@ func TestOpaquePaginationWithEmptyProjectedPage(t *testing.T) {
 	q := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		if requests == 1 {
-			if r.URL.Query().Get("after_id") != "evt_user" {
-				t.Error("missing event cursor")
+			if r.URL.Query().Get("page") != "" {
+				t.Error("unexpected page cursor")
 			}
-			io.WriteString(w, `{"data":[],"has_more":true,"next_page":"opaque-cursor"}`)
+			io.WriteString(w, `{"data":[{"id":"evt_user","type":"user.message"}],"next_page":"opaque-cursor"}`)
 		} else {
-			if r.URL.Query().Get("page") != "opaque-cursor" || r.URL.Query().Get("after_id") != "" {
+			if r.URL.Query().Get("page") != "opaque-cursor" {
 				t.Error("incorrect page request")
 			}
-			io.WriteString(w, `{"data":[{"id":"evt_done","type":"session.status_idle","stop_reason":{"type":"end_turn"}}],"has_more":false}`)
+			io.WriteString(w, `{"data":[{"id":"evt_done","type":"session.status_idle","stop_reason":{"type":"end_turn"}}],"next_page":null}`)
 		}
 	}))
 	defer q.Close()

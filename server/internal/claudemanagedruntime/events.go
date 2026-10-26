@@ -12,9 +12,11 @@ import (
 type event struct {
 	ToolUseID string `json:"tool_use_id"`
 	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Content   []struct {
+	// ProcessedAt is null for a sent event still queued.
+	ProcessedAt string `json:"processed_at"`
+	Type        string `json:"type"`
+	Name        string `json:"name"`
+	Content     []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
@@ -41,24 +43,52 @@ func (e event) text() string {
 }
 func (b *Bridge) events(ctx context.Context, r *run) error {
 	q := url.Values{"limit": {"100"}, "order": {"asc"}}
+	// Without a page cursor, list again from the last processed event's
+	// processed_at (created_at filters compare it, inclusively) and skip every
+	// event up to and including Cursor: events can share a timestamp.
+	skipping := r.Page == "" && r.Cursor != ""
 	if r.Page != "" {
 		q.Set("page", r.Page)
-	} else if r.Cursor != "" {
-		q.Set("after_id", r.Cursor)
+	} else if r.CursorAt != "" {
+		q.Set("created_at[gte]", r.CursorAt)
 	}
 	var page struct {
 		Data     []event `json:"data"`
-		HasMore  bool    `json:"has_more"`
 		NextPage string  `json:"next_page"`
 	}
-	if err := b.anthropic.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.SessionID)+"/events?"+q.Encode(), nil, &page); err != nil {
-		var ae *apiError
-		if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
-			return b.reject(ctx, r, "Claude session no longer exists")
+	var fresh []event
+	for {
+		page.Data, page.NextPage = nil, ""
+		if err := b.anthropic.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.SessionID)+"/events?"+q.Encode(), nil, &page); err != nil {
+			var ae *apiError
+			if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
+				return b.reject(ctx, r, "Claude session no longer exists")
+			}
+			return err
 		}
-		return err
+		fresh = page.Data
+		if skipping {
+			fresh = nil
+			for i, e := range page.Data {
+				if e.ID == r.Cursor {
+					fresh, skipping = page.Data[i+1:], false
+					break
+				}
+			}
+		}
+		if !skipping || page.NextPage == "" {
+			break
+		}
+		if page.NextPage == q.Get("page") {
+			return fmt.Errorf("Claude pagination cursor did not advance")
+		}
+		q.Del("created_at[gte]")
+		q.Set("page", page.NextPage)
 	}
-	for _, e := range page.Data {
+	if skipping {
+		return fmt.Errorf("Claude event %s is missing from session %s history", r.Cursor, r.SessionID)
+	}
+	for _, e := range fresh {
 		if e.ID == "" {
 			return fmt.Errorf("Claude event has no ID")
 		}
@@ -71,7 +101,7 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 			r.Phase = "running"
 		}
 		if !r.Started {
-			r.Cursor = e.ID
+			r.Cursor, r.CursorAt = e.ID, e.ProcessedAt
 			r.Page = ""
 			continue
 		}
@@ -121,7 +151,7 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 			}
 			r.Seq++
 		}
-		r.Cursor = e.ID
+		r.Cursor, r.CursorAt = e.ID, e.ProcessedAt
 		r.Page = ""
 		if err := b.persist(); err != nil {
 			return err
@@ -131,8 +161,8 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 		}
 	}
 	r.Page = ""
-	if page.HasMore {
-		if page.NextPage == "" || page.NextPage == q.Get("page") {
+	if page.NextPage != "" {
+		if page.NextPage == q.Get("page") {
 			return fmt.Errorf("Claude pagination cursor did not advance")
 		}
 		r.Page = page.NextPage

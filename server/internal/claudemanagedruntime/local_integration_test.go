@@ -64,10 +64,7 @@ func TestLocalMultica(t *testing.T) {
 				{"id": "evt_result", "type": "agent.message", "content": []map[string]string{{"type": "text", "text": "Local bridge integration passed"}}},
 				{"id": "evt_idle", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}},
 			}
-			if r.URL.Query().Get("after_id") == "evt_user" {
-				events = events[1:]
-			}
-			json.NewEncoder(w).Encode(map[string]any{"data": events, "has_more": false})
+			json.NewEncoder(w).Encode(map[string]any{"data": events})
 		case r.URL.Path == "/agents/agent_fixture":
 			io.WriteString(w, `{"id":"agent_fixture"}`)
 		case r.URL.Path == "/environments/env_fixture":
