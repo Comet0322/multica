@@ -46,19 +46,21 @@ store. Do not commit tokens to source control.
 | `CLAUDE_MANAGED_ENVIRONMENT_ID` | Existing Claude Managed Agents environment ID |
 | `CLAUDE_MANAGED_STATE_DIR` | Dedicated persistent directory, writable by the service user |
 | `CLAUDE_MANAGED_NAME` | Optional display name; defaults to `Claude Managed Agents` |
+| `CLAUDE_MANAGED_VAULT_IDS` | Optional comma-separated vault IDs attached to every new session (see [Pull requests](#pull-requests)) |
 
 Alternatively, copy `config.example.json` to a private location, set its fields,
 and restrict it with `chmod 600`. File fields override the environment; missing
 fields inherit environment values. Unknown keys are rejected to catch typos.
-The file also accepts `max_concurrency` and `github_token_files`.
+The file also accepts `max_concurrency`, `github_token_files` and `vault_ids`.
 
 ```sh
 ./claude-managed-runtime --config /private/path/config.json --check
 ./claude-managed-runtime --config /private/path/config.json
 ```
 
-`--check` only reads the Multica workspace and the Claude environment. It does
-not register a runtime, claim a task or start execution.
+`--check` only reads the Multica workspace, the Claude environment and any
+configured vaults. It does not register a runtime, claim a task or start
+execution.
 
 API base URLs must use HTTPS; plain HTTP is accepted only on loopback, for
 local testing.
@@ -130,6 +132,43 @@ workspace repositories are listed in the prompt as context only.
 The prompt asks the agent to push a branch named `multica/<identifier>-<slug>`
 and to prefix the pull request title with the issue identifier, so Multica's
 GitHub integration links the pull request back to the issue.
+
+## Pull requests
+
+A mounted repository gives the session git access only: the agent can push
+its branch but not open a pull request. To open one, give the Claude agent the
+GitHub MCP server and attach a vault holding its credential:
+
+1. Add the server and its toolset to the Claude agent. The toolset defaults to
+   `always_ask`, which the bridge cannot answer, so set `always_allow`:
+
+   ```json
+   "mcp_servers": [{ "type": "url", "name": "github", "url": "https://api.githubcopilot.com/mcp/" }],
+   "tools": [
+     { "type": "agent_toolset_20260401", "default_config": { "permission_policy": { "type": "always_allow" } } },
+     { "type": "mcp_toolset", "mcp_server_name": "github", "default_config": { "permission_policy": { "type": "always_allow" } } }
+   ]
+   ```
+
+2. Create a vault and store a GitHub token for that server URL as a
+   `static_bearer` credential. A fine-grained token limited to the mounted
+   repositories, with **Pull requests: Read and write**, is enough:
+
+   ```json
+   { "display_name": "GitHub", "auth": { "type": "static_bearer", "mcp_server_url": "https://api.githubcopilot.com/mcp/", "token": "<GitHub token>" } }
+   ```
+
+3. Allow the server's host in the environment's network policy: set
+   `allow_mcp_servers: true`, or add `api.githubcopilot.com` to
+   `allowed_hosts`. Otherwise Claude rejects session creation.
+
+4. Set the vault ID in `vault_ids` or `CLAUDE_MANAGED_VAULT_IDS`; `--check`
+   verifies it.
+
+Vaults attach only when a session is created, so changing `vault_ids` makes
+follow-up runs start a new session instead of continuing the previous one.
+Without a vault the agent still pushes its branch and reports it in the
+result.
 
 ## What is rejected
 

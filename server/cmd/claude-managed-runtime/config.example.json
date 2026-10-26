@@ -7,6 +7,7 @@
   "environment_id": "",
   "state_dir": "/var/lib/multica-claude-managed",
   "name": "Claude Managed Agents",
+  "vault_ids": [],
   "github_token_files": {
     "https://github.com/OWNER/REPO": "/path/to/private/github-token"
   }

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/multica-ai/multica/server/internal/claudemanagedruntime"
@@ -52,6 +53,11 @@ func loadConfig(path string, getenv func(string) string) (claudemanagedruntime.C
 		MulticaURL: getenv("MULTICA_SERVER_URL"), MulticaToken: getenv("MULTICA_TOKEN"), WorkspaceID: getenv("MULTICA_WORKSPACE_ID"),
 		AnthropicURL: getenv("ANTHROPIC_BASE_URL"), AnthropicToken: getenv("ANTHROPIC_API_KEY"), EnvironmentID: getenv("CLAUDE_MANAGED_ENVIRONMENT_ID"),
 		StateDir: getenv("CLAUDE_MANAGED_STATE_DIR"), Name: getenv("CLAUDE_MANAGED_NAME"),
+	}
+	for _, id := range strings.Split(getenv("CLAUDE_MANAGED_VAULT_IDS"), ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			cfg.VaultIDs = append(cfg.VaultIDs, id)
+		}
 	}
 	if path == "" {
 		return cfg, nil

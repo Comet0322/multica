@@ -19,6 +19,7 @@ func TestLoadConfigReadsEnvironment(t *testing.T) {
 		"CLAUDE_MANAGED_ENVIRONMENT_ID": "env_123",
 		"CLAUDE_MANAGED_STATE_DIR":      "/var/lib/state",
 		"CLAUDE_MANAGED_NAME":           "Claude runtime",
+		"CLAUDE_MANAGED_VAULT_IDS":      "vlt_github, ,vlt_other",
 	}
 	cfg, err := loadConfig("", func(key string) string { return env[key] })
 	if err != nil {
@@ -26,7 +27,7 @@ func TestLoadConfigReadsEnvironment(t *testing.T) {
 	}
 	if cfg.MulticaURL != "http://localhost:8080" || cfg.MulticaToken != "mul_token" || cfg.WorkspaceID != "workspace" ||
 		cfg.AnthropicToken != "sk-ant-key" || cfg.AnthropicURL != "http://localhost:9090/v1" || cfg.EnvironmentID != "env_123" ||
-		cfg.StateDir != "/var/lib/state" || cfg.Name != "Claude runtime" {
+		cfg.StateDir != "/var/lib/state" || cfg.Name != "Claude runtime" || strings.Join(cfg.VaultIDs, ",") != "vlt_github,vlt_other" {
 		t.Fatalf("environment not mapped: %+v", cfg)
 	}
 }

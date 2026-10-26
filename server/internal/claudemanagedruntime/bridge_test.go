@@ -52,6 +52,8 @@ type harness struct {
 	// history, when set, replaces the session's event history whenever a
 	// prompt is submitted, e.g. with a recorded one.
 	history func(prompt string) []map[string]any
+	// vaultIDs is the vault_ids of the last session create; nil if absent.
+	vaultIDs []string
 }
 
 func setup(t *testing.T) *harness {
@@ -119,6 +121,7 @@ func setup(t *testing.T) *harness {
 				Agent         string            `json:"agent"`
 				Metadata      map[string]string `json:"metadata"`
 				InitialEvents []event           `json:"initial_events"`
+				VaultIDs      []string          `json:"vault_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 				t.Fatal(err)
@@ -132,6 +135,7 @@ func setup(t *testing.T) *harness {
 				}
 			}
 			h.sessionAgent = input.Agent
+			h.vaultIDs = input.VaultIDs
 			h.initialEvents = len(input.InitialEvents)
 			if len(input.InitialEvents) == 1 && input.InitialEvents[0].Type == "user.message" {
 				h.prompt = input.InitialEvents[0].text()
@@ -985,5 +989,91 @@ func TestTransientCreateLookupFailureBacksOff(t *testing.T) {
 	}
 	if len(h.listQueries) != 1 || h.failure != nil || h.b.state.first().Phase != "creating" {
 		t.Fatalf("lookup retried without delay: lists=%d failure=%v", len(h.listQueries), h.failure)
+	}
+}
+
+func TestVaultIDsAttachToNewSessions(t *testing.T) {
+	h := setup(t)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 1 || h.vaultIDs != nil {
+		t.Fatalf("unconfigured vaults sent: creates=%d vault_ids=%v", h.creates, h.vaultIDs)
+	}
+
+	h = setup(t)
+	h.b.cfg.VaultIDs = []string{"vlt_github", "vlt_other"}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 1 || strings.Join(h.vaultIDs, ",") != "vlt_github,vlt_other" {
+		t.Fatalf("vault_ids = %v", h.vaultIDs)
+	}
+}
+
+// vault_ids cannot be changed on an existing session, so a follow-up only
+// reuses a session created with the same vaults.
+func TestFollowUpReusesSessionOnlyWithSameVaults(t *testing.T) {
+	h := setup(t)
+	h.followUp()
+	h.b.cfg.VaultIDs = []string{"vlt_github"}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 1 || h.sends != 0 {
+		t.Fatalf("session without the vault reused: creates=%d sends=%d", h.creates, h.sends)
+	}
+
+	h = setup(t)
+	h.followUp()
+	h.b.cfg.VaultIDs = []string{"vlt_github"}
+	h.priorMetadata = map[string]string{resourcesMetadataKey: h.b.sessionFingerprint(nil)}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 0 || h.sends != 1 {
+		t.Fatalf("session with the same vault not reused: creates=%d sends=%d", h.creates, h.sends)
+	}
+}
+
+func TestNewRejectsMalformedVaultID(t *testing.T) {
+	_, err := New(Config{MulticaURL: "http://127.0.0.1:1", MulticaToken: "multica-secret", WorkspaceID: workspaceID, AnthropicURL: "http://127.0.0.1:2", AnthropicToken: "anthropic-secret", EnvironmentID: "env_1", StateDir: t.TempDir(), VaultIDs: []string{"github"}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "vlt_") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCheckValidatesVaults(t *testing.T) {
+	h := setup(t)
+	h.b.cfg.VaultIDs = []string{"vlt_github"}
+	m := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"id": workspaceID})
+	}))
+	defer m.Close()
+	h.b.multica.base = m.URL
+	var paths []string
+	vault := "vlt_github"
+	q := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/environments/env_1":
+			json.NewEncoder(w).Encode(fixture(t, "environment_get.json"))
+		case "/vaults/vlt_github":
+			json.NewEncoder(w).Encode(map[string]string{"id": vault})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer q.Close()
+	h.b.anthropic.base = q.URL
+	if err := h.b.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(paths, ",") != "/environments/env_1,/vaults/vlt_github" {
+		t.Fatalf("checked %v", paths)
+	}
+	vault = "vlt_someone_else"
+	if err := h.b.Check(context.Background()); err == nil || !strings.Contains(err.Error(), "vault") {
+		t.Fatalf("mismatched vault accepted: %v", err)
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,25 +22,30 @@ import (
 
 const Provider = "claude_managed"
 
+var validVaultID = regexp.MustCompile(`^vlt_[a-zA-Z0-9_-]{1,128}$`)
+
 type Config struct {
-	DaemonID          string                                `json:"daemon_id,omitempty"`
-	LoadState         func(context.Context) ([]byte, error) `json:"-"`
-	SaveState         func(context.Context, []byte) error   `json:"-"`
-	BeforeStep        func(context.Context) (func(), error) `json:"-"`
-	OnReady           func(context.Context, string) error   `json:"-"`
-	GitHubTokens      map[string]string                     `json:"-"`
-	GitHubTokenFiles  map[string]string                     `json:"github_token_files,omitempty"`
-	MulticaURL        string                                `json:"multica_url"`
-	MulticaToken      string                                `json:"multica_token"`
-	WorkspaceID       string                                `json:"workspace_id"`
-	AnthropicURL      string                                `json:"anthropic_url"`
-	AnthropicToken    string                                `json:"anthropic_token"`
-	EnvironmentID     string                                `json:"environment_id"`
-	StateDir          string                                `json:"state_dir"`
-	Name              string                                `json:"name,omitempty"`
-	RunTimeout        time.Duration                         `json:"-"`
-	SubmissionTimeout time.Duration                         `json:"-"`
-	PollInterval      time.Duration                         `json:"-"`
+	DaemonID         string                                `json:"daemon_id,omitempty"`
+	LoadState        func(context.Context) ([]byte, error) `json:"-"`
+	SaveState        func(context.Context, []byte) error   `json:"-"`
+	BeforeStep       func(context.Context) (func(), error) `json:"-"`
+	OnReady          func(context.Context, string) error   `json:"-"`
+	GitHubTokens     map[string]string                     `json:"-"`
+	GitHubTokenFiles map[string]string                     `json:"github_token_files,omitempty"`
+	MulticaURL       string                                `json:"multica_url"`
+	MulticaToken     string                                `json:"multica_token"`
+	WorkspaceID      string                                `json:"workspace_id"`
+	AnthropicURL     string                                `json:"anthropic_url"`
+	AnthropicToken   string                                `json:"anthropic_token"`
+	EnvironmentID    string                                `json:"environment_id"`
+	// VaultIDs are attached to every new session, e.g. to authenticate a
+	// GitHub MCP server that opens pull requests.
+	VaultIDs          []string      `json:"vault_ids,omitempty"`
+	StateDir          string        `json:"state_dir"`
+	Name              string        `json:"name,omitempty"`
+	RunTimeout        time.Duration `json:"-"`
+	SubmissionTimeout time.Duration `json:"-"`
+	PollInterval      time.Duration `json:"-"`
 	// MaxConcurrency bounds simultaneous remote sessions; extra tasks stay queued in Multica.
 	MaxConcurrency int `json:"max_concurrency,omitempty"`
 }
@@ -63,6 +70,11 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	cfg.WorkspaceID = workspace.String()
 	if cfg.EnvironmentID == "" {
 		return nil, fmt.Errorf("environment ID is required")
+	}
+	for _, id := range cfg.VaultIDs {
+		if !validVaultID.MatchString(id) {
+			return nil, fmt.Errorf("vault IDs must look like vlt_...")
+		}
 	}
 	if (cfg.LoadState == nil) != (cfg.SaveState == nil) {
 		return nil, fmt.Errorf("journal load and save must be configured together")
@@ -390,7 +402,7 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 		if err != nil {
 			return b.reject(ctx, r, err.Error())
 		}
-		fingerprint := resourceFingerprint(resources)
+		fingerprint := b.sessionFingerprint(resources)
 		if r.PriorSessionID != "" {
 			continued, err := b.continueSession(ctx, r, fingerprint)
 			if err != nil {
@@ -470,7 +482,11 @@ func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[stri
 		return err
 	}
 	metadata := map[string]string{"multica_task_id": r.TaskID, "multica_workspace_id": b.cfg.WorkspaceID, resourcesMetadataKey: fingerprint}
-	if err := b.anthropic.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": metadata, "resources": resources, "initial_events": userMessage(r.Prompt)}, &session); err != nil {
+	request := map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": metadata, "resources": resources, "initial_events": userMessage(r.Prompt)}
+	if len(b.cfg.VaultIDs) > 0 {
+		request["vault_ids"] = b.cfg.VaultIDs
+	}
+	if err := b.anthropic.call(ctx, http.MethodPost, "/sessions", request, &session); err != nil {
 		if rateLimited(err) {
 			r.Phase = "prepared"
 			r.RetryAt = time.Now().Add(retryDelay(err))
@@ -551,6 +567,22 @@ func resourceFingerprint(resources []map[string]any) string {
 		key, _ := repositoryKey(raw)
 		token, _ := res["authorization_token"].(string)
 		fmt.Fprintf(h, "%s\x00%s\x00%s\n", key, checkoutBranch(res["checkout"]), token)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// sessionFingerprint identifies what a session was created with. Vaults are
+// included because vault_ids cannot be changed on an existing session; without
+// any, it equals resourceFingerprint so earlier sessions stay reusable.
+func (b *Bridge) sessionFingerprint(resources []map[string]any) string {
+	fingerprint := resourceFingerprint(resources)
+	if len(b.cfg.VaultIDs) == 0 {
+		return fingerprint
+	}
+	h := sha256.New()
+	h.Write([]byte(fingerprint))
+	for _, id := range slices.Sorted(slices.Values(b.cfg.VaultIDs)) {
+		fmt.Fprintf(h, "\x00vault\x00%s", id)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -768,12 +800,16 @@ func (b *Bridge) reject(ctx context.Context, r *run, reason string) error {
 
 // Check validates access without registering a runtime or executing a task.
 func (b *Bridge) Check(ctx context.Context) error {
-	resources := []struct {
+	type checked struct {
 		api            *api
 		path, id, name string
-	}{
+	}
+	resources := []checked{
 		{b.multica, "/api/workspaces/" + url.PathEscape(b.cfg.WorkspaceID), b.cfg.WorkspaceID, "Multica workspace"},
 		{b.anthropic, "/environments/" + url.PathEscape(b.cfg.EnvironmentID), b.cfg.EnvironmentID, "Claude environment"},
+	}
+	for _, id := range b.cfg.VaultIDs {
+		resources = append(resources, checked{b.anthropic, "/vaults/" + url.PathEscape(id), id, "Claude vault " + id})
 	}
 	for _, resource := range resources {
 		if resource.api == b.multica && strings.HasPrefix(b.cfg.MulticaToken, "mdt_") {
