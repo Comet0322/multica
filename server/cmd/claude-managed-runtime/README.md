@@ -91,7 +91,8 @@ Link the Multica agent to a Claude agent through its runtime configuration:
 ```
 
 `claude_agent_id` is required. `repository` is an optional default repository
-with an optional branch. Several Multica agents can share one runtime with
+with an optional branch. Multica checks both when the agent is saved and also
+refuses the execution overrides listed under [What is rejected](#what-is-rejected). Several Multica agents can share one runtime with
 different Claude agents. Configure the model, tools and skills on the Claude
 agent; the bridge does not create or edit Claude agents or environments.
 
