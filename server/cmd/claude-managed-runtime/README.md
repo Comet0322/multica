@@ -96,6 +96,12 @@ refuses the execution overrides listed under [What is rejected](#what-is-rejecte
 different Claude agents. Configure the model, tools and skills on the Claude
 agent; the bridge does not create or edit Claude agents or environments.
 
+Set every tool on the Claude agent to the `always_allow` permission policy.
+The bridge does not answer tool confirmations, so a run that stops for one
+(an `always_ask` tool, or an `auto` decision that pauses) fails with
+`Claude stopped: requires_action`. MCP toolsets default to `always_ask` and
+need the policy set explicitly.
+
 ## Repository tokens
 
 Each mounted GitHub repository needs an explicit authorization token, including
