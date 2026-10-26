@@ -223,6 +223,19 @@ func isCloudAgentProvider(provider string) bool {
 	return provider == qoderruntime.Provider || provider == claudemanagedruntime.Provider
 }
 
+// cloudAgentServiceName names the cloud agent provider behind provider, or ""
+// for other providers. Its bridge runs existing issue runs only, so chat and
+// quick-create are refused before any work is persisted.
+func cloudAgentServiceName(provider string) string {
+	switch provider {
+	case qoderruntime.Provider:
+		return "Qoder Cloud Agents"
+	case claudemanagedruntime.Provider:
+		return "Claude Managed Agents"
+	}
+	return ""
+}
+
 // validateCloudAgentConfig checks the runtime_config binding the provider's
 // bridge reads when it claims a task.
 func validateCloudAgentConfig(provider string, raw []byte) error {

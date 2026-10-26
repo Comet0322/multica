@@ -905,6 +905,12 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		h.writeDispatchBlocked(w, http.StatusConflict, verdict.Reason)
 		return
 	}
+	if provider, ok := h.resolveAgentProvider(r, agent.WorkspaceID, agent.RuntimeID); ok {
+		if name := cloudAgentServiceName(provider); name != "" {
+			writeError(w, http.StatusUnprocessableEntity, name+" supports issue runs only; assign an issue to this agent instead of chatting")
+			return
+		}
+	}
 
 	// Re-run the INVOKE gate on every send, not just the softer view gate in
 	// gatePublicChatSessionForUser (MUL-4525). canAccessPrivateAgent lets a workspace

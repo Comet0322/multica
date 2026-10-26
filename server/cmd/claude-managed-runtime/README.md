@@ -127,6 +127,7 @@ GitHub integration links the pull request back to the issue.
 
 ## What is rejected
 
+Chat and quick-create with the agent are refused before anything is saved.
 A claimed task fails before any session is created when it is:
 
 - a chat task, a squad leader task, or not tied to an issue;
