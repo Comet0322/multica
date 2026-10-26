@@ -98,7 +98,10 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Multica: %w", err)
 	}
-	q, err := newAPI(cfg.AnthropicURL, cfg.AnthropicToken, "")
+	if cfg.AnthropicURL == "" {
+		cfg.AnthropicURL = DefaultAnthropicURL
+	}
+	q, err := newAnthropicAPI(cfg.AnthropicURL, cfg.AnthropicToken)
 	if err != nil {
 		return nil, fmt.Errorf("Anthropic: %w", err)
 	}
@@ -409,7 +412,7 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 			if rateLimited(err) {
 				r.Phase = "created"
 				r.SubmissionDeadline = time.Time{}
-				r.RetryAt = time.Now().Add(30 * time.Second)
+				r.RetryAt = time.Now().Add(retryDelay(err))
 				return b.persist()
 			}
 			if definitelyRejected(err) && r.Continued {
@@ -447,7 +450,7 @@ func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[stri
 	if err := b.anthropic.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": metadata, "resources": resources}, &session); err != nil {
 		if rateLimited(err) {
 			r.Phase = "prepared"
-			r.RetryAt = time.Now().Add(30 * time.Second)
+			r.RetryAt = time.Now().Add(retryDelay(err))
 			return b.persist()
 		}
 		if definitelyRejected(err) {
@@ -682,7 +685,7 @@ func Binding(multicaURL, workspaceID, anthropicURL, environmentID string) string
 // CancelRemoteSession is used by the managed supervisor after user access is
 // revoked. It needs only Anthropic credentials, never a former owner's Multica PAT.
 func CancelRemoteSession(ctx context.Context, baseURL, token, sessionID string) error {
-	api, err := newAPI(baseURL, token, "")
+	api, err := newAnthropicAPI(baseURL, token)
 	if err != nil {
 		return err
 	}
