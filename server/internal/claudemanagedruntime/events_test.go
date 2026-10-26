@@ -18,12 +18,25 @@ import (
 
 // eventLog fakes GET /sessions/sess_1/events: ascending processed_at order,
 // an opaque page cursor, and created_at[gte] compared against processed_at.
+// A page cursor is only valid with the filters of the request that issued it.
 type eventLog struct {
 	t        *testing.T
 	mu       sync.Mutex
 	events   []map[string]any
 	pageSize int
 	requests []url.Values
+	issued   map[string]string
+}
+
+// filters encodes every query parameter except the page cursor.
+func filters(q url.Values) string {
+	rest := url.Values{}
+	for k, v := range q {
+		if k != "page" {
+			rest[k] = v
+		}
+	}
+	return rest.Encode()
 }
 
 func (l *eventLog) add(id, typ, at string, fields map[string]any) {
@@ -64,6 +77,9 @@ func (l *eventLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			l.t.Errorf("unknown page cursor %q", p)
 		}
+		if want, ok := l.issued[p]; !ok || filters(q) != want {
+			l.t.Errorf("page %s requested with filters %q, issued with %q", p, filters(q), want)
+		}
 		start = n
 	} else if gte := q.Get("created_at[gte]"); gte != "" {
 		start = len(l.events)
@@ -77,7 +93,12 @@ func (l *eventLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	end := min(start+l.pageSize, len(l.events))
 	body := map[string]any{"data": l.events[start:end], "next_page": nil}
 	if end < len(l.events) {
-		body["next_page"] = fmt.Sprintf("page_%d", end)
+		next := fmt.Sprintf("page_%d", end)
+		if l.issued == nil {
+			l.issued = map[string]string{}
+		}
+		l.issued[next] = filters(q)
+		body["next_page"] = next
 	}
 	json.NewEncoder(w).Encode(body)
 }
@@ -218,6 +239,34 @@ func TestEventsResumeAfterFinalPage(t *testing.T) {
 	}
 	if q := l.requests[resumed]; q.Get("page") != "" || q.Get("created_at[gte]") != "2026-01-01T00:00:02Z" {
 		t.Fatalf("resume query = %v", q)
+	}
+}
+
+func TestEventsResumeScanKeepsFiltersWithPageCursor(t *testing.T) {
+	h, l := startOnLog(t, 2)
+	for i := 1; i <= 4; i++ {
+		l.message(fmt.Sprintf("evt_%d", i), "2026-01-01T00:00:01Z", fmt.Sprintf("m%d", i))
+	}
+	l.idle("evt_idle", "2026-01-01T00:00:02Z", "end_turn")
+	r := h.b.state.first()
+	r.Cursor, r.CursorAt, r.Page = "evt_3", "2026-01-01T00:00:01Z", ""
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h.restart(t)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.texts(), ","); got != "m4" || h.complete == nil {
+		t.Fatalf("messages = %s, complete = %v", got, h.complete)
+	}
+	for i, q := range l.requests {
+		if q.Get("created_at[gte]") != "2026-01-01T00:00:01Z" || q.Get("limit") != "100" {
+			t.Errorf("request %d dropped the resume filters: %v", i, q)
+		}
+	}
+	if len(l.requests) != 3 || l.requests[2].Get("page") != "page_5" {
+		t.Fatalf("requests = %v", l.requests)
 	}
 }
 

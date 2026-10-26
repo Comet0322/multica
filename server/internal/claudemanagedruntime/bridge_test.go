@@ -41,6 +41,14 @@ type harness struct {
 	listQueries        []url.Values
 	// foreignSession is another task's session that every list returns.
 	foreignSession map[string]any
+	// listStatus answers session listings with this HTTP status when set.
+	listStatus int
+	// endlessList makes every listing page point to a further page.
+	endlessList bool
+	// initialEcho replaces the prompt text in the event history of a new session.
+	initialEcho string
+	// remoteStatus is sess_1's status; empty reads as idle.
+	remoteStatus string
 }
 
 func setup(t *testing.T) *harness {
@@ -124,9 +132,14 @@ func setup(t *testing.T) *harness {
 			h.initialEvents = len(input.InitialEvents)
 			if len(input.InitialEvents) == 1 && input.InitialEvents[0].Type == "user.message" {
 				h.prompt = input.InitialEvents[0].text()
-				h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": h.prompt}}})
+				echo := h.prompt
+				if h.initialEcho != "" {
+					echo = h.initialEcho
+				}
+				h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": echo}}})
 			}
 			h.remote = append(h.remote, map[string]any{"id": "sess_1", "agent": map[string]string{"id": input.Agent}, "created_at": time.Now().UTC().Format(time.RFC3339), "metadata": input.Metadata})
+			h.remoteStatus = "running"
 			if lost {
 				http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
 				return
@@ -135,6 +148,10 @@ func setup(t *testing.T) *harness {
 		case r.URL.Path == "/sessions" && r.Method == "GET":
 			query := r.URL.Query()
 			h.listQueries = append(h.listQueries, query)
+			if h.listStatus != 0 {
+				w.WriteHeader(h.listStatus)
+				return
+			}
 			from, err := time.Parse(time.RFC3339, query.Get("created_at[gte]"))
 			if err != nil {
 				t.Errorf("list without created_at[gte]: %v", err)
@@ -146,6 +163,11 @@ func setup(t *testing.T) *harness {
 					data = append(data, s)
 				}
 			}
+			if h.endlessList {
+				// Only foreign sessions, always with another page.
+				json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{h.foreignSession}, "next_page": fmt.Sprintf("page_%d", len(h.listQueries))})
+				return
+			}
 			json.NewEncoder(w).Encode(map[string]any{"data": data, "next_page": nil})
 		case r.URL.Path == "/sessions/sess_1/events" && r.Method == "POST":
 			var req struct {
@@ -154,10 +176,12 @@ func setup(t *testing.T) *harness {
 			json.NewDecoder(r.Body).Decode(&req)
 			if len(req.Events) == 1 && req.Events[0].Type == "user.interrupt" {
 				h.cancels++
+				h.remoteStatus = "idle"
 				io.WriteString(w, `{"data":[]}`)
 				return
 			}
 			h.sends++
+			h.remoteStatus = "running"
 			h.prompt = req.Events[0].text()
 			h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": h.prompt}}})
 			if h.lostSend {
@@ -171,7 +195,11 @@ func setup(t *testing.T) *harness {
 			}
 			json.NewEncoder(w).Encode(map[string]any{"data": h.events})
 		case r.URL.Path == "/sessions/sess_1":
-			json.NewEncoder(w).Encode(map[string]any{"status": "idle", "metadata": h.priorMetadata})
+			status := h.remoteStatus
+			if status == "" {
+				status = "idle"
+			}
+			json.NewEncoder(w).Encode(map[string]any{"status": status, "metadata": h.priorMetadata})
 		default:
 			t.Errorf("unexpected Claude request %s", r.URL)
 			http.NotFound(w, r)
@@ -194,12 +222,12 @@ func (h *harness) followUp() {
 	h.priorMetadata = map[string]string{resourcesMetadataKey: resourceFingerprint(nil)}
 }
 func (h *harness) finish(reason string) {
+	h.remoteStatus = "idle"
 	h.events = append(h.events, map[string]any{"id": "evt_reply", "type": "agent.message", "content": []map[string]string{{"type": "text", "text": "Tests passed. PR: https://example.com/pr/1"}}}, map[string]any{"id": "evt_idle", "type": "session.status_idle", "stop_reason": map[string]string{"type": reason}})
 }
 func TestIssueRun(t *testing.T) {
 	h := setup(t)
 	ctx := context.Background()
-	h.events = []map[string]any{{"id": "evt_initial", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}}}
 	if err := h.b.step(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -779,5 +807,164 @@ func TestJournalStorageConfig(t *testing.T) {
 		if _, err := New(cfg, nil); err == nil {
 			t.Errorf("%s accepted", name)
 		}
+	}
+}
+
+func TestDeadlineCancelsSessionFromUnconfirmedCreate(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		start func(*harness)
+	}{
+		{"creating", func(h *harness) {
+			h.lostCreates, h.lostCreatePersists = 1, true
+			if err := h.b.step(context.Background()); err == nil {
+				t.Fatal("expected ambiguous create to surface")
+			}
+		}},
+		{"prepared for the retry", func(h *harness) {
+			h.task = nil
+			h.status = "running"
+			h.remoteStatus = "running"
+			h.remote = append(h.remote, map[string]any{"id": "sess_1", "agent": map[string]string{"id": "agent_1"}, "created_at": time.Now().UTC().Format(time.RFC3339), "metadata": map[string]string{"multica_task_id": "task-1", "multica_workspace_id": workspaceID}})
+			h.b.state.Runs = []*run{{TaskID: "task-1", AgentID: "agent_1", Phase: "prepared", CreateAttemptAt: time.Now(), CreateRetried: true, RetryAt: time.Now().Add(time.Hour)}}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setup(t)
+			tc.start(h)
+			h.b.state.first().Deadline = time.Now().Add(-time.Second)
+			if err := h.b.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(fmt.Sprint(h.failure["error"]), "deadline") || h.b.state.first() != nil {
+				t.Fatalf("expired run not failed: %v", h.failure)
+			}
+			if h.cancels != 1 || len(h.b.state.Cleanup) != 0 {
+				t.Fatalf("session from the lost create not cancelled: cancels=%d cleanup=%v", h.cancels, h.b.state.Cleanup)
+			}
+		})
+	}
+}
+
+func TestEndedTaskCancelsSessionFromUnconfirmedCreate(t *testing.T) {
+	for _, status := range []string{"cancelled", "failed", "completed"} {
+		t.Run(status, func(t *testing.T) {
+			h := setup(t)
+			h.lostCreates, h.lostCreatePersists = 1, true
+			if err := h.b.step(context.Background()); err == nil {
+				t.Fatal("expected ambiguous create to surface")
+			}
+			h.status = status
+			if err := h.b.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if h.b.state.first() != nil || h.failure != nil || h.complete != nil {
+				t.Fatalf("ended task not removed quietly: failure=%v complete=%v", h.failure, h.complete)
+			}
+			if h.cancels != 1 || len(h.b.state.Cleanup) != 0 {
+				t.Fatalf("session from the lost create not cancelled: cancels=%d cleanup=%v", h.cancels, h.b.state.Cleanup)
+			}
+		})
+	}
+}
+
+func TestDeadlineRejectsWhenCreateLookupFails(t *testing.T) {
+	h := setup(t)
+	var logs strings.Builder
+	h.b.log = slog.New(slog.NewTextHandler(&logs, nil))
+	h.lostCreates = 1
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("expected ambiguous create to surface")
+	}
+	h.listStatus = http.StatusServiceUnavailable
+	h.b.state.first().Deadline = time.Now().Add(-time.Second)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.failure == nil || h.b.state.first() != nil {
+		t.Fatal("failed lookup blocked the deadline")
+	}
+	if !strings.Contains(logs.String(), "remote session may exist") {
+		t.Fatalf("possible remote session not logged: %s", logs.String())
+	}
+}
+
+func TestRejectedCreateLookupFailsRun(t *testing.T) {
+	h := setup(t)
+	var logs strings.Builder
+	h.b.log = slog.New(slog.NewTextHandler(&logs, nil))
+	h.lostCreates = 1
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("expected ambiguous create to surface")
+	}
+	h.listStatus = http.StatusForbidden
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.failure == nil || h.b.state.first() != nil || h.creates != 1 {
+		t.Fatalf("definite lookup rejection left run pending: creates=%d failure=%v", h.creates, h.failure)
+	}
+	if !strings.Contains(logs.String(), "remote session may exist") {
+		t.Fatalf("possible remote session not logged: %s", logs.String())
+	}
+}
+
+func TestCreateLookupBeyondPageLimitCountsAsNotFound(t *testing.T) {
+	h := setup(t)
+	var logs strings.Builder
+	h.b.log = slog.New(slog.NewTextHandler(&logs, nil))
+	h.lostCreates = 1
+	h.endlessList = true
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("expected ambiguous create to surface")
+	}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 2 || len(h.listQueries) != maxCreateLookupPages || h.failure != nil || h.b.state.first().SessionID != "sess_1" {
+		t.Fatalf("creates=%d lists=%d failure=%v", h.creates, len(h.listQueries), h.failure)
+	}
+	if !strings.Contains(logs.String(), "page limit") {
+		t.Fatalf("truncated lookup not logged: %s", logs.String())
+	}
+}
+
+func TestNewSessionStartsWithoutPromptEcho(t *testing.T) {
+	for _, reattach := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reattach=%v", reattach), func(t *testing.T) {
+			h := setup(t)
+			h.initialEcho = "prompt as normalized by Claude"
+			if reattach {
+				h.lostCreates, h.lostCreatePersists = 1, true
+				if err := h.b.step(context.Background()); err == nil {
+					t.Fatal("expected ambiguous create to surface")
+				}
+			}
+			h.finish("end_turn")
+			if err := h.b.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if h.complete["session_id"] != "sess_1" || !strings.Contains(fmt.Sprint(h.complete["output"]), "Tests passed") || h.creates != 1 {
+				t.Fatalf("new session never started: creates=%d complete=%v", h.creates, h.complete)
+			}
+		})
+	}
+}
+
+func TestTransientCreateLookupFailureBacksOff(t *testing.T) {
+	h := setup(t)
+	h.lostCreates = 1
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("expected ambiguous create to surface")
+	}
+	h.listStatus = http.StatusServiceUnavailable
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("transient lookup failure was not reported")
+	}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.listQueries) != 1 || h.failure != nil || h.b.state.first().Phase != "creating" {
+		t.Fatalf("lookup retried without delay: lists=%d failure=%v", len(h.listQueries), h.failure)
 	}
 }

@@ -1,6 +1,6 @@
 -- name: LockQoderTaskIssue :one
 -- The task row is locked by the lifecycle transition before locking its issue.
-SELECT i.* FROM issue i
+SELECT sqlc.embed(i), r.provider FROM issue i
 JOIN agent_task_queue t ON t.issue_id = i.id
 JOIN agent_runtime r ON r.id = t.runtime_id AND r.workspace_id = i.workspace_id
 WHERE t.id = sqlc.arg('task_id') AND r.provider IN ('qoder_cloud', 'claude_managed')

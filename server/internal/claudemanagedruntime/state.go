@@ -17,8 +17,6 @@ type journal struct {
 	RuntimeID string   `json:"runtime_id"`
 	Cleanup   []string `json:"cleanup,omitempty"`
 	Runs      []*run   `json:"runs,omitempty"`
-	// Run is the single-run format written before concurrency; decode folds it into Runs.
-	Run *run `json:"run,omitempty"`
 }
 type run struct {
 	// PriorSessionID is the session of this agent's previous run on the issue.
@@ -44,6 +42,9 @@ type run struct {
 
 	// CursorAt is the processed_at of the Cursor event; empty when it had none.
 	CursorAt string `json:"cursor_at,omitempty"`
+	// PageFrom is the created_at[gte] filter of the request that returned
+	// Page; the page request repeats it.
+	PageFrom string `json:"page_from,omitempty"`
 
 	// CreateAttemptAt is when the first session create for this run was sent.
 	// After an ambiguous create, sessions listed from then on are matched by
@@ -101,10 +102,6 @@ func decodeJournal(b []byte, binding string) (*journal, error) {
 	}
 	if j.Binding == "" {
 		j.Binding = binding
-	}
-	if j.Run != nil {
-		j.Runs = append(j.Runs, j.Run)
-		j.Run = nil
 	}
 	seen := map[string]bool{}
 	for _, r := range j.Runs {

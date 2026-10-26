@@ -46,9 +46,13 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 	// Without a page cursor, list again from the last processed event's
 	// processed_at (created_at filters compare it, inclusively) and skip every
 	// event up to and including Cursor: events can share a timestamp.
+	// A page cursor is sent with the filters of the request that returned it.
 	skipping := r.Page == "" && r.Cursor != ""
 	if r.Page != "" {
 		q.Set("page", r.Page)
+		if r.PageFrom != "" {
+			q.Set("created_at[gte]", r.PageFrom)
+		}
 	} else if r.CursorAt != "" {
 		q.Set("created_at[gte]", r.CursorAt)
 	}
@@ -82,7 +86,6 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 		if page.NextPage == q.Get("page") {
 			return fmt.Errorf("Claude pagination cursor did not advance")
 		}
-		q.Del("created_at[gte]")
 		q.Set("page", page.NextPage)
 	}
 	if skipping {
@@ -95,14 +98,15 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 		if e.ID == r.Cursor {
 			continue
 		}
-		// A new session can emit an initial idle before the user message. Ignore it.
-		if e.Type == "user.message" && e.text() == r.Prompt {
+		// A new session starts at creation. A continued session's history holds
+		// earlier runs, so its run starts at the user message carrying the prompt.
+		if !r.Started && e.Type == "user.message" && e.text() == r.Prompt {
 			r.Started = true
 			r.Phase = "running"
 		}
 		if !r.Started {
 			r.Cursor, r.CursorAt = e.ID, e.ProcessedAt
-			r.Page = ""
+			r.Page, r.PageFrom = "", ""
 			continue
 		}
 		msg := map[string]any{}
@@ -152,7 +156,7 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 			r.Seq++
 		}
 		r.Cursor, r.CursorAt = e.ID, e.ProcessedAt
-		r.Page = ""
+		r.Page, r.PageFrom = "", ""
 		if err := b.persist(); err != nil {
 			return err
 		}
@@ -160,12 +164,12 @@ func (b *Bridge) events(ctx context.Context, r *run) error {
 			return b.deliver(ctx, r)
 		}
 	}
-	r.Page = ""
+	r.Page, r.PageFrom = "", ""
 	if page.NextPage != "" {
 		if page.NextPage == q.Get("page") {
 			return fmt.Errorf("Claude pagination cursor did not advance")
 		}
-		r.Page = page.NextPage
+		r.Page, r.PageFrom = page.NextPage, q.Get("created_at[gte]")
 	}
 	if err := b.persist(); err != nil {
 		return err

@@ -315,16 +315,7 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 			}
 		}
 		if time.Now().After(r.Deadline) || (!r.SubmissionDeadline.IsZero() && !r.Started && time.Now().After(r.SubmissionDeadline)) {
-			// Persist compensating cancellation separately; a provider outage must
-			// not block the next task or discard the remote session identity.
-			if r.SessionID != "" {
-				b.queueCleanup(r.SessionID)
-				if err := b.persist(); err != nil {
-					return err
-				}
-				b.cleanup(ctx)
-			}
-			return b.reject(ctx, r, "Claude execution deadline exceeded")
+			return b.rejectWithCleanup(ctx, r, "Claude execution deadline exceeded")
 		}
 	}
 	var status struct {
@@ -337,12 +328,10 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 	}
 	if err != nil || status.Status == "cancelled" || status.Status == "failed" || status.Status == "completed" {
 		// Do not leave remote work running after deletion, cancellation or server-side timeout.
-		if r.SessionID != "" && r.Phase != "final" {
-			b.queueCleanup(r.SessionID)
-			if err := b.persist(); err != nil {
+		if r.Phase != "final" {
+			if err := b.cleanupRemote(ctx, r); err != nil {
 				return err
 			}
-			b.cleanup(ctx)
 		}
 		if status.Status == "cancelled" {
 			if err := b.taskCall(ctx, r, "/cancel-ack", map[string]any{}, nil); err != nil {
@@ -363,12 +352,20 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 		// Reattach to it; create again only once nothing carries this task's ID.
 		sessionID, err := b.findCreatedSession(ctx, r)
 		if err != nil {
+			if definitelyRejected(err) {
+				b.logPossibleSession(ctx, r, err)
+				return b.reject(ctx, r, "Claude rejected the session lookup after an unconfirmed create: "+err.Error())
+			}
+			r.RetryAt = time.Now().Add(retryDelay(err))
+			if perr := b.persist(); perr != nil {
+				return perr
+			}
 			return err
 		}
 		switch {
 		case sessionID != "":
 			r.SessionID = sessionID
-			r.Phase = "running"
+			r.Phase, r.Started = "running", true
 		case r.CreateRetried:
 			return b.reject(ctx, r, "Claude session creation was not confirmed; inspect remote sessions before retrying")
 		default:
@@ -458,9 +455,9 @@ func userMessage(prompt string) []map[string]any {
 }
 
 // createSession starts the session with the prompt as its initial event, so
-// creation and submission are one request, and moves the run to "running" on
-// success. A rate-limited request leaves it "prepared" for a later retry; a
-// definite refusal finalizes it.
+// creation and submission are one request, and moves the run to "running"
+// (started) on success. A rate-limited request leaves it "prepared" for a
+// later retry; a definite refusal finalizes it.
 func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[string]any, fingerprint string) error {
 	var session struct {
 		ID string `json:"id"`
@@ -487,8 +484,10 @@ func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[stri
 	if session.ID == "" {
 		return fmt.Errorf("Claude create returned no session ID")
 	}
+	// The prompt went out as the session's initial event, so the run has
+	// started; its whole history belongs to this run.
 	r.SessionID = session.ID
-	r.Phase = "running"
+	r.Phase, r.Started = "running", true
 	return b.persist()
 }
 
@@ -503,7 +502,8 @@ const createClockSkew = 5 * time.Minute
 const maxCreateLookupPages = 10
 
 // findCreatedSession returns the session an unconfirmed create made for r, or
-// "" when the agent has no session carrying r's task ID since the attempt.
+// "" when the agent has no session carrying r's task ID since the attempt
+// within maxCreateLookupPages.
 func (b *Bridge) findCreatedSession(ctx context.Context, r *run) (string, error) {
 	q := url.Values{
 		"agent_id":        {r.AgentID},
@@ -532,7 +532,10 @@ func (b *Bridge) findCreatedSession(ctx context.Context, r *run) (string, error)
 		}
 		q.Set("page", *page.NextPage)
 	}
-	return "", fmt.Errorf("Claude session lookup exceeded %d pages", maxCreateLookupPages)
+	// Treat a truncated listing as not found, so the single retry or the
+	// unconfirmed-creation failure applies instead of retrying the lookup forever.
+	b.log.WarnContext(ctx, "Claude session lookup reached its page limit; treating the unconfirmed create as not found", "task_id", r.TaskID, "agent_id", r.AgentID, "pages", maxCreateLookupPages)
+	return "", nil
 }
 
 // resourcesMetadataKey stores resourceFingerprint on each session Multica creates.
@@ -635,25 +638,34 @@ var (
 
 // cancelSession interrupts a session and confirms it stopped. An error leaves
 // the session queued for retry; a missing session counts as already stopped.
+// A stopped session may refuse an interrupt, so it is not sent one, and a
+// definite refusal counts as success once the session reads as stopped.
 func (b *Bridge) cancelSession(ctx context.Context, sessionID string) error {
 	path := "/sessions/" + url.PathEscape(sessionID)
+	if stopped, err := b.sessionStopped(ctx, path); err != nil || stopped {
+		return err
+	}
 	interrupt := map[string]any{"events": []map[string]string{{"type": "user.interrupt"}}}
 	if err := b.anthropic.call(ctx, http.MethodPost, path+"/events", interrupt, nil); err != nil {
-		return ignoreMissing(err)
+		if err = ignoreMissing(err); err == nil || !definitelyRejected(err) {
+			return err
+		}
+		if stopped, checkErr := b.sessionStopped(ctx, path); checkErr == nil && stopped {
+			return nil
+		}
+		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, cancelConfirmWait)
 	defer cancel()
 	for {
-		var s struct {
-			Status string `json:"status"`
-		}
-		if err := b.anthropic.call(ctx, http.MethodGet, path, nil, &s); err != nil {
+		stopped, err := b.sessionStopped(ctx, path)
+		if err != nil {
 			if ctx.Err() != nil {
 				return fmt.Errorf("waiting for Claude cancellation")
 			}
-			return ignoreMissing(err)
+			return err
 		}
-		if s.Status == "idle" || s.Status == "terminated" {
+		if stopped {
 			return nil
 		}
 		select {
@@ -662,6 +674,21 @@ func (b *Bridge) cancelSession(ctx context.Context, sessionID string) error {
 		case <-time.After(cancelConfirmPoll):
 		}
 	}
+}
+
+// sessionStopped reports whether the session at path is idle or terminated;
+// a missing session counts as stopped.
+func (b *Bridge) sessionStopped(ctx context.Context, path string) (bool, error) {
+	var s struct {
+		Status string `json:"status"`
+	}
+	if err := b.anthropic.call(ctx, http.MethodGet, path, nil, &s); err != nil {
+		if err = ignoreMissing(err); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return s.Status == "idle" || s.Status == "terminated", nil
 }
 
 func ignoreMissing(err error) error {
@@ -692,6 +719,43 @@ func definitelyRejected(err error) bool {
 	var rejected *apiError
 	return errors.As(err, &rejected) && rejected.Status >= 400 && rejected.Status < 500 && rejected.Status != 408 && rejected.Status != 429
 }
+
+// rejectWithCleanup fails r after queueing its remote session for cancellation.
+func (b *Bridge) rejectWithCleanup(ctx context.Context, r *run, reason string) error {
+	if err := b.cleanupRemote(ctx, r); err != nil {
+		return err
+	}
+	return b.reject(ctx, r, reason)
+}
+
+// cleanupRemote queues r's remote session for cancellation. Without a session
+// ID, an unconfirmed create may still have made one, so the lookup runs
+// first; a failed lookup does not hold the run back.
+// Persist compensating cancellation separately; a provider outage must not
+// block the next task or discard the remote session identity.
+func (b *Bridge) cleanupRemote(ctx context.Context, r *run) error {
+	sessionID := r.SessionID
+	if sessionID == "" && (r.Phase == "creating" || !r.CreateAttemptAt.IsZero()) {
+		found, err := b.findCreatedSession(ctx, r)
+		if err != nil {
+			b.logPossibleSession(ctx, r, err)
+		}
+		sessionID = found
+	}
+	if sessionID != "" {
+		b.queueCleanup(sessionID)
+		if err := b.persist(); err != nil {
+			return err
+		}
+		b.cleanup(ctx)
+	}
+	return nil
+}
+
+func (b *Bridge) logPossibleSession(ctx context.Context, r *run, err error) {
+	b.log.WarnContext(ctx, "Claude session lookup failed; a remote session may exist for this task and must be inspected manually", "task_id", r.TaskID, "agent_id", r.AgentID, "error", err)
+}
+
 func (b *Bridge) reject(ctx context.Context, r *run, reason string) error {
 	r.Phase = "final"
 	r.Outcome = "failed"
@@ -758,12 +822,20 @@ func (b *Bridge) cleanup(ctx context.Context) {
 	if len(b.state.Cleanup) == 0 {
 		return
 	}
+	// Entries are tried in order within one timeout; a failing entry stays
+	// queued without holding back the ones after it.
 	cleanupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := b.cancelSession(cleanupCtx, b.state.Cleanup[0]); err != nil {
+	var pending []string
+	for _, id := range b.state.Cleanup {
+		if cleanupCtx.Err() != nil || b.cancelSession(cleanupCtx, id) != nil {
+			pending = append(pending, id)
+		}
+	}
+	if len(pending) == len(b.state.Cleanup) {
 		return
 	}
-	b.state.Cleanup = b.state.Cleanup[1:]
+	b.state.Cleanup = pending
 	if err := b.persist(); err != nil {
 		b.log.ErrorContext(ctx, "cannot persist remote cleanup", "error", err)
 	}

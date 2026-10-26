@@ -46,6 +46,8 @@ func (f *fakeCancelSession) serve(t *testing.T) *httptest.Server {
 				f.statuses = f.statuses[1:]
 			}
 			json.NewEncoder(w).Encode(map[string]string{"id": "sess_1", "status": status})
+		case strings.HasPrefix(r.URL.Path, "/sessions/sess_down"):
+			w.WriteHeader(http.StatusServiceUnavailable)
 		default:
 			http.NotFound(w, r)
 		}
@@ -132,7 +134,7 @@ func TestFailedInterruptStaysQueuedForRetry(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeCancelSession{statuses: []string{"running", "idle"}, interrupt: http.StatusServiceUnavailable}
+	f := &fakeCancelSession{statuses: []string{"running", "running", "idle"}, interrupt: http.StatusServiceUnavailable}
 	h.b.anthropic.base = f.serve(t).URL
 	h.status = "cancelled"
 	if err := h.b.step(context.Background()); err != nil {
@@ -149,4 +151,59 @@ func TestFailedInterruptStaysQueuedForRetry(t *testing.T) {
 		t.Fatalf("retry did not interrupt and confirm: cleanup=%v interrupts=%d", h.b.state.Cleanup, f.interrupts)
 	}
 	f.assertNeverArchivedOrDeleted(t)
+}
+
+func TestCancelSkipsInterruptForStoppedSession(t *testing.T) {
+	for _, status := range []string{"idle", "terminated"} {
+		t.Run(status, func(t *testing.T) {
+			fastCancelPolling(t, time.Second)
+			f := &fakeCancelSession{statuses: []string{status}, interrupt: http.StatusBadRequest}
+			s := f.serve(t)
+			if err := CancelRemoteSession(context.Background(), s.URL, "anthropic-secret", "sess_1"); err != nil {
+				t.Fatal(err)
+			}
+			if f.interrupts != 0 {
+				t.Fatalf("interrupted a stopped session %d times", f.interrupts)
+			}
+		})
+	}
+}
+
+func TestCancelRejectedInterruptChecksStatus(t *testing.T) {
+	for _, tc := range []struct {
+		after string
+		ok    bool
+	}{{"idle", true}, {"terminated", true}, {"running", false}} {
+		t.Run(tc.after, func(t *testing.T) {
+			fastCancelPolling(t, 20*time.Millisecond)
+			f := &fakeCancelSession{statuses: []string{"running", tc.after}, interrupt: http.StatusConflict}
+			s := f.serve(t)
+			err := CancelRemoteSession(context.Background(), s.URL, "anthropic-secret", "sess_1")
+			if (err == nil) != tc.ok {
+				t.Fatalf("session %s after a rejected interrupt: err = %v", tc.after, err)
+			}
+			if f.interrupts != 1 {
+				t.Fatalf("interrupts sent: %d", f.interrupts)
+			}
+		})
+	}
+}
+
+func TestCleanupContinuesPastFailingEntry(t *testing.T) {
+	fastCancelPolling(t, time.Second)
+	h := setup(t)
+	f := &fakeCancelSession{statuses: []string{"running", "idle"}}
+	h.b.anthropic.base = f.serve(t).URL
+	h.b.state.Cleanup = []string{"sess_down_1", "sess_1", "sess_down_2"}
+	h.b.cleanup(context.Background())
+	if got := strings.Join(h.b.state.Cleanup, ","); got != "sess_down_1,sess_down_2" || f.interrupts != 1 {
+		t.Fatalf("cleanup = %s, interrupts = %d", got, f.interrupts)
+	}
+	j, err := readJournal(h.b.path, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(j.Cleanup, ","); got != "sess_down_1,sess_down_2" {
+		t.Fatalf("persisted cleanup = %s", got)
+	}
 }

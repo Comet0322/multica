@@ -154,9 +154,15 @@ unavailable in the session.
   metadata.
 - If a create response is lost, the bridge lists the agent's sessions created
   since the attempt (minus five minutes of clock skew, up to ten pages) and
-  reattaches to the one carrying the task ID. If none is found it retries the
-  create once; if that is also unconfirmed the run fails with an explicit
-  unconfirmed-creation error, and remote sessions should be inspected manually.
+  reattaches to the one carrying the task ID. If none is found, or the listing
+  runs past ten pages, it retries the create once; if that is also unconfirmed
+  the run fails with an explicit unconfirmed-creation error, and remote
+  sessions should be inspected manually. A transient listing failure is
+  retried after a backoff; a definite refusal fails the run. When a run reaches
+  its deadline, or its Multica task is cancelled, fails, completes or is
+  deleted, without a confirmed session, the same lookup runs first and any
+  session it finds is cancelled. A failed lookup never holds the run back; the
+  bridge logs that a remote session may exist.
 - A follow-up run on the same issue continues the agent's previous session when
   that session is idle, uses the same Claude agent, environment, repositories,
   branches and tokens, and no other run is using it. Otherwise a fresh session
@@ -168,8 +174,11 @@ unavailable in the session.
   sends it twice automatically. Unconfirmed submissions expire after two
   minutes; all runs have a one-hour deadline.
 - Progress polls the session's events every three seconds using the opaque
-  `page` cursor and deduplicates by event ID. A run succeeds only after its user
-  message and `session.status_idle` with `end_turn`, without an unrecovered
+  `page` cursor, sent with the same filters as the request that returned it,
+  and deduplicates by event ID. A run in a new session starts when the session
+  is created or reattached; a run in a continued session starts at the user
+  message carrying its prompt. A run succeeds only after it started and
+  `session.status_idle` with `end_turn` follows, without an unrecovered
   `session.error`. Any other stop reason (`requires_action`,
   `retries_exhausted`, and so on) or a terminated session fails the run.
 - Shutdown leaves remote execution running. Restart with the same directory to
@@ -183,11 +192,15 @@ unavailable in the session.
 ### Cancellation
 
 Claude Managed Agents has no cancel endpoint. Cancelling or deleting a Multica
-run, a server-side timeout, a run deadline, or losing runtime access sends a
-`user.interrupt` event and waits up to three seconds for the session to become
-`idle` or `terminated`. A session that no longer exists counts as stopped. An
-unconfirmed stop stays in a durable cleanup queue and is interrupted again on
-later ticks, independently of the next task. Because the Multica task status is
+run, a server-side timeout, a run deadline, or losing runtime access reads the
+session first: an `idle` or `terminated` session is left alone. Otherwise the
+bridge sends a `user.interrupt` event and waits up to three seconds for the
+session to become `idle` or `terminated`. A refused interrupt counts as a stop
+when the session then reads as `idle` or `terminated`. A session that no
+longer exists counts as stopped. An unconfirmed stop stays in a durable cleanup
+queue and is interrupted again on later ticks, independently of the next task;
+each tick tries every queued session in order, so one failing session does not
+hold back the others. Because the Multica task status is
 read before session events, the `end_turn` that follows an interrupt is never
 reported as a successful run.
 

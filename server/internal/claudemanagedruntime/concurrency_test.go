@@ -299,14 +299,7 @@ func TestPromptAsksForLinkableBranch(t *testing.T) {
 	}
 }
 
-func TestLegacySingleRunJournalDecodes(t *testing.T) {
-	j, err := decodeJournal([]byte(`{"binding":"b","runtime_id":"rt","run":{"task_id":"task-1","session_id":"sess_1","phase":"running"}}`), "b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if j.Run != nil || len(j.Runs) != 1 || j.Runs[0].SessionID != "sess_1" {
-		t.Fatalf("legacy run not folded: %#v", j)
-	}
+func TestJournalRejectsDuplicateTask(t *testing.T) {
 	if _, err := decodeJournal([]byte(`{"binding":"b","runs":[{"task_id":"t","phase":"prepared"},{"task_id":"t","phase":"prepared"}]}`), "b"); err == nil {
 		t.Fatal("duplicate task accepted")
 	}
