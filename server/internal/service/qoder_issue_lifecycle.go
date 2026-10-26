@@ -64,7 +64,11 @@ func syncQoderIssue(ctx context.Context, q *db.Queries, task db.AgentTaskQueue, 
 			return nil, err
 		}
 	}
-	details, _ := json.Marshal(map[string]any{"from": issue.Status, "to": target, "source": "qoder_cloud", "task_id": util.UUIDToString(task.ID)})
+	runtime, err := q.GetAgentRuntime(ctx, task.RuntimeID)
+	if err != nil {
+		return nil, err
+	}
+	details, _ := json.Marshal(map[string]any{"from": issue.Status, "to": target, "source": runtime.Provider, "task_id": util.UUIDToString(task.ID)})
 	activity, err := q.CreateActivity(ctx, db.CreateActivityParams{
 		ID: dbid.NewV7(), WorkspaceID: issue.WorkspaceID, IssueID: issue.ID,
 		ActorType: util.StrToText("agent"), ActorID: task.AgentID, Action: "status_changed", Details: details,
