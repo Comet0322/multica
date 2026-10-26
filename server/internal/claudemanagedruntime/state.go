@@ -36,13 +36,20 @@ type run struct {
 	Resources          []map[string]any `json:"resources,omitempty"`
 	Phase              string           `json:"phase"`
 	Cursor             string           `json:"cursor,omitempty"`
+	Seq                int              `json:"seq"`
+	Started            bool             `json:"started"`
+	Output             string           `json:"output,omitempty"`
+	Failure            string           `json:"failure,omitempty"`
+	Outcome            string           `json:"outcome,omitempty"`
+
 	// CursorAt is the processed_at of the Cursor event; empty when it had none.
 	CursorAt string `json:"cursor_at,omitempty"`
-	Seq      int    `json:"seq"`
-	Started  bool   `json:"started"`
-	Output   string `json:"output,omitempty"`
-	Failure  string `json:"failure,omitempty"`
-	Outcome  string `json:"outcome,omitempty"`
+
+	// CreateAttemptAt is when the first session create for this run was sent.
+	// After an ambiguous create, sessions listed from then on are matched by
+	// task ID before any retry. CreateRetried allows exactly one retry.
+	CreateAttemptAt time.Time `json:"create_attempt_at,omitempty"`
+	CreateRetried   bool      `json:"create_retried,omitempty"`
 }
 
 func save(path string, j *journal) error {

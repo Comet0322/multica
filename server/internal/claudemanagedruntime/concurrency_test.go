@@ -94,12 +94,18 @@ func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 			id := fmt.Sprintf("sess_new_%d", h.creates)
 			h.sessionStatus[id] = "idle"
 			var req struct {
-				Metadata  map[string]string `json:"metadata"`
-				Resources []map[string]any  `json:"resources"`
+				Metadata      map[string]string `json:"metadata"`
+				Resources     []map[string]any  `json:"resources"`
+				InitialEvents []event           `json:"initial_events"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
 			h.metadata[id] = req.Metadata
 			h.resources[id] = req.Resources
+			for _, e := range req.InitialEvents {
+				h.prompts[id] = e.text()
+				h.sessionStatus[id] = "running"
+				h.sessions[id] = append(h.sessions[id], map[string]any{"id": fmt.Sprintf("evt_%s_%d", id, len(h.sessions[id])), "type": e.Type, "content": []map[string]string{{"type": "text", "text": e.text()}}})
+			}
 			fmt.Fprintf(w, `{"id":%q}`, id)
 		case len(parts) == 3 && parts[2] == "events" && r.Method == http.MethodPost:
 			var req struct {
@@ -203,7 +209,7 @@ func TestFollowUpStartsNewSessionWhenPriorIsUnavailable(t *testing.T) {
 			if err := h.b.step(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if h.creates != 1 || len(h.sentTo) != 1 || h.sentTo[0] != "sess_new_1" {
+			if h.creates != 1 || len(h.sentTo) != 0 || h.prompts["sess_new_1"] == "" {
 				t.Fatalf("creates=%d sentTo=%v", h.creates, h.sentTo)
 			}
 		})
@@ -240,7 +246,7 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 			if err := h.b.step(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if reused := h.creates == 1 && h.sentTo[len(h.sentTo)-1] == "sess_new_1"; reused != tc.reuse {
+			if reused := h.creates == 1 && len(h.sentTo) == 1 && h.sentTo[0] == "sess_new_1"; reused != tc.reuse {
 				t.Fatalf("reuse=%v, want %v (creates=%d sentTo=%v)", reused, tc.reuse, h.creates, h.sentTo)
 			}
 			if !tc.reuse {
@@ -266,7 +272,7 @@ func TestFollowUpFailsWhenRepositoryCredentialWasRemoved(t *testing.T) {
 	if err := h.b.step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(h.sentTo) != 1 || h.creates != 1 || h.failed["task-2"] == nil {
+	if len(h.sentTo) != 0 || h.creates != 1 || h.failed["task-2"] == nil {
 		t.Fatalf("follow-up ran without a credential: creates=%d sentTo=%v failed=%v", h.creates, h.sentTo, h.failed["task-2"])
 	}
 }
@@ -277,7 +283,7 @@ func TestFollowUpSkipsSessionWithoutFingerprint(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.creates != 1 || len(h.sentTo) != 1 || h.sentTo[0] != "sess_new_1" {
+	if h.creates != 1 || len(h.sentTo) != 0 {
 		t.Fatalf("legacy session reused: creates=%d sentTo=%v", h.creates, h.sentTo)
 	}
 }
@@ -328,6 +334,24 @@ func TestAgentDefaultRepository(t *testing.T) {
 	} {
 		if _, err := ParseAgentConfig(json.RawMessage(raw)); err == nil || !strings.HasPrefix(err.Error(), "default repository") {
 			t.Errorf("accepted %s: %v", raw, err)
+		}
+	}
+}
+
+func TestRepositoryResourceUsesClaudeURLForm(t *testing.T) {
+	for _, raw := range []string{"https://github.com/acme/app.git", "https://github.com/acme/app"} {
+		got, err := repositoryResource(Repository{URL: raw, Ref: "refs/heads/main"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"type": "github_repository", "url": "https://github.com/acme/app", "checkout": map[string]string{"type": "branch", "name": "main"}}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s: got %v, want %v", raw, got, want)
+		}
+	}
+	for _, ref := range []string{"refs/tags/v1", "0123456789abcdef0123456789abcdef01234567"} {
+		if _, err := repositoryResource(Repository{URL: "https://github.com/acme/app", Ref: ref}); err == nil {
+			t.Errorf("accepted non-branch ref %s", ref)
 		}
 	}
 }

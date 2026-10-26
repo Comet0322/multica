@@ -47,6 +47,14 @@ func TestLocalMultica(t *testing.T) {
 		switch {
 		case r.URL.Path == "/sessions" && r.Method == http.MethodPost:
 			creates++
+			var req struct {
+				InitialEvents []event `json:"initial_events"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.InitialEvents) != 1 {
+				t.Error("session created without the prompt as its initial event")
+			} else {
+				prompt = req.InitialEvents[0].text()
+			}
 			io.WriteString(w, `{"id":"sess_fixture"}`)
 		case strings.HasSuffix(r.URL.Path, "/events") && r.Method == http.MethodPost:
 			sends++
@@ -162,7 +170,7 @@ func TestLocalMultica(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if creates != 1 || sends != 1 {
+	if creates != 1 || sends != 0 {
 		t.Fatalf("remote execution duplicated: creates=%d sends=%d", creates, sends)
 	}
 }

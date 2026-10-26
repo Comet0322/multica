@@ -360,8 +360,24 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 	}
 	if r.Phase == "creating" {
 		// The provider may have created a session before the response was lost.
-		// Never create a second session automatically for the same run.
-		return b.reject(ctx, r, "Claude session creation was not confirmed; inspect remote sessions before retrying")
+		// Reattach to it; create again only once nothing carries this task's ID.
+		sessionID, err := b.findCreatedSession(ctx, r)
+		if err != nil {
+			return err
+		}
+		switch {
+		case sessionID != "":
+			r.SessionID = sessionID
+			r.Phase = "running"
+		case r.CreateRetried:
+			return b.reject(ctx, r, "Claude session creation was not confirmed; inspect remote sessions before retrying")
+		default:
+			r.CreateRetried = true
+			r.Phase = "prepared"
+		}
+		if err := b.persist(); err != nil {
+			return err
+		}
 	}
 	if status.Status == "dispatched" {
 		if err := b.taskCall(ctx, r, "/start", map[string]any{}, nil); err != nil {
@@ -393,7 +409,7 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 			}
 		}
 		if r.Phase == "prepared" {
-			if err := b.createSession(ctx, r, resources, fingerprint); err != nil || r.Phase != "created" {
+			if err := b.createSession(ctx, r, resources, fingerprint); err != nil || r.Phase != "running" {
 				return err
 			}
 		}
@@ -408,7 +424,7 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 		if err := b.persist(); err != nil {
 			return err
 		}
-		if err := b.anthropic.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(r.SessionID)+"/events", map[string]any{"events": []map[string]any{{"type": "user.message", "content": []map[string]string{{"type": "text", "text": r.Prompt}}}}}, nil); err != nil {
+		if err := b.anthropic.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(r.SessionID)+"/events", map[string]any{"events": userMessage(r.Prompt)}, nil); err != nil {
 			if rateLimited(err) {
 				r.Phase = "created"
 				r.SubmissionDeadline = time.Time{}
@@ -436,18 +452,28 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 	return b.events(ctx, r)
 }
 
-// createSession moves the run to "created" on success. A rate-limited request
-// leaves it "prepared" for a later retry; a definite refusal finalizes it.
+// userMessage is the event that hands the run's prompt to Claude.
+func userMessage(prompt string) []map[string]any {
+	return []map[string]any{{"type": "user.message", "content": []map[string]string{{"type": "text", "text": prompt}}}}
+}
+
+// createSession starts the session with the prompt as its initial event, so
+// creation and submission are one request, and moves the run to "running" on
+// success. A rate-limited request leaves it "prepared" for a later retry; a
+// definite refusal finalizes it.
 func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[string]any, fingerprint string) error {
 	var session struct {
 		ID string `json:"id"`
 	}
 	r.Phase = "creating"
+	if r.CreateAttemptAt.IsZero() {
+		r.CreateAttemptAt = time.Now()
+	}
 	if err := b.persist(); err != nil {
 		return err
 	}
 	metadata := map[string]string{"multica_task_id": r.TaskID, "multica_workspace_id": b.cfg.WorkspaceID, resourcesMetadataKey: fingerprint}
-	if err := b.anthropic.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": metadata, "resources": resources}, &session); err != nil {
+	if err := b.anthropic.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": metadata, "resources": resources, "initial_events": userMessage(r.Prompt)}, &session); err != nil {
 		if rateLimited(err) {
 			r.Phase = "prepared"
 			r.RetryAt = time.Now().Add(retryDelay(err))
@@ -462,8 +488,51 @@ func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[stri
 		return fmt.Errorf("Claude create returned no session ID")
 	}
 	r.SessionID = session.ID
-	r.Phase = "created"
+	r.Phase = "running"
 	return b.persist()
+}
+
+// createClockSkew widens the created_at lower bound of the ambiguous-create
+// lookup, because the attempt time comes from the bridge's clock while
+// created_at comes from Anthropic's. The task ID match is what identifies the
+// session, so a generous window costs only a longer listing.
+const createClockSkew = 5 * time.Minute
+
+// maxCreateLookupPages bounds the ambiguous-create lookup; sessions of one
+// agent created within minutes of the attempt fit in far fewer pages.
+const maxCreateLookupPages = 10
+
+// findCreatedSession returns the session an unconfirmed create made for r, or
+// "" when the agent has no session carrying r's task ID since the attempt.
+func (b *Bridge) findCreatedSession(ctx context.Context, r *run) (string, error) {
+	q := url.Values{
+		"agent_id":        {r.AgentID},
+		"created_at[gte]": {r.CreateAttemptAt.Add(-createClockSkew).UTC().Format(time.RFC3339)},
+		"order":           {"desc"},
+		"limit":           {"100"},
+	}
+	for range maxCreateLookupPages {
+		var page struct {
+			Data []struct {
+				ID       string            `json:"id"`
+				Metadata map[string]string `json:"metadata"`
+			} `json:"data"`
+			NextPage *string `json:"next_page"`
+		}
+		if err := b.anthropic.call(ctx, http.MethodGet, "/sessions?"+q.Encode(), nil, &page); err != nil {
+			return "", err
+		}
+		for _, s := range page.Data {
+			if s.ID != "" && s.Metadata["multica_task_id"] == r.TaskID && s.Metadata["multica_workspace_id"] == b.cfg.WorkspaceID {
+				return s.ID, nil
+			}
+		}
+		if page.NextPage == nil || *page.NextPage == "" || *page.NextPage == q.Get("page") {
+			return "", nil
+		}
+		q.Set("page", *page.NextPage)
+	}
+	return "", fmt.Errorf("Claude session lookup exceeded %d pages", maxCreateLookupPages)
 }
 
 // resourcesMetadataKey stores resourceFingerprint on each session Multica creates.

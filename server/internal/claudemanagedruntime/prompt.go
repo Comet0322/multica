@@ -147,7 +147,12 @@ func repositoryResource(ref Repository) (map[string]any, error) {
 	if err != nil || u.Scheme != "https" || u.Hostname() != "github.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, fmt.Errorf("repositories must use an HTTPS github.com URL without credentials")
 	}
-	resource := map[string]any{"type": "github_repository", "url": ref.URL}
+	if _, err := repositoryKey(ref.URL); err != nil {
+		return nil, err
+	}
+	// Claude accepts only https://github.com/<owner>/<repo>, without a .git suffix.
+	path := strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), ".git")
+	resource := map[string]any{"type": "github_repository", "url": "https://github.com" + path}
 	if strings.HasPrefix(ref.Ref, "refs/tags/") || commitRef.MatchString(ref.Ref) {
 		return nil, fmt.Errorf("Claude Managed Agents supports branch refs only")
 	}

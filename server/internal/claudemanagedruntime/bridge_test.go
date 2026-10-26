@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,11 +31,21 @@ type harness struct {
 	messages                []map[string]any
 	prompt                  string
 	sessionAgent            string
+	initialEvents           int
+	priorMetadata           map[string]string
+	// lostCreates answers that many session creates with a gateway timeout;
+	// lostCreatePersists makes those requests still create the session.
+	lostCreates        int
+	lostCreatePersists bool
+	remote             []map[string]any
+	listQueries        []url.Values
+	// foreignSession is another task's session that every list returns.
+	foreignSession map[string]any
 }
 
 func setup(t *testing.T) *harness {
 	t.Helper()
-	h := &harness{status: "dispatched"}
+	h := &harness{status: "dispatched", foreignSession: map[string]any{"id": "sess_other", "agent": map[string]string{"id": "agent_1"}, "created_at": time.Now().UTC().Format(time.RFC3339), "metadata": map[string]string{"multica_task_id": "task-other", "multica_workspace_id": workspaceID}}}
 	h.task = &daemon.Task{ID: "task-1", RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-1", AuthToken: "mat_task", Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"claude_agent_id":"agent_1"}`), Skills: []daemon.SkillData{{Name: "multica-platform"}}}}
 	m := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -93,13 +105,48 @@ func setup(t *testing.T) *harness {
 		case r.URL.Path == "/sessions" && r.Method == "POST":
 			h.creates++
 			var input struct {
-				Agent string `json:"agent"`
+				Agent         string            `json:"agent"`
+				Metadata      map[string]string `json:"metadata"`
+				InitialEvents []event           `json:"initial_events"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 				t.Fatal(err)
 			}
+			lost := h.lostCreates > 0
+			if lost {
+				h.lostCreates--
+				if !h.lostCreatePersists {
+					http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
+					return
+				}
+			}
 			h.sessionAgent = input.Agent
+			h.initialEvents = len(input.InitialEvents)
+			if len(input.InitialEvents) == 1 && input.InitialEvents[0].Type == "user.message" {
+				h.prompt = input.InitialEvents[0].text()
+				h.events = append(h.events, map[string]any{"id": "evt_user", "type": "user.message", "content": []map[string]string{{"type": "text", "text": h.prompt}}})
+			}
+			h.remote = append(h.remote, map[string]any{"id": "sess_1", "agent": map[string]string{"id": input.Agent}, "created_at": time.Now().UTC().Format(time.RFC3339), "metadata": input.Metadata})
+			if lost {
+				http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
+				return
+			}
 			io.WriteString(w, `{"id":"sess_1","status":"idle"}`)
+		case r.URL.Path == "/sessions" && r.Method == "GET":
+			query := r.URL.Query()
+			h.listQueries = append(h.listQueries, query)
+			from, err := time.Parse(time.RFC3339, query.Get("created_at[gte]"))
+			if err != nil {
+				t.Errorf("list without created_at[gte]: %v", err)
+			}
+			data := []map[string]any{h.foreignSession}
+			for _, s := range h.remote {
+				created, _ := time.Parse(time.RFC3339, s["created_at"].(string))
+				if s["agent"].(map[string]string)["id"] == query.Get("agent_id") && !created.Before(from) {
+					data = append(data, s)
+				}
+			}
+			json.NewEncoder(w).Encode(map[string]any{"data": data, "next_page": nil})
 		case r.URL.Path == "/sessions/sess_1/events" && r.Method == "POST":
 			h.sends++
 			var req struct {
@@ -122,7 +169,7 @@ func setup(t *testing.T) *harness {
 			h.cancels++
 			io.WriteString(w, `{"status":"canceling"}`)
 		case r.URL.Path == "/sessions/sess_1":
-			io.WriteString(w, `{"status":"idle"}`)
+			json.NewEncoder(w).Encode(map[string]any{"status": "idle", "metadata": h.priorMetadata})
 		default:
 			t.Errorf("unexpected Claude request %s", r.URL)
 			http.NotFound(w, r)
@@ -136,6 +183,13 @@ func setup(t *testing.T) *harness {
 	}
 	h.b.state = &journal{Binding: "test", RuntimeID: "runtime-1"}
 	return h
+}
+
+// followUp makes the claimed task continue the idle session sess_1, so the
+// prompt goes out as a separate user.message.
+func (h *harness) followUp() {
+	h.task.PriorSessionID = "sess_1"
+	h.priorMetadata = map[string]string{resourcesMetadataKey: resourceFingerprint(nil)}
 }
 func (h *harness) finish(reason string) {
 	h.events = append(h.events, map[string]any{"id": "evt_reply", "type": "agent.message", "content": []map[string]string{{"type": "text", "text": "Tests passed. PR: https://example.com/pr/1"}}}, map[string]any{"id": "evt_idle", "type": "session.status_idle", "stop_reason": map[string]string{"type": reason}})
@@ -160,8 +214,8 @@ func TestIssueRun(t *testing.T) {
 	if h.complete["session_id"] != "sess_1" || !strings.Contains(fmt.Sprint(h.complete["output"]), "Tests passed") {
 		t.Fatalf("result: %#v", h.complete)
 	}
-	if h.creates != 1 || h.sends != 1 || len(h.messages) != 1 || h.b.state.first() != nil {
-		t.Fatal("incorrect lifecycle")
+	if h.creates != 1 || h.initialEvents != 1 || h.sends != 0 || len(h.messages) != 1 || h.b.state.first() != nil {
+		t.Fatalf("incorrect lifecycle: creates=%d initial_events=%d sends=%d", h.creates, h.initialEvents, h.sends)
 	}
 	data, err := os.ReadFile(h.b.path)
 	if err != nil {
@@ -173,6 +227,7 @@ func TestIssueRun(t *testing.T) {
 }
 func TestAmbiguousSubmitReconcilesAfterRestart(t *testing.T) {
 	h := setup(t)
+	h.followUp()
 	h.lostSend = true
 	if err := h.b.step(context.Background()); err == nil {
 		t.Fatal("expected ambiguous failure")
@@ -189,12 +244,13 @@ func TestAmbiguousSubmitReconcilesAfterRestart(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.sends != 1 || h.creates != 1 || h.complete == nil {
+	if h.sends != 1 || h.creates != 0 || h.complete == nil {
 		t.Fatal("restart duplicated/lost execution")
 	}
 }
 func TestUnconfirmedSubmissionDoesNotResend(t *testing.T) {
 	h := setup(t)
+	h.followUp()
 	h.lostSend = true
 	_ = h.b.step(context.Background())
 	h.events = nil
@@ -346,14 +402,43 @@ func TestTerminalReportSurvivesRestart(t *testing.T) {
 	}
 }
 
-func TestRejectedMessageFailsRun(t *testing.T) {
+func TestRepositoryTokenStaysOutOfErrorsAndJournal(t *testing.T) {
+	const token = "ghp_never_logged"
+	for _, status := range []int{400, 502} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			h := setup(t)
+			var logs strings.Builder
+			h.b.log = slog.New(slog.NewTextHandler(&logs, nil))
+			h.task.Agent.RuntimeConfig = json.RawMessage(`{"claude_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app.git","ref":"main"}}`)
+			h.b.cfg.GitHubTokens = map[string]string{"https://github.com/acme/app": token}
+			var sent string
+			q := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost {
+					raw, _ := io.ReadAll(r.Body)
+					sent = string(raw)
+				}
+				http.Error(w, "invalid authorization_token "+token, status)
+			}))
+			defer q.Close()
+			h.b.anthropic.base = q.URL
+			err := h.b.step(context.Background())
+			if !strings.Contains(sent, `"authorization_token":"`+token+`"`) || !strings.Contains(sent, `"url":"https://github.com/acme/app"`) {
+				t.Fatalf("create body lacks repository credential: %s", sent)
+			}
+			journal, _ := os.ReadFile(h.b.path)
+			for name, text := range map[string]string{"error": fmt.Sprint(err), "failure": fmt.Sprint(h.failure), "logs": logs.String(), "journal": string(journal)} {
+				if strings.Contains(text, token) {
+					t.Errorf("token leaked into %s: %s", name, text)
+				}
+			}
+		})
+	}
+}
+
+func TestRejectedCreationFailsRun(t *testing.T) {
 	h := setup(t)
 	q := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/sessions" {
-			io.WriteString(w, `{"id":"sess_1"}`)
-			return
-		}
-		http.Error(w, "bad message", 400)
+		http.Error(w, "bad initial event", 400)
 	}))
 	defer q.Close()
 	h.b.anthropic.base = q.URL
@@ -456,14 +541,84 @@ func TestRunDeadlineReleasesQueue(t *testing.T) {
 	}
 }
 
-func TestAmbiguousCreationIsNotRepeated(t *testing.T) {
+func TestAmbiguousCreationRetriesOnceWhenNotListed(t *testing.T) {
 	h := setup(t)
-	h.b.state.Runs = []*run{&run{TaskID: "task-1", Phase: "creating", Deadline: time.Now().Add(time.Hour)}}
+	h.lostCreates = 1
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("expected ambiguous create to surface")
+	}
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.creates != 0 || h.failure == nil {
-		t.Fatal("ambiguous creation was repeated")
+	if h.creates != 2 || len(h.listQueries) != 1 || h.failure != nil || h.b.state.first().SessionID != "sess_1" {
+		t.Fatalf("retry: creates=%d lists=%d failure=%v", h.creates, len(h.listQueries), h.failure)
+	}
+	h.finish("end_turn")
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.complete["session_id"] != "sess_1" {
+		t.Fatalf("retried run did not complete: %#v", h.complete)
+	}
+}
+
+func TestAmbiguousCreationFailsAfterOneRetry(t *testing.T) {
+	h := setup(t)
+	h.lostCreates = 3
+	for range 2 {
+		if err := h.b.step(context.Background()); err == nil {
+			t.Fatal("expected ambiguous create to surface")
+		}
+	}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 2 || !strings.Contains(fmt.Sprint(h.failure["error"]), "Claude session creation was not confirmed") || h.b.state.first() != nil {
+		t.Fatalf("creates=%d failure=%v", h.creates, h.failure)
+	}
+}
+
+func TestAmbiguousCreationReattachesListedSession(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restart=%v", restart), func(t *testing.T) {
+			h := setup(t)
+			h.lostCreates, h.lostCreatePersists = 1, true
+			before := time.Now()
+			if err := h.b.step(context.Background()); err == nil {
+				t.Fatal("expected ambiguous create to surface")
+			}
+			if h.failure != nil || len(h.listQueries) != 0 {
+				t.Fatal("ambiguous create was finalized or reconciled in the same request")
+			}
+			if restart {
+				j, err := readJournal(h.b.path, "test")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if j.first().Phase != "creating" || j.first().CreateAttemptAt.Before(before) {
+					t.Fatalf("attempt not journaled: %#v", j.first())
+				}
+				h.b.state = j
+			}
+			if err := h.b.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if h.creates != 1 || h.sends != 0 || h.b.state.first().SessionID != "sess_1" {
+				t.Fatalf("not reattached: creates=%d sends=%d run=%#v", h.creates, h.sends, h.b.state.first())
+			}
+			q := h.listQueries[0]
+			from, _ := time.Parse(time.RFC3339, q.Get("created_at[gte]"))
+			if q.Get("agent_id") != "agent_1" || q.Get("order") != "desc" || !from.Before(before.Add(-time.Minute)) {
+				t.Fatalf("list query: %v", q)
+			}
+			h.finish("end_turn")
+			if err := h.b.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if h.complete["session_id"] != "sess_1" || h.creates != 1 {
+				t.Fatalf("reattached run did not complete: %#v", h.complete)
+			}
+		})
 	}
 }
 
@@ -529,6 +684,7 @@ func TestRateLimitedCreationRetriesAfterDelay(t *testing.T) {
 
 func TestSubmissionDeadlineReleasesUnconfirmedRun(t *testing.T) {
 	h := setup(t)
+	h.followUp()
 	h.lostSend = true
 	if err := h.b.step(context.Background()); err == nil {
 		t.Fatal("expected lost response")
