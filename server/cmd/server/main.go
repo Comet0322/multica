@@ -163,9 +163,6 @@ func envNonNegativeInt(name string, def int) int {
 // internal caller of pkg/llm runs under a far tighter deadline (8s for chat
 // quick actions, 20s for title generation), so a budget past 5 cannot finish —
 // it only converts a retryable upstream failure into a deadline-exceeded one.
-// devDatabaseUser is the local-development login used when DATABASE_URL is unset.
-const devDatabaseUser = "multica"
-
 const maxLLMRetriesLimit = 5
 
 // parseLLMMaxRetries turns the raw MULTICA_LLM_MAX_RETRIES value into the
@@ -297,9 +294,8 @@ func backgroundServices(h *handler.Handler) (*service.TaskService, *service.Auto
 	return h.TaskService, h.AutopilotService
 }
 
-// jwtSecretBootError returns a non-nil error when JWT_SECRET is empty or a
-// publicly-known default (auth.ValidateJWTSecret). The server refuses to boot
-// in every environment: anyone can forge HS256 tokens signed with those values.
+// jwtSecretBootError returns a non-nil error when JWT_SECRET is empty
+// (auth.ValidateJWTSecret). The server refuses to boot in every environment.
 func jwtSecretBootError(jwtSecret string) error {
 	return auth.ValidateJWTSecret(jwtSecret)
 }
@@ -330,7 +326,7 @@ func main() {
 	// Warn about missing configuration
 	if err := jwtSecretBootError(os.Getenv("JWT_SECRET")); err != nil {
 		slog.Error(
-			"refusing to start: JWT_SECRET is not usable; generate a strong secret with `openssl rand -hex 32` and set JWT_SECRET (see .env.example)",
+			"refusing to start: JWT_SECRET is not usable; generate a strong secret with `openssl rand -hex 32` and set JWT_SECRET",
 			"reason", err.Error(),
 		)
 		os.Exit(1)
@@ -371,7 +367,8 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://" + devDatabaseUser + ":" + devDatabaseUser + "@localhost:5432/multica?sslmode=disable"
+		slog.Error("refusing to start: DATABASE_URL is not set")
+		os.Exit(1)
 	}
 
 	startupSettings := dbstartup.SettingsFromEnv()

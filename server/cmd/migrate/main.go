@@ -54,9 +54,6 @@ type usableIndexRequirement struct {
 	Extension     string
 }
 
-// devDatabaseUser is the local-development login used when DATABASE_URL is unset.
-const devDatabaseUser = "multica"
-
 var commentContentBigramIndex = usableIndexRequirement{
 	IndexRegclass: "public.idx_comment_content_bigm",
 	TableRegclass: "public.comment",
@@ -821,7 +818,8 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://" + devDatabaseUser + ":" + devDatabaseUser + "@localhost:5432/multica?sslmode=disable"
+		fmt.Println("DATABASE_URL is not set")
+		os.Exit(1)
 	}
 
 	startupSettings := dbstartup.SettingsFromEnv()
