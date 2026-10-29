@@ -256,6 +256,10 @@ export function RuntimesPage({
         runtime.id === agent.runtime_id && runtime.provider === "qoder_cloud",
     ),
   ).length;
+  // Cloud-mode runtimes are services members use, not machines they run;
+  // agent creation groups them the same way (runtime-choice.ts).
+  const ownMachines = machineList.filter((machine) => machine.section !== "cloud");
+  const cloudMachines = machineList.filter((machine) => machine.section === "cloud");
   const localMachine = machineList.find((machine) => machine.isCurrent);
 
   const needle = query.trim().toLowerCase();
@@ -265,11 +269,11 @@ export function RuntimesPage({
   const matchesStatus = (online: boolean) =>
     statusFilter === "all" || (statusFilter === "online") === online;
 
-  const visibleMachines = machineList.filter(
-    (machine) =>
-      matchesStatus(machine.health === "online") &&
-      matchesQuery(machine.title, machine.subtitle, ...machine.providerNames),
-  );
+  const machineVisible = (machine: (typeof machineList)[number]) =>
+    matchesStatus(machine.health === "online") &&
+    matchesQuery(machine.title, machine.subtitle, ...machine.providerNames);
+  const visibleMachines = ownMachines.filter(machineVisible);
+  const visibleCloudMachines = cloudMachines.filter(machineVisible);
   const qoderConfigured = qoder?.configured === true;
   const showQoderRow =
     qoder !== null &&
@@ -283,15 +287,17 @@ export function RuntimesPage({
         )
       : [];
   const showThisComputerRow =
-    !filtering && !isDesktop && machineList.length === 0;
-  const showAddMachineRow = !filtering && machineList.length === 0;
+    !filtering && !isDesktop && ownMachines.length === 0;
+  const showAddMachineRow = !filtering && ownMachines.length === 0;
   const nothingMatches =
     filtering &&
     visibleMachines.length === 0 &&
+    visibleCloudMachines.length === 0 &&
     !showQoderRow &&
     visibleComingSoon.length === 0;
 
   const configuredCloudCount = qoderConfigured ? 1 : 0;
+  const cloudCount = configuredCloudCount + cloudMachines.length;
   const totalCount = machineList.length + configuredCloudCount;
   const onlineCount =
     machineList.filter((machine) => machine.health === "online").length +
@@ -301,6 +307,21 @@ export function RuntimesPage({
     online: onlineCount,
     offline: totalCount - onlineCount,
   };
+
+  const renderMachine = (machine: (typeof machineList)[number]) => (
+    <MachineRow
+      key={machine.id}
+      machine={machine}
+      bootstrapping={bootstrapping}
+      currentUserId={currentUserId ?? null}
+      members={members}
+      agentCount={machine.runtimes.reduce(
+        (sum, runtime) =>
+          sum + (agentCountByRuntime.get(runtime.id) ?? 0),
+        0,
+      )}
+    />
+  );
 
   const openQoder = () =>
     qoderConfigured ? navigation.push(qoderHref) : setQoderDialogOpen(true);
@@ -366,22 +387,9 @@ export function RuntimesPage({
                 <>
                   <GroupHeader
                     title={t(($) => $.page.groups.machines.title)}
-                    count={machineList.length}
+                    count={ownMachines.length}
                   />
-                  {visibleMachines.map((machine) => (
-                    <MachineRow
-                      key={machine.id}
-                      machine={machine}
-                      bootstrapping={bootstrapping}
-                      currentUserId={currentUserId ?? null}
-                      members={members}
-                      agentCount={machine.runtimes.reduce(
-                        (sum, runtime) =>
-                          sum + (agentCountByRuntime.get(runtime.id) ?? 0),
-                        0,
-                      )}
-                    />
-                  ))}
+                  {visibleMachines.map(renderMachine)}
                   {showThisComputerRow && (
                     <ActionRow
                       icon={Laptop}
@@ -419,8 +427,9 @@ export function RuntimesPage({
 
                   <GroupHeader
                     title={t(($) => $.page.groups.cloud.title)}
-                    count={configuredCloudCount}
+                    count={cloudCount}
                   />
+                  {visibleCloudMachines.map(renderMachine)}
                   {showQoderRow && qoder && (
                     <QoderRow
                       connection={qoder}

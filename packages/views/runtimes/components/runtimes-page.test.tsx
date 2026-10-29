@@ -196,6 +196,40 @@ describe("RuntimesPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("groups other cloud runtimes with cloud services, as agent creation does", () => {
+    const managed = makeRuntime({
+      id: "rt-managed",
+      daemon_id: "sandbox-broker-1",
+      name: "Managed Sandbox",
+      runtime_mode: "cloud",
+      device_info: "Managed Sandbox",
+      visibility: "public",
+    });
+    renderPage({ runtimes: [makeRuntime(), managed] });
+
+    const machinesHeader = screen.getByText("Machines").parentElement!;
+    const cloudHeader = screen.getByText("Cloud services").parentElement!;
+    expect(machinesHeader).toHaveTextContent("Machines1");
+    expect(cloudHeader).toHaveTextContent("Cloud services1");
+    const managedRow = screen.getByText("Managed Sandbox").closest("[role=row]")!;
+    const machineRow = screen.getByText("dev-machine.local").closest("[role=row]")!;
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(machinesHeader, machineRow) && follows(machineRow, cloudHeader)).toBe(true);
+    expect(follows(cloudHeader, managedRow)).toBe(true);
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveTextContent("2");
+  });
+
+  it("still invites a machine when only cloud runtimes exist", () => {
+    renderPage({
+      runtimes: [
+        makeRuntime({ id: "rt-managed", daemon_id: "sandbox-broker-1", runtime_mode: "cloud", device_info: "Managed Sandbox" }),
+      ],
+    });
+    expect(screen.getByText("Machines").parentElement!).toHaveTextContent("Machines0");
+    expect(screen.getByRole("button", { name: "View commands" })).toBeInTheDocument();
+  });
+
   it("never lists the Qoder runtime as a machine", () => {
     const qoderRuntime = makeRuntime({
       id: "rt-qoder",
