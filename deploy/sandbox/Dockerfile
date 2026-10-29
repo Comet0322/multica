@@ -21,19 +21,18 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 COPY --from=builder /out/multica /usr/local/bin/multica
 COPY deploy/sandbox/entrypoint.sh /usr/local/bin/multica-sandbox-entrypoint
-# Runtime-private skills, MCP servers and CLI settings. Agents load them from
-# their provider home directories; the broker reports them unsupported so the
-# Multica UI never lists them.
-COPY --chown=node:node deploy/sandbox/home/ /home/node/
+# Runtime-private skills, MCP servers and CLI settings, copied into the agent's
+# HOME at start. Agents load them from their provider home directories; the
+# broker reports them unsupported so the Multica UI never lists them.
+COPY deploy/sandbox/home/ /etc/multica-sandbox/home/
 # A fresh named volume inherits this ownership.
 RUN mkdir -p /data && chown node:node /data
-ENV HOME=/home/node
 VOLUME /data
 ENTRYPOINT ["/usr/local/bin/multica-sandbox-entrypoint"]
 
 FROM base AS fake
 COPY deploy/sandbox/e2e/fake-claude /usr/local/bin/claude
-COPY --chown=node:node deploy/sandbox/e2e/skill/ /home/node/
+COPY deploy/sandbox/e2e/skill/ /etc/multica-sandbox/home/
 USER node
 
 FROM base AS agents

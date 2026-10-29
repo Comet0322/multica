@@ -118,19 +118,45 @@ demo); in production pass `MULTICA_TOKEN` and `MULTICA_WORKSPACE_ID`.
 | `SANDBOX_CLEANUP_GRACE`, `SANDBOX_VOLUME_TTL` | Default `1h` and `168h` |
 | `SANDBOX_ENV_<NAME>` | Passed to every sandbox as `<NAME>`, e.g. LLM gateway settings |
 | `SANDBOX_PROVIDER` | `docker` (default) |
-| `DOCKER_SOCKET`, `SANDBOX_DOCKER_INSTANCE`, `SANDBOX_DOCKER_NETWORK`, `SANDBOX_DOCKER_EXTRA_HOSTS`, `SANDBOX_DOCKER_RUNTIME`, `SANDBOX_MEMORY_MB`, `SANDBOX_CPUS` | Docker provider settings; set `SANDBOX_DOCKER_RUNTIME=runsc` for gVisor |
+| `DOCKER_HOST` (`tcp://…`) or `DOCKER_SOCKET` | Docker API: a socket proxy (recommended) or the socket path |
+| `SANDBOX_DOCKER_INSTANCE`, `SANDBOX_DOCKER_NETWORK`, `SANDBOX_DOCKER_EXTRA_HOSTS` | Resource names and the network sandboxes join |
+| `SANDBOX_DOCKER_RUNTIME` | OCI runtime, e.g. `runsc` for gVisor |
+| `SANDBOX_MEMORY_MB`, `SANDBOX_CPUS`, `SANDBOX_PIDS_LIMIT` | Per-sandbox limits; default `4096`, `2`, `1024`, negative removes the limit |
+| `SANDBOX_WRITABLE_ROOTFS` | `true` for images that must write outside `/data` and `/tmp` |
 
 Put runtime-private skills, MCP servers and CLI settings under
 [`home/`](home/README.md).
 
 ## Security notes
 
+Every sandbox container runs as a non-root user with all capabilities
+dropped, `no-new-privileges`, a read-only root filesystem (writable `/data`
+volume and a 1 GB `/tmp` tmpfs), and memory, CPU and process limits. HOME is
+`/data/home`; files under `home/` are copied into it at every start. A change
+to any of these settings, the network or the environment replaces a
+sandbox's container on its next start and keeps its volume.
+
+The compose stack adds two network boundaries:
+
+- **Docker API proxy.** The broker reaches Docker only through
+  `tecnativa/docker-socket-proxy`, which allows containers, volumes and image
+  pulls and refuses exec, build, info and everything else. It cannot inspect
+  request bodies, so a compromised broker could still ask for a privileged
+  container: treat the broker as trusted, or run it against rootless Docker.
+- **Egress allowlist.** Sandboxes sit on an `internal` network with no route
+  out. They reach the broker directly and everything else through the
+  `egress` proxy, which allows only the domains in `SANDBOX_EGRESS_ALLOW`
+  (and their subdomains) and only port 443 for HTTPS. Add your LLM gateway
+  when you set `ANTHROPIC_BASE_URL`. Git over SSH is not available; use
+  HTTPS remotes.
+
+Also:
+
 - The broker's PAT never enters a sandbox. A sandbox gets a broker-local
   credential that can only act on that sandbox's own tasks. The agent can read
   this credential because it runs as the same user as the daemon.
 - The journal holds claim payloads (with task tokens) and sandbox
   credentials. Keep `SANDBOX_BROKER_STATE_DIR` private.
-- Restrict sandbox egress to the broker, git hosts and the LLM gateway.
 
 ## Verify
 

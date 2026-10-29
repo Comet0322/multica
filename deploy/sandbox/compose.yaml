@@ -72,6 +72,30 @@ services:
     entrypoint: ["true"]
     restart: "no"
 
+  # The broker's only access to Docker: containers, volumes and image pulls.
+  # exec, build, swarm, info and the rest of the API are refused.
+  docker-api:
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      VOLUMES: 1
+      IMAGES: 1
+      POST: 1
+    networks: [docker-api]
+
+  # Sandboxes have no route out except this allowlisting proxy.
+  egress:
+    image: multica-sandbox-egress:compose
+    build:
+      context: egress
+    restart: unless-stopped
+    environment:
+      SANDBOX_EGRESS_ALLOW: ${SANDBOX_EGRESS_ALLOW:-anthropic.com,claude.ai,github.com,githubusercontent.com,registry.npmjs.org}
+    networks: [default, sandbox]
+
   broker:
     image: multica-sandbox-broker:compose
     build:
@@ -82,14 +106,15 @@ services:
         condition: service_started
       sandbox-image:
         condition: service_completed_successfully
+      docker-api:
+        condition: service_started
     restart: unless-stopped
     volumes:
-      # Starting sandboxes requires the Docker socket: treat the broker as
-      # having root on this host.
-      - /var/run/docker.sock:/var/run/docker.sock
       - broker-state:/state
+    networks: [default, sandbox, docker-api]
     environment:
       MULTICA_SERVER_URL: http://backend:8080
+      DOCKER_HOST: tcp://docker-api:2375
       SANDBOX_BOOTSTRAP_EMAIL: ${SANDBOX_BOOTSTRAP_EMAIL:-admin@localhost}
       SANDBOX_BOOTSTRAP_CODE: "888888"
       SANDBOX_BROKER_STATE_DIR: /state
@@ -99,10 +124,21 @@ services:
       SANDBOX_IMAGE: multica-sandbox:compose-${SANDBOX_AGENT:-fake}
       SANDBOX_PROVIDERS: claude
       SANDBOX_DOCKER_INSTANCE: compose
-      SANDBOX_DOCKER_NETWORK: multica-sandbox-net
+      SANDBOX_DOCKER_NETWORK: multica-sandbox-internal
       SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-issue}
       SANDBOX_IDLE_TIMEOUT: ${SANDBOX_IDLE_TIMEOUT:-2m}
       SANDBOX_CLEANUP_GRACE: ${SANDBOX_CLEANUP_GRACE:-1m}
+      SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-4096}
+      SANDBOX_CPUS: ${SANDBOX_CPUS:-2}
+      SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-1024}
+      # Everything but the broker goes through the egress proxy.
+      SANDBOX_ENV_HTTPS_PROXY: http://egress:3128
+      SANDBOX_ENV_HTTP_PROXY: http://egress:3128
+      SANDBOX_ENV_https_proxy: http://egress:3128
+      SANDBOX_ENV_http_proxy: http://egress:3128
+      SANDBOX_ENV_NO_PROXY: broker,localhost,127.0.0.1
+      SANDBOX_ENV_no_proxy: broker,localhost,127.0.0.1
+      SANDBOX_ENV_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
       # Claude Code credentials; set one in deploy/sandbox/.env (git-ignored).
       SANDBOX_ENV_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SANDBOX_ENV_ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
@@ -111,8 +147,13 @@ services:
 
 networks:
   default:
-    # Fixed so the broker can attach sandboxes to it.
     name: multica-sandbox-net
+  # Fixed name so the broker can attach sandboxes; internal: no route out.
+  sandbox:
+    name: multica-sandbox-internal
+    internal: true
+  docker-api:
+    internal: true
 
 volumes:
   pgdata:

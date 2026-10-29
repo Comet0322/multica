@@ -1,4 +1,5 @@
-Files here are copied into the sandbox user's home directory (`/home/node`).
+Files here are copied into the agent's home directory (`/data/home`, on the
+sandbox volume) every time a sandbox starts, replacing earlier copies.
 Put runtime-private agent configuration here, for example:
 
 - `.claude/skills/<skill>/SKILL.md`: Claude Code skills

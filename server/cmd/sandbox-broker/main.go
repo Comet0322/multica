@@ -110,14 +110,23 @@ func load(getenv func(string) string, environ []string) (sandboxbroker.Config, s
 		if instance == "" {
 			instance = "default"
 		}
+		// DOCKER_HOST=tcp://… points at a socket proxy that exposes only the
+		// API groups the provider uses.
+		baseURL := ""
+		if host, ok := strings.CutPrefix(getenv("DOCKER_HOST"), "tcp://"); ok {
+			baseURL = "http://" + host
+		}
 		d, err := sandboxprovider.NewDocker(sandboxprovider.DockerConfig{
-			Instance:   instance,
-			SocketPath: getenv("DOCKER_SOCKET"),
-			Network:    getenv("SANDBOX_DOCKER_NETWORK"),
-			ExtraHosts: list("SANDBOX_DOCKER_EXTRA_HOSTS"),
-			Runtime:    getenv("SANDBOX_DOCKER_RUNTIME"),
-			MemoryMB:   int64(number("SANDBOX_MEMORY_MB")),
-			CPUs:       number("SANDBOX_CPUS"),
+			Instance:       instance,
+			SocketPath:     getenv("DOCKER_SOCKET"),
+			BaseURL:        baseURL,
+			Network:        getenv("SANDBOX_DOCKER_NETWORK"),
+			ExtraHosts:     list("SANDBOX_DOCKER_EXTRA_HOSTS"),
+			Runtime:        getenv("SANDBOX_DOCKER_RUNTIME"),
+			MemoryMB:       int64(number("SANDBOX_MEMORY_MB")),
+			CPUs:           number("SANDBOX_CPUS"),
+			PidsLimit:      int64(number("SANDBOX_PIDS_LIMIT")),
+			WritableRootfs: getenv("SANDBOX_WRITABLE_ROOTFS") == "true",
 		})
 		if err != nil {
 			errs = append(errs, err.Error())

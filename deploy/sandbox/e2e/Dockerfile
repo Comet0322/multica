@@ -3,10 +3,9 @@ FROM node:22-slim
 COPY multica /usr/local/bin/multica
 COPY fake-claude /usr/local/bin/claude
 COPY entrypoint.sh /usr/local/bin/multica-sandbox-entrypoint
-COPY --chown=node:node skill/ /home/node/
+COPY skill/ /etc/multica-sandbox/home/
 # A fresh named volume inherits this ownership.
 RUN mkdir -p /data && chown node:node /data
 USER node
-ENV HOME=/home/node
 VOLUME /data
 ENTRYPOINT ["/usr/local/bin/multica-sandbox-entrypoint"]

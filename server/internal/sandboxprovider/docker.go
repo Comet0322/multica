@@ -3,6 +3,8 @@ package sandboxprovider
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,12 +18,21 @@ import (
 )
 
 const (
-	dockerAPIVersion   = "v1.41"
-	labelManaged       = "ai.multica.sandbox"
-	labelInstance      = "ai.multica.sandbox.instance"
-	labelKey           = "ai.multica.sandbox.key"
+	dockerAPIVersion = "v1.41"
+	labelManaged     = "ai.multica.sandbox"
+	labelInstance    = "ai.multica.sandbox.instance"
+	labelKey         = "ai.multica.sandbox.key"
+	// labelSpec fingerprints the container spec so a config change (network,
+	// limits, security options) replaces the compute on its next start.
+	labelSpec          = "ai.multica.sandbox.spec"
 	defaultVolumeMount = "/data"
 	dockerStopSeconds  = 20
+
+	defaultMemoryMB  = 4096
+	defaultCPUs      = 2
+	defaultPidsLimit = 1024
+	// The root filesystem is read-only; scratch space lives here instead.
+	tmpfsOptions = "rw,exec,nosuid,nodev,size=1g"
 )
 
 // DockerConfig talks to the Docker Engine API directly so the broker needs
@@ -40,9 +51,15 @@ type DockerConfig struct {
 	Network     string
 	ExtraHosts  []string
 	// Runtime selects an OCI runtime such as "runsc" (gVisor).
-	Runtime  string
-	MemoryMB int64
-	CPUs     float64
+	Runtime string
+	// MemoryMB, CPUs and PidsLimit default to 4096, 2 and 1024; a negative
+	// value removes the limit.
+	MemoryMB  int64
+	CPUs      float64
+	PidsLimit int64
+	// WritableRootfs turns off the read-only root filesystem for images that
+	// must write outside the volume and /tmp.
+	WritableRootfs bool
 }
 
 type Docker struct {
@@ -57,6 +74,15 @@ func NewDocker(cfg DockerConfig) (*Docker, error) {
 	}
 	if cfg.VolumeMount == "" {
 		cfg.VolumeMount = defaultVolumeMount
+	}
+	if cfg.MemoryMB == 0 {
+		cfg.MemoryMB = defaultMemoryMB
+	}
+	if cfg.CPUs == 0 {
+		cfg.CPUs = defaultCPUs
+	}
+	if cfg.PidsLimit == 0 {
+		cfg.PidsLimit = defaultPidsLimit
 	}
 	d := &Docker{cfg: cfg, base: strings.TrimRight(cfg.BaseURL, "/"), client: cfg.HTTPClient}
 	if d.base == "" {
@@ -104,14 +130,15 @@ func (d *Docker) Ensure(ctx context.Context, spec Spec) (Sandbox, error) {
 	if err != nil {
 		return Sandbox{}, err
 	}
-	if current != nil && current.Config.Image != spec.Image {
+	labels, body := d.containerBody(spec)
+	if current != nil && (current.Config.Image != spec.Image || current.Config.Labels[labelSpec] != labels[labelSpec]) {
 		if err := d.removeContainer(ctx, spec.Key); err != nil {
 			return Sandbox{}, err
 		}
 		current = nil
 	}
 	if current == nil {
-		if err := d.create(ctx, spec); err != nil {
+		if err := d.create(ctx, spec.Key, labels, body); err != nil {
 			return Sandbox{}, err
 		}
 	}
@@ -123,7 +150,7 @@ func (d *Docker) Ensure(ctx context.Context, spec Spec) (Sandbox, error) {
 	return d.Get(ctx, spec.Key)
 }
 
-func (d *Docker) create(ctx context.Context, spec Spec) error {
+func (d *Docker) containerBody(spec Spec) (map[string]string, map[string]any) {
 	name := d.name(spec.Key)
 	labels := map[string]string{}
 	for k, v := range spec.Labels {
@@ -132,17 +159,20 @@ func (d *Docker) create(ctx context.Context, spec Spec) error {
 	labels[labelManaged] = "1"
 	labels[labelInstance] = d.cfg.Instance
 	labels[labelKey] = spec.Key
-	if err := d.do(ctx, http.MethodPost, "/volumes/create", map[string]any{"Name": name, "Labels": labels}, nil, http.StatusCreated, http.StatusOK); err != nil {
-		return fmt.Errorf("create sandbox volume: %w", err)
-	}
 	env := make([]string, 0, len(spec.Env))
 	for k, v := range spec.Env {
 		env = append(env, k+"="+v)
 	}
 	sort.Strings(env)
+	// Agents run untrusted code: no capabilities, no privilege escalation
+	// through setuid binaries, and writes only to the volume and /tmp.
 	host := map[string]any{
-		"Mounts":        []map[string]any{{"Type": "volume", "Source": name, "Target": d.cfg.VolumeMount}},
-		"RestartPolicy": map[string]any{"Name": "no"},
+		"Mounts":         []map[string]any{{"Type": "volume", "Source": name, "Target": d.cfg.VolumeMount}},
+		"RestartPolicy":  map[string]any{"Name": "no"},
+		"CapDrop":        []string{"ALL"},
+		"SecurityOpt":    []string{"no-new-privileges:true"},
+		"ReadonlyRootfs": !d.cfg.WritableRootfs,
+		"Tmpfs":          map[string]string{"/tmp": tmpfsOptions},
 	}
 	if d.cfg.Network != "" {
 		host["NetworkMode"] = d.cfg.Network
@@ -159,12 +189,31 @@ func (d *Docker) create(ctx context.Context, spec Spec) error {
 	if d.cfg.CPUs > 0 {
 		host["NanoCpus"] = int64(d.cfg.CPUs * 1e9)
 	}
-	body := map[string]any{"Image": spec.Image, "Env": env, "Labels": labels, "HostConfig": host}
+	if d.cfg.PidsLimit > 0 {
+		host["PidsLimit"] = d.cfg.PidsLimit
+	}
+	fingerprint, _ := json.Marshal(map[string]any{"Image": spec.Image, "Env": env, "HostConfig": host})
+	sum := sha256.Sum256(fingerprint)
+	labels[labelSpec] = hex.EncodeToString(sum[:16])
+	return labels, map[string]any{"Image": spec.Image, "Env": env, "Labels": labels, "HostConfig": host}
+}
+
+func (d *Docker) create(ctx context.Context, key string, labels map[string]string, body map[string]any) error {
+	name := d.name(key)
+	volumeLabels := map[string]string{}
+	for k, v := range labels {
+		if k != labelSpec {
+			volumeLabels[k] = v
+		}
+	}
+	if err := d.do(ctx, http.MethodPost, "/volumes/create", map[string]any{"Name": name, "Labels": volumeLabels}, nil, http.StatusCreated, http.StatusOK); err != nil {
+		return fmt.Errorf("create sandbox volume: %w", err)
+	}
 	path := "/containers/create?name=" + url.QueryEscape(name)
 	err := d.do(ctx, http.MethodPost, path, body, nil, http.StatusCreated)
 	var apiErr *dockerError
 	if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
-		if err := d.pull(ctx, spec.Image); err != nil {
+		if err := d.pull(ctx, body["Image"].(string)); err != nil {
 			return err
 		}
 		err = d.do(ctx, http.MethodPost, path, body, nil, http.StatusCreated)
