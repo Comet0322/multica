@@ -132,6 +132,16 @@ func load(getenv func(string) string, environ []string) (sandboxbroker.Config, s
 			errs = append(errs, err.Error())
 		}
 		provider = d
+	case "http":
+		// A separately operated sandbox service; see deploy/sandbox/CONTRACT.md.
+		h, err := sandboxprovider.NewHTTP(sandboxprovider.HTTPConfig{
+			BaseURL: getenv("SANDBOX_SERVICE_URL"),
+			Token:   getenv("SANDBOX_SERVICE_TOKEN"),
+		})
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
+		provider = h
 	default:
 		errs = append(errs, fmt.Sprintf("unknown SANDBOX_PROVIDER %q", kind))
 	}

@@ -39,6 +39,23 @@ Multica server ──/api/daemon/*── sandbox-broker ──provider API──
   for `SANDBOX_VOLUME_TTL` is deleted regardless of mode, and a sandbox with
   an unfinished task is never deleted.
 
+## Operating sandboxes separately
+
+When another team runs the sandboxes, the broker talks to their service over
+the v1 HTTP API in [CONTRACT.md](CONTRACT.md) (`SANDBOX_PROVIDER=http`). The
+contract also covers the runtime, network, image and operations agreements.
+Their service is accepted when `go run ./cmd/sandbox-conformance` passes
+against it with the probe image from [`conformance/`](conformance/). The
+suite also runs against this repository's Docker provider:
+
+```bash
+docker build -t multica-sandbox-probe deploy/sandbox/conformance
+```
+
+```bash
+cd server && SANDBOX_CONFORMANCE_PROBE_IMAGE=multica-sandbox-probe go test ./internal/sandboxprovider/conformance -run Docker -v
+```
+
 ## Try it locally
 
 [`compose.yaml`](compose.yaml) runs the whole stack from this checkout: its
@@ -117,7 +134,8 @@ demo); in production pass `MULTICA_TOKEN` and `MULTICA_WORKSPACE_ID`.
 | `SANDBOX_ISOLATION` | `issue` (default), `task` or `agent` |
 | `SANDBOX_CLEANUP_GRACE`, `SANDBOX_VOLUME_TTL` | Default `1h` and `168h` |
 | `SANDBOX_ENV_<NAME>` | Passed to every sandbox as `<NAME>`, e.g. LLM gateway settings |
-| `SANDBOX_PROVIDER` | `docker` (default) |
+| `SANDBOX_PROVIDER` | `docker` (default) or `http` for a separately operated sandbox service |
+| `SANDBOX_SERVICE_URL`, `SANDBOX_SERVICE_TOKEN` | The sandbox service with `SANDBOX_PROVIDER=http`; see [CONTRACT.md](CONTRACT.md) |
 | `DOCKER_HOST` (`tcp://…`) or `DOCKER_SOCKET` | Docker API: a socket proxy (recommended) or the socket path |
 | `SANDBOX_DOCKER_INSTANCE`, `SANDBOX_DOCKER_NETWORK`, `SANDBOX_DOCKER_EXTRA_HOSTS` | Resource names and the network sandboxes join |
 | `SANDBOX_DOCKER_RUNTIME` | OCI runtime, e.g. `runsc` for gVisor |
