@@ -18,7 +18,8 @@ import (
 )
 
 // sandboxEnvPrefix marks broker environment variables forwarded to every
-// sandbox with the prefix removed, e.g. SANDBOX_ENV_ANTHROPIC_BASE_URL.
+// sandbox with the prefix removed, e.g. SANDBOX_ENV_ANTHROPIC_BASE_URL. Empty
+// values are skipped so an unset compose variable does not override defaults.
 const sandboxEnvPrefix = "SANDBOX_ENV_"
 
 func main() {
@@ -97,7 +98,7 @@ func load(getenv func(string) string, environ []string) (sandboxbroker.Config, s
 	}
 	for _, kv := range environ {
 		name, value, _ := strings.Cut(kv, "=")
-		if key, ok := strings.CutPrefix(name, sandboxEnvPrefix); ok && key != "" {
+		if key, ok := strings.CutPrefix(name, sandboxEnvPrefix); ok && key != "" && value != "" {
 			cfg.SandboxEnv[key] = value
 		}
 	}

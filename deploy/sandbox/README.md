@@ -39,6 +39,50 @@ Multica server ──/api/daemon/*── sandbox-broker ──provider API──
   for `SANDBOX_VOLUME_TTL` is deleted regardless of mode, and a sandbox with
   an unfinished task is never deleted.
 
+## Try it locally
+
+[`compose.yaml`](compose.yaml) runs the whole stack from this checkout: its
+own Postgres, backend, web, the broker and Docker sandboxes. It uses its own
+project name, network and ports, so it does not touch `make up` environments.
+
+```bash
+docker compose -f deploy/sandbox/compose.yaml up -d --build
+```
+
+Open http://localhost:3310 and sign in as `admin@localhost` with code
+`888888`. On first start the broker signs in as that user, creates the
+`Sandbox Demo` workspace and a PAT, and registers the **Managed Sandbox**
+runtime. Create an agent on that runtime and assign it an issue. Each issue
+gets its own `multica-sbx-compose-issue-…` container (`docker ps`), which
+stops after 2 minutes idle and is deleted 1 minute after the issue is done.
+
+By default the sandbox runs a fake Claude Code that comments on the issue and
+names the hidden image skill it can see, so no LLM credentials are needed. For
+real Claude Code:
+
+```bash
+SANDBOX_AGENT=agents ANTHROPIC_API_KEY=sk-... docker compose -f deploy/sandbox/compose.yaml up -d --build
+```
+
+`SANDBOX_ISOLATION`, `SANDBOX_IDLE_TIMEOUT`, `SANDBOX_CLEANUP_GRACE` and
+`ANTHROPIC_BASE_URL` are also read from the environment. Watch the broker with
+`docker compose -f deploy/sandbox/compose.yaml logs -f broker`.
+
+To remove everything, delete the sandboxes first (the broker creates them
+outside the compose project), then the stack:
+
+```bash
+docker ps -aq --filter label=ai.multica.sandbox.instance=compose | xargs -r docker rm -f
+```
+
+```bash
+docker volume ls -q --filter label=ai.multica.sandbox.instance=compose | xargs -r docker volume rm
+```
+
+```bash
+docker compose -f deploy/sandbox/compose.yaml down -v
+```
+
 ## Build and run
 
 Build the image and the broker from the same commit:
@@ -48,8 +92,12 @@ docker build -f deploy/sandbox/Dockerfile -t registry.example/multica-sandbox:1 
 ```
 
 ```bash
-cd server && go build -o bin/sandbox-broker ./cmd/sandbox-broker
+docker build -f deploy/sandbox/Dockerfile.broker -t registry.example/multica-sandbox-broker:1 .
 ```
+
+The broker image's entrypoint only bootstraps credentials when
+`MULTICA_TOKEN` is unset and `SANDBOX_BOOTSTRAP_EMAIL` is set (the compose
+demo); in production pass `MULTICA_TOKEN` and `MULTICA_WORKSPACE_ID`.
 
 | Variable | Meaning |
 | --- | --- |

@@ -1,0 +1,115 @@
+# Complete local stack for trying the managed sandbox runtime by hand: Multica
+# backend and web, the sandbox broker, and Docker sandboxes. Run from the
+# repository root:
+#
+#   docker compose -f deploy/sandbox/compose.yaml up -d --build
+#
+# Sign in at http://localhost:3310 as admin@localhost with code 888888.
+# SANDBOX_AGENT=agents (with ANTHROPIC_API_KEY) runs real Claude Code instead
+# of the fake agent. `down -v` removes everything except agent sandboxes;
+# see README.md for those.
+name: multica-sandbox
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: multica
+      POSTGRES_USER: multica
+      POSTGRES_PASSWORD: multica
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multica -d multica"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: multica-backend:sandbox-compose
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SANDBOX_COMPOSE_API_PORT:-8310}:8080"
+    environment:
+      DATABASE_URL: postgres://multica:multica@postgres:5432/multica?sslmode=disable
+      PORT: "8080"
+      APP_ENV: development
+      JWT_SECRET: sandbox-compose-local-only
+      MULTICA_DEV_VERIFICATION_CODE: "888888"
+      FRONTEND_ORIGIN: http://localhost:${SANDBOX_COMPOSE_WEB_PORT:-3310}
+      MULTICA_APP_URL: http://localhost:${SANDBOX_COMPOSE_WEB_PORT:-3310}
+      MULTICA_PUBLIC_URL: http://localhost:${SANDBOX_COMPOSE_API_PORT:-8310}
+    volumes:
+      - uploads:/app/data/uploads
+
+  frontend:
+    image: multica-web:sandbox-compose
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:${SANDBOX_COMPOSE_WEB_PORT:-3310}:3000"
+    environment:
+      HOSTNAME: "0.0.0.0"
+      REMOTE_API_URL: http://backend:8080
+
+  # Builds the sandbox image only; the broker starts sandboxes from it.
+  sandbox-image:
+    image: multica-sandbox:compose
+    build:
+      context: ../..
+      dockerfile: deploy/sandbox/Dockerfile
+      target: ${SANDBOX_AGENT:-fake}
+    entrypoint: ["true"]
+    restart: "no"
+
+  broker:
+    image: multica-sandbox-broker:compose
+    build:
+      context: ../..
+      dockerfile: deploy/sandbox/Dockerfile.broker
+    depends_on:
+      backend:
+        condition: service_started
+      sandbox-image:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    volumes:
+      # Starting sandboxes requires the Docker socket: treat the broker as
+      # having root on this host.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - broker-state:/state
+    environment:
+      MULTICA_SERVER_URL: http://backend:8080
+      SANDBOX_BOOTSTRAP_EMAIL: ${SANDBOX_BOOTSTRAP_EMAIL:-admin@localhost}
+      SANDBOX_BOOTSTRAP_CODE: "888888"
+      SANDBOX_BROKER_STATE_DIR: /state
+      SANDBOX_BROKER_NAME: Managed Sandbox
+      SANDBOX_BROKER_LISTEN: 0.0.0.0:8790
+      SANDBOX_BROKER_URL: http://broker:8790
+      SANDBOX_IMAGE: multica-sandbox:compose
+      SANDBOX_PROVIDERS: claude
+      SANDBOX_DOCKER_INSTANCE: compose
+      SANDBOX_DOCKER_NETWORK: multica-sandbox-net
+      SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-issue}
+      SANDBOX_IDLE_TIMEOUT: ${SANDBOX_IDLE_TIMEOUT:-2m}
+      SANDBOX_CLEANUP_GRACE: ${SANDBOX_CLEANUP_GRACE:-1m}
+      SANDBOX_ENV_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SANDBOX_ENV_ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+
+networks:
+  default:
+    # Fixed so the broker can attach sandboxes to it.
+    name: multica-sandbox-net
+
+volumes:
+  pgdata:
+  uploads:
+  broker-state:
