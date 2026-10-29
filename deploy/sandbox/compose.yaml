@@ -5,8 +5,8 @@
 #   docker compose -f deploy/sandbox/compose.yaml up -d --build
 #
 # Sign in at http://localhost:3310 as admin@localhost with code 888888.
-# SANDBOX_AGENT=agents (with ANTHROPIC_API_KEY) runs real Claude Code instead
-# of the fake agent. `down -v` removes everything except agent sandboxes;
+# SANDBOX_AGENT=agents runs real Claude Code instead of the fake agent, with a
+# credential from deploy/sandbox/.env. `down -v` removes everything except agent sandboxes;
 # see README.md for those.
 name: multica-sandbox
 
@@ -62,7 +62,9 @@ services:
 
   # Builds the sandbox image only; the broker starts sandboxes from it.
   sandbox-image:
-    image: multica-sandbox:compose
+    # Tagged per variant so switching SANDBOX_AGENT is an image change the
+    # broker rolls sandboxes over for.
+    image: multica-sandbox:compose-${SANDBOX_AGENT:-fake}
     build:
       context: ../..
       dockerfile: deploy/sandbox/Dockerfile
@@ -94,14 +96,17 @@ services:
       SANDBOX_BROKER_NAME: Managed Sandbox
       SANDBOX_BROKER_LISTEN: 0.0.0.0:8790
       SANDBOX_BROKER_URL: http://broker:8790
-      SANDBOX_IMAGE: multica-sandbox:compose
+      SANDBOX_IMAGE: multica-sandbox:compose-${SANDBOX_AGENT:-fake}
       SANDBOX_PROVIDERS: claude
       SANDBOX_DOCKER_INSTANCE: compose
       SANDBOX_DOCKER_NETWORK: multica-sandbox-net
       SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-issue}
       SANDBOX_IDLE_TIMEOUT: ${SANDBOX_IDLE_TIMEOUT:-2m}
       SANDBOX_CLEANUP_GRACE: ${SANDBOX_CLEANUP_GRACE:-1m}
+      # Claude Code credentials; set one in deploy/sandbox/.env (git-ignored).
       SANDBOX_ENV_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SANDBOX_ENV_ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      SANDBOX_ENV_CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       SANDBOX_ENV_ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
 
 networks:

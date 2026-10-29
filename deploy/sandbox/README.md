@@ -58,14 +58,18 @@ stops after 2 minutes idle and is deleted 1 minute after the issue is done.
 
 By default the sandbox runs a fake Claude Code that comments on the issue and
 names the hidden image skill it can see, so no LLM credentials are needed. For
-real Claude Code:
+real Claude Code, put one credential in `deploy/sandbox/.env` (git-ignored):
+`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), or
+`ANTHROPIC_BASE_URL` with `ANTHROPIC_AUTH_TOKEN` for a gateway. Then:
 
 ```bash
-SANDBOX_AGENT=agents ANTHROPIC_API_KEY=sk-... docker compose -f deploy/sandbox/compose.yaml up -d --build
+SANDBOX_AGENT=agents docker compose -f deploy/sandbox/compose.yaml up -d --build
 ```
 
-`SANDBOX_ISOLATION`, `SANDBOX_IDLE_TIMEOUT`, `SANDBOX_CLEANUP_GRACE` and
-`ANTHROPIC_BASE_URL` are also read from the environment. Watch the broker with
+The image ships the example hidden skill `sandbox-environment`; ask an agent
+which environment it runs in to see it used. `SANDBOX_ISOLATION`,
+`SANDBOX_IDLE_TIMEOUT` and `SANDBOX_CLEANUP_GRACE` are also read from the
+environment. Watch the broker with
 `docker compose -f deploy/sandbox/compose.yaml logs -f broker`.
 
 To remove everything, delete the sandboxes first (the broker creates them
