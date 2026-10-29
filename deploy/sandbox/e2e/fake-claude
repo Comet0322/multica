@@ -1,0 +1,23 @@
+#!/bin/sh
+# Stand-in for Claude Code in the sandbox end-to-end test. It speaks just
+# enough stream-json for the daemon and proves the agent can reach the Multica
+# API with its task token through the broker.
+case "${1:-}" in
+--version | -v)
+	echo "2.1.0 (Claude Code)"
+	exit 0
+	;;
+esac
+prompt="$(head -n 1)"
+issue="$(printf '%s' "$prompt" | grep -oE 'assigned issue ID is: [0-9a-f-]{36}' | head -n 1 | sed 's/.* //')"
+note="no issue ID in prompt"
+if [ -n "$issue" ]; then
+	if multica issue comment add "$issue" --content "sandbox-e2e: agent ran in $(hostname) with skill $(ls "$HOME/.claude/skills" 2>/dev/null | tr '\n' ' ')" >/tmp/comment.log 2>&1; then
+		note="commented on $issue"
+	else
+		note="comment failed: $(tail -n 1 /tmp/comment.log)"
+	fi
+fi
+sid="sandbox-e2e-$$"
+printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
+printf '{"type":"result","subtype":"success","is_error":false,"result":"sandbox-e2e done: %s","session_id":"%s"}\n' "$note" "$sid"
