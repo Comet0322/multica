@@ -1,0 +1,23 @@
+# Build from the repository root:
+#   docker build -f deploy/sandbox/Dockerfile.broker -t multica-sandbox-broker:<tag> .
+ARG GO_IMAGE=golang:1.27.3-alpine
+
+FROM ${GO_IMAGE} AS builder
+WORKDIR /src/server
+COPY server/go.mod server/go.sum ./
+RUN go mod download
+COPY server/ ./
+RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /out/sandbox-broker ./cmd/sandbox-broker
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates curl jq \
+	&& adduser -D -u 65532 broker \
+	&& mkdir -p /state && chown broker:broker /state
+COPY --from=builder /out/sandbox-broker /usr/local/bin/sandbox-broker
+COPY deploy/sandbox/compose/broker-entrypoint.sh /usr/local/bin/broker-entrypoint
+# Non-root: the broker reaches Docker through a socket proxy over TCP. To use
+# the socket directly instead, run with the socket's group (--group-add).
+USER broker
+# Assumes the default SANDBOX_BROKER_LISTEN port.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD ["curl", "-fsS", "http://127.0.0.1:8790/healthz"]
+ENTRYPOINT ["/usr/local/bin/broker-entrypoint"]

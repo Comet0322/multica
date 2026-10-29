@@ -1,0 +1,2 @@
+# Local credentials for compose.yaml; never commit.
+.env
