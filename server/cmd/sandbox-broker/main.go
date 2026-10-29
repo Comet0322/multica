@@ -89,6 +89,9 @@ func load(getenv func(string) string, environ []string) (sandboxbroker.Config, s
 		MaxConcurrency: int(number("SANDBOX_MAX_CONCURRENCY")),
 		IdleTimeout:    duration("SANDBOX_IDLE_TIMEOUT"),
 		StartTimeout:   duration("SANDBOX_START_TIMEOUT"),
+		Isolation:      sandboxbroker.Isolation(getenv("SANDBOX_ISOLATION")),
+		CleanupGrace:   duration("SANDBOX_CLEANUP_GRACE"),
+		VolumeTTL:      duration("SANDBOX_VOLUME_TTL"),
 		PollInterval:   duration("SANDBOX_BROKER_POLL_INTERVAL"),
 		SandboxEnv:     map[string]string{},
 	}

@@ -24,9 +24,20 @@ Multica server ──/api/daemon/*── sandbox-broker ──provider API──
 - The first time, and after every image change, the broker starts a `control`
   sandbox to learn the daemon's registration and capability headers, then
   replays them upstream. The control sandbox also answers model-list requests.
-- Each agent gets its own sandbox and volume, so its next task reuses
-  workdirs and agent sessions. Compute stops after `SANDBOX_IDLE_TIMEOUT`
-  without tasks, and the volume is kept.
+- `SANDBOX_ISOLATION` decides which tasks share a sandbox, and with it a
+  filesystem, processes and agent session store:
+
+  | Value | Sandbox per | Resume | Deleted when |
+  | --- | --- | --- | --- |
+  | `issue` (default) | agent and issue, chat session or autopilot run | Within that issue or chat | It is done, cancelled, archived or deleted, after `SANDBOX_CLEANUP_GRACE` |
+  | `task` | task | None | The task ends |
+  | `agent` | agent | Across all of the agent's tasks | Unused for `SANDBOX_VOLUME_TTL` |
+
+  Tasks without an issue, chat or autopilot run get their own sandbox in
+  `issue` mode. Compute stops after `SANDBOX_IDLE_TIMEOUT` without tasks and
+  the volume is kept until the rule above deletes both. Any sandbox unused
+  for `SANDBOX_VOLUME_TTL` is deleted regardless of mode, and a sandbox with
+  an unfinished task is never deleted.
 
 ## Build and run
 
@@ -51,6 +62,8 @@ cd server && go build -o bin/sandbox-broker ./cmd/sandbox-broker
 | `SANDBOX_PROVIDERS` | Comma-separated providers to expose, e.g. `claude` (default: all detected) |
 | `SANDBOX_MAX_CONCURRENCY` | Tasks in flight across sandboxes (default 4) |
 | `SANDBOX_IDLE_TIMEOUT`, `SANDBOX_START_TIMEOUT` | Default `10m` each |
+| `SANDBOX_ISOLATION` | `issue` (default), `task` or `agent` |
+| `SANDBOX_CLEANUP_GRACE`, `SANDBOX_VOLUME_TTL` | Default `1h` and `168h` |
 | `SANDBOX_ENV_<NAME>` | Passed to every sandbox as `<NAME>`, e.g. LLM gateway settings |
 | `SANDBOX_PROVIDER` | `docker` (default) |
 | `DOCKER_SOCKET`, `SANDBOX_DOCKER_INSTANCE`, `SANDBOX_DOCKER_NETWORK`, `SANDBOX_DOCKER_EXTRA_HOSTS`, `SANDBOX_DOCKER_RUNTIME`, `SANDBOX_MEMORY_MB`, `SANDBOX_CPUS` | Docker provider settings; set `SANDBOX_DOCKER_RUNTIME=runsc` for gVisor |
@@ -78,8 +91,9 @@ bash deploy/sandbox/e2e/run.sh
 The test starts a real broker and real Docker sandboxes, with a fake Claude
 Code. It checks that the runtime appears as `cloud`, that image skills are
 reported unsupported, that a task completes, that the agent reached Multica
-through the broker and saw the hidden skill, that idle sandboxes stop, and
-that the daemon called no endpoint the broker does not support. Rerun it
+through the broker and saw the hidden skill, that the idle issue sandbox
+stops and is deleted with its volume once the issue is done, and that the
+daemon called no endpoint the broker does not support. Rerun it
 whenever you merge a new upstream version.
 
 ## Not yet covered

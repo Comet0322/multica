@@ -46,6 +46,13 @@ type Config struct {
 	IdleTimeout time.Duration
 	// StartTimeout fails tasks whose sandbox never starts their run.
 	StartTimeout time.Duration
+	// Isolation decides which tasks share a sandbox; default IsolationIssue.
+	Isolation Isolation
+	// CleanupGrace is how long a finished issue, chat or autopilot run keeps
+	// its sandbox, in case it is reopened.
+	CleanupGrace time.Duration
+	// VolumeTTL deletes any sandbox, volume included, unused this long.
+	VolumeTTL time.Duration
 	// SandboxEnv is added to every sandbox, e.g. LLM gateway settings.
 	SandboxEnv map[string]string
 
@@ -86,6 +93,13 @@ func (c *Config) normalize() error {
 		sum := sha256.Sum256([]byte(c.MulticaURL + "\x00" + c.WorkspaceID))
 		c.BrokerID = "sandbox-broker-" + hex.EncodeToString(sum[:])[:24]
 	}
+	switch c.Isolation {
+	case "":
+		c.Isolation = IsolationIssue
+	case IsolationIssue, IsolationTask, IsolationAgent:
+	default:
+		return fmt.Errorf("isolation must be issue, task or agent")
+	}
 	if c.MaxConcurrency == 0 {
 		c.MaxConcurrency = 4
 	}
@@ -98,6 +112,8 @@ func (c *Config) normalize() error {
 	}{
 		{&c.IdleTimeout, 10 * time.Minute},
 		{&c.StartTimeout, 10 * time.Minute},
+		{&c.CleanupGrace, time.Hour},
+		{&c.VolumeTTL, 7 * 24 * time.Hour},
 		{&c.PollInterval, 3 * time.Second},
 		{&c.HeartbeatInterval, 15 * time.Second},
 		// The server's prepare lease lasts 45s.

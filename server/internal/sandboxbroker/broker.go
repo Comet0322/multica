@@ -182,6 +182,9 @@ func (b *Broker) Step(ctx context.Context) error {
 		b.expireControlRequests(ctx)
 	}
 	b.supervise(ctx)
+	if b.registered() {
+		b.cleanup(ctx)
+	}
 	return errors.Join(errs...)
 }
 
@@ -362,13 +365,6 @@ func (b *Broker) expireControlRequests(ctx context.Context) {
 	}
 }
 
-type claimedTaskRef struct {
-	ID          string `json:"id"`
-	AgentID     string `json:"agent_id"`
-	RuntimeID   string `json:"runtime_id"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
 func (b *Broker) claim(ctx context.Context) error {
 	b.mu.Lock()
 	capacity := b.cfg.MaxConcurrency - len(b.state.Tasks)
@@ -389,29 +385,21 @@ func (b *Broker) claim(ctx context.Context) error {
 			b.log.ErrorContext(ctx, "claimed task has no ID; it will be reclaimed by the server")
 			continue
 		}
-		key, err := sandboxKeyFor(ref.AgentID)
+		p, err := place(b.cfg.Isolation, ref)
 		if err != nil || !strings.EqualFold(ref.WorkspaceID, b.cfg.WorkspaceID) {
 			b.failTask(ctx, ref.ID, "the managed runtime cannot place this task in a sandbox")
 			continue
 		}
 		b.mu.Lock()
-		b.state.Tasks[ref.ID] = &task{ID: ref.ID, Key: key, RuntimeID: ref.RuntimeID, Claim: raw, State: taskQueued, ClaimedAt: b.now(), LeaseAt: b.now(), CheckedAt: b.now()}
+		b.state.Tasks[ref.ID] = &task{ID: ref.ID, Key: p.Key, RuntimeID: ref.RuntimeID, Claim: raw, State: taskQueued, ClaimedAt: b.now(), LeaseAt: b.now(), CheckedAt: b.now()}
+		sb := b.sandboxLocked(p.Key)
+		sb.AgentID, sb.ScopeKind, sb.ScopeID = p.AgentID, p.Kind, p.ScopeID
+		sb.LastUsed = b.now()
 		b.persistLocked()
 		b.mu.Unlock()
-		b.log.InfoContext(ctx, "claimed task for sandbox", "task_id", ref.ID, "sandbox", key)
+		b.log.InfoContext(ctx, "claimed task for sandbox", "task_id", ref.ID, "sandbox", p.Key, "scope", p.Kind)
 	}
 	return nil
-}
-
-// sandboxKeyFor gives each agent its own sandbox and volume, so an agent's
-// next task reuses its workdirs and agent sessions.
-func sandboxKeyFor(agentID string) (string, error) {
-	agentID = strings.ToLower(strings.TrimSpace(agentID))
-	key := "agent-" + agentID
-	if agentID == "" || !sandboxprovider.ValidKey(key) {
-		return "", fmt.Errorf("invalid agent ID")
-	}
-	return key, nil
 }
 
 // maintainTasks extends prepare leases until each sandbox daemon starts its
@@ -480,6 +468,9 @@ func (b *Broker) dropTask(id, why string) {
 		return
 	}
 	delete(b.state.Tasks, id)
+	if sb := b.state.Sandboxes[t.Key]; sb != nil {
+		sb.LastUsed = b.now()
+	}
 	b.persistLocked()
 	b.log.Info("released task", "task_id", id, "sandbox", t.Key, "reason", why)
 }
@@ -530,13 +521,7 @@ func (b *Broker) supervise(ctx context.Context) {
 
 func (b *Broker) ensureSandbox(ctx context.Context, key string) {
 	b.mu.Lock()
-	sb := b.state.Sandboxes[key]
-	if sb == nil {
-		sb = &sandboxState{Key: key, Token: newToken()}
-		b.state.Sandboxes[key] = sb
-		b.tokens[sb.Token] = key
-		b.persistLocked()
-	}
+	sb := b.sandboxLocked(key)
 	sb.IdleSince = time.Time{}
 	requested, wasRunning := sb.RequestedAt, sb.Running
 	b.mu.Unlock()
@@ -593,6 +578,19 @@ func (b *Broker) sandboxLost(ctx context.Context, key string, current sandboxpro
 	for _, id := range lost {
 		b.failTask(ctx, id, "the managed sandbox stopped while running this task ("+current.Reason+")")
 	}
+}
+
+// sandboxLocked returns the sandbox's state, creating it with a fresh
+// credential on first use.
+func (b *Broker) sandboxLocked(key string) *sandboxState {
+	sb := b.state.Sandboxes[key]
+	if sb == nil {
+		sb = &sandboxState{Key: key, Token: newToken()}
+		b.state.Sandboxes[key] = sb
+		b.tokens[sb.Token] = key
+		b.persistLocked()
+	}
+	return sb
 }
 
 func (b *Broker) hasStartedTask(key string) bool {

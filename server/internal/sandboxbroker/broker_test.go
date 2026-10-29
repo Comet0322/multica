@@ -22,6 +22,7 @@ const (
 	testAgent     = "6f1c2a51-0000-4000-8000-0000000000a1"
 	testRuntime   = "6f1c2a51-0000-4000-8000-0000000000r1"
 	testTask      = "6f1c2a51-0000-4000-8000-0000000000t1"
+	testIssue     = "6f1c2a51-0000-4000-8000-0000000000i1"
 	brokerToken   = "mul_broker"
 	image         = "registry.example/multica-sandbox:1"
 )
@@ -38,6 +39,10 @@ type fakeServer struct {
 	claims    []string
 	status    map[string]string
 	heartbeat map[string]any
+	// issueOf overrides the issue each claimed task belongs to.
+	issueOf map[string]string
+	// issues holds gc-check answers; a missing issue is "in_progress".
+	issues map[string]map[string]any
 }
 
 func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -63,10 +68,24 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/daemon/tasks/claim":
 		var tasks []json.RawMessage
 		for _, id := range f.claims {
-			tasks = append(tasks, json.RawMessage(`{"id":"`+id+`","agent_id":"`+testAgent+`","runtime_id":"`+testRuntime+`","workspace_id":"`+testWorkspace+`","auth_token":"mat_task"}`))
+			issue := testIssue
+			if v, ok := f.issueOf[id]; ok {
+				issue = v
+			}
+			tasks = append(tasks, json.RawMessage(`{"id":"`+id+`","agent_id":"`+testAgent+`","issue_id":"`+issue+`","runtime_id":"`+testRuntime+`","workspace_id":"`+testWorkspace+`","auth_token":"mat_task"}`))
 		}
 		f.claims = nil
 		writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks})
+	case strings.HasPrefix(r.URL.Path, "/api/daemon/issues/") && strings.HasSuffix(r.URL.Path, "/gc-check"):
+		issue, ok := f.issues[strings.Split(r.URL.Path, "/")[4]]
+		if !ok {
+			issue = map[string]any{"status": "in_progress", "updated_at": time.Now()}
+		}
+		if issue["status"] == "deleted" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, issue)
 	case strings.HasSuffix(r.URL.Path, "/status"):
 		status := f.status[strings.Split(r.URL.Path, "/")[4]]
 		if status == "" {
@@ -144,14 +163,18 @@ type harness struct {
 	api      http.Handler
 	clock    time.Time
 	dir      string
+	// isolation is applied by start; empty means the default.
+	isolation Isolation
 }
 
-func newHarness(t *testing.T) *harness {
+func newHarness(t *testing.T) *harness { return newHarnessWith(t, "") }
+
+func newHarnessWith(t *testing.T, isolation Isolation) *harness {
 	t.Helper()
-	server := &fakeServer{status: map[string]string{}}
+	server := &fakeServer{status: map[string]string{}, issueOf: map[string]string{}, issues: map[string]map[string]any{}}
 	upstreamSrv := httptest.NewServer(server)
 	t.Cleanup(upstreamSrv.Close)
-	h := &harness{t: t, server: server, provider: &fakeProvider{sandboxes: map[string]sandboxprovider.Sandbox{}}, clock: time.Unix(1_800_000_000, 0), dir: t.TempDir()}
+	h := &harness{t: t, server: server, provider: &fakeProvider{sandboxes: map[string]sandboxprovider.Sandbox{}}, clock: time.Unix(1_800_000_000, 0), dir: t.TempDir(), isolation: isolation}
 	h.start(upstreamSrv.URL)
 	return h
 }
@@ -161,7 +184,7 @@ func (h *harness) start(upstreamURL string) {
 	b, err := New(Config{
 		MulticaURL: upstreamURL, MulticaToken: brokerToken, WorkspaceID: testWorkspace,
 		SandboxURL: "http://broker.internal:8790", Image: image, Providers: []string{"claude"},
-		StateDir: h.dir, Name: "Managed",
+		StateDir: h.dir, Name: "Managed", Isolation: h.isolation,
 	}, h.provider, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		h.t.Fatal(err)
@@ -208,6 +231,11 @@ func (h *harness) do(method, path, token string, body any) *httptest.ResponseRec
 	rec := httptest.NewRecorder()
 	h.api.ServeHTTP(rec, req)
 	return rec
+}
+
+func issueKey(issue string) string {
+	p, _ := place(IsolationIssue, claimedTaskRef{AgentID: testAgent, IssueID: issue})
+	return p.Key
 }
 
 var sandboxRegistration = map[string]any{
@@ -283,7 +311,7 @@ func TestBootstrapReplaysSandboxIdentityAsCloudRuntime(t *testing.T) {
 	h.step()
 	second := maps.Clone(sandboxRegistration)
 	second["daemon_id"], second["device_name"] = "sandbox-agent", "other-host"
-	if rec := h.do(http.MethodPost, "/api/daemon/register", h.token("agent-"+testAgent), second); rec.Code != http.StatusOK {
+	if rec := h.do(http.MethodPost, "/api/daemon/register", h.token(issueKey(testIssue)), second); rec.Code != http.StatusOK {
 		t.Fatalf("second register: %d", rec.Code)
 	}
 	if n := len(h.server.find("/api/daemon/register")); n != 1 {
@@ -304,7 +332,7 @@ func TestTaskRunsInItsAgentSandbox(t *testing.T) {
 	h.registered()
 	h.server.claims = []string{testTask}
 	h.step()
-	key := "agent-" + testAgent
+	key := issueKey(testIssue)
 	if _, err := h.provider.Get(context.Background(), key); err != nil || h.provider.sandboxes[key].Status != sandboxprovider.StatusRunning {
 		t.Fatalf("agent sandbox not started: %+v", h.provider.sandboxes)
 	}
@@ -443,7 +471,7 @@ func TestLeaseAndRecovery(t *testing.T) {
 	h.registered()
 	h.server.claims = []string{testTask, "6f1c2a51-0000-4000-8000-0000000000t2"}
 	h.step()
-	key := "agent-" + testAgent
+	key := issueKey(testIssue)
 	token := h.token(key)
 
 	h.advance(h.broker.cfg.LeaseInterval)
@@ -497,7 +525,7 @@ func TestJournalSurvivesRestart(t *testing.T) {
 	h.registered()
 	h.server.claims = []string{testTask}
 	h.step()
-	key := "agent-" + testAgent
+	key := issueKey(testIssue)
 	token := h.token(key)
 
 	h.start(h.broker.cfg.MulticaURL)

@@ -75,7 +75,7 @@ MULTICA_SERVER_URL="$api" MULTICA_TOKEN="$pat" MULTICA_WORKSPACE_ID="$workspace"
 	SANDBOX_BROKER_LISTEN="0.0.0.0:$broker_port" SANDBOX_BROKER_URL="http://host.docker.internal:$broker_port" \
 	SANDBOX_DOCKER_EXTRA_HOSTS="host.docker.internal:host-gateway" SANDBOX_DOCKER_INSTANCE="$instance" \
 	SANDBOX_IMAGE="$image" SANDBOX_PROVIDERS=claude SANDBOX_BROKER_STATE_DIR="$work/state" \
-	SANDBOX_IDLE_TIMEOUT=20s SANDBOX_BROKER_POLL_INTERVAL=1s \
+	SANDBOX_IDLE_TIMEOUT=20s SANDBOX_BROKER_POLL_INTERVAL=1s SANDBOX_CLEANUP_GRACE=1s \
 	"$work/sandbox-broker" >"$work/broker.log" 2>&1 &
 broker_pid=$!
 
@@ -114,11 +114,20 @@ jq -e '.. | strings | select(contains("hidden-runtime-skill"))' <<<"$comments" >
 	fail "agent did not see the image's runtime-private skill: $comments"
 log "agent posted through the broker and saw the hidden skill"
 
-key="agent-$agent"
-volume="multica-sbx-$instance-$key"
-docker volume inspect "$volume" >/dev/null || fail "agent volume $volume missing"
-stopped() { [ "$(docker inspect -f '{{.State.Status}}' "$volume" 2>/dev/null)" = exited ]; }
+key="$(jq -r --arg a "$agent" '.sandboxes[] | select(.agent_id == $a and .scope_kind == "issue") | .key' "$work/state/journal.json")"
+[ -n "$key" ] || fail "no issue-scoped sandbox recorded for agent $agent"
+container="multica-sbx-$instance-$key"
+docker volume inspect "$container" >/dev/null || fail "sandbox volume $container missing"
+stopped() { [ "$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null)" = exited ]; }
 wait_for 90 "the idle sandbox to stop" stopped
+log "idle sandbox $key stopped, volume kept"
+
+log "finishing the issue"
+req PUT "/api/issues/$issue" '{"status":"done"}' >/dev/null
+deleted() { ! docker volume inspect "$container" >/dev/null 2>&1 && ! docker inspect "$container" >/dev/null 2>&1; }
+wait_for 150 "the finished issue's sandbox and volume to be deleted" deleted
+log "finished issue's sandbox and volume deleted"
+
 if grep -q '"refused sandbox request"' "$work/broker.log"; then
 	grep '"refused sandbox request"' "$work/broker.log" >&2
 	fail "the daemon called endpoints the broker does not support"

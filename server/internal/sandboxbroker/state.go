@@ -69,6 +69,13 @@ type sandboxState struct {
 	RequestedAt time.Time `json:"requested_at,omitempty"`
 	// Image is what the broker last started the sandbox with.
 	Image string `json:"image,omitempty"`
+	// The scope this sandbox serves decides when it is deleted.
+	AgentID   string    `json:"agent_id,omitempty"`
+	ScopeKind scopeKind `json:"scope_kind,omitempty"`
+	ScopeID   string    `json:"scope_id,omitempty"`
+	// LastUsed is when a task was last claimed for or released by it.
+	LastUsed         time.Time `json:"last_used,omitempty"`
+	CleanupCheckedAt time.Time `json:"cleanup_checked_at,omitempty"`
 }
 
 func newJournal(binding string) *journal {
