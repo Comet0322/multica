@@ -39,7 +39,7 @@ var loginCmd = &cobra.Command{
 	RunE: runLogin,
 }
 
-// tokenPromptSentinel is the value pflag assigns to `--token` when the flag
+// promptModeSentinel is the value pflag assigns to `--token` when the flag
 // is supplied without an explicit value. runAuthLoginToken treats it as
 // "prompt me interactively", preserving the legacy `multica login --token`
 // no-value form alongside the documented `--token mul_...` / `--token mcn_...`
@@ -50,7 +50,7 @@ var loginCmd = &cobra.Command{
 // column-alignment marker, so a NUL-prefixed sentinel corrupts `login -h`.
 // Colliding with a user literally typing `--token prompt` is harmless — that
 // string is never a valid PAT, and prompting is a reasonable response.
-const tokenPromptSentinel = "prompt"
+const promptModeSentinel = "prompt"
 
 func init() {
 	// No backticks in the usage string: pflag's UnquoteUsage treats the first
@@ -59,7 +59,7 @@ func init() {
 	// NoOptDefVal lets `--token` (no value) keep its old prompt-mode behavior
 	// while `--token mul_...` / `--token mcn_...` and the `=value` form
 	// consume the value normally.
-	loginCmd.Flags().Lookup("token").NoOptDefVal = tokenPromptSentinel
+	loginCmd.Flags().Lookup("token").NoOptDefVal = promptModeSentinel
 	loginCmd.Flags().String(callbackHostFlag, "", callbackHostFlagHelp)
 }
 
