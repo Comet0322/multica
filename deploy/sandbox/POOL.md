@@ -1,7 +1,9 @@
 # Pool manager configuration
 
-`sandbox-broker` runs as the pool manager when `SANDBOX_WORKSPACES_FILE` is
-set (SIGHUP reloads that file). The settings are read once at startup; a bad
+`sandbox-broker` runs as the pool manager when `SANDBOX_POOL_TOKEN` (or
+`SANDBOX_POOL_TOKEN_FILE`) is set. The manager is a normal Multica account's
+local daemon: it serves every workspace that account belongs to, finds new ones
+by itself, and needs no workspace list (SIGHUP looks again at once). The settings are read once at startup; a bad
 value stops the process with a message naming the variable. Durations use Go
 syntax (`45s`, `10m`, `2h`). Unset or `0` means the default shown.
 
@@ -13,8 +15,10 @@ errors. Prefer the `_FILE` form with a mounted secret.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SANDBOX_WORKSPACES_FILE` | none | Workspace list (mode 0600). Selects pool mode. |
-| `SANDBOX_WORKSPACES_FILE_GROUP_READ` | `false` | `true` also accepts a workspace file its group can read (mode 0440/0640), for a Kubernetes Secret volume with `fsGroup`; group write and any access by others stay refused. |
+| `SANDBOX_POOL_TOKEN` | none | PAT of the account the manager runs as (secret; `_FILE` form accepted). Selects pool mode. Use a dedicated account that is a member of every workspace to serve. |
+| `SANDBOX_POOL_MAX_LEASES` | `0` | Concurrent leases allowed in each workspace; 0 is no cap. |
+| `SANDBOX_POOL_SYNC_INTERVAL` | `30s` | How often the account's workspaces are listed again. A workspace joined is served from the next pass; one left drains like a removed one (`SANDBOX_POOL_DRAIN_TIMEOUT`). A failed or empty listing changes nothing. |
+| `SANDBOX_POOL_RUNTIME_VISIBILITY` | `public` | Visibility set on the runtime registered in each workspace. A runtime starts private to its owner, so `public` is what lets every member bind agents to it; `private` leaves sharing to the owner. |
 | `MULTICA_SERVER_URL` | none | Multica server base URL. |
 | `SANDBOX_BROKER_LISTEN` | `:8790` | Pod API listener. |
 | `SANDBOX_POOL_ADMIN_LISTEN` | `127.0.0.1:8791` | Admin listener (inventory, leases, git verify). |

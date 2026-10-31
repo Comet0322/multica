@@ -19,6 +19,9 @@ func (c *PoolConfig) normalizeWorkspaces(list []WorkspaceConfig) error {
 		if list[i].Placement == "" {
 			list[i].Placement = c.Placement
 		}
+		if list[i].MaxLeases == 0 {
+			list[i].MaxLeases = c.MaxLeases
+		}
 		if err := list[i].normalize(c.MulticaURL, c.Name); err != nil {
 			return err
 		}
@@ -109,20 +112,6 @@ func (p *Pool) Reload(ctx context.Context, workspaces []WorkspaceConfig) (Reload
 		"workspaces", len(next), "added", res.Added, "removed", res.Removed,
 		"lease_cap_updated", res.Updated, "restart_needed", res.Unapplied)
 	return res, nil
-}
-
-// ReloadFile loads the workspace file and applies it. Any failure leaves the
-// running configuration as it was and is logged without the file's contents.
-func (p *Pool) ReloadFile(ctx context.Context, path string) (ReloadResult, error) {
-	workspaces, err := LoadWorkspaces(path, p.cfg.WorkspaceFileOptions...)
-	if err == nil {
-		var res ReloadResult
-		if res, err = p.Reload(ctx, workspaces); err == nil {
-			return res, nil
-		}
-	}
-	p.log.Error("workspace configuration reload refused; keeping the current configuration", "path", path, "error", err)
-	return ReloadResult{}, err
 }
 
 // workDoneLocked reports whether a removed workspace holds nothing: no lease,

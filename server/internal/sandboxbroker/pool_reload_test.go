@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -202,55 +200,6 @@ func TestReloadRefusesInvalidConfigAndKeepsTheCurrentOne(t *testing.T) {
 	inv := h.inventory()
 	if got := workspaceIDs(inv.Workspaces); !slices.Equal(got, []string{wsA, wsB}) || len(inv.Draining) != 0 {
 		t.Fatalf("a refused reload changed the configuration: %+v", inv)
-	}
-}
-
-func TestReloadFileRefusesBadFilesAndLogsWithoutLeakingPATs(t *testing.T) {
-	t.Parallel()
-	a, b := &fakeWorkspace{id: wsA, pat: patA}, &fakeWorkspace{id: wsB, pat: patB}
-	up := newMultiMultica(t, a, b)
-	h := newReloadHarness(t, up, twoWorkspaces(nil, nil), time.Minute)
-	dir := t.TempDir()
-	path := filepath.Join(dir, "workspaces.json")
-	write := func(mode os.FileMode, body string) {
-		t.Helper()
-		if err := os.WriteFile(path, []byte(body), mode); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(path, mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	onlyB := `{"workspaces":[{"workspace_id":"` + wsB + `","pat":"` + patB + `"}]}`
-
-	for name, tc := range map[string]struct {
-		mode os.FileMode
-		body string
-	}{
-		"wrong permissions": {0o644, onlyB},
-		"malformed":         {0o600, `{"workspaces":[`},
-		"unknown field":     {0o600, `{"workspaces":[{"workspace_id":"` + wsB + `","pat":"` + patB + `","oops":1}]}`},
-	} {
-		write(tc.mode, tc.body)
-		if _, err := h.pool.ReloadFile(context.Background(), path); err == nil {
-			t.Errorf("%s: want an error", name)
-		}
-	}
-	if got := workspaceIDs(h.inventory().Workspaces); !slices.Equal(got, []string{wsA, wsB}) {
-		t.Fatalf("a refused file changed the configuration: %v", got)
-	}
-	logs := h.logs.String()
-	if !strings.Contains(logs, "reload refused") {
-		t.Fatalf("the refusal was not logged:\n%s", logs)
-	}
-	if strings.Contains(logs, patA) || strings.Contains(logs, patB) {
-		t.Fatalf("log leaks a PAT:\n%s", logs)
-	}
-
-	write(0o600, onlyB)
-	res, err := h.pool.ReloadFile(context.Background(), path)
-	if err != nil || !slices.Equal(res.Removed, []string{wsA}) {
-		t.Fatalf("valid file: %+v, %v", res, err)
 	}
 }
 

@@ -57,14 +57,13 @@ spec:
             - {name: SANDBOX_POOL_ADMIN_LISTEN, value: "127.0.0.1:8791"}
             - {name: SANDBOX_POOL_GATEWAY_LISTEN, value: ":8792"}
             - {name: SANDBOX_POOL_SIZE, value: "4"} # expected size; match replicas in kustomization.yaml
-            # Upstream. Workspace PATs are in the workspaces file, never here.
+            # Upstream. The account's PAT is in a Secret file, never here.
             - {name: MULTICA_SERVER_URL, value: "https://multica.example.com"} # PLACEHOLDER
-            # Workspace PATs and the LiteLLM admin key live in a Secret the
-            # operator creates out of band (keys: workspaces.json,
-            # litellm-master-key); only the file paths are referenced here.
-            - {name: SANDBOX_WORKSPACES_FILE, value: /etc/sandbox-manager/workspaces.json}
-            # A Secret volume is group-readable (fsGroup), never owner-only.
-            - {name: SANDBOX_WORKSPACES_FILE_GROUP_READ, value: "true"}
+            # The manager's account PAT and the LiteLLM admin key live in a
+            # Secret the operator creates out of band (keys: pool-token,
+            # litellm-master-key); only the file paths are referenced here. The
+            # manager serves every workspace that account belongs to.
+            - {name: SANDBOX_POOL_TOKEN_FILE, value: /etc/sandbox-manager/pool-token}
             # One JSON line per decision, to stdout for the cluster's log
             # pipeline (the root filesystem is read-only).
             - {name: SANDBOX_AUDIT_FILE, value: "-"}

@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,17 +37,13 @@ func TestGatewayListenerCarriesOnlyTheVerifyEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "workspaces.json")
-	body := `{"workspaces":[{"workspace_id":"` + testWorkspaceA + `","pat":"pat-a"}]}`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if s.config.Workspaces, err = sandboxbroker.LoadWorkspaces(path); err != nil {
-		t.Fatal(err)
-	}
+	s.config.MulticaURL = newFakeMultica(t, testWorkspaceA).URL
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	pool, err := sandboxbroker.NewPool(s.config, log)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	podLn, _ := net.Listen("tcp", "127.0.0.1:0")
@@ -56,7 +51,7 @@ func TestGatewayListenerCarriesOnlyTheVerifyEndpoints(t *testing.T) {
 	gatewayLn, _ := net.Listen("tcp", "127.0.0.1:0")
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- servePool(ctx, log, pool, path, podLn, adminLn, gatewayLn, make(chan os.Signal)) }()
+	go func() { done <- servePool(ctx, log, pool, podLn, adminLn, gatewayLn, make(chan os.Signal)) }()
 	defer func() {
 		cancel()
 		<-done

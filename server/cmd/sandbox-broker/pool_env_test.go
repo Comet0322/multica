@@ -21,8 +21,8 @@ func envLookup(env map[string]string) func(string) string {
 
 func baseEnv() map[string]string {
 	return map[string]string{
-		"SANDBOX_WORKSPACES_FILE": "/etc/pool/workspaces.json",
-		"MULTICA_SERVER_URL":      "http://multica:8080",
+		"SANDBOX_POOL_TOKEN": "mul_pat_pool",
+		"MULTICA_SERVER_URL": "http://multica:8080",
 	}
 }
 
@@ -177,12 +177,6 @@ func TestStartupRejectsSettingsThePoolRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "workspaces.json")
-	body := `{"workspaces":[{"workspace_id":"` + testWorkspaceA + `","pat":"pat-a"}]}`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	s.workspacesFile = path
 	s.podListen, s.adminListen = "127.0.0.1:0", "127.0.0.1:0"
 	err = runPool(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), s)
 	if err == nil || !strings.Contains(err.Error(), "git gateway URL") {
@@ -201,26 +195,21 @@ func TestAdminListenerServesGitVerifyOnlyWhenConfigured(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		path := filepath.Join(t.TempDir(), "workspaces.json")
-		body := `{"workspaces":[{"workspace_id":"` + testWorkspaceA + `","pat":"pat-a"}]}`
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		workspaces, err := sandboxbroker.LoadWorkspaces(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s.config.Workspaces = workspaces
+		up := newFakeMultica(t, testWorkspaceA)
+		s.config.MulticaURL = up.URL
 		log := slog.New(slog.NewTextHandler(io.Discard, nil))
 		pool, err := sandboxbroker.NewPool(s.config, log)
 		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Sync(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		podLn, _ := net.Listen("tcp", "127.0.0.1:0")
 		adminLn, _ := net.Listen("tcp", "127.0.0.1:0")
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
-		go func() { done <- servePool(ctx, log, pool, path, podLn, adminLn, nil, make(chan os.Signal)) }()
+		go func() { done <- servePool(ctx, log, pool, podLn, adminLn, nil, make(chan os.Signal)) }()
 		defer func() {
 			cancel()
 			<-done

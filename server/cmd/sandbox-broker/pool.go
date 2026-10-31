@@ -20,14 +20,12 @@ import (
 )
 
 // poolSettings is the pool manager's command-line environment. The manager is
-// selected by SANDBOX_WORKSPACES_FILE; without it the single-workspace broker
-// runs. Every variable is described in deploy/sandbox/POOL.md.
+// selected by SANDBOX_POOL_TOKEN (or SANDBOX_POOL_TOKEN_FILE); without it the
+// single-workspace broker runs. Every variable is described in
+// deploy/sandbox/POOL.md.
 type poolSettings struct {
-	workspacesFile string
-	// workspacesGroupRead lets the workspace file be group-readable (a Kubernetes Secret volume).
-	workspacesGroupRead bool
-	podListen           string
-	adminListen         string
+	podListen   string
+	adminListen string
 	// gatewayListen, when set, is a listener serving only the git gateway's
 	// verification endpoints.
 	gatewayListen string
@@ -145,37 +143,39 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 	}
 
 	s := poolSettings{
-		workspacesFile: getenv("SANDBOX_WORKSPACES_FILE"),
-		podListen:      getenv("SANDBOX_BROKER_LISTEN"),
-		adminListen:    getenv("SANDBOX_POOL_ADMIN_LISTEN"),
-		gatewayListen:  getenv("SANDBOX_POOL_GATEWAY_LISTEN"),
-		auditFile:      getenv("SANDBOX_AUDIT_FILE"),
+		podListen:     getenv("SANDBOX_BROKER_LISTEN"),
+		adminListen:   getenv("SANDBOX_POOL_ADMIN_LISTEN"),
+		gatewayListen: getenv("SANDBOX_POOL_GATEWAY_LISTEN"),
+		auditFile:     getenv("SANDBOX_AUDIT_FILE"),
 		config: sandboxbroker.PoolConfig{
-			MulticaURL:       getenv("MULTICA_SERVER_URL"),
-			Name:             getenv("SANDBOX_BROKER_NAME"),
-			ExpectedSize:     whole("SANDBOX_POOL_SIZE"),
-			Providers:        list("SANDBOX_PROVIDERS"),
-			DrainTimeout:     duration("SANDBOX_POOL_DRAIN_TIMEOUT"),
-			HeartbeatTimeout: duration("SANDBOX_POOL_HEARTBEAT_TIMEOUT"),
-			ResetTimeout:     duration("SANDBOX_POOL_RESET_TIMEOUT"),
-			LostRetention:    duration("SANDBOX_POOL_LOST_RETENTION"),
-			Placement:        sandboxbroker.Placement(getenv("SANDBOX_PLACEMENT")),
-			PodConcurrency:   whole("SANDBOX_POD_CONCURRENCY"),
-			PlacementWait:    duration("SANDBOX_PLACEMENT_WAIT"),
-			WakeInterval:     wakeInterval(),
-			PodIdleTimeout:   duration("SANDBOX_POD_IDLE_TIMEOUT"),
-			PodMaxLifetime:   duration("SANDBOX_POD_MAX_LIFETIME"),
-			PodDrainGrace:    duration("SANDBOX_POD_DRAIN_GRACE"),
+			MulticaURL:        getenv("MULTICA_SERVER_URL"),
+			Token:             secret("SANDBOX_POOL_TOKEN"),
+			MaxLeases:         whole("SANDBOX_POOL_MAX_LEASES"),
+			SyncInterval:      duration("SANDBOX_POOL_SYNC_INTERVAL"),
+			RuntimeVisibility: getenv("SANDBOX_POOL_RUNTIME_VISIBILITY"),
+			Name:              getenv("SANDBOX_BROKER_NAME"),
+			ExpectedSize:      whole("SANDBOX_POOL_SIZE"),
+			Providers:         list("SANDBOX_PROVIDERS"),
+			DrainTimeout:      duration("SANDBOX_POOL_DRAIN_TIMEOUT"),
+			HeartbeatTimeout:  duration("SANDBOX_POOL_HEARTBEAT_TIMEOUT"),
+			ResetTimeout:      duration("SANDBOX_POOL_RESET_TIMEOUT"),
+			LostRetention:     duration("SANDBOX_POOL_LOST_RETENTION"),
+			Placement:         sandboxbroker.Placement(getenv("SANDBOX_PLACEMENT")),
+			PodConcurrency:    whole("SANDBOX_POD_CONCURRENCY"),
+			PlacementWait:     duration("SANDBOX_PLACEMENT_WAIT"),
+			WakeInterval:      wakeInterval(),
+			PodIdleTimeout:    duration("SANDBOX_POD_IDLE_TIMEOUT"),
+			PodMaxLifetime:    duration("SANDBOX_POD_MAX_LIFETIME"),
+			PodDrainGrace:     duration("SANDBOX_POD_DRAIN_GRACE"),
 		},
 	}
-	switch getenv("SANDBOX_WORKSPACES_FILE_GROUP_READ") {
-	case "":
-	case "true":
-		s.workspacesGroupRead = true
-		s.config.WorkspaceFileOptions = []sandboxbroker.LoadOption{sandboxbroker.AllowGroupRead()}
-	case "false":
+	switch s.config.RuntimeVisibility {
+	case "", "public", "private":
 	default:
-		fail("SANDBOX_WORKSPACES_FILE_GROUP_READ must be true or false")
+		fail("SANDBOX_POOL_RUNTIME_VISIBILITY must be public or private")
+	}
+	if s.config.Token == "" {
+		fail("SANDBOX_POOL_TOKEN or SANDBOX_POOL_TOKEN_FILE is required")
 	}
 	switch s.config.Placement {
 	case "", sandboxbroker.PlacementTask, sandboxbroker.PlacementIssue, sandboxbroker.PlacementChat:
@@ -245,14 +245,9 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 	return s, nil
 }
 
-// runPool starts the pool manager and reloads its workspace file on SIGHUP
+// runPool starts the pool manager and looks for workspaces again on SIGHUP
 // until ctx ends.
 func runPool(ctx context.Context, log *slog.Logger, s poolSettings) error {
-	workspaces, err := sandboxbroker.LoadWorkspaces(s.workspacesFile, s.config.WorkspaceFileOptions...)
-	if err != nil {
-		return err
-	}
-	s.config.Workspaces = workspaces
 	if s.auditFile != "" {
 		w, closeAudit, err := openAudit(s.auditFile)
 		if err != nil {
@@ -285,10 +280,15 @@ func runPool(ctx context.Context, log *slog.Logger, s poolSettings) error {
 		defer gatewayLn.Close()
 	}
 
+	// The first listing must work: a wrong token or server address stops the
+	// manager now instead of leaving it serving nothing.
+	if _, err := pool.Sync(ctx); err != nil {
+		return fmt.Errorf("list the account's workspaces: %w", err)
+	}
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
-	return servePool(ctx, log, pool, s.workspacesFile, podLn, adminLn, gatewayLn, hup)
+	return servePool(ctx, log, pool, podLn, adminLn, gatewayLn, hup)
 }
 
 // openAudit opens the audit log for appending. "-" is standard output. The
@@ -304,8 +304,9 @@ func openAudit(path string) (io.Writer, func(), error) {
 	return f, func() { _ = f.Close() }, nil
 }
 
-// servePool serves the pod and admin APIs and applies the workspace file each
-// time reload fires. A reload that fails is logged and changes nothing.
+// servePool serves the pod and admin APIs and looks for workspaces joined or
+// left every sync interval and each time reload fires. A sync that fails is
+// logged and changes nothing.
 //
 // The admin API also carries the git gateway's verification endpoints when
 // the pool has a git gateway configured (pool.AdminHandler mounts them). That
@@ -313,7 +314,7 @@ func openAudit(path string) (io.Writer, func(), error) {
 // gatewayLn instead: a listener (nil for none) that serves just those two
 // endpoints (pool.GatewayHandler), which the network policy can open to the
 // gateway alone.
-func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, path string, podLn, adminLn, gatewayLn net.Listener, reload <-chan os.Signal) error {
+func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, podLn, adminLn, gatewayLn net.Listener, reload <-chan os.Signal) error {
 	servers := []*http.Server{
 		{Handler: pool.PodHandler(), ReadHeaderTimeout: 10 * time.Second},
 		{Handler: pool.AdminHandler(), ReadHeaderTimeout: 10 * time.Second},
@@ -324,6 +325,8 @@ func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, 
 		listeners = append(listeners, gatewayLn)
 	}
 	go pool.Run(ctx)
+	syncNow := make(chan struct{}, 1)
+	go pool.SyncLoop(ctx, syncNow)
 	serveErr := make(chan error, len(servers))
 	for i, ln := range listeners {
 		go func() { serveErr <- servers[i].Serve(ln) }()
@@ -343,8 +346,11 @@ func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, 
 		case err := <-serveErr:
 			return fmt.Errorf("pool API stopped: %w", err)
 		case <-reload:
-			log.InfoContext(ctx, "reloading workspace configuration")
-			_, _ = pool.ReloadFile(ctx, path)
+			log.InfoContext(ctx, "looking for workspaces on request")
+			select {
+			case syncNow <- struct{}{}:
+			default:
+			}
 		}
 	}
 }

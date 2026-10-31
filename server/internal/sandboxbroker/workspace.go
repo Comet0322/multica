@@ -4,11 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -24,85 +20,24 @@ const DefaultUpstreamBackoff = 10 * time.Second
 // delays the other workspaces' claims by at most this long.
 const upstreamClaimTimeout = 10 * time.Second
 
-// WorkspaceConfig is one workspace served by the manager. The pool is shared;
+// WorkspaceConfig is one workspace served by the manager; the manager finds
+// them itself from its PAT (see Sync). The pool is shared;
 // the workspace is bound to a pod only for the duration of a lease.
 type WorkspaceConfig struct {
-	WorkspaceID string `json:"workspace_id"`
-	// Token is the workspace's PAT. It is a secret and never logged.
-	Token string `json:"pat"`
+	WorkspaceID string
+	// Token is the PAT the manager acts with in this workspace. It is a secret
+	// and never logged.
+	Token string
 	// RuntimeName is the runtime name members see in this workspace.
-	RuntimeName string `json:"runtime_name"`
+	RuntimeName string
 	// MaxLeases caps concurrent leases for the workspace; 0 means no cap.
-	MaxLeases int `json:"max_leases"`
+	MaxLeases int
 	// Placement is the workspace's placement unit: task, issue or chat. Empty
 	// inherits the pool's Placement.
-	Placement Placement `json:"placement"`
+	Placement Placement
 
 	// BrokerID is the upstream daemon_id, derived when empty.
-	BrokerID string `json:"-"`
-}
-
-type workspaceFile struct {
-	Workspaces []WorkspaceConfig `json:"workspaces"`
-}
-
-// ParseWorkspaces reads the workspace entries of the configuration file.
-// Unknown fields are rejected, so a misspelled key cannot silently turn into
-// a default.
-func ParseWorkspaces(r io.Reader) ([]WorkspaceConfig, error) {
-	dec := json.NewDecoder(io.LimitReader(r, 1<<20))
-	dec.DisallowUnknownFields()
-	var f workspaceFile
-	if err := dec.Decode(&f); err != nil {
-		return nil, fmt.Errorf("parse workspace config: %w", err)
-	}
-	if dec.More() {
-		return nil, errors.New("parse workspace config: trailing data after the JSON document")
-	}
-	if len(f.Workspaces) == 0 {
-		return nil, errors.New("workspace config lists no workspaces")
-	}
-	return f.Workspaces, nil
-}
-
-type loadOptions struct{ groupRead bool }
-
-// LoadOption adjusts LoadWorkspaces.
-type LoadOption func(*loadOptions)
-
-// AllowGroupRead accepts a workspace file that its group can also read.
-func AllowGroupRead() LoadOption { return func(o *loadOptions) { o.groupRead = true } }
-
-// LoadWorkspaces reads the workspace configuration file. The file holds PATs,
-// so it is refused when anyone but its owner can read or write it.
-//
-// AllowGroupRead relaxes the rule to owner-or-group read-only for volumes whose
-// files cannot be owner-only, such as a Kubernetes Secret with fsGroup.
-func LoadWorkspaces(path string, opts ...LoadOption) ([]WorkspaceConfig, error) {
-	var o loadOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open workspace config: %w", err)
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("stat workspace config: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("workspace config %s is not a regular file", path)
-	}
-	forbidden := os.FileMode(0o077)
-	if o.groupRead {
-		forbidden = 0o037 // group read stays; group write/execute and any other access do not
-	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&forbidden != 0 {
-		return nil, fmt.Errorf("workspace config %s has mode %04o; it holds credentials and must be readable by its owner only (chmod 600)", path, info.Mode().Perm())
-	}
-	return ParseWorkspaces(f)
+	BrokerID string
 }
 
 func (w *WorkspaceConfig) normalize(multicaURL, defaultName string) error {

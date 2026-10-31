@@ -24,7 +24,7 @@ const sandboxEnvPrefix = "SANDBOX_ENV_"
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	if os.Getenv("SANDBOX_WORKSPACES_FILE") != "" {
+	if os.Getenv("SANDBOX_POOL_TOKEN") != "" || os.Getenv("SANDBOX_POOL_TOKEN_FILE") != "" {
 		settings, err := loadPool(os.Getenv)
 		if err == nil {
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

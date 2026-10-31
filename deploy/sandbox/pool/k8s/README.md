@@ -17,7 +17,7 @@ and so is the gateway root (`--build-arg GIT_GATEWAY_URL=http://git-gateway.mult
 The manager's env settings are described in `../../POOL.md`; the
 admin listener binds to loopback inside the manager pod (reach it with
 `kubectl port-forward`). Two Secrets are created out of band and are not in
-this repo: `sandbox-manager-config` (keys `workspaces.json`,
+this repo: `sandbox-manager-config` (keys `pool-token`,
 `litellm-master-key`) and `git-gateway-gitlab-token` (key `token`, the GitLab
 administrator token). The images are `multica-sandbox-pool`
 (`../../Dockerfile.pool`), `multica-sandbox-manager` (`../../Dockerfile.broker`)
@@ -89,9 +89,9 @@ Set `NS=multica-sandbox`, `POD=$(kubectl -n $NS get pod -l multica.io/sandbox-ro
 - An overlay's `images:` entries must match the names the base kustomization
   already produced (`registry.example.com/multica/...`), not the short names in
   the Deployments.
-- The manager reads `workspaces.json` from a Secret volume, which is
-  group-readable under `fsGroup`; the manifest sets
-  `SANDBOX_WORKSPACES_FILE_GROUP_READ=true` and `defaultMode: 0440` for that.
+- The manager reads its account PAT (`pool-token`) from a Secret volume and
+  serves every workspace that account belongs to; add the account to a
+  workspace and the pool serves it within `SANDBOX_POOL_SYNC_INTERVAL`.
 - `../smoke/` holds the stand-ins (fake Multica, LiteLLM, a destination that
   must stay unreachable, a package mirror) and an overlay used for a local
   minikube run with Calico. Fill in the stand-in pod IPs as the `LITELLM_IP`

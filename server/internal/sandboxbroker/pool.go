@@ -30,12 +30,25 @@ const (
 // PoolConfig configures a Pool.
 type PoolConfig struct {
 	MulticaURL string
-	// WorkspaceFileOptions apply whenever the workspace file is re-read (SIGHUP).
-	WorkspaceFileOptions []LoadOption
-	// Workspaces lists the workspaces the manager serves from the shared pool.
-	// For a single-workspace deployment MulticaToken, WorkspaceID and BrokerID
-	// may be set instead; they describe one entry and cannot be combined with
-	// Workspaces.
+	// Token is the PAT of the account the manager runs as. With it set the
+	// manager serves every workspace that account belongs to, found by Sync, and
+	// registers its runtimes in local mode like a member's own daemon; the
+	// workspace fields below are then not used.
+	Token string
+	// MaxLeases caps concurrent leases in each discovered workspace; 0 means no
+	// cap.
+	MaxLeases int
+	// SyncInterval is how often Run looks for workspaces joined or left. Zero
+	// means DefaultSyncInterval.
+	SyncInterval time.Duration
+	// RuntimeVisibility is set on every runtime the manager registers: "public"
+	// (the default) lets every member of the workspace use it, "private" leaves
+	// it to its owner until the owner shares it.
+	RuntimeVisibility string
+	// Workspaces lists the workspaces the manager serves from the shared pool
+	// when Token is not set. For a single-workspace deployment MulticaToken,
+	// WorkspaceID and BrokerID may be set instead; they describe one entry and
+	// cannot be combined with Workspaces.
 	Workspaces   []WorkspaceConfig
 	MulticaToken string
 	WorkspaceID  string
@@ -179,7 +192,30 @@ func (c *PoolConfig) normalize() error {
 	if c.Name == "" {
 		c.Name = "Managed Sandbox"
 	}
+	if c.MaxLeases < 0 {
+		return fmt.Errorf("max leases must not be negative")
+	}
+	if c.SyncInterval < 0 {
+		return fmt.Errorf("sync interval must not be negative")
+	}
+	if c.SyncInterval == 0 {
+		c.SyncInterval = DefaultSyncInterval
+	}
+	switch c.RuntimeVisibility {
+	case "":
+		c.RuntimeVisibility = "public"
+	case "public", "private":
+	default:
+		return fmt.Errorf("runtime visibility must be public or private")
+	}
 	legacy := c.WorkspaceID != "" || c.MulticaToken != "" || c.BrokerID != ""
+	if c.Token != "" {
+		if len(c.Workspaces) > 0 || legacy {
+			return fmt.Errorf("set Token alone, or a workspace list, not both")
+		}
+		c.Token = strings.TrimSpace(c.Token)
+		return nil // the workspaces arrive with the first Sync
+	}
 	if len(c.Workspaces) > 0 && legacy {
 		return fmt.Errorf("set either Workspaces or the single-workspace fields, not both")
 	}
@@ -713,6 +749,7 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 	ws.registration = raw
 	p.mu.Unlock()
 	p.log.Info("registered pool runtimes", "workspace_id", ws.cfg.WorkspaceID, "runtimes", len(resp.Runtimes))
+	p.shareRuntimes(ctx, ws, resp.Runtimes)
 	// The leases of an earlier manager are gone and every pod is reset, so
 	// whatever Multica still shows running on these runtimes will never finish.
 	// This is the first registration since this manager started and no task has
@@ -739,8 +776,17 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 func (p *Pool) upstreamRegistration(ws *workspace, captured json.RawMessage) (map[string]any, error) {
 	return rewriteRegistration(captured, registrationIdentity{
 		workspaceID: ws.cfg.WorkspaceID, daemonID: ws.cfg.BrokerID, name: ws.cfg.RuntimeName,
-		providers: p.cfg.Providers, source: "the pod",
+		providers: p.cfg.Providers, source: "the pod", mode: p.runtimeMode(),
 	})
+}
+
+// runtimeMode is the mode the pool's runtimes are registered in. A manager that
+// finds its workspaces from a PAT appears as that account's own local daemon.
+func (p *Pool) runtimeMode() string {
+	if p.cfg.Token != "" {
+		return "local"
+	}
+	return "cloud"
 }
 
 func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string) {

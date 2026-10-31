@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -465,48 +463,6 @@ func TestInventoryLeasesAndAuditCarryTheWorkspace(t *testing.T) {
 	}
 	if recs := h.auditRecords(); len(recs) < 2 {
 		t.Fatalf("want lease and release records, got %+v", recs)
-	}
-}
-
-func TestWorkspaceConfigFile(t *testing.T) {
-	t.Parallel()
-	write := func(t *testing.T, mode os.FileMode, body string) string {
-		t.Helper()
-		path := filepath.Join(t.TempDir(), "workspaces.json")
-		if err := os.WriteFile(path, []byte(body), mode); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(path, mode); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	valid := `{"workspaces":[{"workspace_id":"` + wsA + `","pat":"` + patA + `","runtime_name":"Pool A","max_leases":2,"placement":"issue"}]}`
-
-	got, err := sandboxbroker.LoadWorkspaces(write(t, 0o600, valid))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].WorkspaceID != wsA || got[0].Token != patA || got[0].MaxLeases != 2 || got[0].Placement != "issue" {
-		t.Fatalf("bad parse: %+v", got)
-	}
-
-	for _, mode := range []os.FileMode{0o640, 0o604, 0o644} {
-		_, err := sandboxbroker.LoadWorkspaces(write(t, mode, valid))
-		if err == nil {
-			t.Fatalf("mode %o must be refused", mode)
-		}
-		if strings.Contains(err.Error(), patA) {
-			t.Fatalf("error leaks the PAT: %v", err)
-		}
-	}
-
-	unknown := `{"workspaces":[{"workspace_id":"` + wsA + `","pat":"` + patA + `","max_lease":2}]}`
-	if _, err := sandboxbroker.LoadWorkspaces(write(t, 0o600, unknown)); err == nil {
-		t.Fatal("unknown field must be rejected")
-	}
-	if _, err := sandboxbroker.LoadWorkspaces(write(t, 0o600, `{"workspaces":[],"extra":1}`)); err == nil {
-		t.Fatal("unknown top-level field must be rejected")
 	}
 }
 

@@ -2,6 +2,7 @@ package sandboxbroker
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,10 +21,13 @@ type registrationIdentity struct {
 	providers []string
 	// source names what was registered, for the error when nothing is left.
 	source string
+	// mode is the runtime_mode registered upstream: "cloud" when empty, "local"
+	// for the pool manager, which then appears like any member's own daemon.
+	mode string
 }
 
 // rewriteRegistration turns a daemon's captured registration into the
-// upstream one: one machine identity, cloud mode, no custom profiles.
+// upstream one: one machine identity, no custom profiles.
 func rewriteRegistration(captured json.RawMessage, id registrationIdentity) (map[string]any, error) {
 	var req map[string]any
 	if err := json.Unmarshal(captured, &req); err != nil {
@@ -43,7 +47,7 @@ func rewriteRegistration(captured json.RawMessage, id registrationIdentity) (map
 		if len(id.providers) > 0 && !slices.Contains(id.providers, typ) {
 			continue
 		}
-		rt["runtime_mode"] = "cloud"
+		rt["runtime_mode"] = cmp.Or(id.mode, "cloud")
 		rt["name"] = id.name
 		if len(id.providers) != 1 {
 			rt["name"] = id.name + " (" + typ + ")"
@@ -97,6 +101,11 @@ func newUpstream(base, token string, headers func() map[string]string) *upstream
 }
 
 func (u *upstream) call(ctx context.Context, method, path string, in, out any) error {
+	return u.callWith(ctx, nil, method, path, in, out)
+}
+
+// callWith is call with extra request headers.
+func (u *upstream) callWith(ctx context.Context, extra map[string]string, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		raw, ok := in.(json.RawMessage)
@@ -113,6 +122,9 @@ func (u *upstream) call(ctx context.Context, method, path string, in, out any) e
 		return err
 	}
 	for k, v := range u.headers() {
+		req.Header.Set(k, v)
+	}
+	for k, v := range extra {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Authorization", "Bearer "+u.token)
