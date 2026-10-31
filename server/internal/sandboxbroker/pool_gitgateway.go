@@ -76,10 +76,14 @@ func (p *Pool) gitIdentitiesForIP(ip string) []gitgateway.Identity {
 	defer p.mu.Unlock()
 	p.markLostLocked()
 	pd := p.pods[ip]
-	if pd == nil || pd.State != PodLeased || pd.lease == nil {
+	if pd == nil || pd.State != PodLeased {
 		return nil
 	}
-	return []gitgateway.Identity{{TaskID: pd.lease.TaskID, WorkspaceID: p.cfg.WorkspaceID, Initiator: pd.lease.Initiator}}
+	ids := make([]gitgateway.Identity, 0, len(pd.leases))
+	for _, l := range pd.leases {
+		ids = append(ids, gitgateway.Identity{TaskID: l.TaskID, WorkspaceID: l.WorkspaceID, Initiator: l.Initiator})
+	}
+	return ids
 }
 
 // issueGitToken gives the claimed task a gateway token and returns the task
