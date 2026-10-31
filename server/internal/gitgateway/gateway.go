@@ -55,6 +55,13 @@ type Config struct {
 	TaskURL string
 	// Audit receives one JSON line per decision.
 	Audit io.Writer
+	// PushLogTTL and PushLogMaxTasks bound the record of which branches each
+	// task pushed: a task's entry is dropped this long after its last push,
+	// and the least recently written tasks go when more are held. Defaults:
+	// 24 hours and 10000 tasks. Entries are also dropped when the Resolver
+	// reports the task's token revoked (see TokenRegistry.OnRevoke).
+	PushLogTTL      time.Duration
+	PushLogMaxTasks int
 
 	HTTPClient *http.Client // GitLab API calls; default has LookupTimeout
 	Transport  http.RoundTripper
@@ -70,7 +77,7 @@ type Gateway struct {
 	users  *ttlCache[gitlabUser]
 	levels *ttlCache[int]
 	audit  *auditLog
-	pushed pushLog
+	pushed *pushLog
 	proxy  *httputil.ReverseProxy
 	log    *slog.Logger
 	now    func() time.Time
@@ -121,6 +128,7 @@ func New(cfg Config) (*Gateway, error) {
 		base:   base,
 		users:  newTTLCache[gitlabUser](cfg.CacheTTL, now),
 		levels: newTTLCache[int](cfg.CacheTTL, now),
+		pushed: newPushLog(now, cfg.PushLogTTL, cfg.PushLogMaxTasks),
 		log:    cfg.Logger,
 		now:    now,
 	}
@@ -133,8 +141,16 @@ func New(cfg Config) (*Gateway, error) {
 			http.Error(w, "git upstream unavailable", http.StatusBadGateway)
 		},
 	}
+	if r, ok := cfg.Resolver.(interface{ OnRevoke(func(taskID string)) }); ok {
+		r.OnRevoke(g.ForgetTask)
+	}
 	return g, nil
 }
+
+// ForgetTask drops the record of the branches the task pushed. A gateway whose
+// Resolver cannot say when a token is revoked (one that asks the manager over
+// HTTP) may be told by its operator; otherwise the record ages out.
+func (g *Gateway) ForgetTask(taskID string) { g.pushed.forget(taskID) }
 
 type routeKey struct{}
 

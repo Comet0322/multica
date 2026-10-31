@@ -60,9 +60,17 @@ func (g *Gateway) checkCreateMR(ctx context.Context, id Identity, project string
 		source:      source,
 		target:      target,
 		title:       strings.TrimSpace(a.Title),
-		description: strings.TrimRight(a.Description, " \t\r\n") + g.mrFooter(id),
+		description: neutralizeComments(strings.TrimRight(a.Description, " \t\r\n")) + g.mrFooter(id),
 		labels:      []string{g.cfg.MRLabel},
 	}, ""
+}
+
+// neutralizeComments turns every HTML comment opener in agent text into an
+// escaped one. An unclosed comment would otherwise swallow the footer that
+// follows it and hide who the merge request is for. The footer itself is the
+// only place the description may open a comment.
+func neutralizeComments(s string) string {
+	return strings.ReplaceAll(s, "<!--", "&lt;!--")
 }
 
 // mrFooter is what the gateway appends: who the merge request is for, which
@@ -111,7 +119,7 @@ func (c *gitlabClient) createMergeRequest(ctx context.Context, project string, m
 		return nil, err
 	}
 	if status == http.StatusConflict {
-		return nil, fmt.Errorf("gitlab refused the merge request: %s", oneLine(string(body)))
+		return nil, fmt.Errorf("gitlab refused the merge request: %s", c.scrub(oneLine(string(body))))
 	}
 	if err := apiStatus(status); err != nil {
 		return nil, err

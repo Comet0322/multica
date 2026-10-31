@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -46,7 +47,12 @@ type TokenRegistry struct {
 	mu     sync.Mutex
 	tokens map[string]Identity
 	byTask map[string]string
+	// onRevoke holds the functions to call after a token is revoked.
+	onRevoke []func(taskID string)
 }
+
+// maxReplyBytes bounds how much of the manager's reply the gateway reads.
+const maxReplyBytes = 1 << 20
 
 func NewTokenRegistry() *TokenRegistry {
 	return &TokenRegistry{tokens: map[string]Identity{}, byTask: map[string]string{}}
@@ -71,14 +77,31 @@ func (r *TokenRegistry) Issue(id Identity) (string, error) {
 	return token, nil
 }
 
-// Revoke ends the task's token. It is safe to call for unknown tasks.
+// Revoke ends the task's token and tells the revoke hooks. It is safe to call
+// for unknown tasks.
 func (r *TokenRegistry) Revoke(taskID string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if token, ok := r.byTask[taskID]; ok {
+	token, ok := r.byTask[taskID]
+	if ok {
 		delete(r.tokens, token)
 		delete(r.byTask, taskID)
 	}
+	hooks := r.onRevoke
+	r.mu.Unlock()
+	if ok {
+		for _, hook := range hooks {
+			hook(taskID)
+		}
+	}
+}
+
+// OnRevoke registers a function called with the task ID whenever Revoke ends
+// a live token, so state kept per task (the gateway's record of pushed
+// branches) is dropped with it. Issuing a replacement token does not call it.
+func (r *TokenRegistry) OnRevoke(hook func(taskID string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onRevoke = append(r.onRevoke, hook)
 }
 
 // Resolve implements Resolver for in-process use.
@@ -147,7 +170,7 @@ func (h HTTPResolver) Resolve(ctx context.Context, token string) (Identity, erro
 		return Identity{}, fmt.Errorf("gitgateway: manager answered %d", resp.StatusCode)
 	}
 	var id Identity
-	if err := json.NewDecoder(resp.Body).Decode(&id); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxReplyBytes)).Decode(&id); err != nil {
 		return Identity{}, fmt.Errorf("gitgateway: manager reply: %w", err)
 	}
 	if id.TaskID == "" {

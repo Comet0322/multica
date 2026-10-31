@@ -64,6 +64,18 @@ func redact(err error, token string) error {
 	return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), token, "[redacted]"))
 }
 
+// scrub keeps the admin token out of text taken from one of GitLab's answers,
+// which can echo what it was sent. Such text is bounded as well.
+func (c *gitlabClient) scrub(s string) string {
+	if c.token != "" {
+		s = strings.ReplaceAll(s, c.token, "[redacted]")
+	}
+	if len(s) > 300 {
+		s = s[:300] + "..."
+	}
+	return s
+}
+
 // findUser looks a user up by exact email. The admin search also returns
 // partial matches, so the email is compared again here.
 func (c *gitlabClient) findUser(ctx context.Context, email string) (gitlabUser, error) {

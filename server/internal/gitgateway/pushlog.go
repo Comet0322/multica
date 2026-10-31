@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // maxReportBytes bounds how much of GitLab's receive-pack answer is kept to
@@ -14,12 +15,66 @@ import (
 // against a misbehaving upstream.
 const maxReportBytes = 1 << 20
 
+// Defaults bounding the push log. A task's record is dropped when its token
+// is revoked (when the gateway can be told); these limits catch the rest, such
+// as a gateway running apart from the manager.
+const (
+	defaultPushLogTTL      = 24 * time.Hour
+	defaultPushLogMaxTasks = 10000
+)
+
 // pushLog remembers, per task, which branches that task pushed successfully.
 // Only a ref GitLab reported as updated is recorded, and a task never sees
-// another task's entries.
+// another task's entries. It is bounded: a task's record goes when the task
+// is forgotten, when it was last written longer ago than ttl, or when more
+// than maxTasks tasks are held (the least recently written go first).
 type pushLog struct {
 	mu       sync.Mutex
+	now      func() time.Time
+	ttl      time.Duration
+	maxTasks int
 	branches map[string]map[string]map[string]struct{} // task -> project -> branch
+	written  map[string]time.Time                      // task -> last write
+}
+
+func newPushLog(now func() time.Time, ttl time.Duration, maxTasks int) *pushLog {
+	if ttl <= 0 {
+		ttl = defaultPushLogTTL
+	}
+	if maxTasks <= 0 {
+		maxTasks = defaultPushLogMaxTasks
+	}
+	return &pushLog{now: now, ttl: ttl, maxTasks: maxTasks}
+}
+
+// forget drops everything recorded for the task.
+func (l *pushLog) forget(task string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.branches, task)
+	delete(l.written, task)
+}
+
+// pruneLocked applies the age and size limits.
+func (l *pushLog) pruneLocked() {
+	now := l.now()
+	for task, at := range l.written {
+		if now.Sub(at) > l.ttl {
+			delete(l.branches, task)
+			delete(l.written, task)
+		}
+	}
+	for len(l.written) > l.maxTasks {
+		var oldest string
+		var oldestAt time.Time
+		for task, at := range l.written {
+			if oldest == "" || at.Before(oldestAt) {
+				oldest, oldestAt = task, at
+			}
+		}
+		delete(l.branches, oldest)
+		delete(l.written, oldest)
+	}
 }
 
 func (l *pushLog) add(task, project, branch string) {
@@ -27,7 +82,10 @@ func (l *pushLog) add(task, project, branch string) {
 	defer l.mu.Unlock()
 	if l.branches == nil {
 		l.branches = map[string]map[string]map[string]struct{}{}
+		l.written = map[string]time.Time{}
 	}
+	l.written[task] = l.now()
+	l.pruneLocked()
 	if l.branches[task] == nil {
 		l.branches[task] = map[string]map[string]struct{}{}
 	}
@@ -46,6 +104,7 @@ func (l *pushLog) remove(task, project, branch string) {
 func (l *pushLog) list(task, project string) []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.pruneLocked()
 	out := make([]string, 0, len(l.branches[task][project]))
 	for b := range l.branches[task][project] {
 		out = append(out, b)

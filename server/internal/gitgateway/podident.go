@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -148,7 +149,7 @@ func (h HTTPPodResolver) ResolvePod(ctx context.Context, ip string) ([]Identity,
 	var out struct {
 		Identities []Identity `json:"identities"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxReplyBytes)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("gitgateway: manager reply: %w", err)
 	}
 	for _, id := range out.Identities {
