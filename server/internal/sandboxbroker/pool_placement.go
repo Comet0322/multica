@@ -230,6 +230,7 @@ func (p *Pool) failParked(ctx context.Context, tasks []*parkedTask) {
 	const why = "no sandbox pod could take the task in time"
 	for _, t := range tasks {
 		p.revokeKey(t.llmKey, t.ref.ID)
+		p.revokeGit(t.ref.ID)
 		p.auditDenied(t.ws, t.ref, why)
 		p.failUpstream(ctx, t.ws, t.ref.ID, why)
 	}

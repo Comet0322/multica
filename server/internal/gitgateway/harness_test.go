@@ -3,6 +3,7 @@ package gitgateway_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,6 +33,14 @@ type fakeGitLab struct {
 	hang     chan struct{}       // when set, API calls block until closed
 	apiCalls int
 	gitReqs  []gitReq
+	recv     []recvReq
+}
+
+// recvReq is a receive-pack body as GitLab saw it. Only the head is kept so a
+// large push is not buffered by the test either.
+type recvReq struct {
+	Size int64
+	Head []byte
 }
 
 type fakeUser struct {
@@ -90,6 +99,12 @@ func (f *fakeGitLab) gitRequests() []gitReq {
 	return append([]gitReq(nil), f.gitReqs...)
 }
 
+func (f *fakeGitLab) pushes() []recvReq {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]recvReq(nil), f.recv...)
+}
+
 func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	if strings.HasPrefix(r.URL.Path, "/api/v4/") {
@@ -121,6 +136,23 @@ func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 	if _, pw, _ := r.BasicAuth(); pw != adminToken {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/git-receive-pack") {
+		head := make([]byte, 4096)
+		n, _ := io.ReadFull(r.Body, head)
+		rest, _ := io.Copy(io.Discard, r.Body)
+		f.mu.Lock()
+		f.recv = append(f.recv, recvReq{Size: int64(n) + rest, Head: head[:n]})
+		f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
+		io.WriteString(w, pkt("\x01"+pkt("unpack ok\n")+"0000")+"0000")
+		return
+	}
+	if r.URL.RawQuery == "service=git-receive-pack" {
+		zero := strings.Repeat("0", 40)
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		io.WriteString(w, pkt("# service=git-receive-pack\n")+"0000"+pkt(zero+" capabilities^{}\x00report-status side-band-64k delete-refs\n")+"0000")
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/info/refs") {
@@ -281,3 +313,6 @@ const (
 	refsPath = "/group/proj.git/info/refs?service=git-upload-pack"
 	packPath = "/group/proj.git/git-upload-pack"
 )
+
+// pkt frames s as one pkt-line.
+func pkt(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }

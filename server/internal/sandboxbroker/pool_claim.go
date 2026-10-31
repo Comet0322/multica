@@ -100,6 +100,7 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	p.auditLease(AuditRelease, l, reason)
 	p.revokeKey(l.key, l.TaskID)
 	l.key = nil
+	p.revokeGit(l.TaskID)
 	if pd := l.pod; pd != nil && pd.leases[l.TaskID] == l {
 		delete(pd.leases, l.TaskID)
 		if pd.State == PodLeased && p.pods[pd.IP] == pd && len(pd.leases) == 0 && len(pd.queue) == 0 {
@@ -334,12 +335,25 @@ func (p *Pool) leaseClaimed(ctx context.Context, pd *pod, ws *workspace, raw jso
 		}
 	}
 
+	if p.cfg.Git != nil {
+		var err error
+		if raw, err = p.issueGitToken(raw, ref); err != nil {
+			const why = "the git gateway token for this task could not be prepared"
+			p.log.Warn("issue git gateway token", "task_id", ref.ID, "error", err)
+			p.revokeKey(key, ref.ID)
+			p.auditDenied(ws, ref, why)
+			p.failUpstream(ctx, ws, ref.ID, why)
+			return nil
+		}
+	}
+
 	t := &parkedTask{raw: raw, ref: ref, ws: ws, key: p.placementKey(ws, ref), llmKey: key, claimedAt: p.now()}
 	p.mu.Lock()
 	if p.pods[ip] != pd || (pd.State != PodIdle && pd.State != PodLeased) {
 		// The pod was replaced or went silent while the claim was in flight.
 		p.mu.Unlock()
 		p.revokeKey(key, ref.ID)
+		p.revokeGit(ref.ID)
 		const why = "the pod was replaced before the task could start"
 		p.auditDenied(ws, ref, why)
 		p.failUpstream(ctx, ws, ref.ID, why)

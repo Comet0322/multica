@@ -26,6 +26,10 @@ type Config struct {
 	AdminToken string
 	// Resolver answers which task a token belongs to.
 	Resolver Resolver
+	// PodResolver, when set, lets a request without a task token be
+	// identified by its source IP, for reads only (the daemon's own clones
+	// and fetches). Nil refuses every request without a token.
+	PodResolver PodResolver
 	// MinReadLevel is the lowest GitLab access level allowed to clone and
 	// fetch; default Reporter.
 	MinReadLevel int
@@ -34,6 +38,12 @@ type Config struct {
 	CacheTTL time.Duration
 	// LookupTimeout bounds each call to GitLab's API; default 10 seconds.
 	LookupTimeout time.Duration
+	// MinPushLevel is the lowest GitLab access level allowed to push; default
+	// Developer. Pushes always ask GitLab afresh.
+	MinPushLevel int
+	// BranchPrefix starts every task's branch namespace: a task may update only
+	// refs/heads/<BranchPrefix><task id>/*. Default "agent/".
+	BranchPrefix string
 	// Audit receives one JSON line per decision.
 	Audit io.Writer
 
@@ -69,6 +79,12 @@ func New(cfg Config) (*Gateway, error) {
 	}
 	if cfg.MinReadLevel == 0 {
 		cfg.MinReadLevel = LevelReporter
+	}
+	if cfg.MinPushLevel == 0 {
+		cfg.MinPushLevel = LevelDeveloper
+	}
+	if cfg.BranchPrefix == "" {
+		cfg.BranchPrefix = defaultBranchPrefix
 	}
 	if cfg.CacheTTL == 0 {
 		cfg.CacheTTL = defaultCacheTTL
@@ -128,6 +144,10 @@ func (g *Gateway) rewrite(pr *httputil.ProxyRequest) {
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := bearerOrBasicPassword(r)
 	if token == "" {
+		if g.cfg.PodResolver != nil {
+			g.serveDaemonRead(w, r)
+			return
+		}
 		w.Header().Set("WWW-Authenticate", `Basic realm="git gateway"`)
 		http.Error(w, "task token required", http.StatusUnauthorized)
 		return
@@ -151,6 +171,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec.Action, rec.Project = rt.action, rt.project
+
+	if rt.write {
+		g.servePush(w, r, id, rec, rt)
+		return
+	}
 
 	status, reason := g.authorizeRead(r.Context(), id.Initiator, rt.project)
 	if status != 0 {

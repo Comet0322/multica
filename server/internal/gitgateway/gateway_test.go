@@ -195,10 +195,11 @@ func TestOnlyAllowListedRequestsPass(t *testing.T) {
 		{"PUT", refsPath},
 		{"GET", packPath},
 		{"DELETE", packPath},
-		{"GET", "/group/proj.git/info/refs?service=git-receive-pack"},
 		{"GET", "/group/proj.git/info/refs"},
 		{"GET", "/group/proj.git/info/refs?service=git-upload-pack&x=1"},
-		{"POST", "/group/proj.git/git-receive-pack"},
+		{"GET", "/group/proj.git/info/refs?service=git-receive-pack&x=1"},
+		{"POST", "/group/proj.git/git-receive-pack?service=x"},
+		{"GET", "/group/proj.git/git-receive-pack"},
 		{"POST", "/group/proj.git/git-upload-pack?service=x"},
 		{"GET", "/group/proj.git/HEAD"},
 		{"GET", "/group/proj.git/objects/info/packs"},
@@ -280,7 +281,7 @@ func TestAuditRecordsDecisionsWithoutCredentials(t *testing.T) {
 
 	h.do("GET", refsPath, tok, "")
 	h.do("GET", refsPath, guest, "")
-	h.do("POST", "/group/proj.git/git-receive-pack", tok, "")
+	h.do("GET", "/group/proj.git/HEAD", tok, "")
 	h.do("GET", refsPath, "gwt_forged", "")
 
 	recs := h.audit.records(t)

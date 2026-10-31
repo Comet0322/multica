@@ -23,6 +23,8 @@ type AuditRecord struct {
 	WorkspaceID string    `json:"workspace_id,omitempty"`
 	Initiator   string    `json:"initiator,omitempty"`
 	Project     string    `json:"project,omitempty"`
+	// Refs lists the refs a push asked to update.
+	Refs []string `json:"refs,omitempty"`
 }
 
 type auditLog struct {
