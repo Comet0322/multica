@@ -9,7 +9,9 @@
 //	GIT_GATEWAY_GITLAB_TOKEN      GitLab admin token, or
 //	GIT_GATEWAY_GITLAB_TOKEN_FILE a file holding it
 //	GIT_GATEWAY_VERIFY_URL        manager endpoint that resolves task tokens (required)
-//	GIT_GATEWAY_AUDIT_FILE        JSON Lines audit log; default stdout
+//	GIT_GATEWAY_POD_VERIFY_URL    manager endpoint that maps a pod address to its leased tasks;
+//	                              when set, token-less requests from a leased pod may read (never write)
+//	GIT_GATEWAY_AUDIT_FILE       JSON Lines audit log; default stdout
 //	GIT_GATEWAY_CACHE_TTL         access cache lifetime, default 10m
 //	GIT_GATEWAY_LOOKUP_TIMEOUT    GitLab API timeout, default 10s
 package main
@@ -97,6 +99,9 @@ func load(getenv func(string) string) (gitgateway.Config, string, error) {
 		errs = append(errs, "GIT_GATEWAY_VERIFY_URL is required")
 	}
 	cfg.Resolver = gitgateway.HTTPResolver{URL: verify}
+	if podVerify := getenv("GIT_GATEWAY_POD_VERIFY_URL"); podVerify != "" {
+		cfg.PodResolver = gitgateway.HTTPPodResolver{URL: podVerify}
+	}
 	if path := getenv("GIT_GATEWAY_AUDIT_FILE"); path != "" {
 		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {

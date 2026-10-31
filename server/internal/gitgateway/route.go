@@ -12,6 +12,12 @@ const (
 	ActionUploadPack = "git.upload_pack"
 )
 
+// Git write actions the gateway lets through, subject to the push ref policy.
+const (
+	ActionPushInfoRefs = "git.push_info_refs"
+	ActionReceivePack  = "git.receive_pack"
+)
+
 // route is a request that passed the allow list, reduced to values the
 // gateway itself builds. Authorization and forwarding both use these, never
 // the client's raw path, so what is checked is what is sent.
@@ -20,6 +26,7 @@ type route struct {
 	project string // lowercase, no ".git" suffix
 	path    string // path to request from GitLab
 	query   string
+	write   bool // a push; authorized by servePush, not authorizeRead
 }
 
 // parseRoute normalizes the request and matches it against the allow list. It
@@ -27,6 +34,8 @@ type route struct {
 //
 //	GET  /<namespace>/<project>.git/info/refs?service=git-upload-pack
 //	POST /<namespace>/<project>.git/git-upload-pack
+//	GET  /<namespace>/<project>.git/info/refs?service=git-receive-pack
+//	POST /<namespace>/<project>.git/git-receive-pack
 func parseRoute(method string, u *url.URL) (route, string) {
 	project, tail, why := normalizeProjectPath(u.EscapedPath())
 	if why != "" {
@@ -38,10 +47,14 @@ func parseRoute(method string, u *url.URL) (route, string) {
 		if method != http.MethodGet {
 			return route{}, "method not allowed"
 		}
-		if u.RawQuery != "service=git-upload-pack" {
+		switch u.RawQuery {
+		case "service=git-upload-pack":
+			rt = route{action: ActionInfoRefs, query: u.RawQuery}
+		case "service=git-receive-pack":
+			rt = route{action: ActionPushInfoRefs, query: u.RawQuery, write: true}
+		default:
 			return route{}, "service not allowed"
 		}
-		rt = route{action: ActionInfoRefs, query: u.RawQuery}
 	case "git-upload-pack":
 		if method != http.MethodPost {
 			return route{}, "method not allowed"
@@ -50,6 +63,14 @@ func parseRoute(method string, u *url.URL) (route, string) {
 			return route{}, "query not allowed"
 		}
 		rt = route{action: ActionUploadPack}
+	case "git-receive-pack":
+		if method != http.MethodPost {
+			return route{}, "method not allowed"
+		}
+		if u.RawQuery != "" {
+			return route{}, "query not allowed"
+		}
+		rt = route{action: ActionReceivePack, write: true}
 	default:
 		return route{}, "path not allowed"
 	}
@@ -89,7 +110,7 @@ func normalizeProjectPath(escaped string) (project, tail, why string) {
 	// The endpoint is the last one or two segments.
 	var tailSegs int
 	switch {
-	case len(segs) >= 1 && segs[len(segs)-1] == "git-upload-pack":
+	case len(segs) >= 1 && (segs[len(segs)-1] == "git-upload-pack" || segs[len(segs)-1] == "git-receive-pack"):
 		tailSegs = 1
 	case len(segs) >= 2 && segs[len(segs)-2] == "info" && segs[len(segs)-1] == "refs":
 		tailSegs = 2

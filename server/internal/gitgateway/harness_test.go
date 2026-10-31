@@ -3,9 +3,11 @@ package gitgateway_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +34,18 @@ type fakeGitLab struct {
 	hang     chan struct{}       // when set, API calls block until closed
 	apiCalls int
 	gitReqs  []gitReq
+	recv     []recvReq
+	// pushStatus, when set, is the HTTP status receive-pack answers.
+	pushStatus int
+	// rejectRef, when set, makes receive-pack report that ref as "ng".
+	rejectRef string
+}
+
+// recvReq is a receive-pack body as GitLab saw it. Only the head is kept so a
+// large push is not buffered by the test either.
+type recvReq struct {
+	Size int64
+	Head []byte
 }
 
 type fakeUser struct {
@@ -72,6 +86,12 @@ func (f *fakeGitLab) setLevel(id int64, level int) {
 	f.levels[levelKey(id, project)] = level
 }
 
+func (f *fakeGitLab) setPushOutcome(status int, rejectRef string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pushStatus, f.rejectRef = status, rejectRef
+}
+
 func (f *fakeGitLab) setFail(status int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -88,6 +108,12 @@ func (f *fakeGitLab) gitRequests() []gitReq {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]gitReq(nil), f.gitReqs...)
+}
+
+func (f *fakeGitLab) pushes() []recvReq {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]recvReq(nil), f.recv...)
 }
 
 func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +147,38 @@ func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 	if _, pw, _ := r.BasicAuth(); pw != adminToken {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/git-receive-pack") {
+		head := make([]byte, 4096)
+		n, _ := io.ReadFull(r.Body, head)
+		rest, _ := io.Copy(io.Discard, r.Body)
+		f.mu.Lock()
+		f.recv = append(f.recv, recvReq{Size: int64(n) + rest, Head: head[:n]})
+		f.mu.Unlock()
+		f.mu.Lock()
+		status, reject := f.pushStatus, f.rejectRef
+		f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
+		if status != 0 {
+			http.Error(w, "boom", status)
+			return
+		}
+		report := pkt("unpack ok\n")
+		for _, ref := range pushedRefs(head[:n]) {
+			if ref == reject {
+				report += pkt("ng " + ref + " pre-receive hook declined\n")
+			} else {
+				report += pkt("ok " + ref + "\n")
+			}
+		}
+		io.WriteString(w, pkt("\x01"+report+"0000")+"0000")
+		return
+	}
+	if r.URL.RawQuery == "service=git-receive-pack" {
+		zero := strings.Repeat("0", 40)
+		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
+		io.WriteString(w, pkt("# service=git-receive-pack\n")+"0000"+pkt(zero+" capabilities^{}\x00report-status side-band-64k delete-refs\n")+"0000")
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/info/refs") {
@@ -223,6 +281,7 @@ type harness struct {
 	tokens  *gitgateway.TokenRegistry
 	clock   *fakeClock
 	audit   *syncBuffer
+	gw      *gitgateway.Gateway
 	gateway *httptest.Server
 }
 
@@ -243,6 +302,7 @@ func newHarness(t *testing.T, mutate ...func(*gitgateway.Config)) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.gw = g
 	h.gateway = httptest.NewServer(g)
 	t.Cleanup(h.gateway.Close)
 	return h
@@ -281,3 +341,24 @@ const (
 	refsPath = "/group/proj.git/info/refs?service=git-upload-pack"
 	packPath = "/group/proj.git/git-upload-pack"
 )
+
+// pkt frames s as one pkt-line.
+func pkt(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }
+
+// pushedRefs lists the refs of the commands at the head of a receive-pack body.
+func pushedRefs(head []byte) []string {
+	var refs []string
+	for len(head) >= 4 {
+		n, err := strconv.ParseUint(string(head[:4]), 16, 16)
+		if err != nil || n < 4 || int(n) > len(head) {
+			break
+		}
+		line := string(head[4:n])
+		head = head[n:]
+		line, _, _ = strings.Cut(line, "\x00")
+		if parts := strings.SplitN(strings.TrimSpace(line), " ", 3); len(parts) == 3 {
+			refs = append(refs, parts[2])
+		}
+	}
+	return refs
+}
