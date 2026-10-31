@@ -58,7 +58,10 @@ func (p *Pool) Leases() []LeaseInfo {
 // startLeaseLocked assigns a task to an idle pod. Callers hold p.mu.
 func (p *Pool) startLeaseLocked(pd *pod, taskID, initiator string) *lease {
 	l := &lease{TaskID: taskID, PodIP: pd.IP, StartedAt: p.now(), Initiator: initiator, PodName: pd.Name, pod: pd}
-	pd.lease = l
+	if pd.leases == nil {
+		pd.leases = map[string]*lease{}
+	}
+	pd.leases[taskID] = l
 	pd.State = PodLeased
 	p.leases[taskID] = l
 	p.history = append(p.history, l)
@@ -89,11 +92,12 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	l.EndReason = reason
 	delete(p.leases, l.TaskID)
 	p.auditLease(AuditRelease, l, reason)
-	if pd := l.pod; pd != nil && pd.lease == l {
-		pd.lease = nil
-		if pd.State == PodLeased && p.pods[pd.IP] == pd {
+	if pd := l.pod; pd != nil && pd.leases[l.TaskID] == l {
+		delete(pd.leases, l.TaskID)
+		if pd.State == PodLeased && p.pods[pd.IP] == pd && len(pd.leases) == 0 && len(pd.queue) == 0 {
 			// The pod rejoins the pool only after the supervisor has cleaned
-			// it and the daemon registered again.
+			// it and the daemon registered again. A shared pod gets there once
+			// its last task has ended.
 			p.startResetLocked(pd)
 		}
 	}
@@ -208,7 +212,8 @@ func (p *Pool) runtimeIDs() []string {
 	return ids
 }
 
-// claimFor claims at most one task upstream for the polling pod. It claims
+// claimFor hands the polling pod a task assigned to it, or claims at most one
+// task upstream and places it (see placeLocked). It claims
 // only when the pod is idle: a pod that is leased, resetting or lost, or a
 // caller that is not a registered pod, gets nothing and causes no upstream
 // call, so tasks stay queued in Multica until a free pod asks. The returned
@@ -223,12 +228,23 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		http.Error(w, "pod not registered", http.StatusNotFound)
 		return nil, false
 	}
-	if pd.State != PodIdle || pd.claiming {
-		p.mu.Unlock()
+	expired := p.rebalanceLocked(pd)
+	var queued json.RawMessage
+	if t := p.takeQueuedLocked(pd); t != nil {
+		queued = t.raw
+	}
+	canClaim := queued == nil && p.canClaimLocked(pd)
+	if canClaim {
+		pd.claiming = true
+	}
+	p.mu.Unlock()
+	p.failParked(r.Context(), expired)
+	if queued != nil {
+		return queued, true
+	}
+	if !canClaim {
 		return nil, true
 	}
-	pd.claiming = true
-	p.mu.Unlock()
 	defer func() {
 		p.mu.Lock()
 		pd.claiming = false
@@ -276,8 +292,9 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		return nil, true
 	}
 
+	t := &parkedTask{raw: raw, ref: ref, key: p.placementKey(ref), claimedAt: p.now()}
 	p.mu.Lock()
-	if p.pods[ip] != pd || pd.State != PodIdle {
+	if p.pods[ip] != pd || (pd.State != PodIdle && pd.State != PodLeased) {
 		// The pod was replaced or went silent while the claim was in flight.
 		p.mu.Unlock()
 		const why = "the pod was replaced before the task could start"
@@ -285,7 +302,21 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		p.failUpstream(r.Context(), ref.ID, why)
 		return nil, true
 	}
-	p.startLeaseLocked(pd, ref.ID, ref.initiator())
+	target := p.placeLocked(pd, t.key)
+	if target == nil {
+		// No pod can take it yet; a later poll places it, or it times out.
+		p.waiting = append(p.waiting, t)
+		p.mu.Unlock()
+		p.log.Info("claimed task waits for a pod", "task_id", ref.ID, "pod_ip", ip)
+		return nil, true
+	}
+	p.assignLocked(target, t)
+	if target != pd {
+		p.mu.Unlock()
+		p.log.Info("claimed task assigned to another pod", "task_id", ref.ID, "poll_ip", ip, "pod_ip", target.IP)
+		return nil, true
+	}
+	p.takeQueuedLocked(pd)
 	p.mu.Unlock()
 	p.log.Info("leased pod to task", "pod_ip", ip, "task_id", ref.ID)
 	return raw, true
