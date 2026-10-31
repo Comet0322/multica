@@ -35,6 +35,34 @@ type fakeLiteLLM struct {
 	generateMessage string
 	// userInfoCalls counts /user/info lookups.
 	userInfoCalls int
+	// existing are keys already in LiteLLM when the manager starts (what an
+	// earlier manager left behind), as /key/list shows them.
+	existing []map[string]any
+	// deletedAliases are the key_aliases passed to /key/delete.
+	deletedAliases []string
+}
+
+// seedKey adds a key that an earlier manager issued (or any other key) to what
+// /key/list returns. An empty task gives a key without task metadata.
+func (f *fakeLiteLLM) seedKey(alias, workspace, task string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	meta := map[string]any{}
+	if task != "" {
+		meta = map[string]any{"task": task, "workspace": workspace}
+	}
+	f.existing = append(f.existing, map[string]any{"key_alias": alias, "metadata": meta})
+}
+
+func (f *fakeLiteLLM) aliasDeleted(alias string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.deletedAliases {
+		if a == alias {
+			return true
+		}
+	}
+	return false
 }
 
 func newFakeLiteLLM(t *testing.T, users ...string) *fakeLiteLLM {
@@ -93,12 +121,16 @@ func (f *fakeLiteLLM) serve(w http.ResponseWriter, r *http.Request) {
 		key := fmt.Sprintf("sk-task-%s-%d", alias, len(f.generated))
 		f.keys[alias] = key
 		writeJSON(w, map[string]any{"key": key})
+	case "/key/list":
+		writeJSON(w, map[string]any{"keys": f.existing, "total_count": len(f.existing), "current_page": 1, "total_pages": 1})
 	case "/key/delete":
 		var body struct {
-			Keys []string `json:"keys"`
+			Keys    []string `json:"keys"`
+			Aliases []string `json:"key_aliases"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.deleted = append(f.deleted, body.Keys...)
+		f.deletedAliases = append(f.deletedAliases, body.Aliases...)
 		writeJSON(w, map[string]any{"deleted_keys": body.Keys})
 	default:
 		http.NotFound(w, r)
