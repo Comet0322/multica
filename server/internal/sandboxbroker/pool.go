@@ -700,6 +700,17 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 	ws.registration = raw
 	p.mu.Unlock()
 	p.log.Info("registered pool runtimes", "workspace_id", ws.cfg.WorkspaceID, "runtimes", len(resp.Runtimes))
+	// The leases of an earlier manager are gone and every pod is reset, so
+	// whatever Multica still shows running on these runtimes will never finish.
+	// This is the first registration since this manager started and no task has
+	// been leased yet, so failing them (which lets Multica retry) cannot hit a
+	// live task. Best effort: the tasks would otherwise wait for Multica's own
+	// timeout.
+	for _, rt := range resp.Runtimes {
+		if err := ws.up.call(ctx, http.MethodPost, "/api/daemon/runtimes/"+rt.ID+"/recover-orphans", map[string]any{}, nil); err != nil {
+			p.log.Warn("recover orphaned tasks upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", rt.ID, "error", err)
+		}
+	}
 	return raw, nil
 }
 
