@@ -35,11 +35,20 @@ spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
+        # The image's user is named ("broker"), which runAsNonRoot cannot
+        # verify; Dockerfile.broker creates it as 65532.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532 # lets the Secret files below be read by the manager
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: manager
           image: multica-sandbox-manager # tag set in kustomization.yaml
+          # Skip the image's compose entrypoint: it bootstraps a demo account
+          # and needs SANDBOX_BROKER_STATE_DIR. Pool mode takes its settings
+          # from the environment alone.
+          command: [/usr/local/bin/sandbox-broker]
           ports:
             - {name: pod, containerPort: 8080}
             - {name: gateway, containerPort: 8792}
@@ -54,6 +63,8 @@ spec:
             # operator creates out of band (keys: workspaces.json,
             # litellm-master-key); only the file paths are referenced here.
             - {name: SANDBOX_WORKSPACES_FILE, value: /etc/sandbox-manager/workspaces.json}
+            # A Secret volume is group-readable (fsGroup), never owner-only.
+            - {name: SANDBOX_WORKSPACES_FILE_GROUP_READ, value: "true"}
             # One JSON line per decision, to stdout for the cluster's log
             # pipeline (the root filesystem is read-only).
             - {name: SANDBOX_AUDIT_FILE, value: "-"}
@@ -80,6 +91,7 @@ spec:
         - name: config
           secret:
             secretName: sandbox-manager-config # created out of band, not in this repo
+            defaultMode: 0440
 ---
 # ClusterIP for pods. It exposes ONLY the pod listener. The admin port is
 # loopback-bound and absent here. Admins use

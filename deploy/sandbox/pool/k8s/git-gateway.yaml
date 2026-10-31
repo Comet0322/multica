@@ -30,6 +30,10 @@ spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
+        # The image's user is named ("gateway"), which runAsNonRoot cannot
+        # verify; Dockerfile.gateway creates it as 65532.
+        runAsUser: 65532
+        runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
