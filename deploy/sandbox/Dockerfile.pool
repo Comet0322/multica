@@ -133,5 +133,10 @@ FROM base AS agents
 # Space-separated npm packages providing the agent CLIs to expose.
 ARG AGENT_PACKAGES="@anthropic-ai/claude-code"
 ARG AGENT_COMMANDS="claude"
-RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g $AGENT_PACKAGES && npm cache clean --force; fi \
+# The base stage points npm at the internal package mirror; when that mirror
+# does not serve the agent CLIs (or the build runs outside the cluster
+# network), AGENT_NPM_REGISTRY names the registry to install them from. The
+# running image still uses the mirror.
+ARG AGENT_NPM_REGISTRY=
+RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g ${AGENT_NPM_REGISTRY:+--registry="$AGENT_NPM_REGISTRY"} $AGENT_PACKAGES && npm cache clean --force; fi \
 	&& for c in $AGENT_COMMANDS; do command -v "$c" >/dev/null && ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done
