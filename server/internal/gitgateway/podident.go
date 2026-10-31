@@ -54,8 +54,10 @@ func (g *Gateway) serveDaemonRead(w http.ResponseWriter, r *http.Request) {
 	}
 	rec.Action, rec.Project = rt.action, rt.project
 	if !readOnlyAction(rt.action) {
+		// 401 with a challenge, not 403: git asks its credential helper for the
+		// task token only after a 401, so a 403 would end every push.
 		rec.Reason = "writes need a task token; source address only grants reads"
-		g.deny(w, r, rec, http.StatusForbidden)
+		g.deny(w, r, rec, http.StatusUnauthorized)
 		return
 	}
 

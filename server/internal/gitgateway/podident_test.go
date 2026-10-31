@@ -93,16 +93,22 @@ func TestAddressIdentityNeverWrites(t *testing.T) {
 	h := newHarness(t, withPods(pods))
 	h.gitlab.addUser("alice@example.com", 7, "active", gitgateway.LevelDeveloper)
 
-	for _, c := range []struct{ method, path string }{
-		{"GET", "/group/proj.git/info/refs?service=git-receive-pack"},
-		{"POST", "/group/proj.git/git-receive-pack"},
-		{"POST", "/api/v4/projects/group%2Fproj/merge_requests"},
-		{"DELETE", packPath},
-		{"POST", refsPath},
-		{"GET", packPath},
+	// A push without a token is challenged (401) rather than refused (403): git
+	// calls its credential helper only after a 401, so a 403 here would leave
+	// every push of an agent without the task token it holds.
+	for _, c := range []struct {
+		method, path string
+		want         int
+	}{
+		{"GET", "/group/proj.git/info/refs?service=git-receive-pack", 401},
+		{"POST", "/group/proj.git/git-receive-pack", 401},
+		{"POST", "/api/v4/projects/group%2Fproj/merge_requests", 403},
+		{"DELETE", packPath, 403},
+		{"POST", refsPath, 403},
+		{"GET", packPath, 403},
 	} {
-		if code, _ := h.do(c.method, c.path, "", "0000"); code != 403 {
-			t.Errorf("%s %s = %d, want 403", c.method, c.path, code)
+		if code, _ := h.do(c.method, c.path, "", "0000"); code != c.want {
+			t.Errorf("%s %s = %d, want %d", c.method, c.path, code, c.want)
 		}
 	}
 	if n := len(h.gitlab.gitRequests()); n != 0 || h.gitlab.calls() != 0 {
