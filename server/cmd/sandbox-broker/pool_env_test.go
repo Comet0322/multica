@@ -219,7 +219,7 @@ func TestAdminListenerServesGitVerifyOnlyWhenConfigured(t *testing.T) {
 		adminLn, _ := net.Listen("tcp", "127.0.0.1:0")
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
-		go func() { done <- servePool(ctx, log, pool, path, podLn, adminLn, make(chan os.Signal)) }()
+		go func() { done <- servePool(ctx, log, pool, path, podLn, adminLn, nil, make(chan os.Signal)) }()
 		defer func() {
 			cancel()
 			<-done

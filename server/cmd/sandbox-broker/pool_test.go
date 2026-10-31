@@ -78,7 +78,7 @@ func TestSIGHUPStyleReloadChangesTheServedWorkspaces(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	hup := make(chan os.Signal)
 	done := make(chan error, 1)
-	go func() { done <- servePool(ctx, log, pool, path, podLn, adminLn, hup) }()
+	go func() { done <- servePool(ctx, log, pool, path, podLn, adminLn, nil, hup) }()
 	defer func() {
 		cancel()
 		if err := <-done; err != nil {
