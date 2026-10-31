@@ -30,6 +30,39 @@ fi
 exec sleep 100000
 `
 
+// The agent asks the daemon for its checkout (multica repo checkout) after it
+// has started, so the worktree appears while the shim is already running.
+const lateCheckoutDaemon = `#!/bin/sh
+echo $$ >> "$OUT/pids"
+if [ ! -e "$OUT/ran" ]; then
+  : > "$OUT/ran"
+  mkdir -m 755 "$TASKDIR"
+  cd "$TASKDIR"
+  fakeagent run > "$OUT/agent.out" 2>&1
+  echo $? > "$OUT/agent.status"
+fi
+exec sleep 100000
+`
+
+const lateCheckoutAgent = `#!/bin/sh
+wt="$(pwd)/../cache/repo.git/worktrees/app"
+mkdir -p -m 755 "$wt" app
+printf '[core]\n' > "$wt/config.worktree"
+chmod 600 "$wt/config.worktree"
+printf 'gitdir: %s\n' "$wt" > app/.git
+sleep 2
+stat -c %a "$wt/config.worktree" > "$OUT/late.mode"
+`
+
+func TestCheckoutCreatedAfterTheAgentStartedIsOpenedToTheAgentGroup(t *testing.T) {
+	p := startSplitPod(t, lateCheckoutDaemon, lateCheckoutAgent)
+	p.waitOutFile("agent.status")
+	mode := p.outFile("late.mode")
+	if len(mode) < 2 || mode[len(mode)-2] < '6' {
+		t.Errorf("config.worktree created while the agent runs has mode %s: the agent's group cannot use it", mode)
+	}
+}
+
 func TestWorktreeGitDirOfTheCheckoutIsOpenedToTheAgentGroup(t *testing.T) {
 	p := startSplitPod(t, gitdirDaemon, echoAgent)
 	p.waitOutFile("agent.status")
