@@ -21,3 +21,5 @@ func killProc(int) {}
 func reapProc(int) {}
 
 func credentialAttr(uid, gid uint32) *syscall.SysProcAttr { return nil }
+
+func setSharedUmask() {}

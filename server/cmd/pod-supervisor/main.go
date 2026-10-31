@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,6 +20,11 @@ import (
 )
 
 func main() {
+	// Linked under the name of an agent CLI, this binary is the shim that
+	// hands the launch to the supervisor (see podsupervisor.Config.ShimDir).
+	if name := filepath.Base(os.Args[0]); name != "pod-supervisor" {
+		os.Exit(podsupervisor.RunShim(name, os.Args[1:]))
+	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	cfg, err := parse(os.Args[1:], os.Environ())
 	if err != nil {
@@ -48,6 +54,11 @@ func parse(args, environ []string) (podsupervisor.Config, error) {
 	fs.StringVar(&cfg.TmpDir, "tmpdir", "", "daemon TMPDIR, emptied on reset")
 	fs.StringVar(&cfg.HomeTemplate, "home-template", "", "read-only HOME template")
 	fs.DurationVar(&cfg.PollInterval, "poll-interval", 2*time.Second, "control URL poll interval")
+	fs.StringVar(&cfg.ShimDir, "shim-dir", "", "directory of agent shims; switches on the daemon/agent user split")
+	fs.StringVar(&cfg.DaemonHome, "daemon-home", "", "daemon HOME in split mode, below the tmpdir")
+	fs.StringVar(&cfg.DaemonHomeTemplate, "daemon-home-template", "", "read-only template of the daemon HOME in split mode")
+	agentUID := fs.Int("agent-uid", -1, "agent user id (split mode, required when running as root)")
+	agentGID := fs.Int("agent-gid", -1, "agent group id")
 	uid := fs.Int("uid", -1, "daemon user id (required when running as root)")
 	gid := fs.Int("gid", -1, "daemon group id")
 	if err := fs.Parse(args); err != nil {
@@ -59,6 +70,13 @@ func parse(args, environ []string) (podsupervisor.Config, error) {
 			g = *uid
 		}
 		cfg.DaemonUser = &podsupervisor.User{UID: uint32(*uid), GID: uint32(g)}
+	}
+	if *agentUID >= 0 {
+		g := *agentGID
+		if g < 0 {
+			g = *agentUID
+		}
+		cfg.AgentUser = &podsupervisor.User{UID: uint32(*agentUID), GID: uint32(g)}
 	}
 	if fs.NArg() == 0 {
 		return cfg, fmt.Errorf("daemon command required after --")

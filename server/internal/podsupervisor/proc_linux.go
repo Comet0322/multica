@@ -100,3 +100,7 @@ func reapProc(pid int) {
 func credentialAttr(uid, gid uint32) *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid}}
 }
+
+// setSharedUmask makes the processes started from here create group-writable
+// files; the daemon and the agent user share a group.
+func setSharedUmask() { syscall.Umask(0o002) }

@@ -126,6 +126,8 @@ type pod struct {
 	home     string
 	tmp      string
 	template string
+	args     []string // extra supervisor flags, set by the setup function
+	env      []string // extra supervisor environment
 	cmd      *exec.Cmd
 }
 
@@ -168,13 +170,14 @@ func startPod(t *testing.T, mark string, setup func(p *pod)) *pod {
 	if setup != nil {
 		setup(p)
 	}
-	p.cmd = exec.Command(supervisorBin,
+	args := append([]string{
 		"-control-url", p.ctl.srv.URL,
 		"-work-root", p.work, "-home", p.home, "-tmpdir", p.tmp,
 		"-home-template", p.template,
 		"-poll-interval", "50ms",
-		"--", script)
-	p.cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "OUT=" + p.out, "MARK=" + mark, "SPAWN=" + map[bool]string{true: "1"}[mark != ""]}
+	}, p.args...)
+	p.cmd = exec.Command(supervisorBin, append(args, "--", script)...)
+	p.cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "OUT=" + p.out, "MARK=" + mark, "SPAWN=" + map[bool]string{true: "1"}[mark != ""]}, p.env...)
 	p.cmd.Stderr = io.Discard
 	if err := p.cmd.Start(); err != nil {
 		t.Fatal(err)

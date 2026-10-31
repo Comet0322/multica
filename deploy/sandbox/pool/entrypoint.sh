@@ -13,5 +13,9 @@ exec /usr/local/bin/pod-supervisor \
 	--tmpdir "$POD_TMPDIR" \
 	--home-template "$POD_HOME_TEMPLATE" \
 	--uid "$POD_UID" --gid "$POD_GID" \
+	--agent-uid "$POD_AGENT_UID" --agent-gid "$POD_AGENT_GID" \
+	--shim-dir "$POD_SHIM_DIR" \
+	--daemon-home "$POD_DAEMON_HOME" \
+	--daemon-home-template "$POD_DAEMON_HOME_TEMPLATE" \
 	${POD_POLL_INTERVAL:+--poll-interval "$POD_POLL_INTERVAL"} \
 	-- /usr/local/bin/multica daemon start --foreground

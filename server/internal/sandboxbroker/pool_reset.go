@@ -34,6 +34,7 @@ func (p *Pool) startResetLocked(pd *pod, reason string, l *lease) {
 	pd.resetID = uuid.NewString()
 	pd.resetStarted = p.now()
 	pd.resetReported = false
+	pd.resetDelivered, pd.earlyReg = false, nil
 	pd.resetLease = l
 	p.log.Info("pod reset started", "pod_ip", pd.IP, "reset_id", pd.resetID, "reason", reason)
 	p.auditReset(pd, AuditAllow, "reset started: "+reason)
@@ -89,6 +90,7 @@ func (p *Pool) serveControl(w http.ResponseWriter, r *http.Request, ip string) {
 		var id string
 		if pd != nil && pd.State == PodResetting && !pd.resetReported {
 			id = pd.resetID
+			pd.resetDelivered = true
 		}
 		p.mu.Unlock()
 		if pd == nil {
@@ -125,6 +127,13 @@ func (p *Pool) serveControl(w http.ResponseWriter, r *http.Request, ip string) {
 			switch rep.Status {
 			case "done":
 				pd.resetReported = true
+				if early := pd.earlyReg; early != nil {
+					// The new daemon registered before this report; the
+					// acknowledgement is what was missing.
+					early.LastSeen = p.now()
+					p.completeResetLocked(pd)
+					p.pods[ip] = early
+				}
 			case "failed":
 				p.log.Warn("pod lost: reset failed", "pod_ip", ip, "reset_id", rep.ID, "error", rep.Error)
 				p.auditReset(pd, AuditDeny, "reset failed: "+boundText(rep.Error, 200))
