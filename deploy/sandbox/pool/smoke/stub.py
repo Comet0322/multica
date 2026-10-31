@@ -72,6 +72,7 @@ class H(BaseHTTPRequestHandler):
                     "id": tid, "agent_id": "agent-1", "runtime_id": "runtime-0",
                     "workspace_id": WORKSPACE_ID, "issue_id": "22222222-2222-4333-8444-555555555555",
                     "initiator_email": "alice@example.com",
+                    "auth_token": "mat_" + "0" * 40,  # the daemon insists on a task-scoped token
                     "agent": {"id": "agent-1", "name": "smoke-agent", "instructions": "say hi"},
                 })
             return self.send(200)
@@ -92,7 +93,10 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"tasks": tasks})
         if path.startswith("/api/daemon/tasks/"):
             with lock:
-                state["taskCalls"].append(path[len("/api/daemon/tasks/"):])
+                call = path[len("/api/daemon/tasks/"):]
+                if call.endswith("/fail"):
+                    call += " " + str(b.get("error", ""))[:300]
+                state["taskCalls"].append(call)
         self.send(200, {"status": "ok"})
 
 
