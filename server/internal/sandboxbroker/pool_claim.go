@@ -137,7 +137,7 @@ func (p *Pool) failUpstream(ctx context.Context, ws *workspace, taskID, reason s
 func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 	rest, ok := strings.CutPrefix(r.URL.Path, "/api/daemon/")
 	if !ok {
-		p.refuse(w, r, ip, "endpoint not supported by the pool manager")
+		p.serveAgentAPI(w, r, ip)
 		return
 	}
 	parts := strings.Split(rest, "/")
@@ -180,6 +180,23 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 	default:
 		p.refuse(w, r, ip, "daemon endpoint not supported by the pool manager")
 	}
+}
+
+// serveAgentAPI relays the traffic of an agent's multica CLI, which uses the
+// daemon's server address (the manager, in a pod) and the task token the server
+// minted. The token authenticates itself upstream, so the request is forwarded
+// unchanged and never gets a workspace PAT. Only a registered pod may send it,
+// and only with a task token ("mat_"): the daemon's placeholder is no credential.
+func (p *Pool) serveAgentAPI(w http.ResponseWriter, r *http.Request, ip string) {
+	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	p.mu.Lock()
+	registered := p.pods[ip] != nil
+	p.mu.Unlock()
+	if !registered || !strings.HasPrefix(strings.TrimSpace(token), "mat_") {
+		p.refuse(w, r, ip, "endpoint not supported by the pool manager")
+		return
+	}
+	p.forward(w, r, &proxyRoute{})
 }
 
 func (p *Pool) serveRuntimeScoped(w http.ResponseWriter, r *http.Request, ip string, parts []string) {
