@@ -83,6 +83,12 @@ type PoolConfig struct {
 	// owned by the initiator. Nil leaves model access to the agent's own
 	// settings.
 	LiteLLM *LiteLLMConfig
+	// DrainTimeout is how long a workspace removed by Reload may keep its
+	// leases before they are ended. Zero means DefaultDrainTimeout.
+	DrainTimeout time.Duration
+	// DrainPoll is how often a removed workspace is checked for leftover
+	// work. Zero means one second.
+	DrainPoll time.Duration
 	// Git, when set, gives every task a git gateway token and serves the
 	// gateway's verification endpoints on AdminHandler. Nil leaves git to
 	// the image's own setup.
@@ -126,6 +132,15 @@ func (c *PoolConfig) normalize() error {
 		}
 		c.LiteLLM = &llm
 	}
+	if c.DrainTimeout < 0 || c.DrainPoll < 0 {
+		return fmt.Errorf("drain timeout and poll interval must not be negative")
+	}
+	if c.DrainTimeout == 0 {
+		c.DrainTimeout = DefaultDrainTimeout
+	}
+	if c.DrainPoll == 0 {
+		c.DrainPoll = time.Second
+	}
 	if c.Git != nil {
 		git := *c.Git
 		if err := git.normalize(); err != nil {
@@ -151,19 +166,8 @@ func (c *PoolConfig) normalize() error {
 	}
 	c.Workspaces = slices.Clone(c.Workspaces)
 	c.WorkspaceID, c.MulticaToken, c.BrokerID = "", "", ""
-	seen := map[string]bool{}
-	for i := range c.Workspaces {
-		if c.Workspaces[i].Placement == "" {
-			c.Workspaces[i].Placement = c.Placement
-		}
-		if err := c.Workspaces[i].normalize(c.MulticaURL, c.Name); err != nil {
-			return err
-		}
-		id := c.Workspaces[i].WorkspaceID
-		if seen[id] {
-			return fmt.Errorf("workspace %s is configured twice", id)
-		}
-		seen[id] = true
+	if err := c.normalizeWorkspaces(c.Workspaces); err != nil {
+		return err
 	}
 	return nil
 }
@@ -178,8 +182,11 @@ type Pool struct {
 
 	// workspaces are the served workspaces by ID; wsOrder is the stable order
 	// the fair rotation walks.
+	// Reload replaces both under mu (wsOrder as a fresh slice, never in
+	// place); draining holds removed workspaces that still have work.
 	workspaces map[string]*workspace
 	wsOrder    []*workspace
+	draining   []*workspace
 
 	mu sync.Mutex
 	// rotor is the index in wsOrder where the next claim starts.
@@ -287,7 +294,10 @@ type Inventory struct {
 	Lost         int `json:"lost"`
 	// Workspaces lists each served workspace with its lease count and cap.
 	Workspaces []WorkspaceInfo `json:"workspaces"`
-	Pods       []PodInfo       `json:"pods"`
+	// Draining lists workspaces removed by a reload that still hold leases;
+	// they are no longer polled.
+	Draining []WorkspaceInfo `json:"draining,omitempty"`
+	Pods     []PodInfo       `json:"pods"`
 }
 
 func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
@@ -326,6 +336,12 @@ func (p *Pool) Inventory() Inventory {
 	inv := Inventory{ExpectedSize: p.cfg.ExpectedSize, Pods: []PodInfo{}, Workspaces: []WorkspaceInfo{}}
 	for _, ws := range p.wsOrder {
 		inv.Workspaces = append(inv.Workspaces, WorkspaceInfo{
+			WorkspaceID: ws.cfg.WorkspaceID, Name: ws.cfg.RuntimeName,
+			Leased: p.leasedLocked(ws), MaxLeases: ws.cfg.MaxLeases,
+		})
+	}
+	for _, ws := range p.draining {
+		inv.Draining = append(inv.Draining, WorkspaceInfo{
 			WorkspaceID: ws.cfg.WorkspaceID, Name: ws.cfg.RuntimeName,
 			Leased: p.leasedLocked(ws), MaxLeases: ws.cfg.MaxLeases,
 		})
@@ -378,8 +394,9 @@ func (p *Pool) PodHandler() http.Handler {
 		case "/healthz":
 			writeJSON(w, http.StatusOK, okBody)
 		case "/api/workspaces", "/api/daemon/workspaces":
-			list := make([]map[string]string, 0, len(p.wsOrder))
-			for _, ws := range p.wsOrder {
+			order := p.workspaceList()
+			list := make([]map[string]string, 0, len(order))
+			for _, ws := range order {
 				list = append(list, map[string]string{"id": ws.cfg.WorkspaceID, "name": ws.cfg.RuntimeName})
 			}
 			writeJSON(w, http.StatusOK, list)
@@ -451,8 +468,8 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	}
 
 	ws := p.workspaceByID(req.WorkspaceID)
-	if ws == nil && req.WorkspaceID == "" && len(p.wsOrder) == 1 {
-		ws = p.wsOrder[0]
+	if order := p.workspaceList(); ws == nil && req.WorkspaceID == "" && len(order) == 1 {
+		ws = order[0]
 	}
 	if ws == nil {
 		p.refuse(w, r, ip, "workspace is not served by this pool manager")

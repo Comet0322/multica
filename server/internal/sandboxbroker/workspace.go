@@ -128,6 +128,9 @@ type workspace struct {
 	claiming int
 	// backoffUntil skips the workspace after an upstream failure.
 	backoffUntil time.Time
+	// removed is set when a reload drops the workspace; it is never claimed
+	// from again.
+	removed bool
 }
 
 // WorkspaceInfo is one workspace's entry in the inventory.
@@ -140,12 +143,14 @@ type WorkspaceInfo struct {
 }
 
 func (p *Pool) workspaceByID(id string) *workspace {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.workspaces[strings.ToLower(id)]
 }
 
 // workspaceByRuntime finds the workspace owning an upstream runtime ID.
 func (p *Pool) workspaceByRuntime(id string) *workspace {
-	for _, ws := range p.wsOrder {
+	for _, ws := range p.workspaceList() {
 		for _, rid := range p.runtimeIDs(ws) {
 			if rid == id {
 				return ws
@@ -231,7 +236,7 @@ func (p *Pool) runtimeIDs(ws *workspace) []string {
 func (p *Pool) reserveClaim(ws *workspace) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.now().Before(ws.backoffUntil) {
+	if ws.removed || p.now().Before(ws.backoffUntil) {
 		return false
 	}
 	if max := ws.cfg.MaxLeases; max > 0 && p.leasedLocked(ws)+p.parkedLocked(ws)+ws.claiming >= max {

@@ -61,6 +61,7 @@ type Gateway struct {
 	users  *ttlCache[gitlabUser]
 	levels *ttlCache[int]
 	audit  *auditLog
+	pushed pushLog
 	proxy  *httputil.ReverseProxy
 	log    *slog.Logger
 	now    func() time.Time
@@ -138,6 +139,11 @@ func (g *Gateway) rewrite(pr *httputil.ProxyRequest) {
 	out.Host = g.base.Host
 	out.Header.Del("Authorization")
 	out.Header.Del("Cookie")
+	if rt.write {
+		// Go's transport then asks for gzip itself and decodes it, so the
+		// push report can be read.
+		out.Header.Del("Accept-Encoding")
+	}
 	out.SetBasicAuth("git-gateway", g.cfg.AdminToken)
 }
 

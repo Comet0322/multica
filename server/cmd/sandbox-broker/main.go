@@ -24,6 +24,19 @@ const sandboxEnvPrefix = "SANDBOX_ENV_"
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	if os.Getenv("SANDBOX_WORKSPACES_FILE") != "" {
+		settings, err := loadPool(os.Getenv)
+		if err == nil {
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			err = runPool(ctx, log, settings)
+		}
+		if err != nil {
+			log.Error("sandbox pool manager stopped", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	cfg, provider, err := load(os.Getenv, os.Environ())
 	if err != nil {
 		log.Error("invalid sandbox broker configuration", "error", err)
