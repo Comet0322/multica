@@ -284,7 +284,8 @@
     "discard_dialog_title": "放棄未儲存的修改？",
     "discard_dialog_description": "當前 tab 有未儲存的修改，離開會丟棄這些修改。",
     "discard_keep": "繼續編輯",
-    "discard_confirm": "放棄修改"
+    "discard_confirm": "放棄修改",
+    "claude_agent": "Claude 智慧體"
   },
   "creation_studio": {
     "title": "建立智慧體",

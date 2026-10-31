@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { AlertCircle, Plus } from "lucide-react";
+import { AlertCircle, Plus } from "@multica/ui/icons";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentRuntime } from "@multica/core/types";
@@ -33,6 +33,7 @@ import {
   memberListOptions,
 } from "@multica/core/workspace/queries";
 import { Button } from "@multica/ui/components/ui/button";
+import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { Input } from "@multica/ui/components/ui/input";
 import {
   Select,
@@ -59,14 +60,22 @@ import {
   AlertDialogTitle,
 } from "@multica/ui/components/ui/alert-dialog";
 import { cn } from "@multica/ui/lib/utils";
-import { PAGE_GUTTER, PAGE_RAIL } from "../../layout/page-header";
+import { CollectionPageState } from "../../layout/collection-page";
+import {
+  OBJECT_PAGE_BODY,
+  ObjectIdentity,
+  ObjectPage,
+  ObjectSection,
+} from "../../layout/object-page";
 import { AppLink, useNavigation } from "../../navigation";
 import { createPathWithParams } from "../../agents/create/squad-param";
 import { useT } from "../../i18n";
 import { ProviderLogo } from "./provider-logo";
 import { QoderSection } from "./qoder-connection-cards";
-import { ServingAgentsCard } from "./runtime-detail";
+import { ServingAgentList } from "./runtime-detail";
 import { parseActiveAgentsConflict } from "./delete-runtime-dialog";
+
+const LAYOUT_ID = "multica_runtime_detail_layout";
 
 /** Route locator of the workspace's Claude Managed Agents page. */
 export const CLAUDE_MANAGED_LOCATOR = "claude-managed";
@@ -540,24 +549,46 @@ export function ClaudeManagedPage() {
   const disconnect = useDisconnectClaude(wsId);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
 
+  const title = t(($) => $.claude_managed.cloud_title);
+  const segments = [{ href: paths.runtimes(), label: t(($) => $.page.title) }];
+  const leaf = (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <ProviderLogo provider={CLAUDE_MANAGED_PROVIDER} className="size-3.5 shrink-0" />
+      <span className="truncate">{title}</span>
+    </span>
+  );
+
   const data = connection.data;
-  if (!data) {
+  if (connection.isPending) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-caption text-muted-foreground">
-        {connection.isError
-          ? connection.error.message
-          : t(($) => $.claude_managed.loading)}
-      </div>
+      <ObjectPage layoutId={LAYOUT_ID} segments={segments} leaf={leaf}>
+        <ClaudeBodySkeleton />
+      </ObjectPage>
     );
   }
-  if (!data.available) {
+  if (connection.isError || data?.available !== true) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <AlertCircle aria-hidden="true" className="size-8 text-destructive" />
-        <p className="max-w-md text-body">
-          {t(($) => $.claude_managed.unavailable)}
-        </p>
-      </div>
+      <ObjectPage layoutId={LAYOUT_ID} segments={segments} leaf={leaf}>
+        <CollectionPageState
+          icon={AlertCircle}
+          tone="destructive"
+          title={
+            connection.isError
+              ? connection.error.message
+              : t(($) => $.claude_managed.unavailable)
+          }
+          actions={
+            <Button
+              size="sm"
+              variant="outline"
+              render={<AppLink href={paths.runtimes()} />}
+              nativeButton={false}
+            >
+              {t(($) => $.detail.all_runtimes)}
+            </Button>
+          }
+        />
+      </ObjectPage>
     );
   }
 
@@ -571,146 +602,137 @@ export function ClaudeManagedPage() {
   const ready =
     data.configured && data.enabled && data.status === "online" && !!runtime;
   const busy = stop.isPending || resume.isPending || disconnect.isPending;
-  const title = t(($) => $.claude_managed.cloud_title);
+  const failing = data.enabled && data.status === "error" && !!data.lastError;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 border-b bg-background pb-5 pt-3">
-        <div className={cn(PAGE_RAIL, PAGE_GUTTER)}>
-          <div className="flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground">
-            <AppLink
-              href={paths.runtimes()}
-              className="rounded-sm transition-colors hover:text-foreground"
-            >
-              {t(($) => $.page.title)}
-            </AppLink>
-            <span aria-hidden="true">/</span>
-            <span className="truncate text-foreground">{title}</span>
-          </div>
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex min-w-0 items-start gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border bg-card sm:size-14">
+    <ObjectPage
+      layoutId={LAYOUT_ID}
+      segments={segments}
+      leaf={leaf}
+      actions={
+        ready && runtime ? (
+          <Button
+            size="sm"
+            onClick={() =>
+              navigation.push(
+                createPathWithParams(paths.newAgentManual(), {
+                  runtime: runtime.id,
+                }),
+              )
+            }
+          >
+            <Plus aria-hidden="true" className="size-3.5" />
+            {t(($) => $.claude_managed.create_agent)}
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className={cn(OBJECT_PAGE_BODY, "space-y-8")}>
+        <div className="space-y-3">
+          <ObjectIdentity
+            media={
+              <div className="flex size-12 items-center justify-center rounded-xl border bg-muted/50">
                 <ProviderLogo provider={CLAUDE_MANAGED_PROVIDER} className="size-6" />
               </div>
-              <div className="min-w-0 pt-0.5">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                  <h1 className="text-title-lg font-semibold tracking-tight">
-                    {title}
-                  </h1>
-                  <ClaudeStatusBadge connection={data} />
-                </div>
-                {data.enabled && data.status === "error" && data.lastError && (
-                  <p role="alert" className="mt-1 text-body text-destructive">
-                    {data.lastError}
-                  </p>
-                )}
-                {data.configured && (
-                  <p className="mt-1.5 text-caption tabular-nums text-muted-foreground">
-                    {t(($) => $.claude_managed.agent_count, {
-                      count: boundAgents.length,
-                    })}
-                    {" · "}
-                    {t(($) => $.claude_managed.usage, {
-                      active: data.activeRuns,
-                      limit: data.maxConcurrency,
-                      queued: data.queuedRuns,
-                    })}
-                  </p>
-                )}
-              </div>
-            </div>
-            {ready && runtime && (
-              <Button
-                size="sm"
-                onClick={() =>
-                  navigation.push(
-                    createPathWithParams(paths.newAgentManual(), {
-                      runtime: runtime.id,
-                    }),
-                  )
-                }
-              >
-                <Plus aria-hidden="true" className="size-3.5" />
-                {t(($) => $.claude_managed.create_agent)}
-              </Button>
+            }
+            title={title}
+            trailing={<ClaudeStatusBadge connection={data} />}
+            description={
+              data.configured ? (
+                <span className="tabular-nums">
+                  {t(($) => $.claude_managed.agent_count, {
+                    count: boundAgents.length,
+                  })}
+                  {" · "}
+                  {t(($) => $.claude_managed.usage, {
+                    active: data.activeRuns,
+                    limit: data.maxConcurrency,
+                    queued: data.queuedRuns,
+                  })}
+                </span>
+              ) : undefined
+            }
+          />
+          {failing && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-caption text-destructive"
+            >
+              {data.lastError}
+            </p>
+          )}
+        </div>
+
+        <QoderSection title={t(($) => $.claude_managed.connection)}>
+          <div className="p-4">
+            {isAdmin ? (
+              <ClaudeConnectionForm
+                key={data.configured ? "edit" : "connect"}
+                wsId={wsId}
+                connection={data}
+              />
+            ) : (
+              <p className="text-caption text-muted-foreground">
+                {data.configured
+                  ? data.environmentId
+                  : t(($) => $.claude_managed.not_connected)}
+              </p>
             )}
           </div>
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-        <div
-          className={cn(
-            PAGE_RAIL,
-            PAGE_GUTTER,
-            "grid grid-cols-1 gap-4 py-4 sm:py-6 lg:grid-cols-[minmax(0,1fr)_320px]",
-          )}
+        </QoderSection>
+
+        <ObjectSection
+          title={t(($) => $.page.columns.agents)}
+          count={boundAgents.length}
         >
-          <QoderSection title={t(($) => $.claude_managed.connection)}>
-            <div className="p-4">
-              {isAdmin ? (
-                <ClaudeConnectionForm
-                  key={data.configured ? "edit" : "connect"}
-                  wsId={wsId}
-                  connection={data}
-                />
+          <ServingAgentList
+            agents={boundAgents}
+            presenceMap={presenceMap}
+            agentHref={(id) => paths.agentDetail(id)}
+          />
+        </ObjectSection>
+
+        {isAdmin && data.configured && (
+          <QoderSection title={t(($) => $.claude_managed.manage)}>
+            <div className="flex flex-wrap gap-2 p-4">
+              {data.enabled ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    stop.mutate(undefined, {
+                      onError: (err) => toast.error(err.message),
+                    })
+                  }
+                >
+                  {t(($) => $.claude_managed.pause)}
+                </Button>
               ) : (
-                <p className="text-caption text-muted-foreground">
-                  {data.configured
-                    ? data.environmentId
-                    : t(($) => $.claude_managed.not_connected)}
-                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    resume.mutate(savedClaudeInput(data), {
+                      onError: (err) => toast.error(err.message),
+                    })
+                  }
+                >
+                  {t(($) => $.claude_managed.resume)}
+                </Button>
               )}
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={busy}
+                onClick={() => setDisconnectOpen(true)}
+              >
+                {t(($) => $.claude_managed.disconnect)}
+              </Button>
             </div>
           </QoderSection>
-          <div className="space-y-4">
-            <ServingAgentsCard
-              agents={boundAgents}
-              presenceMap={presenceMap}
-              agentHref={(id) => paths.agentDetail(id)}
-            />
-            {isAdmin && data.configured && (
-              <QoderSection title={t(($) => $.claude_managed.manage)}>
-                <div className="flex flex-wrap gap-2 p-4">
-                  {data.enabled ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        stop.mutate(undefined, {
-                          onError: (err) => toast.error(err.message),
-                        })
-                      }
-                    >
-                      {t(($) => $.claude_managed.pause)}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        resume.mutate(savedClaudeInput(data), {
-                          onError: (err) => toast.error(err.message),
-                        })
-                      }
-                    >
-                      {t(($) => $.claude_managed.resume)}
-                    </Button>
-                  )}
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => setDisconnectOpen(true)}
-                  >
-                    {t(($) => $.claude_managed.disconnect)}
-                  </Button>
-                </div>
-              </QoderSection>
-            )}
-          </div>
-        </div>
+        )}
       </div>
       <AlertDialog
         open={disconnectOpen}
@@ -764,6 +786,21 @@ export function ClaudeManagedPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </ObjectPage>
+  );
+}
+
+function ClaudeBodySkeleton() {
+  return (
+    <div className={cn(OBJECT_PAGE_BODY, "space-y-8")}>
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-12 rounded-xl" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+      </div>
+      <Skeleton className="h-64 w-full rounded-lg" />
     </div>
   );
 }
