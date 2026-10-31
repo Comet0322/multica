@@ -165,3 +165,9 @@ func TestAnthropicErrorClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestStandaloneDaemonIDAvoidsTheServerManagedNamespace(t *testing.T) {
+	if strings.HasPrefix(StandaloneDaemonPrefix, "claude-managed-") {
+		t.Fatalf("standalone daemon prefix %q is inside the namespace reserved for the server-run bridge", StandaloneDaemonPrefix)
+	}
+}

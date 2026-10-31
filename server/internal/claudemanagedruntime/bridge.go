@@ -216,10 +216,16 @@ func (b *Bridge) Run(ctx context.Context) error {
 		}
 	}
 }
+
+// StandaloneDaemonPrefix starts the default daemon_id of a bridge run outside
+// the server. It must stay clear of the "claude-managed-" namespace, which the
+// server reserves for the bridge it runs itself.
+const StandaloneDaemonPrefix = "claude-bridge-"
+
 func (b *Bridge) register(ctx context.Context, binding string) error {
 	daemonID := b.cfg.DaemonID
 	if daemonID == "" {
-		daemonID = "claude-managed-" + binding[:24]
+		daemonID = StandaloneDaemonPrefix + binding[:24]
 	}
 	var response struct {
 		Runtimes []struct {
