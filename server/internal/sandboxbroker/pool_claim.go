@@ -87,7 +87,9 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	if pd := l.pod; pd != nil && pd.lease == l {
 		pd.lease = nil
 		if pd.State == PodLeased && p.pods[pd.IP] == pd {
-			pd.State = PodIdle
+			// The pod rejoins the pool only after the supervisor has cleaned
+			// it and the daemon registered again.
+			p.startResetLocked(pd)
 		}
 	}
 }
