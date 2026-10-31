@@ -1,0 +1,72 @@
+# The pool manager. One replica: the registry is in memory and rebuilt from pod
+# re-registration after a restart. It serves two listeners:
+#   pod listener   :8080  standard daemon protocol + /pod/control, for pods
+#   admin listener 127.0.0.1:8791  read-only /v1/inventory and /v1/leases. It
+#     binds to loopback inside the pod, so nothing on the network (pods
+#     included) can reach it; admins use `kubectl port-forward`.
+# Settings are the sandbox-broker pool settings (server/cmd/sandbox-broker/pool.go).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-manager
+  labels:
+    app.kubernetes.io/name: sandbox-manager
+    app.kubernetes.io/part-of: multica-sandbox
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # never two managers answering for the same pods
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sandbox-manager
+        multica.io/sandbox-role: manager
+    spec:
+      hostNetwork: false
+      automountServiceAccountToken: false # the manager needs no Kubernetes API
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          image: multica-sandbox-manager # tag set in kustomization.yaml
+          ports:
+            - {name: pod, containerPort: 8080}
+          env:
+            - {name: SANDBOX_BROKER_LISTEN, value: ":8080"}
+            - {name: SANDBOX_POOL_ADMIN_LISTEN, value: "127.0.0.1:8791"}
+            - {name: SANDBOX_POOL_SIZE, value: "4"} # expected size; match replicas in kustomization.yaml
+            # Workspace PATs and LiteLLM admin credentials live in a Secret the
+            # operator creates out of band; only the file path is referenced here.
+            - {name: SANDBOX_WORKSPACES_FILE, value: /etc/sandbox-manager/workspaces.json}
+          readinessProbe:
+            httpGet: {path: /healthz, port: pod}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: config, mountPath: /etc/sandbox-manager, readOnly: true}
+      volumes:
+        - name: config
+          secret:
+            secretName: sandbox-manager-config # created out of band, not in this repo
+---
+# ClusterIP for pods. It exposes ONLY the pod listener. The admin port is
+# loopback-bound and absent here. Admins use
+# `kubectl port-forward deploy/sandbox-manager 8791:8791`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-manager
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sandbox-manager
+  ports:
+    - {name: pod, port: 8080, targetPort: pod}

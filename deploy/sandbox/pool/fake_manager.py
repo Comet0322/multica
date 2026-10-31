@@ -42,7 +42,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/_admin/state":
             with lock:
                 return self._send(200, state)
-        if path == "/api/pod/control":
+        if path == "/pod/control":
             with lock:
                 done = {r["id"] for r in state["reports"]}
                 pending = [c for c in state["commands"] if c["id"] not in done]
@@ -61,7 +61,7 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 state["commands"].append({"id": cid, "command": "reset"})
             return self._send(200, {})
-        if path == "/api/pod/control":
+        if path == "/pod/control":
             with lock:
                 state["reports"].append(body)
             return self._send(200, {})
