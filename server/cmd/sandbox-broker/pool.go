@@ -180,6 +180,12 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		if len(llm.Models) == 0 {
 			fail("SANDBOX_LITELLM_MODELS must list at least one model")
 		}
+		if llm.MaxBudget <= 0 {
+			fail("SANDBOX_LITELLM_MAX_BUDGET must be set above zero with SANDBOX_LITELLM_URL (the cap on one task's key)")
+		}
+		if llm.RPMLimit <= 0 {
+			fail("SANDBOX_LITELLM_RPM_LIMIT must be set above zero with SANDBOX_LITELLM_URL (the requests per minute of one task's key)")
+		}
 		s.config.LiteLLM = llm
 	} else if llm.PodURL != "" || llm.MasterKey != "" || len(llm.Models) > 0 || llm.MaxBudget != 0 || llm.RPMLimit != 0 ||
 		llm.TaskTimeout != 0 || llm.Margin != 0 || len(llmEnv) > 0 || getenv("SANDBOX_LITELLM_MASTER_KEY_FILE") != "" {

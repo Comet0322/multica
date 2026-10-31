@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -244,41 +243,10 @@ func (b *Broker) registerUpstream(ctx context.Context) error {
 // upstreamRegistration rewrites the image daemon's registration into the
 // broker's: one machine identity, cloud mode, no custom profiles.
 func (b *Broker) upstreamRegistration(captured json.RawMessage) (map[string]any, error) {
-	var req map[string]any
-	if err := json.Unmarshal(captured, &req); err != nil {
-		return nil, fmt.Errorf("decode captured registration: %w", err)
-	}
-	runtimes, _ := req["runtimes"].([]any)
-	var kept []any
-	for _, item := range runtimes {
-		rt, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		typ, _ := rt["type"].(string)
-		if profile, _ := rt["profile_id"].(string); profile != "" {
-			continue
-		}
-		if len(b.cfg.Providers) > 0 && !slices.Contains(b.cfg.Providers, typ) {
-			continue
-		}
-		rt["runtime_mode"] = "cloud"
-		rt["name"] = b.cfg.Name
-		if len(b.cfg.Providers) != 1 {
-			rt["name"] = b.cfg.Name + " (" + typ + ")"
-		}
-		kept = append(kept, rt)
-	}
-	if len(kept) == 0 {
-		return nil, fmt.Errorf("the sandbox image has none of the configured providers %v", b.cfg.Providers)
-	}
-	return map[string]any{
-		"workspace_id": b.cfg.WorkspaceID,
-		"daemon_id":    b.cfg.BrokerID,
-		"device_name":  b.cfg.Name,
-		"cli_version":  req["cli_version"],
-		"runtimes":     kept,
-	}, nil
+	return rewriteRegistration(captured, registrationIdentity{
+		workspaceID: b.cfg.WorkspaceID, daemonID: b.cfg.BrokerID, name: b.cfg.Name,
+		providers: b.cfg.Providers, source: "the sandbox image",
+	})
 }
 
 func (b *Broker) runtimeIDs() []string {

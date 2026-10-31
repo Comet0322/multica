@@ -482,10 +482,20 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	// something rewrote it (SNAT, a proxy). Pod identity rests on the source IP,
 	// so this is a deployment error to surface on day one; it is not a security
 	// check.
+	// Only the parsed address is ever logged or sent back; the raw field is
+	// pod-controlled text and is never reflected.
 	if req.PodIP != "" {
-		if reported := net.ParseIP(req.PodIP); reported == nil || !reported.Equal(net.ParseIP(ip)) {
-			reason := fmt.Sprintf("registration rejected: pod reports IP %q but the request came from %s; the source address is being rewritten (SNAT?)", req.PodIP, ip)
-			p.log.Warn("refused pod registration", "pod_ip", ip, "reported_ip", req.PodIP, "reason", reason)
+		reported := net.ParseIP(req.PodIP)
+		if reported == nil || !reported.Equal(net.ParseIP(ip)) {
+			shown := "that is not an IP address"
+			if reported != nil {
+				shown = reported.String()
+			}
+			reason := fmt.Sprintf("registration rejected: pod reports IP %s but the request came from %s; the source address is being rewritten (SNAT?)", shown, ip)
+			if reported == nil {
+				reason = fmt.Sprintf("registration rejected: pod_ip is not an IP address (the request came from %s)", ip)
+			}
+			p.log.Warn("refused pod registration", "pod_ip", ip, "reported_ip", shown, "reason", reason)
 			http.Error(w, reason, http.StatusForbidden)
 			return
 		}
@@ -638,41 +648,10 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 // upstreamRegistration rewrites a pod daemon's registration into the
 // manager's: one machine identity, cloud mode, no custom profiles.
 func (p *Pool) upstreamRegistration(ws *workspace, captured json.RawMessage) (map[string]any, error) {
-	var req map[string]any
-	if err := json.Unmarshal(captured, &req); err != nil {
-		return nil, fmt.Errorf("decode captured registration: %w", err)
-	}
-	runtimes, _ := req["runtimes"].([]any)
-	var kept []any
-	for _, item := range runtimes {
-		rt, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		typ, _ := rt["type"].(string)
-		if profile, _ := rt["profile_id"].(string); profile != "" {
-			continue
-		}
-		if len(p.cfg.Providers) > 0 && !slices.Contains(p.cfg.Providers, typ) {
-			continue
-		}
-		rt["runtime_mode"] = "cloud"
-		rt["name"] = ws.cfg.RuntimeName
-		if len(p.cfg.Providers) != 1 {
-			rt["name"] = ws.cfg.RuntimeName + " (" + typ + ")"
-		}
-		kept = append(kept, rt)
-	}
-	if len(kept) == 0 {
-		return nil, fmt.Errorf("the pod has none of the configured providers %v", p.cfg.Providers)
-	}
-	return map[string]any{
-		"workspace_id": ws.cfg.WorkspaceID,
-		"daemon_id":    ws.cfg.BrokerID,
-		"device_name":  ws.cfg.RuntimeName,
-		"cli_version":  req["cli_version"],
-		"runtimes":     kept,
-	}, nil
+	return rewriteRegistration(captured, registrationIdentity{
+		workspaceID: ws.cfg.WorkspaceID, daemonID: ws.cfg.BrokerID, name: ws.cfg.RuntimeName,
+		providers: p.cfg.Providers, source: "the pod",
+	})
 }
 
 func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string) {

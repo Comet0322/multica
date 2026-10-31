@@ -7,8 +7,60 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 )
+
+// registrationIdentity is the machine identity the manager or broker presents
+// upstream in place of the daemon's own.
+type registrationIdentity struct {
+	workspaceID, daemonID, name string
+	// providers limits which of the daemon's agent CLIs become runtimes; empty
+	// keeps every provider.
+	providers []string
+	// source names what was registered, for the error when nothing is left.
+	source string
+}
+
+// rewriteRegistration turns a daemon's captured registration into the
+// upstream one: one machine identity, cloud mode, no custom profiles.
+func rewriteRegistration(captured json.RawMessage, id registrationIdentity) (map[string]any, error) {
+	var req map[string]any
+	if err := json.Unmarshal(captured, &req); err != nil {
+		return nil, fmt.Errorf("decode captured registration: %w", err)
+	}
+	runtimes, _ := req["runtimes"].([]any)
+	var kept []any
+	for _, item := range runtimes {
+		rt, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ, _ := rt["type"].(string)
+		if profile, _ := rt["profile_id"].(string); profile != "" {
+			continue
+		}
+		if len(id.providers) > 0 && !slices.Contains(id.providers, typ) {
+			continue
+		}
+		rt["runtime_mode"] = "cloud"
+		rt["name"] = id.name
+		if len(id.providers) != 1 {
+			rt["name"] = id.name + " (" + typ + ")"
+		}
+		kept = append(kept, rt)
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("%s has none of the configured providers %v", id.source, id.providers)
+	}
+	return map[string]any{
+		"workspace_id": id.workspaceID,
+		"daemon_id":    id.daemonID,
+		"device_name":  id.name,
+		"cli_version":  req["cli_version"],
+		"runtimes":     kept,
+	}, nil
+}
 
 type upstream struct {
 	base, token string

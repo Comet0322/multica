@@ -34,8 +34,9 @@ type LiteLLMConfig struct {
 	MasterKey string
 	// Models are the model names a task key may call. At least one.
 	Models []string
-	// MaxBudget and RPMLimit cap one task's key; zero leaves the cap off (the
-	// initiator's own LiteLLM budget still applies).
+	// MaxBudget and RPMLimit cap one task's key. Both are required: a key
+	// without caps would be limited only by the initiator's own LiteLLM
+	// budget.
 	MaxBudget float64
 	RPMLimit  int
 	// TaskTimeout is the longest a task runs, and Margin the slack after it;
@@ -78,6 +79,14 @@ func (c *LiteLLMConfig) normalize() error {
 	if c.MaxBudget < 0 || c.RPMLimit < 0 || c.TaskTimeout < 0 || c.Margin < 0 {
 		return errors.New("LiteLLM budget, rate limit and durations must not be negative")
 	}
+	// A task key without its own caps is limited only by the initiator's
+	// budget, and a leaked key could spend all of it at any rate.
+	if c.MaxBudget == 0 {
+		return errors.New("LiteLLM task budget must be set (a per-task budget above zero)")
+	}
+	if c.RPMLimit == 0 {
+		return errors.New("LiteLLM rate limit must be set (a per-task requests-per-minute limit above zero)")
+	}
 	if c.TaskTimeout == 0 {
 		c.TaskTimeout = 2 * time.Hour
 	}
@@ -119,7 +128,7 @@ type taskKey struct{ secret string }
 
 // call performs one admin request. A non-2xx answer is returned as status with
 // a short error detail; err is set only when LiteLLM could not be reached.
-func (l *litellm) call(ctx context.Context, method, path string, in, out any) (status int, detail string, err error) {
+func (l *litellm) call(ctx context.Context, method, path string, in, out any, taskKeys ...string) (status int, detail string, err error) {
 	var body io.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
@@ -144,7 +153,7 @@ func (l *litellm) call(ctx context.Context, method, path string, in, out any) (s
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return resp.StatusCode, errorDetail(data), nil
+		return resp.StatusCode, errorDetail(data, append([]string{l.cfg.MasterKey}, taskKeys...)), nil
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
@@ -154,9 +163,12 @@ func (l *litellm) call(ctx context.Context, method, path string, in, out any) (s
 	return resp.StatusCode, "", nil
 }
 
-// errorDetail extracts LiteLLM's error text, which is not expected to carry
-// credentials, and bounds its length.
-func errorDetail(data []byte) string {
+// errorDetail extracts LiteLLM's error text and bounds its length. LiteLLM
+// can echo what it was sent, so the known secrets (the master key and the
+// task key involved, if any) are removed before the text is cut, and so
+// before it reaches an error, a log line, the audit trail or a task's failure
+// message.
+func errorDetail(data []byte, secrets []string) string {
 	var e struct {
 		Detail any `json:"detail"`
 		Error  any `json:"error"`
@@ -175,6 +187,11 @@ func errorDetail(data []byte) string {
 			if text != "" {
 				break
 			}
+		}
+	}
+	for _, secret := range secrets {
+		if secret != "" {
+			text = strings.ReplaceAll(text, secret, "[redacted]")
 		}
 	}
 	text = strings.Join(strings.Fields(text), " ")
@@ -248,7 +265,7 @@ func (l *litellm) revokeWithRetry(key taskKey, log func(error)) {
 	var last error
 	for attempt := 1; attempt <= 3; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		status, detail, err := l.call(ctx, http.MethodPost, "/key/delete", map[string]any{"keys": []string{key.secret}}, nil)
+		status, detail, err := l.call(ctx, http.MethodPost, "/key/delete", map[string]any{"keys": []string{key.secret}}, nil, key.secret)
 		cancel()
 		switch {
 		case err != nil:
