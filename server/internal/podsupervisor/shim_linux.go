@@ -35,9 +35,7 @@ func RunShim(name string, args []string) int {
 	// and files the daemon created before it started the agent are opened to
 	// the group here, as the daemon's own user, which owns them.
 	shareWithGroup(dir)
-	for _, gitDir := range worktreeGitDirs(dir) {
-		shareWithGroup(gitDir)
-	}
+	shareCheckouts(dir)
 
 	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: "@" + sock, Net: "unix"})
 	if err != nil {
@@ -70,6 +68,24 @@ func RunShim(name string, args []string) int {
 		}
 		return 126
 	}
+
+	// The agent asks the daemon for its checkout after it has started, and git
+	// makes the worktree's files private to the daemon; keep opening them for as
+	// long as the agent runs.
+	stopSweep := make(chan struct{})
+	defer close(stopSweep)
+	go func() {
+		t := time.NewTicker(checkoutSweepEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopSweep:
+				return
+			case <-t.C:
+				shareCheckouts(dir)
+			}
+		}
+	}()
 
 	sigs := make(chan os.Signal, 8)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
@@ -121,6 +137,19 @@ func stdioDescriptors() ([]int, func()) {
 	}
 }
 
+// checkoutSweepEvery is how often the shim re-opens the checkouts below the
+// task directory while the agent runs. The sweep only touches the small git
+// directories of worktrees, never the working files.
+const checkoutSweepEvery = 200 * time.Millisecond
+
+// shareCheckouts opens the git directory of every worktree below root to the
+// agent's group.
+func shareCheckouts(root string) {
+	for _, gitDir := range worktreeGitDirs(root) {
+		shareWithGroup(gitDir)
+	}
+}
+
 // worktreeGitDirs returns the git directories that the checkouts below root
 // (git worktrees: a .git file reading "gitdir: <path>") keep in their bare
 // repository cache, outside root. Git creates files there, config.worktree
@@ -134,7 +163,7 @@ func worktreeGitDirs(root string) []string {
 			return nil
 		}
 		if d.IsDir() {
-			if strings.Count(path, string(filepath.Separator))-rootDepth >= 4 || (d.Name() == ".git" && path != root) {
+			if strings.Count(path, string(filepath.Separator))-rootDepth >= 3 || (d.Name() == ".git" && path != root) {
 				return filepath.SkipDir
 			}
 			return nil
