@@ -206,7 +206,7 @@ func readPushRequest(body io.Reader) (*pushRequest, string) {
 	br := bufio.NewReaderSize(body, 64<<10)
 	req := &pushRequest{rest: br}
 	var head bytes.Buffer
-	for first := true; ; first = false {
+	for {
 		payload, flush, err := readPkt(br, &head)
 		switch {
 		case errors.Is(err, errPktTooLarge):
@@ -221,7 +221,7 @@ func readPushRequest(body io.Reader) (*pushRequest, string) {
 			break
 		}
 		line := string(payload)
-		if first {
+		if len(req.cmds) == 0 && !strings.HasPrefix(line, "shallow ") {
 			// Capabilities ride on the first command, after a NUL.
 			if i := strings.IndexByte(line, 0); i >= 0 {
 				req.caps = strings.Fields(line[i+1:])
