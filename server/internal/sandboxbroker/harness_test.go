@@ -95,22 +95,47 @@ type harness struct {
 	pool     *sandboxbroker.Pool
 	podAPI   *httptest.Server
 	admin    *httptest.Server
+	// logs captures the manager's log output.
+	logs *syncBuffer
 }
 
-func newHarness(t *testing.T, expectedSize int) *harness {
+// syncBuffer is a log sink safe for the manager's concurrent handlers.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func newHarness(t *testing.T, expectedSize int, opts ...func(*sandboxbroker.PoolConfig)) *harness {
 	t.Helper()
 	up := newFakeMultica(t)
-	pool, err := sandboxbroker.NewPool(sandboxbroker.PoolConfig{
+	cfg := sandboxbroker.PoolConfig{
 		MulticaURL:   up.URL,
 		MulticaToken: harnessPAT,
 		WorkspaceID:  harnessWorkspaceID,
 		Name:         "Test Pool",
 		ExpectedSize: expectedSize,
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	logs := &syncBuffer{}
+	pool, err := sandboxbroker.NewPool(cfg, slog.New(slog.NewTextHandler(logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, upstream: up, pool: pool}
+	h := &harness{t: t, upstream: up, pool: pool, logs: logs}
 	h.podAPI = httptest.NewServer(pool.PodHandler())
 	h.admin = httptest.NewServer(pool.AdminHandler())
 	t.Cleanup(h.podAPI.Close)
@@ -143,6 +168,10 @@ type simPod struct {
 	ip     string
 	name   string
 	client *http.Client
+	// nonce is the boot nonce sent on registration; reportedIP is the address
+	// the daemon claims for itself. Both are omitted when empty.
+	nonce      string
+	reportedIP string
 }
 
 func (h *harness) newPod(ip, name string) *simPod {
@@ -178,6 +207,34 @@ func (p *simPod) call(method, path string, body any) (int, []byte) {
 	return resp.StatusCode, out
 }
 
+// register sends the daemon's register request alone and returns the raw reply.
+func (p *simPod) register() (int, []byte) {
+	p.h.t.Helper()
+	body := map[string]any{
+		"workspace_id": harnessWorkspaceID,
+		"daemon_id":    "pod-" + p.name,
+		"device_name":  p.name,
+		"cli_version":  "0.0.0-test",
+		"runtimes": []map[string]any{
+			{"name": "claude", "type": "claude", "version": "1.0.0", "status": "online"},
+		},
+	}
+	if p.nonce != "" {
+		body["boot_nonce"] = p.nonce
+	}
+	if p.reportedIP != "" {
+		body["pod_ip"] = p.reportedIP
+	}
+	return p.call(http.MethodPost, "/api/daemon/register", body)
+}
+
+// heartbeat sends one daemon heartbeat and returns the status code.
+func (p *simPod) heartbeat() int {
+	p.h.t.Helper()
+	status, _ := p.call(http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": "runtime-a"})
+	return status
+}
+
 // start runs the calls a daemon makes while starting up: renew its token, list
 // workspaces, then register its runtimes. It returns the register response.
 func (p *simPod) start() map[string]any {
@@ -192,15 +249,7 @@ func (p *simPod) start() map[string]any {
 	if !strings.Contains(string(raw), harnessWorkspaceID) {
 		p.h.t.Fatalf("workspace list %s does not offer %s", raw, harnessWorkspaceID)
 	}
-	status, raw = p.call(http.MethodPost, "/api/daemon/register", map[string]any{
-		"workspace_id": harnessWorkspaceID,
-		"daemon_id":    "pod-" + p.name,
-		"device_name":  p.name,
-		"cli_version":  "0.0.0-test",
-		"runtimes": []map[string]any{
-			{"name": "claude", "type": "claude", "version": "1.0.0", "status": "online"},
-		},
-	})
+	status, raw = p.register()
 	if status != http.StatusOK {
 		p.h.t.Fatalf("register: status %d: %s", status, raw)
 	}
