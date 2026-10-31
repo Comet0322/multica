@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,9 @@ const (
 	// PlacementIssue binds a pod to one issue, or to one chat conversation for
 	// tasks that have no issue, and runs that unit's tasks side by side in it.
 	PlacementIssue Placement = "issue"
+	// PlacementChat binds a pod to one chat conversation; tasks without a
+	// chat conversation get their own pod.
+	PlacementChat Placement = "chat"
 )
 
 // DefaultPodConcurrency is the daemon's own concurrency limit, used for a
@@ -30,17 +34,16 @@ func (c *PoolConfig) normalizePlacement() error {
 	switch c.Placement {
 	case "":
 		c.Placement = PlacementTask
-	case PlacementTask, PlacementIssue:
+	case PlacementTask, PlacementIssue, PlacementChat:
 	default:
-		return fmt.Errorf("unknown placement %q (want %q or %q)", c.Placement, PlacementTask, PlacementIssue)
+		return fmt.Errorf("unknown placement %q (want %q, %q or %q)", c.Placement, PlacementTask, PlacementIssue, PlacementChat)
 	}
 	if c.PodConcurrency < 0 {
 		return fmt.Errorf("pod concurrency must not be negative")
 	}
-	switch {
-	case c.Placement == PlacementTask:
-		c.PodConcurrency = 1
-	case c.PodConcurrency == 0:
+	// Task-keyed pods always hold one task; workspaces may choose a shared
+	// placement even when the pool default is task, so the limit stays set.
+	if c.PodConcurrency == 0 {
 		c.PodConcurrency = DefaultPodConcurrency
 	}
 	if c.PlacementWait < 0 {
@@ -56,6 +59,7 @@ func (c *PoolConfig) normalizePlacement() error {
 // a pod. It sits in a pod's queue once assigned, or in the waiting list.
 type parkedTask struct {
 	raw       []byte
+	ws        *workspace
 	ref       claimedTaskRef
 	key       string
 	llmKey    *taskKey
@@ -64,21 +68,46 @@ type parkedTask struct {
 
 // placementKey names the unit a task belongs to. Tasks with the same key may
 // share a pod; tasks with different keys never do.
-func (p *Pool) placementKey(ref claimedTaskRef) string {
-	if p.cfg.Placement == PlacementIssue {
+func (p *Pool) placementKey(ws *workspace, ref claimedTaskRef) string {
+	switch ws.cfg.Placement {
+	case PlacementIssue:
 		switch {
 		case ref.IssueID != "":
 			return "issue:" + ref.IssueID
 		case ref.ChatSessionID != "":
 			return "chat:" + ref.ChatSessionID
 		}
+	case PlacementChat:
+		if ref.ChatSessionID != "" {
+			return "chat:" + ref.ChatSessionID
+		}
 	}
 	return "task:" + ref.ID
 }
 
+// firstLease is the pod's longest-held lease, nil when it holds none.
+func firstLease(pd *pod) *lease {
+	var first *lease
+	for _, l := range pd.leases {
+		if first == nil || l.StartedAt.Before(first.StartedAt) {
+			first = l
+		}
+	}
+	return first
+}
+
+// capacityLocked is how many tasks the pod may hold for its bound key: one for
+// a task key, the pod concurrency for a shared one.
+func (p *Pool) capacityLocked(pd *pod) int {
+	if pd.boundKey == "" || strings.HasPrefix(pd.boundKey, "task:") {
+		return 1
+	}
+	return p.cfg.PodConcurrency
+}
+
 // freeLocked reports whether the pod has a slot for another task.
 func (p *Pool) freeLocked(pd *pod) bool {
-	return len(pd.leases)+len(pd.queue) < p.cfg.PodConcurrency
+	return len(pd.leases)+len(pd.queue) < p.capacityLocked(pd)
 }
 
 // canClaimLocked reports whether the polling pod may have a task claimed for
@@ -116,14 +145,20 @@ func (p *Pool) podsByIPLocked(prefer *pod) []*pod {
 // placeLocked picks the pod for a task with the given key: a pod already bound
 // to the key that has a free slot, else an idle pod. Nil means none can take it
 // now. A bound pod never takes another key.
-func (p *Pool) placeLocked(prefer *pod, key string) *pod {
+func (p *Pool) placeLocked(prefer *pod, ws *workspace, key string) *pod {
 	pods := p.podsByIPLocked(prefer)
 	for _, pd := range pods {
+		if _, ok := pd.workspaces[ws.cfg.WorkspaceID]; !ok {
+			continue
+		}
 		if pd.State == PodLeased && !pd.draining && pd.boundKey == key && p.freeLocked(pd) {
 			return pd
 		}
 	}
 	for _, pd := range pods {
+		if _, ok := pd.workspaces[ws.cfg.WorkspaceID]; !ok {
+			continue
+		}
 		if pd.State == PodIdle && pd.boundKey == "" {
 			return pd
 		}
@@ -150,7 +185,7 @@ func (p *Pool) takeQueuedLocked(pd *pod) *parkedTask {
 	}
 	t := pd.queue[0]
 	pd.queue = pd.queue[1:]
-	p.startLeaseLocked(pd, t.ref.ID, t.ref.initiator()).key = t.llmKey
+	p.startLeaseLocked(pd, t.ws, t.ref.ID, t.ref.initiator()).key = t.llmKey
 	return t
 }
 
@@ -181,7 +216,7 @@ func (p *Pool) rebalanceLocked(polling *pod) (expired []*parkedTask) {
 	sort.SliceStable(p.waiting, func(i, j int) bool { return p.waiting[i].claimedAt.Before(p.waiting[j].claimedAt) })
 	still := p.waiting[:0]
 	for _, t := range p.waiting {
-		if target := p.placeLocked(polling, t.key); target != nil {
+		if target := p.placeLocked(polling, t.ws, t.key); target != nil {
 			p.assignLocked(target, t)
 			continue
 		}
@@ -201,7 +236,7 @@ func (p *Pool) failParked(ctx context.Context, tasks []*parkedTask) {
 	const why = "no sandbox pod could take the task in time"
 	for _, t := range tasks {
 		p.revokeKey(t.llmKey, t.ref.ID)
-		p.auditDenied(t.ref, why)
-		p.failUpstream(ctx, t.ref.ID, why)
+		p.auditDenied(t.ws, t.ref, why)
+		p.failUpstream(ctx, t.ws, t.ref.ID, why)
 	}
 }

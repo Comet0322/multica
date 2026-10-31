@@ -3,6 +3,7 @@ package sandboxbroker
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -35,21 +36,27 @@ func (c *PoolConfig) normalizeLifetime() error {
 	return nil
 }
 
-// sharedLocked reports whether pods keep their binding between tasks. In task
-// placement a pod is released the moment its task ends.
-func (p *Pool) sharedLocked() bool { return p.cfg.Placement == PlacementIssue }
+// sharedLocked reports whether the pod is bound to an issue or chat key and so
+// keeps that binding between tasks. A pod bound to a single task is released
+// the moment the task ends.
+func (p *Pool) sharedLocked(pd *pod) bool {
+	return pd.boundKey != "" && !strings.HasPrefix(pd.boundKey, "task:")
+}
+
+// forcedTask is a task cut off by its pod's expiry.
+type forcedTask struct {
+	ws *workspace
+	id string
+}
 
 // expireSharedLocked releases shared pods whose time is up. A pod with no
 // running task that has been idle too long is reset. A pod past its maximum
 // lifetime stops taking tasks (it is draining), is reset once its tasks end,
 // and has them failed when they outlast the grace period. Callers hold p.mu.
 func (p *Pool) expireSharedLocked() {
-	if !p.sharedLocked() {
-		return
-	}
 	now := p.now()
 	for _, pd := range p.pods {
-		if pd.State != PodLeased || p.pods[pd.IP] != pd || pd.boundAt.IsZero() {
+		if pd.State != PodLeased || p.pods[pd.IP] != pd || pd.boundAt.IsZero() || !p.sharedLocked(pd) {
 			continue
 		}
 		if !pd.draining && now.Sub(pd.boundAt) >= p.cfg.PodMaxLifetime {
@@ -66,7 +73,7 @@ func (p *Pool) expireSharedLocked() {
 		case pd.draining && now.Sub(pd.boundAt) >= p.cfg.PodMaxLifetime+p.cfg.PodDrainGrace:
 			p.log.Warn("pod released: tasks outlasted the grace after the maximum lifetime", "pod_ip", pd.IP, "tasks", len(pd.leases))
 			for _, l := range pd.leases {
-				p.forced = append(p.forced, l.TaskID)
+				p.forced = append(p.forced, forcedTask{ws: l.ws, id: l.TaskID})
 				p.endLeaseLocked(l, "pod lifetime exceeded")
 			}
 		case !pd.draining && p.idleLocked(pd) && !pd.claiming && now.Sub(pd.idleSince) >= p.cfg.PodIdleTimeout:
@@ -108,7 +115,7 @@ func (p *Pool) reportForced(ctx context.Context) {
 	ids := p.forced
 	p.forced = nil
 	p.mu.Unlock()
-	for _, id := range ids {
-		p.failUpstream(ctx, id, "the pod reached its maximum lifetime before the task finished")
+	for _, t := range ids {
+		p.failUpstream(ctx, t.ws, t.id, "the pod reached its maximum lifetime before the task finished")
 	}
 }
