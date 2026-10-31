@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -34,6 +35,9 @@ func RunShim(name string, args []string) int {
 	// and files the daemon created before it started the agent are opened to
 	// the group here, as the daemon's own user, which owns them.
 	shareWithGroup(dir)
+	for _, gitDir := range worktreeGitDirs(dir) {
+		shareWithGroup(gitDir)
+	}
 
 	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: "@" + sock, Net: "unix"})
 	if err != nil {
@@ -115,6 +119,39 @@ func stdioDescriptors() ([]int, func()) {
 			f.Close()
 		}
 	}
+}
+
+// worktreeGitDirs returns the git directories that the checkouts below root
+// (git worktrees: a .git file reading "gitdir: <path>") keep in their bare
+// repository cache, outside root. Git creates files there, config.worktree
+// among them, readable by the daemon only, and git fails for the agent without
+// them. Only the worktree's own directory is returned, never the cache itself.
+func worktreeGitDirs(root string) []string {
+	var dirs []string
+	rootDepth := strings.Count(filepath.Clean(root), string(filepath.Separator))
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if strings.Count(path, string(filepath.Separator))-rootDepth >= 4 || (d.Name() == ".git" && path != root) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != ".git" || !d.Type().IsRegular() {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || len(raw) > 4096 {
+			return nil
+		}
+		if target, ok := strings.CutPrefix(strings.TrimSpace(string(raw)), "gitdir: "); ok && filepath.IsAbs(target) {
+			dirs = append(dirs, filepath.Clean(target))
+		}
+		return nil
+	})
+	return dirs
 }
 
 // shareWithGroup gives the owning group read and write access (and search on
