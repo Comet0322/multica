@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isManagedClaudeRuntime } from "@multica/core/runtimes/claude-managed";
 import { AlertCircle, MoreHorizontal, Pencil, Plus, Server } from "@multica/ui/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
@@ -57,7 +58,6 @@ import { isQoderLocator, QoderDetailPage } from "./qoder-detail-page";
 import {
   ClaudeManagedPage,
   isClaudeManagedLocator,
-  isManagedClaudeRuntime,
 } from "./claude-managed-page";
 import {
   HealthIcon,

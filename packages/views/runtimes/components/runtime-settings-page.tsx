@@ -13,7 +13,8 @@ import { OBJECT_PAGE_BODY, ObjectPage } from "../../layout/object-page";
 import { RuntimeDetail } from "./runtime-detail";
 import { buildRuntimeMachines } from "./runtime-machines";
 import { QoderDetailPage } from "./qoder-detail-page";
-import { ClaudeManagedPage, isManagedClaudeRuntime } from "./claude-managed-page";
+import { isManagedClaudeRuntime } from "@multica/core/runtimes/claude-managed";
+import { ClaudeManagedPage } from "./claude-managed-page";
 import { useT } from "../../i18n";
 
 export function RuntimeSettingsPage({

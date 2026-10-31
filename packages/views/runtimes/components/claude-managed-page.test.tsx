@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { isManagedClaudeRuntime } from "@multica/core/runtimes/claude-managed";
 import type { AgentRuntime } from "@multica/core/types";
 import enCommon from "../../locales/en/common.json";
 import enLayout from "../../locales/en/layout.json";
@@ -16,7 +17,6 @@ import enRuntimes from "../../locales/en/runtimes.json";
 import {
   ClaudeManagedPage,
   isClaudeManagedLocator,
-  isManagedClaudeRuntime,
 } from "./claude-managed-page";
 
 const { ApiError, mocks, nav } = vi.hoisted(() => {

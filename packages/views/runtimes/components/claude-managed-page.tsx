@@ -17,8 +17,8 @@ import {
 } from "@multica/core/runtimes/qoder";
 import {
   CLAUDE_MANAGED_PROVIDER,
-  claudeManagedDaemonId,
   claudeManagedOptions,
+  isManagedClaudeRuntime,
   useCheckClaude,
   useClaudeEnvironments,
   useDisconnectClaude,
@@ -95,14 +95,6 @@ export function isClaudeManagedLocator(
     runtimes.some(
       (runtime) => runtime.id === locator && isManagedClaudeRuntime(runtime),
     )
-  );
-}
-
-/** Whether a runtime is the one the server runs for the workspace's connection. */
-export function isManagedClaudeRuntime(runtime: AgentRuntime): boolean {
-  return (
-    runtime.provider === CLAUDE_MANAGED_PROVIDER &&
-    runtime.daemon_id === claudeManagedDaemonId(runtime.workspace_id)
   );
 }
 
@@ -494,7 +486,13 @@ export function ClaudeConnectionForm({
 }
 
 /** First-time connection; an existing one is managed on its runtime page. */
-export function ClaudeConnectDialog({ onClose }: { onClose: () => void }) {
+export function ClaudeConnectDialog({
+  onClose,
+  onConnected,
+}: {
+  onClose: () => void;
+  onConnected?: () => void;
+}) {
   const { t } = useT("runtimes");
   const wsId = useWorkspaceId();
   const connection = useQuery(claudeManagedOptions(wsId));
@@ -520,7 +518,10 @@ export function ClaudeConnectDialog({ onClose }: { onClose: () => void }) {
           <ClaudeConnectionForm
             wsId={wsId}
             connection={connection.data}
-            onSaved={onClose}
+            onSaved={() => {
+              onConnected?.();
+              onClose();
+            }}
           />
         ) : (
           <p role="status" className="text-caption text-muted-foreground">

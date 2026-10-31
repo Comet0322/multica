@@ -8,12 +8,21 @@ import { runtimeKeys } from "./queries";
 import { workspaceKeys } from "../workspace/queries";
 import { agentTaskSnapshotKeys } from "../agents/queries";
 import type { ClaudeConnection, ClaudeInput } from "./claude-managed-schema";
+import type { AgentRuntime } from "../types";
 export type { ClaudeConnection, ClaudeInput } from "./claude-managed-schema";
 
 export const CLAUDE_MANAGED_PROVIDER = "claude_managed";
 // The server runs the managed bridge under this daemon ID; a standalone
 // bridge in the same workspace registers under its own.
 export const claudeManagedDaemonId = (wsId: string) => `claude-managed-${wsId}`;
+
+/** Whether a runtime is the one the server runs for the workspace's connection. */
+export function isManagedClaudeRuntime(runtime: AgentRuntime): boolean {
+  return (
+    runtime.provider === CLAUDE_MANAGED_PROVIDER &&
+    runtime.daemon_id === claudeManagedDaemonId(runtime.workspace_id)
+  );
+}
 
 export const claudeManagedKey = (wsId: string) => ["claude-managed", wsId] as const;
 export const claudeManagedOptions = (wsId: string) =>

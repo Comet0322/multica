@@ -77,12 +77,14 @@ import { cn } from "@multica/ui/lib/utils";
 import { useNavigation } from "../../navigation";
 import { getMikaOnboarding, pickContentLang } from "../../onboarding/templates";
 import { qoderOptions } from "@multica/core/runtimes/qoder";
-import { claudeManagedOptions } from "@multica/core/runtimes/claude-managed";
+import {
+  claudeManagedOptions,
+  isManagedClaudeRuntime,
+} from "@multica/core/runtimes/claude-managed";
 import { QODER_RUNTIME_LOCATOR } from "./qoder-detail-page";
 import {
   CLAUDE_MANAGED_LOCATOR,
   ClaudeConnectDialog,
-  isManagedClaudeRuntime,
 } from "./claude-managed-page";
 import { RemoteRuntimeDialog } from "./remote-runtime-dialog";
 import { ConnectRemoteDialog } from "./connect-remote-dialog";
