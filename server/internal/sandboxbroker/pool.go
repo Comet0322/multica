@@ -254,7 +254,14 @@ type pod struct {
 	resetID       string
 	resetStarted  time.Time
 	resetReported bool
-	resetLease    *lease
+	// resetDelivered is set once the supervisor fetched the reset command, so
+	// the old daemon is stopped from then on. earlyReg is the registration
+	// that arrived after that and before the acknowledgement: the supervisor
+	// starts the new daemon first and reports afterwards, so it is the new
+	// daemon's. It completes the reset when the acknowledgement arrives.
+	resetDelivered bool
+	earlyReg       *pod
+	resetLease     *lease
 }
 
 // markLostLocked turns every pod whose heartbeat is overdue into a lost one.
@@ -557,9 +564,19 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 		// daemon's. The pod is clean and joins the pool.
 		p.completeResetLocked(old)
 	case old.BootNonce == req.BootNonce && old.dirty:
-		// The daemon that ran the previous task is still the one talking; the
-		// reset has not been reported done, so the pod stays out of the pool.
+		// The pod stays out of the pool until the reset is reported done. A
+		// registration before the supervisor even took the command is the old
+		// daemon's. One after it cannot be: the old daemon is stopped first, so
+		// it is the new daemon registering ahead of the report. Remember it;
+		// the report completes the reset.
 		old.LastSeen = now
+		if old.State == PodResetting && old.resetDelivered {
+			if old.earlyReg == nil {
+				old.earlyReg = next
+			} else {
+				maps.Copy(old.earlyReg.workspaces, next.workspaces)
+			}
+		}
 		if old.State == PodLost {
 			// It came back without a finished reset (lost mid-task, or a
 			// reset failed or timed out): reset it again.
