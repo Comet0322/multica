@@ -26,6 +26,10 @@ type Config struct {
 	AdminToken string
 	// Resolver answers which task a token belongs to.
 	Resolver Resolver
+	// PodResolver, when set, lets a request without a task token be
+	// identified by its source IP, for reads only (the daemon's own clones
+	// and fetches). Nil refuses every request without a token.
+	PodResolver PodResolver
 	// MinReadLevel is the lowest GitLab access level allowed to clone and
 	// fetch; default Reporter.
 	MinReadLevel int
@@ -128,6 +132,10 @@ func (g *Gateway) rewrite(pr *httputil.ProxyRequest) {
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := bearerOrBasicPassword(r)
 	if token == "" {
+		if g.cfg.PodResolver != nil {
+			g.serveDaemonRead(w, r)
+			return
+		}
 		w.Header().Set("WWW-Authenticate", `Basic realm="git gateway"`)
 		http.Error(w, "task token required", http.StatusUnauthorized)
 		return

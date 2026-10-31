@@ -94,6 +94,7 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	p.auditLease(AuditRelease, l, reason)
 	p.revokeKey(l.key, l.TaskID)
 	l.key = nil
+	p.revokeGit(l.TaskID)
 	if pd := l.pod; pd != nil && pd.lease == l {
 		pd.lease = nil
 		if pd.State == PodLeased && p.pods[pd.IP] == pd {
@@ -297,11 +298,24 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		}
 	}
 
+	if p.cfg.Git != nil {
+		var err error
+		if raw, err = p.issueGitToken(raw, ref); err != nil {
+			const why = "the git gateway token for this task could not be prepared"
+			p.log.Warn("issue git gateway token", "task_id", ref.ID, "error", err)
+			p.revokeKey(key, ref.ID)
+			p.auditDenied(ref, why)
+			p.failUpstream(r.Context(), ref.ID, why)
+			return nil, true
+		}
+	}
+
 	p.mu.Lock()
 	if p.pods[ip] != pd || pd.State != PodIdle {
 		// The pod was replaced or went silent while the claim was in flight.
 		p.mu.Unlock()
 		p.revokeKey(key, ref.ID)
+		p.revokeGit(ref.ID)
 		const why = "the pod was replaced before the task could start"
 		p.auditDenied(ref, why)
 		p.failUpstream(r.Context(), ref.ID, why)
