@@ -28,7 +28,9 @@ FROM ${BASE_IMAGE} AS base
 # manifests (or a rebuild) set the real in-cluster addresses.
 ARG MANAGER_URL=http://sandbox-manager.multica-sandbox.svc.cluster.local:8080
 ARG PACKAGE_MIRROR_URL=http://package-mirror.multica-sandbox.svc.cluster.local
-ARG GIT_GATEWAY_URL=http://git-gateway.multica-sandbox.svc.cluster.local/git/
+# The gateway serves git at its root (pool/k8s/git-gateway.yaml, port 8081),
+# so the URL has no path prefix.
+ARG GIT_GATEWAY_URL=http://git-gateway.multica-sandbox.svc.cluster.local:8081/
 ARG GITLAB_URL=https://gitlab.example.com/
 
 # Common toolchains, installed at build time so agents never install globally
@@ -50,6 +52,15 @@ ENV GOPROXY=${PACKAGE_MIRROR_URL}/go,off
 # Every git operation, including the daemon's own clone and fetch, goes
 # through the git gateway.
 RUN git config --system "url.${GIT_GATEWAY_URL}.insteadOf" "${GITLAB_URL}"
+
+# Pushes carry the task's token: a system-level credential helper answers with
+# user "agent" and $GIT_GATEWAY_TOKEN (set in the agent's environment by the
+# manager) for the gateway's host only, never for any other server. The
+# pattern is the gateway's origin, so it holds for every path under it.
+COPY deploy/sandbox/pool/git-credential-gateway /usr/local/bin/git-credential-gateway
+RUN chmod 0755 /usr/local/bin/git-credential-gateway \
+	&& origin="$(printf '%s' "${GIT_GATEWAY_URL}" | sed -E 's|^([a-z]+://[^/]+).*|\1|')" \
+	&& git config --system "credential.${origin}.helper" /usr/local/bin/git-credential-gateway
 
 COPY --from=builder /out/multica /usr/local/bin/multica
 COPY --from=builder /out/pod-supervisor /usr/local/bin/pod-supervisor

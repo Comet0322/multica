@@ -1,0 +1,75 @@
+# The git/MCP gateway: the only holder of the GitLab administrator token. Pods
+# clone, fetch and push through it with their task token, and it asks the
+# manager (the gateway listener, 8792) who a token or a pod address belongs to.
+#
+# One replica: it remembers which branches each task pushed, in memory, to
+# vet a merge request; a second replica would not know the first one's pushes.
+# The token Secret is created out of band (key: token) and is not in this repo.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-gateway
+  labels:
+    app.kubernetes.io/name: git-gateway
+    app.kubernetes.io/part-of: multica-sandbox
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: git-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: git-gateway
+        multica.io/sandbox-role: git-gateway # the label the NetworkPolicies key on
+    spec:
+      hostNetwork: false
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: multica-git-gateway # tag set in kustomization.yaml
+          ports:
+            - {name: git, containerPort: 8081}
+          env:
+            - {name: GIT_GATEWAY_LISTEN, value: ":8081"}
+            - {name: GIT_GATEWAY_GITLAB_URL, value: "https://gitlab.example.com"} # PLACEHOLDER
+            - {name: GIT_GATEWAY_GITLAB_TOKEN_FILE, value: /etc/git-gateway/token}
+            # The manager's gateway listener: only these two endpoints.
+            - {name: GIT_GATEWAY_VERIFY_URL, value: "http://sandbox-manager-gateway.multica-sandbox.svc.cluster.local:8792/v1/git/verify-token"}
+            - {name: GIT_GATEWAY_POD_VERIFY_URL, value: "http://sandbox-manager-gateway.multica-sandbox.svc.cluster.local:8792/v1/git/verify-pod"}
+            - {name: GIT_GATEWAY_TASK_URL, value: "https://multica.example.com/{workspace_id}/tasks/{task_id}"} # PLACEHOLDER
+            # Policy (POOL.md): GIT_GATEWAY_BRANCH_PREFIX, _MIN_READ_LEVEL,
+            # _MIN_PUSH_LEVEL, _MR_TARGETS and _MR_LABEL keep their defaults.
+          readinessProbe:
+            tcpSocket: {port: git}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: token, mountPath: /etc/git-gateway, readOnly: true}
+      volumes:
+        - name: token
+          secret:
+            secretName: git-gateway-gitlab-token # created out of band, not in this repo
+---
+# ClusterIP for pods: git at / and the MCP tools at /mcp on one port. The
+# pool image's GIT_GATEWAY_URL and the manager's SANDBOX_GIT_GATEWAY_URL point
+# at this Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: git-gateway
+  ports:
+    - {name: git, port: 8081, targetPort: git}

@@ -23,6 +23,42 @@ errors. Prefer the `_FILE` form with a mounted secret.
 | `SANDBOX_POOL_DRAIN_TIMEOUT` | `10m` | How long a removed workspace keeps its leases. |
 | `SANDBOX_POOL_HEARTBEAT_TIMEOUT` | `45s` | Silence after which a pod is listed lost. |
 | `SANDBOX_POOL_RESET_TIMEOUT` | `2m` | Longest a pod may stay resetting. |
+| `SANDBOX_POOL_GATEWAY_LISTEN` | off | Listener that serves only the git gateway's two verify endpoints (needs `SANDBOX_GIT_GATEWAY_URL`). |
+
+## How a pod is reset and rejoins
+
+The stock daemon sends no boot nonce and no `pod_ip`, so the manager needs
+nothing from it to tell a reset has finished:
+
+1. A reset starts when a lease ends (and for idle timeout, maximum lifetime, or
+   a waiting task). The pod is `resetting` and the supervisor, polling
+   `/pod/control`, is told to reset.
+2. The supervisor kills every process, empties the three writable areas,
+   rebuilds HOME, **starts the new daemon, then reports `done`**. The report
+   is the acknowledgement.
+3. The next registration from that IP after the acknowledgement is the new
+   daemon's. It completes the reset and the pod is `idle`. A registration
+   before the acknowledgement is the old daemon's and changes nothing.
+
+A pod the manager has never seen is treated the same way: its registry entry
+is created `resetting`, and it is reset before it is lent. After a manager
+restart every pod, a busy one included, goes through this once, because the
+registry is in memory.
+
+A pod that is lost while it holds leases has those leases ended (task failed
+upstream, LiteLLM key and git token revoked, release audited). If it
+registers again it is reset first.
+
+`boot_nonce` and `pod_ip` in the registration are optional extras for daemons
+that send them (a different nonce on a known IP is a new instance and replaces
+the old state at once). Without `pod_ip` the manager cannot detect a rewritten
+source address (SNAT, a mesh): that check is then the manual step of the
+cluster smoke test (`pool/k8s/README.md`, ticket 20), which compares the pod
+IPs in `/v1/inventory` with `kubectl get pod -o wide`.
+
+Reset events are audited (`action: reset`): start, completion, timeout and
+failure, with the task whose end caused it when there was one. `/v1/leases`
+and the pods in `/v1/inventory` name the initiators.
 
 ## Placement and pod lifetime
 
@@ -52,11 +88,19 @@ without it is an error.
 | `SANDBOX_LITELLM_POD_URL` | the URL | Base URL given to agents, if pods reach LiteLLM differently. |
 | `SANDBOX_LITELLM_MASTER_KEY` / `_FILE` | required | Admin key; stays in the manager. |
 | `SANDBOX_LITELLM_MODELS` | required | Comma list of models a task key may call. |
-| `SANDBOX_LITELLM_MAX_BUDGET` | no cap | Budget per task key. |
-| `SANDBOX_LITELLM_RPM_LIMIT` | no cap | Requests per minute per task key. |
+| `SANDBOX_LITELLM_MAX_BUDGET` | required, above 0 | Budget per task key. |
+| `SANDBOX_LITELLM_RPM_LIMIT` | required, above 0 | Requests per minute per task key. |
 | `SANDBOX_LITELLM_TASK_TIMEOUT` | `2h` | Longest task; key expires after this plus margin. |
 | `SANDBOX_LITELLM_MARGIN` | `15m` | Slack after the task timeout. |
 | `SANDBOX_LITELLM_ENV` | Anthropic/OpenAI base URL and key | `NAME=VALUE,...` forced into the agent env. `${LITELLM_URL}` and `${LITELLM_KEY}` are replaced. Names must not start with `MULTICA_`. |
+
+The budget and rate caps are mandatory when LiteLLM is on: the manager refuses
+to start without both (`SANDBOX_LITELLM_MAX_BUDGET` and
+`SANDBOX_LITELLM_RPM_LIMIT` above zero). A key without its own caps would be
+limited only by the initiator's personal budget, and a leaked key could spend
+all of it at any rate. LiteLLM's error text is stripped of the master key and
+the task key before it reaches logs, the audit trail or a task's failure
+message.
 
 ## Git gateway
 
@@ -70,12 +114,20 @@ Enabled by `SANDBOX_GIT_GATEWAY_URL`, the gateway address as pods reach it.
 
 The gateway (`cmd/git-gateway`) is a separate process, but the token registry
 lives in the manager. The manager serves the gateway's verification endpoints
-on the **admin** listener, so run the gateway with:
+on the **admin** listener (loopback by default) and, when
+`SANDBOX_POOL_GATEWAY_LISTEN` is set, on a listener of their own that carries
+nothing else. Prefer the latter whenever the gateway runs in another pod, so
+run the gateway with:
 
 ```
-GIT_GATEWAY_VERIFY_URL=http://<manager>:8791/v1/git/verify-token
-GIT_GATEWAY_POD_VERIFY_URL=http://<manager>:8791/v1/git/verify-pod
+GIT_GATEWAY_VERIFY_URL=http://<manager>:8792/v1/git/verify-token
+GIT_GATEWAY_POD_VERIFY_URL=http://<manager>:8792/v1/git/verify-pod
 ```
+
+Agents push with the task token: the pool image's system gitconfig has a
+credential helper (`git-credential-gateway`) that answers `agent` /
+`$GIT_GATEWAY_TOKEN` for the gateway's origin only. The image's
+`GIT_GATEWAY_URL` build argument is the gateway root, with no path prefix.
 
 The gateway serves git at `/` and its MCP tools at `/mcp` on the same
 `GIT_GATEWAY_LISTEN` listener, so the MCP URL is the gateway URL plus `/mcp`.
@@ -92,7 +144,9 @@ an error that names the variable):
 | `GIT_GATEWAY_MR_LABEL` | `created-by-agent` | Label on every merge request the gateway opens. |
 | `GIT_GATEWAY_TASK_URL` | none | http(s) link template for the merge request description; `{task_id}` and `{workspace_id}` are replaced. |
 
-Because the default admin listener is loopback-only, set
-`SANDBOX_POOL_ADMIN_LISTEN` to an address the gateway can reach (for example
-the manager's private network IP) and keep that address unreachable from pods
-with network policy: the endpoints are unauthenticated.
+The verify endpoints are unauthenticated: keep the gateway listener (or, if you
+move the admin listener off loopback instead, that one) unreachable from pods
+with network policy. The gateway keeps its record of pushed branches in
+memory, so run one replica; the record is dropped when the task ends only if
+the gateway shares the manager's token registry, and otherwise ages out
+(`PushLogTTL`, 24 hours) or is capped at 10000 tasks.

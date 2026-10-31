@@ -8,6 +8,7 @@ resources:
   - namespace.yaml
   - pool.yaml
   - manager.yaml
+  - git-gateway.yaml
   - networkpolicy.yaml
 images:
   - name: multica-sandbox-pool
@@ -15,6 +16,9 @@ images:
     newTag: PLACEHOLDER
   - name: multica-sandbox-manager
     newName: registry.example.com/multica/sandbox-manager # PLACEHOLDER
+    newTag: PLACEHOLDER
+  - name: multica-git-gateway
+    newName: registry.example.com/multica/git-gateway # PLACEHOLDER
     newTag: PLACEHOLDER
 replicas:
   - name: sandbox-pool

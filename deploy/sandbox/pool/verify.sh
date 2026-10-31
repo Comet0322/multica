@@ -92,6 +92,19 @@ dx cat /home/agent/.multica/daemon.log | grep -F 'gc: disabled' >/dev/null && pa
 echo "== system tooling"
 git_rules="$(dx git config --system --get-regexp 'url\..*\.insteadof')"
 echo "$git_rules" | grep -q 'git-gateway' && pass "system gitconfig has insteadOf to the gateway: $git_rules" || fail "insteadOf"
+# An agent push needs the task token: git asks the credential helper, which
+# must answer for the gateway's host only.
+gateway_url="$(echo "$git_rules" | awk '{print $1}' | sed -E 's/^url\.//; s/\.insteadof$//')"
+cred_fill() { # cred_fill <url> [env assignment]
+	dx env GIT_TERMINAL_PROMPT=0 ${2:+"$2"} sh -c 'printf "url=%s\n\n" "$1" | git credential fill' sh "$1"
+}
+filled="$(cred_fill "${gateway_url}group/proj.git" GIT_GATEWAY_TOKEN=gwt_verify_token 2>&1)"
+echo "$filled" | grep -qx 'username=agent' && echo "$filled" | grep -qx 'password=gwt_verify_token' \
+	&& pass "git credential fill supplies agent and the task token for the gateway" || fail "git credential fill for the gateway: $filled"
+other="$(cred_fill 'https://gitlab.example.com/group/proj.git' GIT_GATEWAY_TOKEN=gwt_verify_token 2>&1)"
+echo "$other" | grep -q 'gwt_verify_token' && fail "the task token is offered to a host other than the gateway" || pass "the task token is not offered to any other host"
+none="$(cred_fill "${gateway_url}group/proj.git" 2>&1)"
+echo "$none" | grep -q '^password=' && fail "a password is supplied although the task has no token: $none" || pass "no password is supplied without a task token"
 dx pip config list | grep -q 'index-url=.*package-mirror' && pass "pip index points at the mirror" || fail "pip index"
 dx npm config get registry | grep -q 'package-mirror' && pass "npm registry points at the mirror" || fail "npm registry"
 dx sh -c 'echo $GOPROXY' | grep -q 'package-mirror' && pass "GOPROXY points at the mirror" || fail "GOPROXY"

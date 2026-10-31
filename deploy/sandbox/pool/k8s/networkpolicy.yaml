@@ -1,8 +1,11 @@
 # Pool membership is enforced here: the manager identifies pods by source IP and
 # trusts that only pool pods can reach its pod listener.
-# PLACEHOLDER values: CIDRs and ports of LiteLLM, the git gateway and the
-# package mirror (set them in an overlay). The DNS rule assumes kube-dns in
-# kube-system.
+# In-cluster services (manager, git gateway) are matched by pod labels, so the
+# rules follow the pods. External services keep ipBlock PLACEHOLDERs (set them
+# in an overlay): LiteLLM and the package mirror are assumed to run outside
+# this namespace, and the git gateway reaches GitLab on its own. If either
+# runs in this namespace, replace its ipBlock with a podSelector as for the
+# gateway. The DNS rule assumes kube-dns in kube-system.
 ---
 # Pool pods: deny everything, then allow the listed egress. No ingress at all.
 apiVersion: networking.k8s.io/v1
@@ -16,13 +19,20 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress: [] # nothing connects to a pod; reset commands are polled, not pushed
   egress:
-    # Manager pod listener only (never the admin port).
+    # Manager pod listener only (never the admin or gateway ports).
     - to:
         - podSelector:
             matchLabels:
               multica.io/sandbox-role: manager
       ports:
         - {protocol: TCP, port: 8080}
+    # Git/MCP gateway (in this namespace)
+    - to:
+        - podSelector:
+            matchLabels:
+              multica.io/sandbox-role: git-gateway
+      ports:
+        - {protocol: TCP, port: 8081}
     # DNS
     - to:
         - namespaceSelector:
@@ -34,17 +44,12 @@ spec:
       ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
-    # LiteLLM
+    # LiteLLM (external to this namespace)
     - to:
         - ipBlock: {cidr: 10.0.10.0/24} # PLACEHOLDER
       ports:
         - {protocol: TCP, port: 4000} # PLACEHOLDER
-    # Git/MCP gateway
-    - to:
-        - ipBlock: {cidr: 10.0.11.0/24} # PLACEHOLDER
-      ports:
-        - {protocol: TCP, port: 8081} # PLACEHOLDER
-    # Internal package mirror
+    # Internal package mirror (external to this namespace)
     - to:
         - ipBlock: {cidr: 10.0.12.0/24} # PLACEHOLDER
       ports:
@@ -53,7 +58,7 @@ spec:
 ---
 # Manager: the pod listener accepts only pool pods (the admin listener is
 # loopback-bound and not reachable over the network). Egress is left open
-# (Multica, LiteLLM, gateway); tighten it in an overlay if your CNI allows.
+# (Multica, LiteLLM); tighten it in an overlay if your CNI allows.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -70,3 +75,30 @@ spec:
               multica.io/sandbox-role: pool-pod
       ports:
         - {protocol: TCP, port: 8080}
+    # The gateway listener: only the git gateway may ask who a token is. Policies
+    # add up, so pool pods still reach 8080 only and the gateway 8792 only.
+    - from:
+        - podSelector:
+            matchLabels:
+              multica.io/sandbox-role: git-gateway
+      ports:
+        - {protocol: TCP, port: 8792}
+---
+# Git gateway: reachable by pool pods only. Its egress (GitLab, the manager's
+# gateway listener, DNS) is left open; tighten it in an overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: git-gateway-ingress
+spec:
+  podSelector:
+    matchLabels:
+      multica.io/sandbox-role: git-gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              multica.io/sandbox-role: pool-pod
+      ports:
+        - {protocol: TCP, port: 8081}

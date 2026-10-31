@@ -1,10 +1,15 @@
 # The pool manager. One replica: the registry is in memory and rebuilt from pod
-# re-registration after a restart. It serves two listeners:
-#   pod listener   :8080  standard daemon protocol + /pod/control, for pods
-#   admin listener 127.0.0.1:8791  read-only /v1/inventory and /v1/leases. It
+# re-registration after a restart (a pod seen for the first time is reset
+# before it is lent). It serves three listeners:
+#   pod listener     :8080  standard daemon protocol + /pod/control, for pods
+#   gateway listener :8792  ONLY the git gateway's two verify endpoints
+#                           (/v1/git/verify-token, /v1/git/verify-pod), for the
+#                           git gateway pod; unauthenticated, so the
+#                           NetworkPolicy opens it to the gateway alone
+#   admin listener   127.0.0.1:8791  read-only /v1/inventory and /v1/leases. It
 #     binds to loopback inside the pod, so nothing on the network (pods
 #     included) can reach it; admins use `kubectl port-forward`.
-# Settings are the sandbox-broker pool settings (server/cmd/sandbox-broker/pool.go).
+# Settings are the sandbox-broker pool settings (deploy/sandbox/POOL.md).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,13 +42,32 @@ spec:
           image: multica-sandbox-manager # tag set in kustomization.yaml
           ports:
             - {name: pod, containerPort: 8080}
+            - {name: gateway, containerPort: 8792}
           env:
             - {name: SANDBOX_BROKER_LISTEN, value: ":8080"}
             - {name: SANDBOX_POOL_ADMIN_LISTEN, value: "127.0.0.1:8791"}
+            - {name: SANDBOX_POOL_GATEWAY_LISTEN, value: ":8792"}
             - {name: SANDBOX_POOL_SIZE, value: "4"} # expected size; match replicas in kustomization.yaml
-            # Workspace PATs and LiteLLM admin credentials live in a Secret the
-            # operator creates out of band; only the file path is referenced here.
+            # Upstream. Workspace PATs are in the workspaces file, never here.
+            - {name: MULTICA_SERVER_URL, value: "https://multica.example.com"} # PLACEHOLDER
+            # Workspace PATs and the LiteLLM admin key live in a Secret the
+            # operator creates out of band (keys: workspaces.json,
+            # litellm-master-key); only the file paths are referenced here.
             - {name: SANDBOX_WORKSPACES_FILE, value: /etc/sandbox-manager/workspaces.json}
+            # One JSON line per decision, to stdout for the cluster's log
+            # pipeline (the root filesystem is read-only).
+            - {name: SANDBOX_AUDIT_FILE, value: "-"}
+            # Per-task LiteLLM keys. The caps are required by the manager.
+            - {name: SANDBOX_LITELLM_URL, value: "http://litellm.example.com:4000"} # PLACEHOLDER
+            - {name: SANDBOX_LITELLM_POD_URL, value: "http://litellm.example.com:4000"} # PLACEHOLDER: as pods reach it
+            - {name: SANDBOX_LITELLM_MASTER_KEY_FILE, value: /etc/sandbox-manager/litellm-master-key}
+            - {name: SANDBOX_LITELLM_MODELS, value: "PLACEHOLDER-model"} # PLACEHOLDER: comma list
+            - {name: SANDBOX_LITELLM_MAX_BUDGET, value: "5"} # PLACEHOLDER: per task key
+            - {name: SANDBOX_LITELLM_RPM_LIMIT, value: "60"} # PLACEHOLDER: per task key
+            # Git gateway, as pods reach it (see git-gateway.yaml). The MCP URL
+            # is always the gateway URL plus /mcp.
+            - {name: SANDBOX_GIT_GATEWAY_URL, value: "http://git-gateway.multica-sandbox.svc.cluster.local:8081"}
+            - {name: SANDBOX_GIT_GATEWAY_MCP_URL, value: "http://git-gateway.multica-sandbox.svc.cluster.local:8081/mcp"}
           readinessProbe:
             httpGet: {path: /healthz, port: pod}
           securityContext:
@@ -70,3 +94,16 @@ spec:
     app.kubernetes.io/name: sandbox-manager
   ports:
     - {name: pod, port: 8080, targetPort: pod}
+---
+# ClusterIP for the git gateway's verification calls: the gateway listener
+# only. networkpolicy.yaml admits the git gateway pods to it and nothing else.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-manager-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sandbox-manager
+  ports:
+    - {name: gateway, port: 8792, targetPort: gateway}
