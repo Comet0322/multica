@@ -70,7 +70,7 @@ RUN mkdir -p /etc/multica-sandbox/home-template/.multica \
 # root is a subdirectory of the work root: the daemon drops a task-context
 # marker there, and a daemon whose own cwd sits at or below the marker refuses
 # to start, which would break every crash restart.
-ENV POD_CONTROL_URL=${MANAGER_URL}/api/pod/control \
+ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
 	POD_WORK_ROOT=/work \
 	POD_HOME=/home/agent \
 	POD_TMPDIR=/tmp \
