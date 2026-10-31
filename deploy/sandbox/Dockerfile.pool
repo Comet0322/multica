@@ -49,6 +49,13 @@ RUN sed -i "s|@PACKAGE_MIRROR_URL@|${PACKAGE_MIRROR_URL}|g" /etc/pip.conf \
 	&& printf 'registry=%s/npm/\n' "${PACKAGE_MIRROR_URL}" >/usr/local/etc/npmrc
 ENV GOPROXY=${PACKAGE_MIRROR_URL}/go,off
 
+# Claude Code phones api.anthropic.com for telemetry and update checks, which
+# the egress policy denies. The daemon passes the pod's environment on to the
+# agent CLI, so these silence that traffic for every task. (The model endpoint
+# is LiteLLM, injected per task as ANTHROPIC_BASE_URL.)
+ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+	DISABLE_AUTOUPDATER=1
+
 # Every git operation, including the daemon's own clone and fetch, goes
 # through the git gateway.
 RUN git config --system "url.${GIT_GATEWAY_URL}.insteadOf" "${GITLAB_URL}"
