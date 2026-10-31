@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"slices"
 	"sort"
 	"strings"
@@ -104,6 +105,11 @@ type Pool struct {
 	// replayed to every other one; pods are homogeneous.
 	headers      map[string]string
 	registration json.RawMessage
+	// leases holds the active leases by task ID; history keeps them, closed
+	// ones included, for the lease query.
+	leases  map[string]*lease
+	history []*lease
+	proxy   *httputil.ReverseProxy
 }
 
 type pod struct {
@@ -113,6 +119,11 @@ type pod struct {
 	BootNonce    string
 	RegisteredAt time.Time
 	LastSeen     time.Time
+	// lease is the task the pod holds, if any. claiming is set while the
+	// manager is claiming a task upstream on the pod's behalf, so one poll at a
+	// time can do that.
+	lease    *lease
+	claiming bool
 }
 
 // markLostLocked turns every pod whose heartbeat is overdue into a lost one.
@@ -154,7 +165,8 @@ func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	p := &Pool{cfg: cfg, log: log, now: time.Now, pods: map[string]*pod{}}
+	p := &Pool{cfg: cfg, log: log, now: time.Now, pods: map[string]*pod{}, leases: map[string]*lease{}}
+	p.proxy = p.newProxy()
 	p.up = newUpstream(cfg.MulticaURL, cfg.MulticaToken, p.identityHeaders)
 	return p, nil
 }
@@ -195,6 +207,9 @@ func (p *Pool) AdminHandler() http.Handler {
 	mux.HandleFunc("GET /v1/inventory", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, p.Inventory())
 	})
+	mux.HandleFunc("GET /v1/leases", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, p.Leases())
+	})
 	return mux
 }
 
@@ -219,8 +234,7 @@ func (p *Pool) PodHandler() http.Handler {
 		case "/api/daemon/heartbeat":
 			p.serveHeartbeat(w, r, ip)
 		default:
-			p.log.Warn("refused pod request", "pod_ip", ip, "method", r.Method, "path", r.URL.Path, "reason", "daemon endpoint not supported by the pool manager")
-			http.Error(w, "daemon endpoint not supported by the pool manager", http.StatusForbidden)
+			p.serveDaemon(w, r, ip)
 		}
 	})
 }
@@ -302,13 +316,28 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	resp["runtimes"], _ = json.Marshal(kept)
 
 	now := p.now()
+	var voided *lease
 	p.mu.Lock()
-	if old := p.pods[ip]; old != nil && old.BootNonce != req.BootNonce {
-		// Whatever the old instance held is void; the IP is a new pod's now.
-		p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
+	next := &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now}
+	if old := p.pods[ip]; old != nil {
+		switch {
+		case old.BootNonce != req.BootNonce:
+			// Whatever the old instance held is void; the IP is a new pod's now.
+			p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
+			voided = old.lease
+			p.endLeaseLocked(voided, "pod instance replaced")
+		case old.lease != nil:
+			// The same instance registering again still runs its task.
+			next.State, next.lease = PodLeased, old.lease
+			next.lease.pod = next
+			next.RegisteredAt = old.RegisteredAt
+		}
 	}
-	p.pods[ip] = &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now}
+	p.pods[ip] = next
 	p.mu.Unlock()
+	if voided != nil {
+		p.failUpstream(r.Context(), voided.TaskID, "the pod running this task was replaced by a new instance at "+ip)
+	}
 	p.log.Info("pod registered", "pod_ip", ip, "name", req.DeviceName)
 	writeJSON(w, http.StatusOK, resp)
 }
