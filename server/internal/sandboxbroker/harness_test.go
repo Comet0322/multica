@@ -46,6 +46,29 @@ type fakeMultica struct {
 	// agentCalls records requests that carried a task token, as
 	// "<method> <path> <Authorization header>".
 	agentCalls []string
+	// hook, when set, may answer a request itself; it returns false to leave
+	// the request to the defaults.
+	hook func(w http.ResponseWriter, r *http.Request) bool
+}
+
+// intercept installs a hook that answers some requests before the defaults.
+func (f *fakeMultica) intercept(hook func(w http.ResponseWriter, r *http.Request) bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hook = hook
+}
+
+// callCount counts the requests received whose "<method> <path>" is call.
+func (f *fakeMultica) callCount(call string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.calls {
+		if c == call {
+			n++
+		}
+	}
+	return n
 }
 
 func newFakeMultica(t *testing.T) *fakeMultica {
@@ -70,6 +93,12 @@ func (f *fakeMultica) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Header.Get("Authorization") != "Bearer "+harnessPAT {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	f.mu.Lock()
+	hook := f.hook
+	f.mu.Unlock()
+	if hook != nil && hook(w, r) {
 		return
 	}
 	switch r.URL.Path {
@@ -460,9 +489,20 @@ func (p *simPod) settleFirstSeen() bool {
 	return true
 }
 
+// announce plays the supervisor reaching the control channel. The manager lists
+// its workspaces only to registered pods and to IPs whose supervisor has used
+// that channel, and the stock daemon lists before it registers. An event the
+// manager does not know changes nothing but the announcement, so it never takes
+// a pending reset command.
+func (p *simPod) announce() {
+	p.h.t.Helper()
+	p.call(http.MethodPost, "/pod/control", map[string]string{"event": "announce"})
+}
+
 // startRaw is one daemon start with no supervisor involved.
 func (p *simPod) startRaw() map[string]any {
 	p.h.t.Helper()
+	p.announce()
 	if status, _ := p.call(http.MethodPost, "/api/tokens/current/renew", map[string]any{}); status != http.StatusOK {
 		p.h.t.Fatalf("renew token: status %d", status)
 	}

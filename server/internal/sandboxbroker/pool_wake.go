@@ -57,6 +57,8 @@ var workspacesChangedFrame = func() []byte {
 type wakeConn struct {
 	conn *websocket.Conn
 	send chan []byte
+	// changed carries the workspaces_changed hint apart from the wakes.
+	changed chan struct{}
 }
 
 // serveWake upgrades a registered pod's connection and keeps it until either
@@ -78,7 +80,7 @@ func (p *Pool) serveWake(w http.ResponseWriter, r *http.Request, ip string) {
 	if err != nil {
 		return // Upgrade has already answered
 	}
-	wc := &wakeConn{conn: conn, send: make(chan []byte, wakeSendBuffer)}
+	wc := &wakeConn{conn: conn, send: make(chan []byte, wakeSendBuffer), changed: make(chan struct{}, 1)}
 	p.wakeMu.Lock()
 	if old := p.wakers[ip]; old != nil {
 		_ = old.conn.Close() // the pod reconnected; the old socket is stale
@@ -114,11 +116,27 @@ func (p *Pool) serveWake(w http.ResponseWriter, r *http.Request, ip string) {
 
 	ping := time.NewTicker(wakePingEvery)
 	defer ping.Stop()
+	write := func(frame []byte) bool {
+		_ = conn.SetWriteDeadline(time.Now().Add(wakeWriteWait))
+		return conn.WriteMessage(websocket.TextMessage, frame) == nil
+	}
 	for {
+		// A pending workspaces_changed hint goes out before any wake.
 		select {
+		case <-wc.changed:
+			if !write(workspacesChangedFrame) {
+				return
+			}
+			continue
+		default:
+		}
+		select {
+		case <-wc.changed:
+			if !write(workspacesChangedFrame) {
+				return
+			}
 		case frame := <-wc.send:
-			_ = conn.SetWriteDeadline(time.Now().Add(wakeWriteWait))
-			if err := conn.WriteMessage(websocket.TextMessage, frame); err != nil {
+			if !write(frame) {
 				return
 			}
 		case <-ping.C:
@@ -147,16 +165,43 @@ func (p *Pool) wakePod(ip string) {
 }
 
 // notifyWorkspacesChanged sends every connected pod the hint to re-read its
-// workspace list. Like wakePod it never blocks.
+// workspace list. Like wakePod it never blocks. The hint has its own one-slot
+// signal, sent before any wake, so a full wake buffer cannot drop it.
 func (p *Pool) notifyWorkspacesChanged() {
 	p.wakeMu.Lock()
 	defer p.wakeMu.Unlock()
 	for _, wc := range p.wakers {
+		if wc.changed == nil {
+			// A socket made without the signal: share the wake buffer.
+			select {
+			case wc.send <- workspacesChangedFrame:
+			default:
+			}
+			continue
+		}
 		select {
-		case wc.send <- workspacesChangedFrame:
-		default:
+		case wc.changed <- struct{}{}:
+		default: // one is pending already
 		}
 	}
+}
+
+// notifyEvery bounds how often notifyWorkspacesChangedLimited sends the hint.
+const notifyEvery = 30 * time.Second
+
+// notifyWorkspacesChangedLimited sends the workspaces_changed hint at most once
+// per notifyEvery, for repairs that may repeat every pass (a registration that
+// keeps failing, a runtime gone upstream).
+func (p *Pool) notifyWorkspacesChangedLimited() {
+	p.mu.Lock()
+	now := p.now()
+	if !p.notifiedAt.IsZero() && now.Sub(p.notifiedAt) < notifyEvery {
+		p.mu.Unlock()
+		return
+	}
+	p.notifiedAt = now
+	p.mu.Unlock()
+	p.notifyWorkspacesChanged()
 }
 
 func (p *Pool) wakeable(ip string) bool {
@@ -165,9 +210,13 @@ func (p *Pool) wakeable(ip string) bool {
 	return p.wakers[ip] != nil
 }
 
-// Run dispatches tasks to pods over their wake sockets until ctx ends. It does
-// nothing when WakeInterval is zero.
+// Run dispatches tasks to pods over their wake sockets until ctx ends; with
+// ReconcileInterval set it also starts the lease reconciliation, which runs
+// until ctx ends too. Dispatch does nothing when WakeInterval is zero.
 func (p *Pool) Run(ctx context.Context) {
+	if p.cfg.ReconcileInterval > 0 {
+		go p.reconcileLoop(ctx)
+	}
 	if p.cfg.WakeInterval <= 0 {
 		return
 	}

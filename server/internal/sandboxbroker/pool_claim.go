@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -121,14 +122,41 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 }
 
 // failUpstream reports a task the manager claimed as failed, with the reason.
+// The report does not depend on ctx being cancelled (it is often a pod's
+// request, which may end first), and one that does not get through for a
+// reason worth retrying is queued: the reconcile loop sends it again (see
+// retryFailures). Without that the task would stay running upstream for good.
 func (p *Pool) failUpstream(ctx context.Context, ws *workspace, taskID, reason string) {
 	if ws == nil {
 		return
 	}
-	err := ws.up.call(ctx, http.MethodPost, "/api/daemon/tasks/"+url.PathEscape(taskID)+"/fail", map[string]any{"error": reason}, nil)
-	if err != nil {
-		p.log.Warn("fail task upstream", "task_id", taskID, "error", err)
+	err := p.sendFail(ctx, ws, taskID, reason)
+	if err == nil {
+		return
 	}
+	if !retryableFail(err) {
+		p.log.Warn("fail task upstream: refused; not retried", "task_id", taskID, "error", err)
+		return
+	}
+	p.log.Warn("fail task upstream; queued for retry", "task_id", taskID, "error", err)
+	p.mu.Lock()
+	p.queueFailLocked(ws, taskID, reason)
+	p.mu.Unlock()
+}
+
+// sendFail makes one fail call, bounded and detached from ctx's cancellation.
+func (p *Pool) sendFail(ctx context.Context, ws *workspace, taskID, reason string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), upstreamCallTimeout)
+	defer cancel()
+	return ws.up.call(ctx, http.MethodPost, "/api/daemon/tasks/"+url.PathEscape(taskID)+"/fail", map[string]any{"error": reason}, nil)
+}
+
+// terminalAction reports whether a pod's task report ends the task: a result,
+// or the acknowledgement that it stopped after a cancellation (the stock daemon
+// sends only cancel-ack, never complete or fail, for a task cancelled or ended
+// by the server while it ran).
+func terminalAction(action string) bool {
+	return action == "complete" || action == "fail" || action == "cancel-ack"
 }
 
 // serveDaemon answers the daemon endpoints beyond registration and heartbeat.
@@ -172,6 +200,13 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 			writeJSON(w, http.StatusOK, map[string]any{"workspace_id": ws.cfg.WorkspaceID, "runtime_profiles": []any{}})
 			return
 		}
+		// The repo list and settings are read with the manager's PAT, which
+		// sees every workspace; an agent in a pod can call this too. Only the
+		// pod working for the workspace may read them.
+		if !p.mayReadRepos(ip, ws) {
+			p.refuse(w, r, ip, "workspace repos are served only to a pod working for the workspace")
+			return
+		}
 		p.forward(w, r, &proxyRoute{brokerAuth: true, token: ws.cfg.Token})
 	case len(parts) >= 3 && parts[0] == "tasks":
 		p.serveTask(w, r, ip, parts[1], parts[2])
@@ -197,6 +232,41 @@ func (p *Pool) serveAgentAPI(w http.ResponseWriter, r *http.Request, ip string) 
 		return
 	}
 	p.forward(w, r, &proxyRoute{})
+}
+
+// mayReadRepos reports whether the pod at ip may read a workspace's repos and
+// settings: it holds a task of that workspace (leased or queued on it), or it
+// runs no task at all, is registered for the workspace and so is a freshly
+// reset daemon (idle, or the new daemon of a reset that is about to complete).
+// A pod working for another workspace, an old daemon between its lease's end
+// and its reset, and an unknown address read nothing.
+func (p *Pool) mayReadRepos(ip string, ws *workspace) bool {
+	id := ws.cfg.WorkspaceID
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pd := p.pods[ip]
+	if pd == nil {
+		return false
+	}
+	for _, l := range pd.leases {
+		if l.WorkspaceID == id {
+			return true
+		}
+	}
+	for _, t := range pd.queue {
+		if t.ws.cfg.WorkspaceID == id {
+			return true
+		}
+	}
+	switch {
+	case pd.State == PodIdle:
+		_, ok := pd.workspaces[id]
+		return ok
+	case pd.State == PodResetting && pd.earlyReg != nil:
+		_, ok := pd.earlyReg.workspaces[id]
+		return ok
+	}
+	return false
 }
 
 func (p *Pool) serveRuntimeScoped(w http.ResponseWriter, r *http.Request, ip string, parts []string) {
@@ -312,7 +382,9 @@ func (p *Pool) claimUpstream(ctx context.Context, t claimTarget) (json.RawMessag
 		Tasks []json.RawMessage `json:"tasks"`
 	}
 	body := map[string]any{"daemon_id": t.ws.cfg.BrokerID, "runtime_ids": t.runtimeIDs, "max_tasks": 1}
-	if err := t.ws.up.call(ctx, http.MethodPost, "/api/daemon/tasks/claim", body, &resp); err != nil {
+	err := t.ws.up.call(ctx, http.MethodPost, "/api/daemon/tasks/claim", body, &resp)
+	p.recordUpstream(t.ws, "claim", err)
+	if err != nil {
 		return nil, err
 	}
 	if len(resp.Tasks) == 0 {
@@ -410,7 +482,10 @@ func (p *Pool) leaseClaimed(ctx context.Context, pd *pod, ws *workspace, raw jso
 }
 
 // serveTask forwards a pod's report on a task to Multica, provided the task is
-// leased to that pod. A terminal report ends the lease.
+// leased to that pod. A terminal report (complete, fail, cancel-ack) ends the
+// lease once Multica took it. It also ends when Multica refuses it with 401,
+// 403 or 404: the PAT lost access, or the task or its runtime is gone, so
+// Multica no longer knows the task and nothing will ever end it there.
 func (p *Pool) serveTask(w http.ResponseWriter, r *http.Request, ip, taskID, action string) {
 	p.mu.Lock()
 	l := p.leases[taskID]
@@ -421,11 +496,21 @@ func (p *Pool) serveTask(w http.ResponseWriter, r *http.Request, ip, taskID, act
 		return
 	}
 	route := &proxyRoute{brokerAuth: true, token: l.ws.cfg.Token, after: func(status int) {
-		if status < 200 || status > 299 || (action != "complete" && action != "fail") {
+		if !terminalAction(action) {
+			return
+		}
+		var reason string
+		switch {
+		case status >= 200 && status <= 299:
+			reason = "pod reported " + action
+		case status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusNotFound:
+			reason = fmt.Sprintf("upstream refused the pod's %s report (HTTP %d)", action, status)
+			p.log.Warn("lease ended: upstream refused a terminal report", "task_id", l.TaskID, "action", action, "status", status)
+		default:
 			return
 		}
 		p.mu.Lock()
-		p.endLeaseLocked(l, "pod reported "+action)
+		p.endLeaseLocked(l, reason)
 		p.mu.Unlock()
 	}}
 	if taskTokenPath(r.URL.Path) {

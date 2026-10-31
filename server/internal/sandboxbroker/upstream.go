@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -76,6 +77,10 @@ type upstream struct {
 type upstreamError struct {
 	Status int
 	Path   string
+	// RuntimeNotFound is set on a 404 whose body says "runtime not found": the
+	// runtime row is gone upstream (deleted in the UI, or collected after a
+	// long time offline), as the stock daemon reads it.
+	RuntimeNotFound bool
 }
 
 // Bodies are omitted: they may echo task content or credentials.
@@ -88,6 +93,12 @@ func statusOf(err error) int {
 		return e.Status
 	}
 	return 0
+}
+
+// runtimeNotFound reports whether Multica answered that the runtime is gone.
+func runtimeNotFound(err error) bool {
+	e, ok := err.(*upstreamError)
+	return ok && e.RuntimeNotFound
 }
 
 func newUpstream(base, token string, headers func() map[string]string) *upstream {
@@ -138,8 +149,14 @@ func (u *upstream) callWith(ctx context.Context, extra map[string]string, method
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		e := &upstreamError{Status: resp.StatusCode, Path: path}
+		if resp.StatusCode == http.StatusNotFound {
+			// Only this marker is kept; the body itself is never stored.
+			head, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+			e.RuntimeNotFound = strings.Contains(strings.ToLower(string(head)), "runtime not found")
+		}
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-		return &upstreamError{Status: resp.StatusCode, Path: path}
+		return e
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))

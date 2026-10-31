@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -79,12 +80,45 @@ func initiatorsOf(pd *pod) []string {
 	return out
 }
 
+// announceWindow is how long a supervisor's last control request keeps its
+// address known for the workspace list (see knownSource).
+const announceWindow = 10 * time.Minute
+
+// announceLocked records that the supervisor at ip used the control channel.
+// Callers hold p.mu.
+func (p *Pool) announceLocked(ip string) {
+	now := p.now()
+	if p.announced == nil {
+		p.announced = map[string]time.Time{}
+	}
+	for addr, at := range p.announced {
+		if now.Sub(at) > announceWindow {
+			delete(p.announced, addr)
+		}
+	}
+	p.announced[ip] = now
+}
+
+// knownSource reports whether ip is a pool pod: registered (in any state), or
+// its supervisor used the control channel recently. The supervisor announces
+// itself before it starts the daemon, whose first call lists the workspaces.
+func (p *Pool) knownSource(ip string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.pods[ip] != nil {
+		return true
+	}
+	at, ok := p.announced[ip]
+	return ok && p.now().Sub(at) <= announceWindow
+}
+
 // serveControl answers a supervisor's poll with its pending reset command, or
-// takes its report on one.
+// takes its report on one, or a supervisor event.
 func (p *Pool) serveControl(w http.ResponseWriter, r *http.Request, ip string) {
 	switch r.Method {
 	case http.MethodGet:
 		p.mu.Lock()
+		p.announceLocked(ip)
 		p.markLostLocked()
 		pd := p.pods[ip]
 		var id string
@@ -107,14 +141,30 @@ func (p *Pool) serveControl(w http.ResponseWriter, r *http.Request, ip string) {
 			ID     string `json:"id"`
 			Status string `json:"status"`
 			Error  string `json:"error"`
+			// Event is a supervisor event instead of a command outcome (see
+			// podEventLocked).
+			Event string `json:"event"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&rep); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 		p.mu.Lock()
+		p.announceLocked(ip)
 		p.markLostLocked()
 		pd := p.pods[ip]
+		if rep.Event != "" {
+			// A pod the manager does not know holds nothing; the event is
+			// acknowledged either way so the supervisor does not resend it.
+			if pd != nil {
+				p.log.Info("pod supervisor event", "pod_ip", ip, "event", boundText(rep.Event, 40), "state", pd.State)
+				p.podEventLocked(pd, rep.Event)
+			}
+			p.mu.Unlock()
+			p.reportForced(r.Context())
+			writeJSON(w, http.StatusOK, okBody)
+			return
+		}
 		if pd == nil {
 			p.mu.Unlock()
 			http.Error(w, "pod not registered", http.StatusNotFound)

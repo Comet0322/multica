@@ -39,11 +39,19 @@ type syncMultica struct {
 	paths        []string
 	registered   map[string][]string // workspace -> runtime_mode of each registered runtime
 	patches      []patchCall
+	// visibility is what GET /api/runtimes reports for every registered
+	// runtime, "private" until a PATCH sets it.
+	visibility string
+	// patchFails makes that many PATCH calls answer 500 without applying them.
+	patchFails int
+	// hook, when set, answers a request before the defaults: a non-zero status
+	// is sent with the body. It runs with the fake's lock held.
+	hook func(r *http.Request) (status int, body string)
 }
 
 func newSyncMultica(t *testing.T, workspaces ...string) *syncMultica {
 	t.Helper()
-	m := &syncMultica{workspaces: workspaces, registered: map[string][]string{}}
+	m := &syncMultica{workspaces: workspaces, registered: map[string][]string{}, visibility: "private"}
 	m.Server = httptest.NewServer(http.HandlerFunc(m.serve))
 	t.Cleanup(m.Close)
 	return m
@@ -57,7 +65,22 @@ func (m *syncMultica) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.paths = append(m.paths, r.Method+" "+r.URL.Path)
+	if m.hook != nil {
+		if status, body := m.hook(r); status != 0 {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+			return
+		}
+	}
 	switch {
+	case r.URL.Path == "/api/runtimes" && r.Method == http.MethodGet:
+		list := []map[string]any{}
+		for ws := range m.registered {
+			if r.Header.Get("X-Workspace-ID") == ws {
+				list = append(list, map[string]any{"id": "rt-" + ws[:8], "visibility": m.visibility})
+			}
+		}
+		writeJSON(w, list)
 	case r.URL.Path == "/api/daemon/workspaces" || r.URL.Path == "/api/workspaces":
 		if r.URL.Path == "/api/daemon/workspaces" && m.noDaemonList {
 			http.NotFound(w, r)
@@ -90,6 +113,15 @@ func (m *syncMultica) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/runtimes/") && r.Method == http.MethodPatch:
 		var raw json.RawMessage
 		_ = json.NewDecoder(r.Body).Decode(&raw)
+		if m.patchFails > 0 {
+			m.patchFails--
+			m.patches = append(m.patches, patchCall{RuntimeID: strings.TrimPrefix(r.URL.Path, "/api/runtimes/"), WorkspaceID: r.Header.Get("X-Workspace-ID"), Body: "FAILED " + string(raw)})
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		if strings.Contains(string(raw), `"public"`) {
+			m.visibility = "public"
+		}
 		m.patches = append(m.patches, patchCall{
 			RuntimeID:   strings.TrimPrefix(r.URL.Path, "/api/runtimes/"),
 			WorkspaceID: r.Header.Get("X-Workspace-ID"),
@@ -190,7 +222,13 @@ func TestSyncDrainsAWorkspaceTheAccountLeft(t *testing.T) {
 		t.Fatal(err)
 	}
 	up.setWorkspaces(wsA)
+	// A workspace missing once is kept (a listing can lose a row for a moment);
+	// the second sync without it removes it.
 	res, err := h.pool.Sync(context.Background())
+	if err != nil || len(res.Removed) != 0 {
+		t.Fatalf("first sync without B must keep it: %+v, %v", res, err)
+	}
+	res, err = h.pool.Sync(context.Background())
 	if err != nil || !slices.Equal(res.Removed, []string{wsB}) {
 		t.Fatalf("sync after leaving B: %+v, %v", res, err)
 	}
@@ -435,4 +473,22 @@ func TestSyncLoopReturnsAtOnceWithoutAToken(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("SyncLoop blocked without a Token")
 	}
+}
+
+func (m *syncMultica) setHook(h func(r *http.Request) (int, string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hook = h
+}
+
+func (m *syncMultica) pathCount(p string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, q := range m.paths {
+		if q == p {
+			n++
+		}
+	}
+	return n
 }

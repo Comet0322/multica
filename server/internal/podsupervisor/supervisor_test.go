@@ -4,6 +4,7 @@ package podsupervisor_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,6 +54,15 @@ type controlServer struct {
 	mu      sync.Mutex
 	pending *podsupervisor.Command
 	reports []podsupervisor.Report
+
+	// getStatus, when set, is what every poll answers.
+	getStatus int
+	// eventStatus, when set, answers the next eventRejects event posts (the
+	// events are still recorded).
+	eventStatus  int
+	eventRejects int
+	// onPost sees every post as it arrives.
+	onPost func(rep podsupervisor.Report)
 }
 
 func newControlServer(t *testing.T) *controlServer {
@@ -63,6 +73,10 @@ func newControlServer(t *testing.T) *controlServer {
 		defer c.mu.Unlock()
 		switch r.Method {
 		case http.MethodGet:
+			if c.getStatus != 0 {
+				w.WriteHeader(c.getStatus)
+				return
+			}
 			if c.pending == nil {
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -76,6 +90,14 @@ func newControlServer(t *testing.T) *controlServer {
 				return
 			}
 			c.reports = append(c.reports, rep)
+			if c.onPost != nil {
+				c.onPost(rep)
+			}
+			if rep.Event != "" && c.eventRejects > 0 {
+				c.eventRejects--
+				w.WriteHeader(c.eventStatus)
+				return
+			}
 			if c.pending != nil && c.pending.ID == rep.ID {
 				c.pending = nil
 			}
@@ -428,36 +450,6 @@ func TestRestartedDaemonGetsFreshEnvironment(t *testing.T) {
 	}
 }
 
-func TestFailedResetIsReportedAndDoesNotRestartDaemon(t *testing.T) {
-	p := startPod(t, "", nil)
-	p.waitDaemonStarts(1)
-	old := p.daemonPids()[0]
-
-	// Make the TMPDIR impossible to clean: it is no longer a directory.
-	must(t, os.RemoveAll(p.tmp))
-	must(t, os.WriteFile(p.tmp, []byte("not a dir"), 0o644))
-
-	rep := p.ctl.reset(t, "r1")
-	if rep.Status != "failed" || rep.Error == "" {
-		t.Fatalf("reset report = %+v, want failed with an error", rep)
-	}
-	time.Sleep(500 * time.Millisecond)
-	if n := len(p.daemonPids()); n != 1 {
-		t.Errorf("daemon restarted after failed reset: pids %v", p.daemonPids())
-	}
-	if alive(old) {
-		t.Errorf("old daemon still running after failed reset")
-	}
-
-	// A later reset retries and recovers once the cause is gone.
-	must(t, os.Remove(p.tmp))
-	must(t, os.Mkdir(p.tmp, 0o755))
-	if rep := p.ctl.reset(t, "r2"); rep.Status != "done" {
-		t.Fatalf("retry report = %+v", rep)
-	}
-	p.waitDaemonStarts(2)
-}
-
 func TestReportedCommandIsNotExecutedTwice(t *testing.T) {
 	p := startPod(t, "", nil)
 	p.waitDaemonStarts(1)
@@ -498,4 +490,293 @@ func must(t *testing.T, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// set changes the server's behaviour while it runs.
+func (c *controlServer) set(f func(c *controlServer)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	f(c)
+}
+
+// events returns the supervisor events received so far, in order.
+func (c *controlServer) events() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []string
+	for _, r := range c.reports {
+		if r.Event != "" {
+			out = append(out, r.Event)
+		}
+	}
+	return out
+}
+
+// waitExit waits for the supervisor process to end and returns its error.
+func (p *pod) waitExit(d time.Duration) error {
+	p.t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- p.cmd.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		p.t.Fatalf("the supervisor did not exit within %s", d)
+		return nil
+	}
+}
+
+// H-2: a reset that fails is retried, and only a reset that keeps failing
+// ends the supervisor, so the kubelet restarts the container.
+func TestResetRetriesAndSucceedsOnceTheCauseIsGone(t *testing.T) {
+	p := startPod(t, "", nil)
+	p.waitDaemonStarts(1)
+
+	must(t, os.RemoveAll(p.tmp))
+	must(t, os.WriteFile(p.tmp, []byte("not a dir"), 0o644))
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		_ = os.Remove(p.tmp)
+		_ = os.Mkdir(p.tmp, 0o755)
+	}()
+
+	rep := p.ctl.reset(t, "r1")
+	if rep.Status != "done" {
+		t.Fatalf("a reset whose second try works must report done, got %+v", rep)
+	}
+	p.waitDaemonStarts(2)
+	if p.cmd.ProcessState != nil {
+		t.Fatalf("the supervisor exited after a reset that recovered")
+	}
+}
+
+func TestResetThatKeepsFailingIsReportedAndEndsTheSupervisor(t *testing.T) {
+	p := startPod(t, "", nil)
+	p.waitDaemonStarts(1)
+	old := p.daemonPids()[0]
+
+	// The TMPDIR can never be cleaned: it is no longer a directory.
+	must(t, os.RemoveAll(p.tmp))
+	must(t, os.WriteFile(p.tmp, []byte("not a dir"), 0o644))
+
+	rep := p.ctl.reset(t, "r1")
+	if rep.Status != "failed" || rep.Error == "" {
+		t.Fatalf("reset report = %+v, want failed with an error", rep)
+	}
+	err := p.waitExit(15 * time.Second)
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() == 0 {
+		t.Fatalf("the supervisor must exit with a failure so the container restarts, got %v", err)
+	}
+	if n := len(p.daemonPids()); n != 1 {
+		t.Errorf("daemon restarted after a failed reset: pids %v", p.daemonPids())
+	}
+	if alive(old) {
+		t.Errorf("old daemon still running after the supervisor gave up")
+	}
+}
+
+func TestResetFollowedByADaemonThatCannotStartEndsTheSupervisor(t *testing.T) {
+	p := startPod(t, "", nil)
+	p.waitDaemonStarts(1)
+	// The reset kills the daemon, cleans and then cannot start it again.
+	must(t, os.Chmod(filepath.Join(p.out, "daemon.sh"), 0o644))
+
+	rep := p.ctl.reset(t, "r1")
+	if rep.Status != "failed" {
+		t.Fatalf("a daemon that cannot start after the reset must be reported failed, got %+v", rep)
+	}
+	if err := p.waitExit(15 * time.Second); err == nil {
+		t.Fatalf("the supervisor must exit with an error")
+	}
+}
+
+func TestStartedEventComesBeforeTheDaemonStarts(t *testing.T) {
+	var daemonRanFirst bool
+	p := startPod(t, "", func(p *pod) {
+		p.ctl.set(func(c *controlServer) {
+			c.onPost = func(rep podsupervisor.Report) { // runs under c.mu
+				if rep.Event == "started" {
+					if _, err := os.Stat(filepath.Join(p.out, "pids")); err == nil {
+						daemonRanFirst = true
+					}
+				}
+			}
+		})
+	})
+	p.waitDaemonStarts(1)
+	ev := p.ctl.events()
+	if len(ev) == 0 || ev[0] != "started" {
+		t.Fatalf("the first event must be started, got %v", ev)
+	}
+	p.ctl.mu.Lock()
+	defer p.ctl.mu.Unlock()
+	if daemonRanFirst {
+		t.Fatalf("the daemon was already running when the started event arrived")
+	}
+	if first := p.ctl.reports[0]; first.Event != "started" || first.ID != "" || first.Status != "" {
+		t.Fatalf("the started event carries no command id: %+v", first)
+	}
+}
+
+func TestEventIsRetriedOnServerErrorsThenTheDaemonStartsAnyway(t *testing.T) {
+	p := startPod(t, "", func(p *pod) {
+		p.ctl.set(func(c *controlServer) { c.eventStatus, c.eventRejects = http.StatusInternalServerError, 100 })
+	})
+	p.waitDaemonStarts(1)
+	started := 0
+	for _, e := range p.ctl.events() {
+		if e == "started" {
+			started++
+		}
+	}
+	if started != 3 {
+		t.Fatalf("a 5xx event is sent 3 times and then given up, got %d", started)
+	}
+}
+
+func TestEventIsNotRetriedOnClientErrors(t *testing.T) {
+	for _, code := range []int{http.StatusNotFound, http.StatusBadRequest} {
+		p := startPod(t, "", func(p *pod) {
+			p.ctl.set(func(c *controlServer) { c.eventStatus, c.eventRejects = code, 100 })
+		})
+		p.waitDaemonStarts(1)
+		time.Sleep(300 * time.Millisecond)
+		if ev := p.ctl.events(); len(ev) != 1 {
+			t.Fatalf("a %d answer means delivered (an older manager), got events %v", code, ev)
+		}
+	}
+}
+
+func TestDaemonExitSendsDaemonExitedButAResetDoesNot(t *testing.T) {
+	p := startPod(t, "", nil)
+	p.waitDaemonStarts(1)
+
+	// A reset stops the daemon on purpose.
+	if rep := p.ctl.reset(t, "r1"); rep.Status != "done" {
+		t.Fatalf("reset report = %+v", rep)
+	}
+	p.waitDaemonStarts(2)
+	for _, e := range p.ctl.events() {
+		if e == "daemon-exited" {
+			t.Fatalf("a reset is not a daemon exit: events %v", p.ctl.events())
+		}
+	}
+
+	must(t, syscall.Kill(p.daemonPids()[1], syscall.SIGKILL))
+	eventually(t, 10*time.Second, "daemon-exited event", func() bool {
+		for _, e := range p.ctl.events() {
+			if e == "daemon-exited" {
+				return true
+			}
+		}
+		return false
+	})
+	p.waitDaemonStarts(3)
+}
+
+func TestShmDirIsEmptiedAtStartAndOnEveryReset(t *testing.T) {
+	shm := filepath.Join(t.TempDir(), "shm")
+	must(t, os.Mkdir(shm, 0o755))
+	must(t, os.WriteFile(filepath.Join(shm, "left-by-an-earlier-task"), []byte("x"), 0o644))
+	p := startPod(t, "", func(p *pod) { p.env = []string{"POD_SHM_DIR=" + shm} })
+	p.waitDaemonStarts(1)
+
+	entries, err := os.ReadDir(shm)
+	must(t, err)
+	if len(entries) != 0 {
+		t.Fatalf("shm not emptied at start: %v", entries)
+	}
+	if fi, err := os.Stat(shm); err != nil || fi.Mode()&os.ModeSticky == 0 || fi.Mode().Perm() != 0o777 {
+		t.Fatalf("shm must be world-writable with the sticky bit: %v %v", fi, err)
+	}
+
+	must(t, os.WriteFile(filepath.Join(shm, "probe"), []byte("secret"), 0o644))
+	if rep := p.ctl.reset(t, "r1"); rep.Status != "done" {
+		t.Fatalf("reset report = %+v", rep)
+	}
+	if _, err := os.Stat(filepath.Join(shm, "probe")); !os.IsNotExist(err) {
+		t.Fatalf("a task's shared-memory file survived the reset: %v", err)
+	}
+}
+
+func TestShmDirThatDoesNotExistStopsTheSupervisorAtStart(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-dir")
+	p := startPod(t, "", func(p *pod) { p.env = []string{"POD_SHM_DIR=" + missing} })
+	if err := p.waitExit(10 * time.Second); err == nil {
+		t.Fatalf("a configured shm dir that cannot be emptied must stop the supervisor")
+	}
+}
+
+func TestShmDirUnsetLeavesSharedMemoryAlone(t *testing.T) {
+	shm := filepath.Join(t.TempDir(), "shm")
+	must(t, os.Mkdir(shm, 0o755))
+	must(t, os.WriteFile(filepath.Join(shm, "keep"), []byte("x"), 0o644))
+	p := startPod(t, "", nil)
+	p.waitDaemonStarts(1)
+	if rep := p.ctl.reset(t, "r1"); rep.Status != "done" {
+		t.Fatalf("reset report = %+v", rep)
+	}
+	if _, err := os.Stat(filepath.Join(shm, "keep")); err != nil {
+		t.Fatalf("a directory nobody named was touched: %v", err)
+	}
+}
+
+// H-2: a manager that keeps saying it does not know the pod ends the
+// supervisor after UnknownTimeout; any other answer restarts the clock. It
+// runs the supervisor in-process because the binary has no flag for the
+// timeout.
+func TestUnknownPodTimeoutEndsTheSupervisor(t *testing.T) {
+	run := func(t *testing.T, serve func(n int) int) (time.Duration, error) {
+		t.Helper()
+		var mu sync.Mutex
+		polls := 0
+		start := time.Now()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				return
+			}
+			mu.Lock()
+			polls++
+			n := polls
+			mu.Unlock()
+			w.WriteHeader(serve(n))
+		}))
+		defer srv.Close()
+		root := t.TempDir()
+		for _, d := range []string{"work", "home", "tmp"} {
+			must(t, os.Mkdir(filepath.Join(root, d), 0o755))
+		}
+		script := filepath.Join(root, "daemon.sh")
+		must(t, os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755))
+		s, err := podsupervisor.New(podsupervisor.Config{
+			DaemonCmd: []string{script}, Env: []string{"PATH=" + os.Getenv("PATH")},
+			WorkRoot: filepath.Join(root, "work"), Home: filepath.Join(root, "home"), TmpDir: filepath.Join(root, "tmp"),
+			ControlURL: srv.URL, PollInterval: 20 * time.Millisecond, UnknownTimeout: 300 * time.Millisecond,
+		})
+		must(t, err)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err = s.Run(ctx)
+		return time.Since(start), err
+	}
+
+	t.Run("404 for the whole timeout", func(t *testing.T) {
+		took, err := run(t, func(int) int { return http.StatusNotFound })
+		if err == nil || took > 4*time.Second {
+			t.Fatalf("want an error soon after the timeout, got %v after %s", err, took)
+		}
+	})
+	t.Run("one other answer restarts the clock", func(t *testing.T) {
+		// 404s for ~200ms, a single 204, then 404s again: without the reset
+		// the supervisor would end at ~300ms.
+		took, err := run(t, func(n int) int {
+			if n == 10 {
+				return http.StatusNoContent
+			}
+			return http.StatusNotFound
+		})
+		if err == nil || took < 450*time.Millisecond {
+			t.Fatalf("the 204 must restart the clock; ended after %s with %v", took, err)
+		}
+	})
 }

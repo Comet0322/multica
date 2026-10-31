@@ -78,8 +78,16 @@ spec:
             # is always the gateway URL plus /mcp.
             - {name: SANDBOX_GIT_GATEWAY_URL, value: "http://git-gateway.multica-sandbox.svc.cluster.local:8081"}
             - {name: SANDBOX_GIT_GATEWAY_MCP_URL, value: "http://git-gateway.multica-sandbox.svc.cluster.local:8081/mcp"}
+          # /healthz answers while the process runs; /readyz turns 503 when no
+          # workspace listing succeeded for three sync intervals (PAT revoked
+          # or expired, Multica unreachable). The Services publish the manager
+          # even when it is not ready, so this is a signal for alerting and
+          # `kubectl get pods`, never a cut of the pods' traffic. There is no
+          # liveness probe on purpose: a manager restart fails every running
+          # task (deploy/sandbox/POOL.md, known limits).
           readinessProbe:
-            httpGet: {path: /healthz, port: pod}
+            httpGet: {path: /readyz, port: pod}
+            periodSeconds: 10
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
@@ -101,6 +109,9 @@ metadata:
   name: sandbox-manager
 spec:
   type: ClusterIP
+  # Readiness (/readyz) reports upstream trouble; the pods must keep reaching
+  # the manager meanwhile, or their heartbeats would stop and every lease end.
+  publishNotReadyAddresses: true
   selector:
     app.kubernetes.io/name: sandbox-manager
   ports:
@@ -114,6 +125,7 @@ metadata:
   name: sandbox-manager-gateway
 spec:
   type: ClusterIP
+  publishNotReadyAddresses: true # as above: readiness is a signal only
   selector:
     app.kubernetes.io/name: sandbox-manager
   ports:

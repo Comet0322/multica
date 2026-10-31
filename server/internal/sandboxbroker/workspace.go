@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -82,9 +83,29 @@ type workspace struct {
 	claiming int
 	// backoffUntil skips the workspace after an upstream failure.
 	backoffUntil time.Time
-	// removed is set when a reload drops the workspace; it is never claimed
-	// from again.
-	removed bool
+	// removed is set when a reload drops the workspace; it is not claimed
+	// from while set. A workspace that comes back before its drain ended is
+	// served again with this same object, and drainGen tells the drain that
+	// was started for an earlier removal to stop.
+	removed  bool
+	drainGen int
+	// goneRuntimes are runtime IDs Multica said no longer exist; a pod that
+	// heartbeats one is told so, which makes its daemon register again.
+	goneRuntimes map[string]bool
+	// shared is set once the registered runtimes were seen with the wanted
+	// visibility; until then every Sync tries again.
+	shared bool
+	// health is the outcome of the latest claim or heartbeat upstream.
+	health *UpstreamHealth
+}
+
+// UpstreamHealth is the outcome of a workspace's latest call to Multica.
+type UpstreamHealth struct {
+	OK bool `json:"ok"`
+	// Op is the call: "claim" or "heartbeat".
+	Op    string    `json:"op"`
+	At    time.Time `json:"at"`
+	Error string    `json:"error,omitempty"`
 }
 
 // WorkspaceInfo is one workspace's entry in the inventory.
@@ -94,6 +115,98 @@ type WorkspaceInfo struct {
 	Leased      int    `json:"leased"`
 	// MaxLeases is 0 when the workspace has no cap.
 	MaxLeases int `json:"max_leases"`
+	// Upstream is the latest claim or heartbeat outcome; nil before the first.
+	Upstream *UpstreamHealth `json:"upstream,omitempty"`
+}
+
+// healthInfo copies the workspace's upstream health. Callers hold Pool.mu.
+func (ws *workspace) healthInfo() *UpstreamHealth {
+	if ws.health == nil {
+		return nil
+	}
+	h := *ws.health
+	return &h
+}
+
+// recordUpstream keeps the outcome of a claim or heartbeat for the inventory.
+// The error text is the upstream error's, which carries no response body.
+func (p *Pool) recordUpstream(ws *workspace, op string, err error) {
+	h := &UpstreamHealth{OK: err == nil, Op: op, At: p.now()}
+	if err != nil {
+		h.Error = boundText(err.Error(), 300)
+	}
+	p.mu.Lock()
+	ws.health = h
+	p.mu.Unlock()
+}
+
+// workspaceBusyLocked reports whether the workspace holds anything in this
+// manager: a lease, a claimed task waiting for or queued on a pod, or a claim
+// in flight. Removed and live objects of the same ID count alike. Callers hold
+// p.mu.
+func (p *Pool) workspaceBusyLocked(id string) bool {
+	for _, l := range p.leases {
+		if l.WorkspaceID == id {
+			return true
+		}
+	}
+	for _, t := range p.waiting {
+		if t.ws.cfg.WorkspaceID == id {
+			return true
+		}
+	}
+	for _, pd := range p.pods {
+		for _, t := range pd.queue {
+			if t.ws.cfg.WorkspaceID == id {
+				return true
+			}
+		}
+	}
+	if ws := p.workspaces[id]; ws != nil && ws.claiming > 0 {
+		return true
+	}
+	for _, ws := range p.draining {
+		if ws.cfg.WorkspaceID == id && ws.claiming > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// runtimeGoneLocked reports whether Multica said the runtime no longer exists.
+// Callers hold p.mu.
+func (p *Pool) runtimeGoneLocked(runtimeID string) bool {
+	if runtimeID == "" {
+		return false
+	}
+	for _, ws := range p.workspaces {
+		if ws.goneRuntimes[runtimeID] {
+			return true
+		}
+	}
+	return false
+}
+
+// dropRegistration forgets a workspace's upstream registration after Multica
+// answered that one of its runtimes is gone (deleted in the UI, or collected
+// after a long time offline). The next pod registration for the workspace
+// registers it upstream again; pods heartbeating the gone runtime are told so
+// (serveHeartbeat), which is what makes the stock daemon register again.
+func (p *Pool) dropRegistration(ws *workspace, runtimeID string) {
+	p.mu.Lock()
+	if !slices.Contains(p.runtimeIDsLocked(ws), runtimeID) {
+		p.mu.Unlock()
+		return // already dropped, or registered again since
+	}
+	if ws.goneRuntimes == nil {
+		ws.goneRuntimes = map[string]bool{}
+	}
+	ws.goneRuntimes[runtimeID] = true
+	ws.registration = nil
+	ws.shared = false
+	p.mu.Unlock()
+	p.log.Warn("runtime gone upstream; the workspace registers again with the next pod", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", runtimeID)
+	p.notifyWorkspacesChangedLimited()
 }
 
 func (p *Pool) workspaceByID(id string) *workspace {

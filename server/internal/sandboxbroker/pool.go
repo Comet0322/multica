@@ -116,6 +116,16 @@ type PoolConfig struct {
 	// gateway's verification endpoints on AdminHandler. Nil leaves git to
 	// the image's own setup.
 	Git *GitGatewayConfig
+	// ReconcileInterval turns on lease reconciliation (see reconcileOnce):
+	// every interval each leased task is looked up in Multica, the leases of
+	// tasks that are over are ended, and failure reports that did not get
+	// through are sent again. Zero turns it off; the command line defaults to
+	// DefaultReconcileInterval.
+	ReconcileInterval time.Duration
+	// LeaseMax is the longest a lease may last; a task still leased after it
+	// is failed upstream and its lease ended. Zero means the LiteLLM task
+	// timeout when LiteLLM is on, else DefaultLeaseMax.
+	LeaseMax time.Duration
 }
 
 // DefaultHeartbeatTimeout is three daemon heartbeat intervals (15s each).
@@ -166,6 +176,18 @@ func (c *PoolConfig) normalize() error {
 			return err
 		}
 		c.LiteLLM = &llm
+	}
+	if c.ReconcileInterval < 0 {
+		return fmt.Errorf("reconcile interval must not be negative")
+	}
+	if c.LeaseMax < 0 {
+		return fmt.Errorf("maximum lease time must not be negative")
+	}
+	if c.LeaseMax == 0 {
+		c.LeaseMax = DefaultLeaseMax
+		if c.LiteLLM != nil {
+			c.LeaseMax = c.LiteLLM.TaskTimeout
+		}
 	}
 	if c.DrainTimeout < 0 || c.DrainPoll < 0 {
 		return fmt.Errorf("drain timeout and poll interval must not be negative")
@@ -246,8 +268,9 @@ type Pool struct {
 	wsOrder    []*workspace
 	draining   []*workspace
 
-	// wakers are the open wake sockets by pod IP, guarded by wakeMu (never
-	// held together with mu).
+	// wakers are the open wake sockets by pod IP, guarded by wakeMu. Lock
+	// order is mu, then wakeMu (dispatchOnce asks wakeable while holding mu);
+	// mu is never taken while wakeMu is held.
 	wakeMu sync.Mutex
 	wakers map[string]*wakeConn
 
@@ -277,6 +300,25 @@ type Pool struct {
 	auditLog *auditLog
 	// llm is nil when tasks get no LiteLLM key.
 	llm *litellm
+	// failRetry holds failure reports Multica did not take yet; the
+	// reconcile loop sends them again.
+	failRetry []pendingFail
+	// lastMarkLost is when markLostLocked last ran, to tell the manager's own
+	// stall from pods that went silent.
+	lastMarkLost time.Time
+	// missing counts, by workspace ID, the Syncs in a row whose listing left a
+	// served workspace out; it is removed only on the second.
+	missing map[string]int
+	// lastSync is the outcome of the latest Sync and lastSyncOK when one last
+	// succeeded; readiness follows the latter.
+	lastSync   *SyncStatus
+	lastSyncOK time.Time
+	// notifiedAt is when a rate-limited workspaces_changed hint was last sent.
+	notifiedAt time.Time
+	// announced records, by IP, when a pod supervisor last used the control
+	// channel. The supervisor announces itself before it starts the daemon, so
+	// the daemon's first workspace listing comes from a known address.
+	announced map[string]time.Time
 }
 
 type pod struct {
@@ -337,8 +379,25 @@ type pod struct {
 // Silence cannot tell a restart from a crash, so every state but resetting
 // times out the same way. A resetting pod has its daemon stopped on purpose, so
 // only the reset timeout applies to it. Callers hold p.mu.
+//
+// Pods heartbeat every 15 seconds and the dispatcher ticks every second, so a
+// gap longer than the heartbeat timeout since the last run means the manager
+// itself stalled (CPU throttling, a paused process) rather than every pod at
+// once: the pods get one grace period instead of all being marked lost. The
+// gap is measured on the process's own monotonic clock, never less than
+// DefaultHeartbeatTimeout.
 func (p *Pool) markLostLocked() {
 	now := p.now()
+	wall := time.Now()
+	if stall := max(p.cfg.HeartbeatTimeout, DefaultHeartbeatTimeout); !p.lastMarkLost.IsZero() && wall.Sub(p.lastMarkLost) > stall {
+		p.log.Warn("manager stalled longer than the heartbeat timeout; giving every pod one grace period", "stalled_for", wall.Sub(p.lastMarkLost))
+		for _, pd := range p.pods {
+			if pd.State != PodLost {
+				pd.LastSeen = now
+			}
+		}
+	}
+	p.lastMarkLost = wall
 	p.pruneLostLocked()
 	for _, pd := range p.pods {
 		if pd.State == PodResetting {
@@ -355,6 +414,7 @@ func (p *Pool) markLostLocked() {
 		}
 	}
 	p.expireSharedLocked()
+	p.expireLeasesLocked()
 }
 
 // pruneLostLocked drops pods that have been lost for the retention period. A
@@ -423,6 +483,14 @@ type Inventory struct {
 	// they are no longer polled.
 	Draining []WorkspaceInfo `json:"draining,omitempty"`
 	Pods     []PodInfo       `json:"pods"`
+	// LastSync is the outcome of the latest workspace listing; nil before the
+	// first one or without discovery.
+	LastSync *SyncStatus `json:"last_sync,omitempty"`
+	// OldestLeaseAgeSeconds is the age of the oldest active lease, 0 with none.
+	// A value near the maximum lease time points at a task nobody reports on.
+	OldestLeaseAgeSeconds int64 `json:"oldest_lease_age_seconds"`
+	// PendingFailReports counts failure reports Multica has not taken yet.
+	PendingFailReports int `json:"pending_fail_reports"`
 }
 
 func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
@@ -462,15 +530,26 @@ func (p *Pool) Inventory() Inventory {
 	for _, ws := range p.wsOrder {
 		inv.Workspaces = append(inv.Workspaces, WorkspaceInfo{
 			WorkspaceID: ws.cfg.WorkspaceID, Name: ws.cfg.RuntimeName,
-			Leased: p.leasedLocked(ws), MaxLeases: ws.cfg.MaxLeases,
+			Leased: p.leasedLocked(ws), MaxLeases: ws.cfg.MaxLeases, Upstream: ws.healthInfo(),
 		})
 	}
 	for _, ws := range p.draining {
 		inv.Draining = append(inv.Draining, WorkspaceInfo{
 			WorkspaceID: ws.cfg.WorkspaceID, Name: ws.cfg.RuntimeName,
-			Leased: p.leasedLocked(ws), MaxLeases: ws.cfg.MaxLeases,
+			Leased: p.leasedLocked(ws), MaxLeases: ws.cfg.MaxLeases, Upstream: ws.healthInfo(),
 		})
 	}
+	if p.lastSync != nil {
+		s := *p.lastSync
+		inv.LastSync = &s
+	}
+	now := p.now()
+	for _, l := range p.leases {
+		if age := int64(now.Sub(l.StartedAt) / time.Second); age > inv.OldestLeaseAgeSeconds {
+			inv.OldestLeaseAgeSeconds = age
+		}
+	}
+	inv.PendingFailReports = len(p.failRetry)
 	for _, pd := range p.pods {
 		switch pd.State {
 		case PodIdle:
@@ -518,8 +597,22 @@ func (p *Pool) PodHandler() http.Handler {
 		}
 		switch r.URL.Path {
 		case "/healthz":
+			// Liveness: the process answers. Readiness is /readyz.
+			writeJSON(w, http.StatusOK, okBody)
+		case "/readyz":
+			if why := p.notReady(); why != "" {
+				http.Error(w, why, http.StatusServiceUnavailable)
+				return
+			}
 			writeJSON(w, http.StatusOK, okBody)
 		case "/api/workspaces", "/api/daemon/workspaces":
+			// Workspace IDs and names go only to pool pods: a registered pod,
+			// or one whose supervisor has announced itself (the daemon lists
+			// workspaces before it registers anywhere).
+			if !p.knownSource(ip) {
+				p.refuse(w, r, ip, "the workspace list is served to registered pods only")
+				return
+			}
 			order := p.workspaceList()
 			list := make([]map[string]string, 0, len(order))
 			for _, ws := range order {
@@ -745,29 +838,46 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 	if len(resp.Runtimes) == 0 {
 		return nil, errors.New("registration returned no runtimes")
 	}
+	// What follows must not die with the pod's request that triggered it.
+	bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+	p.mu.Lock()
+	busy := p.workspaceBusyLocked(ws.cfg.WorkspaceID)
+	p.mu.Unlock()
+	if busy {
+		// The workspace was registered before and still has work here (its
+		// runtime was re-created upstream, or it came back after an absence):
+		// the tasks on these runtimes are live, not orphans.
+		p.log.Info("skipped orphan recovery: the workspace has active leases", "workspace_id", ws.cfg.WorkspaceID)
+	} else {
+		// The leases of an earlier manager are gone and every pod is reset, so
+		// whatever Multica still shows running on these runtimes will never
+		// finish. The workspace holds no lease or claimed task in this manager,
+		// and none can be claimed until the registration below is stored, so
+		// failing them (which lets Multica retry) cannot hit a live task. Best
+		// effort: the tasks would otherwise wait for Multica's own timeout.
+		for _, rt := range resp.Runtimes {
+			if err := ws.up.call(bg, http.MethodPost, "/api/daemon/runtimes/"+rt.ID+"/recover-orphans", map[string]any{}, nil); err != nil {
+				p.log.Warn("recover orphaned tasks upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", rt.ID, "error", err)
+			}
+		}
+		if p.llm != nil {
+			if n, err := p.llm.revokeOrphans(bg, ws.cfg.WorkspaceID); err != nil {
+				p.log.Warn("revoke task keys left by an earlier manager; they expire on their own", "workspace_id", ws.cfg.WorkspaceID, "error", err)
+			} else if n > 0 {
+				p.log.Info("revoked task keys left by an earlier manager", "workspace_id", ws.cfg.WorkspaceID, "keys", n)
+			}
+		}
+	}
 	p.mu.Lock()
 	ws.registration = raw
+	ws.shared = false
+	for _, rt := range resp.Runtimes {
+		delete(ws.goneRuntimes, rt.ID)
+	}
 	p.mu.Unlock()
 	p.log.Info("registered pool runtimes", "workspace_id", ws.cfg.WorkspaceID, "runtimes", len(resp.Runtimes))
-	p.shareRuntimes(ctx, ws, resp.Runtimes)
-	// The leases of an earlier manager are gone and every pod is reset, so
-	// whatever Multica still shows running on these runtimes will never finish.
-	// This is the first registration since this manager started and no task has
-	// been leased yet, so failing them (which lets Multica retry) cannot hit a
-	// live task. Best effort: the tasks would otherwise wait for Multica's own
-	// timeout.
-	for _, rt := range resp.Runtimes {
-		if err := ws.up.call(ctx, http.MethodPost, "/api/daemon/runtimes/"+rt.ID+"/recover-orphans", map[string]any{}, nil); err != nil {
-			p.log.Warn("recover orphaned tasks upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", rt.ID, "error", err)
-		}
-	}
-	if p.llm != nil {
-		if n, err := p.llm.revokeOrphans(ctx, ws.cfg.WorkspaceID); err != nil {
-			p.log.Warn("revoke task keys left by an earlier manager; they expire on their own", "workspace_id", ws.cfg.WorkspaceID, "error", err)
-		} else if n > 0 {
-			p.log.Info("revoked task keys left by an earlier manager", "workspace_id", ws.cfg.WorkspaceID, "keys", n)
-		}
-	}
+	p.shareRuntimes(bg, ws, resp.Runtimes)
 	return raw, nil
 }
 
@@ -804,8 +914,16 @@ func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string)
 	if pd != nil && !lost {
 		pd.LastSeen = p.now()
 	}
+	gone := p.runtimeGoneLocked(req.RuntimeID)
 	p.mu.Unlock()
 	p.reportForced(r.Context())
+	if gone && pd != nil && !lost {
+		// Multica deleted this runtime and the manager dropped the
+		// registration; this answer makes the daemon register the workspace
+		// again, which registers it upstream anew.
+		http.Error(w, "runtime not found: the runtime was deleted upstream; register again", http.StatusNotFound)
+		return
+	}
 	if pd == nil {
 		// The stock daemon registers again only on a 404 whose body says "runtime
 		// not found" (daemon.isRuntimeNotFoundError); without it a manager
@@ -847,8 +965,13 @@ func (p *Pool) relayHeartbeat(runtimeID string) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), upstreamClaimTimeout)
 			defer cancel()
-			if err := ws.up.call(ctx, http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": runtimeID}, nil); err != nil {
+			err := ws.up.call(ctx, http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": runtimeID}, nil)
+			p.recordUpstream(ws, "heartbeat", err)
+			if err != nil {
 				p.log.Warn("heartbeat runtime upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", runtimeID, "error", err)
+			}
+			if runtimeNotFound(err) {
+				p.dropRegistration(ws, runtimeID)
 			}
 		}()
 		return

@@ -40,6 +40,10 @@ spec:
             # (POD_CONTROL_URL, HOME template config).
             - name: POD_POLL_INTERVAL
               value: 2s
+            # Emptied by the supervisor on every reset (the shm volume below),
+            # so shared-memory files never outlive a task.
+            - name: POD_SHM_DIR
+              value: /dev/shm
           securityContext:
             # Same settings as deploy/sandbox/pool/verify.sh. PID 1 must be
             # root to supervise; it starts the daemon as uid 1001 and every
@@ -57,6 +61,11 @@ spec:
             - {name: work, mountPath: /work}
             - {name: home, mountPath: /home/agent}
             - {name: tmp, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+          # No liveness probe: the daemon's health port listens on loopback
+          # only, and the image ships no probe client. The supervisor exits
+          # (so the kubelet restarts the container) when a reset keeps failing
+          # or the manager stops knowing the pod.
       volumes:
         # The only writable areas. Size limits keep one task from filling the node.
         - name: work
@@ -65,3 +74,7 @@ spec:
           emptyDir: {sizeLimit: 2Gi}
         - name: tmp
           emptyDir: {sizeLimit: 4Gi}
+        # Replaces the runtime's own /dev/shm so the reset can empty it. Counts
+        # against the container's memory limit.
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 1Gi}

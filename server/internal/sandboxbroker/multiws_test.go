@@ -30,6 +30,8 @@ type fakeWorkspace struct {
 	failStatus int
 	// completedWith records the PAT used for each forwarded task report.
 	reports []string
+	// calls records every request as "<method> <path>".
+	calls []string
 }
 
 // multiMultica is a fake Multica server hosting several workspaces, told apart
@@ -60,7 +62,12 @@ func (m *multiMultica) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	ws.calls = append(ws.calls, r.Method+" "+r.URL.Path)
 	switch {
+	case strings.HasSuffix(r.URL.Path, "/repos"):
+		writeJSON(w, []any{})
+	case strings.HasSuffix(r.URL.Path, "/recover-orphans"):
+		writeJSON(w, map[string]any{"orphaned": 0, "retried": 0})
 	case r.URL.Path == "/api/daemon/register":
 		var body struct {
 			WorkspaceID string `json:"workspace_id"`
@@ -184,6 +191,7 @@ func (p *simPod) startAll() []string {
 
 func (p *simPod) startAllRaw() []string {
 	p.h.t.Helper()
+	p.announce()
 	status, raw := p.call(http.MethodGet, "/api/workspaces", nil)
 	if status != http.StatusOK {
 		p.h.t.Fatalf("list workspaces: status %d", status)
@@ -245,6 +253,7 @@ func TestPodSeesEveryWorkspaceAndTasksAreClaimedWithEachOwnPAT(t *testing.T) {
 	pod := h.newPod("127.0.0.2", "pool-0")
 	pod.nonce = "boot-1"
 
+	pod.announce()
 	status, raw := pod.call(http.MethodGet, "/api/workspaces", nil)
 	if status != http.StatusOK || !strings.Contains(string(raw), wsA) || !strings.Contains(string(raw), wsB) {
 		t.Fatalf("pod must see both workspaces, got %d %s", status, raw)
@@ -480,4 +489,18 @@ func TestPoolRejectsBadWorkspaceEntries(t *testing.T) {
 			t.Errorf("%s: want an error", name)
 		}
 	}
+}
+
+// callCount counts the requests the workspace received whose "<method> <path>"
+// is call.
+func (m *multiMultica) callCount(ws *fakeWorkspace, call string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, c := range ws.calls {
+		if c == call {
+			n++
+		}
+	}
+	return n
 }

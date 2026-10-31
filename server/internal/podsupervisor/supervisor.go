@@ -26,11 +26,27 @@
 //	{"id": "r-42", "status": "done"}
 //	{"id": "r-42", "status": "failed", "error": "remove /tmp/x: ..."}
 //
-// "done" is sent only after the daemon has been started again. On "failed" the
-// daemon is deliberately left stopped; a later reset command retries. The
-// server should keep returning a command until its outcome has been reported;
-// a command whose id was already handled is not executed twice, its stored
-// outcome is only re-sent.
+// "done" is sent only after the daemon has been started again. A reset that
+// fails is retried a few times first; if it still fails, "failed" is reported
+// and the supervisor exits with an error, so the kubelet restarts the
+// container, whose start cleans the writable areas again. The server should
+// keep returning a command until its outcome has been reported; a command
+// whose id was already handled is not executed twice, its stored outcome is
+// only re-sent.
+//
+// The supervisor also reports events, with no command id, so the server can
+// tell a daemon that restarted from one that kept running:
+//
+//	{"event": "started"}        the supervisor (so the container) started
+//	{"event": "daemon-exited"}  the daemon exited by itself and is restarted
+//
+// "started" is sent before the daemon is first started. "daemon-exited" is
+// sent before the daemon is started again, but a manager that cannot be
+// reached does not hold the restart up for long.
+//
+// A control URL that keeps answering 404 (the server does not know the pod:
+// its daemon never registered, or the server dropped it) for
+// Config.UnknownTimeout makes the supervisor exit too.
 package podsupervisor
 
 import (
@@ -53,6 +69,14 @@ const (
 	zombieReapInterval   = time.Second
 	daemonStopTimeout    = 10 * time.Second
 	defaultControlClient = 10 * time.Second
+	// defaultUnknownTimeout is how long the control URL may answer 404
+	// before the supervisor exits.
+	defaultUnknownTimeout = 5 * time.Minute
+	// resetAttempts is how often a failing reset is tried before the
+	// supervisor gives up and exits; resetRetryDelay is the first pause
+	// between tries, doubled each time.
+	resetAttempts   = 3
+	resetRetryDelay = time.Second
 )
 
 // User is the non-root identity the daemon runs as.
@@ -101,11 +125,22 @@ type Config struct {
 	DaemonHome         string
 	DaemonHomeTemplate string
 
+	// ShmDir, when set, is emptied on every reset and kept world-writable
+	// with the sticky bit, like /tmp. Mount an emptyDir (medium Memory) on
+	// /dev/shm and name it here, or files a task leaves in shared memory
+	// survive into the next workspace's task. Empty takes POD_SHM_DIR from
+	// Env.
+	ShmDir string
+
 	ControlURL   string
 	PollInterval time.Duration
 	RestartDelay time.Duration
-	HTTPClient   *http.Client
-	Logger       *slog.Logger
+	// UnknownTimeout is how long the control URL may keep answering 404
+	// before the supervisor exits so the container restarts. Zero means
+	// defaultUnknownTimeout.
+	UnknownTimeout time.Duration
+	HTTPClient     *http.Client
+	Logger         *slog.Logger
 }
 
 // Supervisor runs the daemon and serves reset commands.
@@ -116,6 +151,9 @@ type Supervisor struct {
 	agentOwner *owner // the agent user; the daemon user unless ShimDir is set
 	launcher   *launcher
 	resets     chan resetRequest
+	// giveUp makes Run return with the error: the pod cannot be brought back
+	// without restarting the container.
+	giveUp chan error
 }
 
 type resetRequest struct {
@@ -161,13 +199,19 @@ func New(cfg Config) (*Supervisor, error) {
 	if cfg.RestartDelay <= 0 {
 		cfg.RestartDelay = defaultRestartDelay
 	}
+	if cfg.UnknownTimeout <= 0 {
+		cfg.UnknownTimeout = defaultUnknownTimeout
+	}
+	if cfg.ShmDir == "" {
+		cfg.ShmDir = envValue(cfg.Env, "POD_SHM_DIR")
+	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{Timeout: defaultControlClient}
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	s := &Supervisor{cfg: cfg, log: cfg.Logger, resets: make(chan resetRequest)}
+	s := &Supervisor{cfg: cfg, log: cfg.Logger, resets: make(chan resetRequest), giveUp: make(chan error, 1)}
 	if cfg.DaemonUser != nil && os.Geteuid() == 0 {
 		s.owner = &owner{uid: int(cfg.DaemonUser.UID), gid: int(cfg.DaemonUser.GID)}
 	}
@@ -211,6 +255,9 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if err := s.prepareDirs(); err != nil {
 		return fmt.Errorf("prepare directories: %w", err)
 	}
+	// The server learns of the restart (and of this address) before the
+	// daemon calls it.
+	s.sendEvent(ctx, eventStarted)
 	go s.poll(ctx)
 
 	var (
@@ -259,7 +306,16 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		case err := <-exited:
 			s.log.Warn("daemon exited, restarting", "error", err, "delay", s.cfg.RestartDelay)
 			cmd, exited = nil, nil
-			restart = time.After(s.cfg.RestartDelay)
+			// The tasks the daemon ran are gone with it; the server must not
+			// take the new daemon for the old one still running them.
+			restart = s.afterEvent(ctx, eventDaemonExited, s.cfg.RestartDelay)
+		case err := <-s.giveUp:
+			restart = nil
+			stop()
+			if kerr := killDescendants(); kerr != nil {
+				s.log.Error("kill descendants before exiting", "error", kerr)
+			}
+			return err
 		case <-restart:
 			start()
 		case <-reap.C:
@@ -271,7 +327,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		case req := <-s.resets:
 			restart = nil
 			stop()
-			err := s.resetEnvironment()
+			err := s.resetWithRetry(ctx)
 			if err == nil {
 				start()
 				if cmd == nil {
@@ -327,6 +383,15 @@ func (s *Supervisor) cleanDirs() error {
 			return err
 		}
 	}
+	if s.cfg.ShmDir != "" {
+		if err := emptyDir(s.cfg.ShmDir); err != nil {
+			return fmt.Errorf("empty shared memory: %w", err)
+		}
+		// Every user may create files there, nobody may remove another's.
+		if err := os.Chmod(s.cfg.ShmDir, os.ModeSticky|0o777); err != nil {
+			return err
+		}
+	}
 	if s.cfg.ShimDir != "" {
 		if err := os.Chmod(s.cfg.TmpDir, os.ModeSticky|0o777); err != nil {
 			return err
@@ -355,6 +420,25 @@ func (s *Supervisor) prepareDaemonHome() error {
 }
 
 func (s *Supervisor) daemonTmp() string { return filepath.Join(s.cfg.DaemonHome, "tmp") }
+
+// resetWithRetry runs resetEnvironment until it succeeds, resetAttempts times
+// at most, pausing longer after each failure.
+func (s *Supervisor) resetWithRetry(ctx context.Context) error {
+	delay := resetRetryDelay
+	for attempt := 1; ; attempt++ {
+		err := s.resetEnvironment()
+		if err == nil || attempt >= resetAttempts {
+			return err
+		}
+		s.log.Warn("reset failed, retrying", "attempt", attempt, "error", err, "delay", delay)
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(delay):
+		}
+		delay *= 2
+	}
+}
 
 // resetEnvironment kills every descendant and returns the pod to its initial
 // state. The daemon must already be stopped.
@@ -413,6 +497,16 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+// envValue returns the value of name in env, or "".
+func envValue(env []string, name string) string {
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, name+"="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // pathOf returns the PATH of env, or a default one.

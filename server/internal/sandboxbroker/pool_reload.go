@@ -78,7 +78,18 @@ func (p *Pool) Reload(ctx context.Context, workspaces []WorkspaceConfig) (Reload
 	for _, wc := range next {
 		ws := p.workspaces[wc.WorkspaceID]
 		if ws == nil {
-			ws = &workspace{cfg: wc, up: newUpstream(p.cfg.MulticaURL, wc.Token, p.identityHeaders)}
+			if i := slices.IndexFunc(p.draining, func(d *workspace) bool { return d.cfg.WorkspaceID == wc.WorkspaceID }); i >= 0 {
+				// Back before its drain ended: serve it again as the same
+				// object, so its registration and running leases carry on and
+				// nothing treats them as orphans. Its drain stops.
+				ws = p.draining[i]
+				p.draining = slices.Delete(p.draining, i, i+1)
+				ws.removed = false
+				ws.drainGen++
+				ws.cfg.MaxLeases = wc.MaxLeases
+			} else {
+				ws = &workspace{cfg: wc, up: newUpstream(p.cfg.MulticaURL, wc.Token, p.identityHeaders)}
+			}
 			res.Added = append(res.Added, wc.WorkspaceID)
 		} else {
 			if ws.cfg.Token != wc.Token || ws.cfg.RuntimeName != wc.RuntimeName || ws.cfg.Placement != wc.Placement {
@@ -96,6 +107,7 @@ func (p *Pool) Reload(ctx context.Context, workspaces []WorkspaceConfig) (Reload
 	for _, ws := range p.wsOrder {
 		if byID[ws.cfg.WorkspaceID] == nil {
 			ws.removed = true
+			ws.drainGen++
 			dropped = append(dropped, ws)
 			res.Removed = append(res.Removed, ws.cfg.WorkspaceID)
 		}
@@ -103,12 +115,21 @@ func (p *Pool) Reload(ctx context.Context, workspaces []WorkspaceConfig) (Reload
 	p.workspaces, p.wsOrder = byID, order
 	p.rotor %= len(order)
 	p.draining = append(p.draining, dropped...)
+	gens := make([]int, len(dropped))
+	for i, ws := range dropped {
+		gens[i] = ws.drainGen
+	}
 	p.mu.Unlock()
 
-	for _, ws := range dropped {
-		go p.drain(ctx, ws)
+	for i, ws := range dropped {
+		go p.drainFrom(ctx, ws, gens[i])
 	}
-	p.log.Info("workspace configuration reloaded",
+	// Sync reloads every pass; only a pass that changed something is news.
+	logAt := p.log.Debug
+	if len(res.Added)+len(res.Removed)+len(res.Updated)+len(res.Unapplied) > 0 {
+		logAt = p.log.Info
+	}
+	logAt("workspace configuration reloaded",
 		"workspaces", len(next), "added", res.Added, "removed", res.Removed,
 		"lease_cap_updated", res.Updated, "restart_needed", res.Unapplied)
 	return res, nil
@@ -132,14 +153,28 @@ func (p *Pool) workDoneLocked(ws *workspace) bool {
 
 // drain waits for a removed workspace's work to end, then disconnects it.
 func (p *Pool) drain(ctx context.Context, ws *workspace) {
+	p.mu.Lock()
+	gen := ws.drainGen
+	p.mu.Unlock()
+	p.drainFrom(ctx, ws, gen)
+}
+
+// drainFrom is drain for the removal numbered gen. It stops without touching
+// anything once the workspace is served again or removed anew (gen moved on).
+func (p *Pool) drainFrom(ctx context.Context, ws *workspace, gen int) {
 	timeout := time.NewTimer(p.cfg.DrainTimeout)
 	defer timeout.Stop()
 	tick := time.NewTicker(p.cfg.DrainPoll)
 	defer tick.Stop()
 	for {
 		p.mu.Lock()
-		done := p.workDoneLocked(ws)
+		current := ws.removed && ws.drainGen == gen
+		done := current && p.workDoneLocked(ws)
 		p.mu.Unlock()
+		if !current {
+			p.log.Info("drain stopped: the workspace is served again", "workspace_id", ws.cfg.WorkspaceID)
+			return
+		}
 		if done {
 			break
 		}
@@ -151,20 +186,28 @@ func (p *Pool) drain(ctx context.Context, ws *workspace) {
 			p.endDrainingLeases(ctx, ws)
 		}
 	}
-	ws.up.client.CloseIdleConnections()
 	p.mu.Lock()
+	if !ws.removed || ws.drainGen != gen {
+		p.mu.Unlock()
+		return
+	}
 	p.draining = slices.DeleteFunc(p.draining, func(w *workspace) bool { return w == ws })
 	p.mu.Unlock()
+	ws.up.client.CloseIdleConnections()
 	p.log.Info("removed workspace drained and disconnected", "workspace_id", ws.cfg.WorkspaceID)
 }
 
 // endDrainingLeases ends what is left of a removed workspace's leases when the
 // drain timeout passed, and fails those tasks upstream while the connection
 // is still open. Claimed tasks still waiting for a pod lapse through the
-// placement wait.
+// placement wait. A workspace that is served again keeps its leases.
 func (p *Pool) endDrainingLeases(ctx context.Context, ws *workspace) {
 	var ended []*lease
 	p.mu.Lock()
+	if !ws.removed {
+		p.mu.Unlock()
+		return
+	}
 	for _, l := range p.leases {
 		if l.ws == ws {
 			ended = append(ended, l)

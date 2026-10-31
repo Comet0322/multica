@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,9 @@ func withWake(d time.Duration) func(*sandboxbroker.PoolConfig) {
 type wakeSocket struct {
 	t    *testing.T
 	conn *websocket.Conn
+
+	once   sync.Once
+	frames chan []byte
 }
 
 // dialWake tries the daemon's websocket from the pod's address and returns the
@@ -57,24 +61,39 @@ func (p *simPod) openWake() *wakeSocket {
 	return ws
 }
 
-// next returns the type of the next frame, or "" if none arrives within d.
+// next returns the type of the next frame, or "" if none arrives within d. A
+// websocket read that times out cannot be retried, so a reader goroutine owns
+// the connection once next is used and hands the frames over a channel.
 func (w *wakeSocket) next(d time.Duration) string {
 	w.t.Helper()
-	_ = w.conn.SetReadDeadline(time.Now().Add(d))
-	_, raw, err := w.conn.ReadMessage()
-	if err != nil {
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
-			return ""
+	w.once.Do(func() {
+		w.frames = make(chan []byte, 64)
+		go func() {
+			defer close(w.frames)
+			for {
+				_, raw, err := w.conn.ReadMessage()
+				if err != nil {
+					return
+				}
+				w.frames <- raw
+			}
+		}()
+	})
+	select {
+	case raw, ok := <-w.frames:
+		if !ok {
+			w.t.Fatalf("wake socket closed")
 		}
-		w.t.Fatalf("read wake socket: %v", err)
+		var msg struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			w.t.Fatalf("bad frame %q: %v", raw, err)
+		}
+		return msg.Type
+	case <-time.After(d):
+		return ""
 	}
-	var msg struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(raw, &msg); err != nil {
-		w.t.Fatalf("bad frame %q: %v", raw, err)
-	}
-	return msg.Type
 }
 
 func (h *harness) dispatch() { h.pool.DispatchOnce(context.Background()) }
@@ -371,6 +390,14 @@ func TestSyncTellsConnectedPodsAboutRemovedWorkspaces(t *testing.T) {
 	h, sock := syncedWakePod(t, up, wsA)
 
 	up.setWorkspaces(wsA)
+	// The first sync without B keeps it (nothing changed, nothing to tell); the
+	// second removes it.
+	if _, err := h.pool.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sock.next(300 * time.Millisecond); got != "" {
+		t.Fatalf("a workspace missing once is kept; got a frame: %q", got)
+	}
 	if _, err := h.pool.Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}

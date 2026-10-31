@@ -15,12 +15,14 @@ errors. Prefer the `_FILE` form with a mounted secret.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SANDBOX_POOL_TOKEN` | none | PAT of the account the manager runs as (secret; `_FILE` form accepted). Selects pool mode. Use a dedicated account that is a member of every workspace to serve. |
+| `SANDBOX_POOL_TOKEN` | none | PAT of the account the manager runs as (secret; `_FILE` form accepted). Selects pool mode. Use a dedicated account that is a member of every workspace to serve. It is the only Multica credential: every workspace is served with it (see [Known limits](#known-limits-and-operations)). |
 | `SANDBOX_POOL_MAX_LEASES` | `0` | Concurrent leases allowed in each workspace; 0 is no cap. |
-| `SANDBOX_POOL_SYNC_INTERVAL` | `30s` | How often the account's workspaces are listed again. A workspace joined is served from the next pass; one left drains like a removed one (`SANDBOX_POOL_DRAIN_TIMEOUT`). A failed or empty listing changes nothing. |
+| `SANDBOX_POOL_SYNC_INTERVAL` | `30s` | How often the account's workspaces are listed again. A workspace joined is served from the next pass; one left out of two listings in a row drains like a removed one (`SANDBOX_POOL_DRAIN_TIMEOUT`), and one that comes back while draining is served again with its leases intact. A failed or empty listing changes nothing. Each pass also retries sharing runtimes whose visibility change failed, and re-sends pods the workspaces-changed hint (at most every 30s) while a workspace has no upstream registration. |
+| `SANDBOX_POOL_RECONCILE_INTERVAL` | `30s` | Lease reconciliation period; `0` turns it off (and with it the retry of failure reports). See [Lease end and reconciliation](#lease-end-and-reconciliation). |
+| `SANDBOX_POOL_LEASE_MAX` | `SANDBOX_LITELLM_TASK_TIMEOUT` with LiteLLM, else `2h` | Longest a lease may last. A task still leased after it is failed upstream ("task exceeded the maximum lease time") and its pod reset. |
 | `SANDBOX_POOL_RUNTIME_VISIBILITY` | `public` | Visibility set on the runtime registered in each workspace. A runtime starts private to its owner, so `public` is what lets every member bind agents to it; `private` leaves sharing to the owner. |
 | `MULTICA_SERVER_URL` | none | Multica server base URL. |
-| `SANDBOX_BROKER_LISTEN` | `:8790` | Pod API listener. |
+| `SANDBOX_BROKER_LISTEN` | `:8790` | Pod API listener. Also serves `/healthz` (liveness: always 200) and `/readyz` (200 only if a workspace listing succeeded within three sync intervals, else 503). |
 | `SANDBOX_POOL_ADMIN_LISTEN` | `127.0.0.1:8791` | Admin listener (inventory, leases, git verify). |
 | `SANDBOX_BROKER_NAME` | `Managed Sandbox` | Machine and default runtime name. |
 | `SANDBOX_POOL_SIZE` | 0 | Declared pod count, shown next to live counts. |
@@ -43,12 +45,45 @@ nothing from it to tell a reset has finished:
    rebuilds HOME, **starts the new daemon, then reports `done`**. The report
    is the acknowledgement.
 3. The next registration from that IP after the acknowledgement is the new
-   daemon's. It completes the reset and the pod is `idle`. A registration
-   before the acknowledgement is the old daemon's and changes nothing.
+   daemon's. It completes the reset and the pod is `idle`. A registration that
+   arrives before the supervisor has even fetched the reset command is the old
+   daemon's and changes nothing. One that arrives after the supervisor fetched
+   the command but before its report is the new daemon's (the supervisor stops
+   the old daemon first and starts the new one before it reports): it is kept,
+   and the report completes the reset with it.
+
+If the reset itself fails, the supervisor tries it twice more (pausing 1s, then
+2s), then reports `failed` and exits non-zero, so the kubelet restarts the
+container; the restarted supervisor empties the writable areas before it starts
+the daemon. The manager lists the pod `lost`, and its next registration resets
+it once more before it is lent. A supervisor whose control URL keeps answering
+404 (the manager does not know the pod: its daemon cannot register, or the
+manager pruned it) for 5 minutes exits the same way.
+
+The supervisor also reports two events on `/pod/control`: `started` when it
+(so the container) starts, before the daemon, and `daemon-exited` when the
+daemon exits by itself, before the daemon is started again. Either one on a pod
+that holds tasks ends them: the tasks are failed upstream ("the pod's daemon
+restarted"), their leases end with "pod daemon restarted" or "pod container
+restarted" (LiteLLM key and git token revoked), and the pod is reset. Without
+this the stock daemon, which sends no boot nonce, would register again within
+the heartbeat timeout as the same instance and inherit leases whose tasks died
+with the old process.
+
+The reset also empties `/dev/shm` when the supervisor is given it (`POD_SHM_DIR`;
+`pool/k8s/pool.yaml` mounts a memory-backed emptyDir there and sets it), and
+keeps it mode 1777.
 
 The manager answers a heartbeat from a pod it does not know (or has marked lost)
 with `404 runtime not found`, which is what makes the stock daemon register again;
-this is how the pool rebuilds itself after a manager restart.
+this is how the pool rebuilds itself after a manager restart. The same answer
+goes to a pod heartbeating a runtime that Multica reported gone (its upstream
+heartbeat got `404 runtime not found`: deleted in the UI, or collected after a
+long time offline): the manager drops that workspace's registration, and the
+pod's registration that follows registers the workspace upstream again.
+Orphan recovery (`recover-orphans`, and revoking LiteLLM keys left by an
+earlier manager) runs only for a workspace that holds no lease or claimed task
+in the manager.
 
 A pod the manager has never seen is treated the same way: its registry entry
 is created `resetting`, and it is reset before it is lent. After a manager
@@ -61,10 +96,75 @@ registers again it is reset first.
 
 `boot_nonce` and `pod_ip` in the registration are optional extras for daemons
 that send them (a different nonce on a known IP is a new instance and replaces
-the old state at once). Without `pod_ip` the manager cannot detect a rewritten
-source address (SNAT, a mesh): that check is then the manual step of the
-cluster smoke test (`pool/k8s/README.md`, ticket 20), which compares the pod
-IPs in `/v1/inventory` with `kubectl get pod -o wide`.
+the old state at once). **The stock daemon sends neither**, so with it the
+nonce check never fires (the supervisor events above take its place) and the
+registration-time IP consistency check the spec describes does not run at all.
+Without `pod_ip` the manager cannot detect a rewritten source address (SNAT, a
+mesh): that check is then the manual step of the cluster smoke test
+(`pool/k8s/README.md`, ticket 20), which compares the pod IPs in
+`/v1/inventory` with `kubectl get pod -o wide`.
+
+## Pod API authorization
+
+Pods are identified by source IP only. On top of the endpoint allowlist:
+
+- The workspace list (`/api/workspaces`, `/api/daemon/workspaces`) is served
+  only to a registered pod, or to an address whose supervisor used
+  `/pod/control` in the last 10 minutes (the supervisor announces itself before
+  it starts the daemon, whose first call is that list). Anything else gets 403.
+- A workspace's repos and settings (`/api/daemon/workspaces/{id}/repos`), which
+  the manager reads with its PAT, are served only to a pod that holds a task of
+  that workspace (leased or queued on it), or to a pod that runs no task and
+  registered for the workspace (idle, or the new daemon of a reset about to
+  complete). A pod working for another workspace gets 403; the daemon's
+  settings refresh for its other workspaces then fails quietly.
+
+## Lease end and reconciliation
+
+A lease ends, its LiteLLM key and git token are revoked and the pod is reset
+(a shared pod: once its last task ends) in these cases; `end_reason` in
+`/v1/leases` says which:
+
+| Cause | `end_reason` | Task failed upstream? |
+| --- | --- | --- |
+| The pod reports `complete`, `fail` or `cancel-ack` and Multica takes it | `pod reported <action>` | no (the pod reported it) |
+| Multica refuses that report with 401, 403 or 404 | `upstream refused the pod's <action> report (HTTP <code>)` | no (Multica no longer knows the task) |
+| Reconciliation finds the task completed, failed or cancelled | `upstream task ended: <status>` | no |
+| Reconciliation gets 404 for the task | `upstream task ended: not found` | no |
+| Reconciliation gets 401 or 403 | `upstream access lost (HTTP <code>)` | no (it cannot be) |
+| The lease is older than `SANDBOX_POOL_LEASE_MAX` | `lease exceeded the maximum lease time` | yes: "task exceeded the maximum lease time" |
+| The pod's daemon or container restarted (supervisor event) | `pod daemon restarted` / `pod container restarted` | yes: "the pod's daemon restarted" |
+| The pod was lost, replaced, past its lifetime, or its workspace drained | as before | yes |
+
+Reconciliation runs every `SANDBOX_POOL_RECONCILE_INTERVAL`: it asks Multica
+for each leased task's status with the endpoint the stock daemon polls
+(`GET /api/daemon/tasks/{id}/status`, with the PAT), at most 8 calls at once
+and 10s each, never holding the registry lock while it waits. Any other error
+keeps the lease for the next pass.
+
+A failure report that does not reach Multica (network error, timeout, 429 or
+5xx) is queued and sent again by every reconciliation pass until Multica takes
+it, refuses it with another 4xx (taken as already handled), or 30 minutes have
+passed. `/v1/inventory` shows the queue length as `pending_fail_reports`.
+
+## Inventory and readiness
+
+`/v1/inventory` also reports `last_sync` (`ok`, `at`, `error` of the latest
+workspace listing), `oldest_lease_age_seconds` (a value near the maximum lease
+time points at a task nobody reports on), `pending_fail_reports`, and for each
+workspace `upstream` (`ok`, `op`, `at`, `error` of its latest claim or
+heartbeat to Multica). The workspace-reloaded log line is INFO only when a
+listing changed something.
+
+`/readyz` turns 503 when no listing succeeded for three sync intervals: a
+revoked or expired PAT, or Multica unreachable. `pool/k8s/manager.yaml` points
+the readiness probe at it, and its Services set `publishNotReadyAddresses`, so
+a not-ready manager is visible (`kubectl get pods`, alerts) while pods keep
+reaching it; cutting them off would stop their heartbeats and end every lease.
+
+If the manager itself stalls longer than the heartbeat timeout (CPU
+throttling, a paused process), the pods get one grace period instead of all
+being marked lost at once.
 
 Reset events are audited (`action: reset`): start, completion, timeout and
 failure, with the task whose end caused it when there was one. `/v1/leases`
@@ -113,7 +213,7 @@ without it is an error.
 | `SANDBOX_LITELLM_MODELS` | required | Comma list of models a task key may call. |
 | `SANDBOX_LITELLM_MAX_BUDGET` | required, above 0 | Budget per task key. |
 | `SANDBOX_LITELLM_RPM_LIMIT` | required, above 0 | Requests per minute per task key. |
-| `SANDBOX_LITELLM_TASK_TIMEOUT` | `2h` | Longest task; key expires after this plus margin. |
+| `SANDBOX_LITELLM_TASK_TIMEOUT` | `2h` | Longest task; key expires after this plus margin. Also the default `SANDBOX_POOL_LEASE_MAX`, so the lease (and the task) ends before the key does. |
 | `SANDBOX_LITELLM_MARGIN` | `15m` | Slack after the task timeout. |
 | `SANDBOX_LITELLM_ENV` | Anthropic/OpenAI base URL and key | `NAME=VALUE,...` forced into the agent env. `${LITELLM_URL}` and `${LITELLM_KEY}` are replaced. Names must not start with `MULTICA_`. |
 
@@ -272,3 +372,54 @@ and an empty, even read-only, HOME:
   `LiteLLMConfig.Env`: by default Claude Code sends the `advanced-tool-use`,
   `context-management` and other beta headers and defers MCP tools behind a
   `ToolSearch` tool, none of which such backends are guaranteed to accept.
+
+## Known limits and operations
+
+- **Restarting or upgrading the manager fails every running task.** The
+  registry is in memory: after a restart every pod is reset and the tasks
+  Multica still shows running on the pool's runtimes are failed (Multica retries
+  those eligible). Upgrade when the pool is idle (`/v1/inventory` shows no
+  `leased` pod), or accept the retries.
+- **Accepting an invitation opens the pool to that workspace.** The manager
+  serves every workspace its account belongs to, and its runtimes are `public`
+  by default, so every member of a workspace the bot joins can bind agents to
+  the pool within one sync interval. There is no allowlist and no fair-share
+  floor: set `SANDBOX_POOL_MAX_LEASES` so one workspace cannot take the whole
+  pool. A workspace that needs a pool of its own needs another bot account and
+  another manager deployment.
+- **One Multica and one LiteLLM per pool.** The upstream daemon ID is derived
+  from the Multica URL and the workspace ID only, and orphaned LiteLLM keys are
+  found by workspace only. Two managers (two pools, or staging and production)
+  against the same Multica or LiteLLM register the same runtimes or revoke each
+  other's keys. Multi-pool deployments are not supported.
+- **Shared placement does not separate initiators.** In `issue` and `chat`
+  placement, tasks of one issue or conversation started by different people
+  share a pod and a user ID, so one agent can read another's environment (git
+  gateway token, LiteLLM key) and act with that person's GitLab rights and
+  budget. Use `task` placement (the default) where identities must stay apart.
+- **`issue` and `chat` placement are experimental.** A pod bound to a key may
+  claim a task of another key; with no idle pod left the task waits in the
+  manager and is failed after `SANDBOX_PLACEMENT_WAIT` (30s: "no sandbox pod
+  could take the task in time"), and while any task waits, no workspace claims
+  anything.
+- **Claim load and dispatch rate.** Active dispatch claims for one workspace at
+  a time, one call per workspace per tick, even when nothing is queued: with
+  many workspaces and an idle pod that is many claims per second to Multica.
+  Each tick hands out at most one task, so filling many idle pods after a burst
+  takes about one second per task (plus each pod's own 30s poll).
+- **The PAT is a single point of failure.** It acts in every served workspace
+  (its blast radius is everything that account can do in each of them, not just
+  the pool), and when it is revoked or expires every workspace stops at once.
+  The manager then keeps running: new tasks stay queued in Multica, reports of
+  running tasks are refused and their leases end, `/readyz` turns 503, and
+  `last_sync` and the workspaces' `upstream` show the error. To rotate it,
+  create the new PAT, replace the Secret file, and restart the manager (which
+  fails the running tasks, see above), then revoke the old PAT.
+- **LiteLLM initiators must exist.** A task whose initiator has no LiteLLM user
+  is refused (failed upstream); create the users before opening the pool to a
+  workspace.
+- **The CNI must enforce NetworkPolicy.** Pod identity is the source IP, and
+  only the NetworkPolicies keep anything but pool pods away from the manager's
+  pod port. Use a CNI that enforces them (Calico in the reference setup) and
+  check that node-local traffic (hostNetwork pods, the node itself) cannot
+  reach port 8080 of the manager.

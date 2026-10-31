@@ -91,6 +91,13 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		}
 		return duration("SANDBOX_POOL_WAKE_INTERVAL")
 	}
+	// Lease reconciliation is on by default too; "0" turns it off.
+	reconcileInterval := func() time.Duration {
+		if getenv("SANDBOX_POOL_RECONCILE_INTERVAL") == "" {
+			return sandboxbroker.DefaultReconcileInterval
+		}
+		return duration("SANDBOX_POOL_RECONCILE_INTERVAL")
+	}
 	whole := func(name string) int {
 		raw := getenv(name)
 		if raw == "" {
@@ -167,6 +174,8 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 			PodIdleTimeout:    duration("SANDBOX_POD_IDLE_TIMEOUT"),
 			PodMaxLifetime:    duration("SANDBOX_POD_MAX_LIFETIME"),
 			PodDrainGrace:     duration("SANDBOX_POD_DRAIN_GRACE"),
+			ReconcileInterval: reconcileInterval(),
+			LeaseMax:          duration("SANDBOX_POOL_LEASE_MAX"),
 		},
 	}
 	switch s.config.RuntimeVisibility {
