@@ -22,6 +22,9 @@ type lease struct {
 	StartedAt time.Time
 	EndedAt   time.Time
 	EndReason string
+	// Initiator and PodName are kept for the audit trail.
+	Initiator string
+	PodName   string
 
 	pod *pod
 }
@@ -53,12 +56,13 @@ func (p *Pool) Leases() []LeaseInfo {
 }
 
 // startLeaseLocked assigns a task to an idle pod. Callers hold p.mu.
-func (p *Pool) startLeaseLocked(pd *pod, taskID string) *lease {
-	l := &lease{TaskID: taskID, PodIP: pd.IP, StartedAt: p.now(), pod: pd}
+func (p *Pool) startLeaseLocked(pd *pod, taskID, initiator string) *lease {
+	l := &lease{TaskID: taskID, PodIP: pd.IP, StartedAt: p.now(), Initiator: initiator, PodName: pd.Name, pod: pd}
 	pd.lease = l
 	pd.State = PodLeased
 	p.leases[taskID] = l
 	p.history = append(p.history, l)
+	p.auditLease(AuditLease, l, "pod leased to task")
 	if len(p.history) > maxLeaseHistory {
 		keep := p.history[:0]
 		drop := len(p.history) - maxLeaseHistory
@@ -84,6 +88,7 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	l.EndedAt = p.now()
 	l.EndReason = reason
 	delete(p.leases, l.TaskID)
+	p.auditLease(AuditRelease, l, reason)
 	if pd := l.pod; pd != nil && pd.lease == l {
 		pd.lease = nil
 		if pd.State == PodLeased && p.pods[pd.IP] == pd {
@@ -257,7 +262,15 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		return nil, true
 	}
 	if !strings.EqualFold(ref.WorkspaceID, p.cfg.WorkspaceID) {
-		p.failUpstream(r.Context(), ref.ID, "the managed runtime does not serve this task's workspace")
+		const why = "the managed runtime does not serve this task's workspace"
+		p.auditDenied(ref, why)
+		p.failUpstream(r.Context(), ref.ID, why)
+		return nil, true
+	}
+	if ref.initiator() == "" {
+		const why = "the task has no human initiator; the managed runtime only runs tasks on behalf of a person"
+		p.auditDenied(ref, why)
+		p.failUpstream(r.Context(), ref.ID, why)
 		return nil, true
 	}
 
@@ -265,10 +278,12 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 	if p.pods[ip] != pd || pd.State != PodIdle {
 		// The pod was replaced or went silent while the claim was in flight.
 		p.mu.Unlock()
-		p.failUpstream(r.Context(), ref.ID, "the pod was replaced before the task could start")
+		const why = "the pod was replaced before the task could start"
+		p.auditDenied(ref, why)
+		p.failUpstream(r.Context(), ref.ID, why)
 		return nil, true
 	}
-	p.startLeaseLocked(pd, ref.ID)
+	p.startLeaseLocked(pd, ref.ID, ref.initiator())
 	p.mu.Unlock()
 	p.log.Info("leased pod to task", "pod_ip", ip, "task_id", ref.ID)
 	return raw, true

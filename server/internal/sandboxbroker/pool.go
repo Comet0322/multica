@@ -49,6 +49,8 @@ type PoolConfig struct {
 	// HeartbeatTimeout is how long a pod may stay silent before it is listed
 	// as lost. Zero means DefaultHeartbeatTimeout.
 	HeartbeatTimeout time.Duration
+	// AuditLog receives the audit records as JSON Lines. Nil disables auditing.
+	AuditLog io.Writer
 }
 
 // DefaultHeartbeatTimeout is three daemon heartbeat intervals (15s each).
@@ -110,6 +112,8 @@ type Pool struct {
 	leases  map[string]*lease
 	history []*lease
 	proxy   *httputil.ReverseProxy
+	// auditLog is nil when auditing is off.
+	auditLog *auditLog
 }
 
 type pod struct {
@@ -167,6 +171,7 @@ func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
 	}
 	p := &Pool{cfg: cfg, log: log, now: time.Now, pods: map[string]*pod{}, leases: map[string]*lease{}}
 	p.proxy = p.newProxy()
+	p.auditLog = newAuditLog(cfg.AuditLog, func(err error) { p.log.Error("write audit record", "error", err) })
 	p.up = newUpstream(cfg.MulticaURL, cfg.MulticaToken, p.identityHeaders)
 	return p, nil
 }
