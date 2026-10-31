@@ -43,6 +43,9 @@ type fakeMultica struct {
 	// maps a failed task id to the error text reported.
 	taskCalls []string
 	failures  map[string]string
+	// agentCalls records requests that carried a task token, as
+	// "<method> <path> <Authorization header>".
+	agentCalls []string
 }
 
 func newFakeMultica(t *testing.T) *fakeMultica {
@@ -57,6 +60,14 @@ func (f *fakeMultica) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 	f.mu.Unlock()
+	if strings.HasPrefix(r.Header.Get("Authorization"), "Bearer mat_") {
+		// Agent traffic: the server authenticates the task token itself.
+		f.mu.Lock()
+		f.agentCalls = append(f.agentCalls, r.Method+" "+r.URL.Path+" "+r.Header.Get("Authorization"))
+		f.mu.Unlock()
+		writeJSON(w, map[string]any{"ok": true})
+		return
+	}
 	if r.Header.Get("Authorization") != "Bearer "+harnessPAT {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
