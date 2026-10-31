@@ -69,7 +69,6 @@ func (p *Pool) audit(rec AuditRecord) {
 		return
 	}
 	rec.Time = p.now().UTC()
-	rec.WorkspaceID = p.cfg.WorkspaceID
 	p.auditLog.write(rec)
 }
 
@@ -81,15 +80,15 @@ func (p *Pool) auditLease(action string, l *lease, reason string) {
 	}
 	p.audit(AuditRecord{
 		Action: action, Decision: AuditAllow, Reason: reason,
-		TaskID: l.TaskID, Initiator: l.Initiator, PodIP: l.PodIP, PodName: l.PodName,
+		TaskID: l.TaskID, WorkspaceID: l.WorkspaceID, Initiator: l.Initiator, PodIP: l.PodIP, PodName: l.PodName,
 	})
 }
 
 // auditDenied records a task the manager refused to lend a pod to.
-func (p *Pool) auditDenied(ref claimedTaskRef, reason string) {
+func (p *Pool) auditDenied(ws *workspace, ref claimedTaskRef, reason string) {
 	p.audit(AuditRecord{
 		Action: AuditLease, Decision: AuditDeny, Reason: reason,
-		TaskID: ref.ID, Initiator: ref.initiator(),
+		TaskID: ref.ID, WorkspaceID: ws.cfg.WorkspaceID, Initiator: ref.initiator(),
 	})
 }
 
