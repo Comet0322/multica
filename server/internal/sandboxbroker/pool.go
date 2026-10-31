@@ -209,6 +209,8 @@ type Pool struct {
 	pods map[string]*pod
 	// prunedTotal counts lost pods dropped after the retention period.
 	prunedTotal int
+	// beatAt is when each upstream runtime was last heartbeated, by runtime ID.
+	beatAt map[string]time.Time
 	// identity headers are taken from the first pod and replayed to every
 	// other one; pods are homogeneous. Each workspace keeps its own runtime
 	// registration.
@@ -739,5 +741,40 @@ func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string)
 		http.Error(w, "runtime not found: pod was marked lost after its heartbeat timed out; register again", http.StatusNotFound)
 		return
 	}
+	p.relayHeartbeat(req.RuntimeID)
 	writeJSON(w, http.StatusOK, map[string]any{"runtime_id": req.RuntimeID, "status": "ok"})
+}
+
+// upstreamHeartbeatEvery is how often a runtime is heartbeated upstream, however
+// many pods heartbeat the manager. Multica marks a runtime offline after a few
+// minutes of silence and stops handing out its tasks.
+const upstreamHeartbeatEvery = 10 * time.Second
+
+// relayHeartbeat keeps the pool's upstream runtime online while a live pod
+// heartbeats. The pods talk to the manager, not to Multica, so nothing else
+// would. The upstream answer (pending pings, updates) is not passed on: the
+// manager answers those itself. The call is made in the background so a slow
+// upstream never delays a pod.
+func (p *Pool) relayHeartbeat(runtimeID string) {
+	ws := p.workspaceByRuntime(runtimeID)
+	if ws == nil {
+		return
+	}
+	p.mu.Lock()
+	if p.beatAt == nil {
+		p.beatAt = map[string]time.Time{}
+	}
+	if now := p.now(); now.Sub(p.beatAt[runtimeID]) >= upstreamHeartbeatEvery {
+		p.beatAt[runtimeID] = now
+		p.mu.Unlock()
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), upstreamClaimTimeout)
+			defer cancel()
+			if err := ws.up.call(ctx, http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": runtimeID}, nil); err != nil {
+				p.log.Warn("heartbeat runtime upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", runtimeID, "error", err)
+			}
+		}()
+		return
+	}
+	p.mu.Unlock()
 }
