@@ -14,6 +14,7 @@ func cleanupClaudeConnection(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='claude_managed' AND workspace_id=$1)`, testWorkspaceID)
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='claude_managed' AND workspace_id=$1`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE provider='claude_managed' AND workspace_id=$1`, testWorkspaceID)
 	})
 }
 
