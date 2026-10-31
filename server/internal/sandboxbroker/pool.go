@@ -711,6 +711,13 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 			p.log.Warn("recover orphaned tasks upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", rt.ID, "error", err)
 		}
 	}
+	if p.llm != nil {
+		if n, err := p.llm.revokeOrphans(ctx, ws.cfg.WorkspaceID); err != nil {
+			p.log.Warn("revoke task keys left by an earlier manager; they expire on their own", "workspace_id", ws.cfg.WorkspaceID, "error", err)
+		} else if n > 0 {
+			p.log.Info("revoked task keys left by an earlier manager", "workspace_id", ws.cfg.WorkspaceID, "keys", n)
+		}
+	}
 	return raw, nil
 }
 

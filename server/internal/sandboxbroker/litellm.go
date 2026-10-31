@@ -259,6 +259,52 @@ func withDetail(detail string) string {
 	return ": " + detail
 }
 
+// revokeOrphans deletes the task keys of a workspace that an earlier manager
+// issued: keys whose metadata names a task of that workspace. It is meant for
+// the first registration after the manager started, when no task of this
+// manager can hold a key yet, so every such key is an orphan. Keys without
+// task metadata (people's own keys) are never touched.
+func (l *litellm) revokeOrphans(ctx context.Context, workspaceID string) (int, error) {
+	var aliases []string
+	for page := 1; page <= 100; page++ {
+		var out struct {
+			Keys []struct {
+				Alias    string         `json:"key_alias"`
+				Metadata map[string]any `json:"metadata"`
+			} `json:"keys"`
+			TotalPages int `json:"total_pages"`
+		}
+		status, detail, err := l.call(ctx, http.MethodGet, fmt.Sprintf("/key/list?return_full_object=true&size=100&page=%d", page), nil, &out)
+		if err != nil {
+			return 0, err
+		}
+		if status != http.StatusOK {
+			return 0, fmt.Errorf("LiteLLM /key/list returned HTTP %d%s", status, withDetail(detail))
+		}
+		for _, k := range out.Keys {
+			task, _ := k.Metadata["task"].(string)
+			ws, _ := k.Metadata["workspace"].(string)
+			if k.Alias != "" && task != "" && ws == workspaceID {
+				aliases = append(aliases, k.Alias)
+			}
+		}
+		if page >= out.TotalPages {
+			break
+		}
+	}
+	if len(aliases) == 0 {
+		return 0, nil
+	}
+	status, detail, err := l.call(ctx, http.MethodPost, "/key/delete", map[string]any{"key_aliases": aliases}, nil)
+	if err != nil {
+		return 0, err
+	}
+	if status < 200 || status > 299 {
+		return 0, fmt.Errorf("LiteLLM /key/delete returned HTTP %d%s", status, withDetail(detail))
+	}
+	return len(aliases), nil
+}
+
 // revokeWithRetry deletes the key, retrying a few times; a key that outlives
 // every attempt still expires on its own.
 func (l *litellm) revokeWithRetry(key taskKey, log func(error)) {
