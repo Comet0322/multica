@@ -3,6 +3,7 @@ package sandboxbroker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -27,6 +28,8 @@ type lease struct {
 	PodName   string
 
 	pod *pod
+	// key is the task's LiteLLM key, revoked when the lease ends.
+	key *taskKey
 }
 
 // LeaseInfo is one lease in the lease query. EndedAt is nil while the lease is
@@ -92,6 +95,8 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	l.EndReason = reason
 	delete(p.leases, l.TaskID)
 	p.auditLease(AuditRelease, l, reason)
+	p.revokeKey(l.key, l.TaskID)
+	l.key = nil
 	if pd := l.pod; pd != nil && pd.leases[l.TaskID] == l {
 		delete(pd.leases, l.TaskID)
 		if pd.State == PodLeased && p.pods[pd.IP] == pd && len(pd.leases) == 0 && len(pd.queue) == 0 {
@@ -292,11 +297,28 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		return nil, true
 	}
 
-	t := &parkedTask{raw: raw, ref: ref, key: p.placementKey(ref), claimedAt: p.now()}
+	var key *taskKey
+	if p.llm != nil {
+		var err error
+		if raw, key, err = p.issueTaskKey(r.Context(), raw, ref); err != nil {
+			why := "the model key for this task could not be prepared"
+			var lf *llmFailure
+			if errors.As(err, &lf) {
+				why = lf.msg
+			}
+			p.log.Warn("issue task key", "task_id", ref.ID, "error", err)
+			p.auditDenied(ref, why)
+			p.failUpstream(r.Context(), ref.ID, why)
+			return nil, true
+		}
+	}
+
+	t := &parkedTask{raw: raw, ref: ref, key: p.placementKey(ref), llmKey: key, claimedAt: p.now()}
 	p.mu.Lock()
 	if p.pods[ip] != pd || (pd.State != PodIdle && pd.State != PodLeased) {
 		// The pod was replaced or went silent while the claim was in flight.
 		p.mu.Unlock()
+		p.revokeKey(key, ref.ID)
 		const why = "the pod was replaced before the task could start"
 		p.auditDenied(ref, why)
 		p.failUpstream(r.Context(), ref.ID, why)

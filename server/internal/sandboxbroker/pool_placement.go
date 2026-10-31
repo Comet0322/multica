@@ -58,6 +58,7 @@ type parkedTask struct {
 	raw       []byte
 	ref       claimedTaskRef
 	key       string
+	llmKey    *taskKey
 	claimedAt time.Time
 }
 
@@ -146,7 +147,7 @@ func (p *Pool) takeQueuedLocked(pd *pod) *parkedTask {
 	}
 	t := pd.queue[0]
 	pd.queue = pd.queue[1:]
-	p.startLeaseLocked(pd, t.ref.ID, t.ref.initiator())
+	p.startLeaseLocked(pd, t.ref.ID, t.ref.initiator()).key = t.llmKey
 	return t
 }
 
@@ -193,6 +194,7 @@ func (p *Pool) rebalanceLocked(polling *pod) (expired []*parkedTask) {
 func (p *Pool) failParked(ctx context.Context, tasks []*parkedTask) {
 	const why = "no sandbox pod could take the task in time"
 	for _, t := range tasks {
+		p.revokeKey(t.llmKey, t.ref.ID)
 		p.auditDenied(t.ref, why)
 		p.failUpstream(ctx, t.ref.ID, why)
 	}
