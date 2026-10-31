@@ -94,6 +94,39 @@ func TestLoadPoolReadsGitGateway(t *testing.T) {
 	}
 }
 
+func TestLoadPoolReadsGitGatewayMCPURL(t *testing.T) {
+	env := baseEnv()
+	env["SANDBOX_GIT_GATEWAY_URL"] = "http://git-gateway:8081"
+	env["SANDBOX_GIT_GATEWAY_MCP_URL"] = "http://git-gateway:8081/mcp"
+	s, err := loadPool(envLookup(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := s.config.Git; g == nil || g.MCPURL != "http://git-gateway:8081/mcp" {
+		t.Fatalf("unexpected git gateway settings: %+v", g)
+	}
+}
+
+func TestLoadPoolRefusesBadGitGatewayMCPURL(t *testing.T) {
+	for name, set := range map[string]map[string]string{
+		"without gateway URL": {"SANDBOX_GIT_GATEWAY_MCP_URL": "http://g:8081/mcp"},
+		"not http":            {"SANDBOX_GIT_GATEWAY_URL": "http://g:8081", "SANDBOX_GIT_GATEWAY_MCP_URL": "ftp://g/mcp"},
+		"no host":             {"SANDBOX_GIT_GATEWAY_URL": "http://g:8081", "SANDBOX_GIT_GATEWAY_MCP_URL": "/mcp"},
+		"credentials":         {"SANDBOX_GIT_GATEWAY_URL": "http://g:8081", "SANDBOX_GIT_GATEWAY_MCP_URL": "http://u:p@g/mcp"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := baseEnv()
+			for k, v := range set {
+				env[k] = v
+			}
+			_, err := loadPool(envLookup(env))
+			if err == nil || !strings.Contains(err.Error(), "SANDBOX_GIT_GATEWAY_MCP_URL") || strings.Contains(err.Error(), "u:p") {
+				t.Fatalf("want an error naming SANDBOX_GIT_GATEWAY_MCP_URL without the value, got %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadPoolRefusesBadSettings(t *testing.T) {
 	cases := map[string]struct {
 		set  map[string]string
