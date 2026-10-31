@@ -54,6 +54,16 @@ type PoolConfig struct {
 	ResetTimeout time.Duration
 	// AuditLog receives the audit records as JSON Lines. Nil disables auditing.
 	AuditLog io.Writer
+	// Placement decides which tasks share a pod: PlacementTask (the default,
+	// one task per pod) or PlacementIssue (one issue or chat conversation per
+	// pod, tasks of that unit running side by side).
+	Placement Placement
+	// PodConcurrency is how many tasks a shared pod runs at once. It is 1 in
+	// task placement; in issue placement zero means DefaultPodConcurrency.
+	PodConcurrency int
+	// PlacementWait bounds how long a claimed task waits in the manager for a
+	// pod that can take it. Zero means DefaultPlacementWait.
+	PlacementWait time.Duration
 	// LiteLLM, when set, gives every task its own short-lived LiteLLM key
 	// owned by the initiator. Nil leaves model access to the agent's own
 	// settings.
@@ -101,6 +111,9 @@ func (c *PoolConfig) normalize() error {
 	if c.ExpectedSize < 0 {
 		return fmt.Errorf("expected pool size must not be negative")
 	}
+	if err := c.normalizePlacement(); err != nil {
+		return err
+	}
 	if c.Name == "" {
 		c.Name = "Managed Sandbox"
 	}
@@ -135,6 +148,8 @@ type Pool struct {
 	// ones included, for the lease query.
 	leases  map[string]*lease
 	history []*lease
+	// waiting holds claimed tasks no pod could take yet.
+	waiting []*parkedTask
 	proxy   *httputil.ReverseProxy
 	// auditLog is nil when auditing is off.
 	auditLog *auditLog
@@ -149,10 +164,15 @@ type pod struct {
 	BootNonce    string
 	RegisteredAt time.Time
 	LastSeen     time.Time
-	// lease is the task the pod holds, if any. claiming is set while the
-	// manager is claiming a task upstream on the pod's behalf, so one poll at a
-	// time can do that.
-	lease    *lease
+	// leases are the tasks the pod holds, by task ID: at most one in task
+	// placement, up to the pod concurrency when the pod is shared. boundKey is
+	// the placement key the pod serves while it holds leases or queued tasks,
+	// and queue the claimed tasks assigned to the pod that it has not picked up
+	// yet. claiming is set while the manager is claiming a task upstream on
+	// the pod's behalf, so one poll at a time can do that.
+	leases   map[string]*lease
+	boundKey string
+	queue    []*parkedTask
 	claiming bool
 	// dirty is set when a lease ends and cleared only by a registration with a
 	// new boot nonce: until then the pod may still hold the previous task's
@@ -369,7 +389,7 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	resp["runtimes"], _ = json.Marshal(kept)
 
 	now := p.now()
-	var voided *lease
+	var voided []*lease
 	p.mu.Lock()
 	next := &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now}
 	if old := p.pods[ip]; old != nil {
@@ -382,19 +402,28 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 		case old.BootNonce != req.BootNonce:
 			// Whatever the old instance held is void; the IP is a new pod's now.
 			p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
-			voided = old.lease
-			p.endLeaseLocked(voided, "pod instance replaced")
-		case old.lease != nil:
-			// The same instance registering again still runs its task.
-			next.State, next.lease = PodLeased, old.lease
-			next.lease.pod = next
+			for _, l := range old.leases {
+				voided = append(voided, l)
+			}
+			for _, l := range voided {
+				p.endLeaseLocked(l, "pod instance replaced")
+			}
+			// Tasks queued for the old instance never started; place them again.
+			p.waiting = append(p.waiting, old.queue...)
+		case len(old.leases) > 0 || len(old.queue) > 0:
+			// The same instance registering again still runs its tasks.
+			next.State, next.leases = PodLeased, old.leases
+			next.boundKey, next.queue = old.boundKey, old.queue
+			for _, l := range next.leases {
+				l.pod = next
+			}
 			next.RegisteredAt = old.RegisteredAt
 		}
 	}
 	p.pods[ip] = next
 	p.mu.Unlock()
-	if voided != nil {
-		p.failUpstream(r.Context(), voided.TaskID, "the pod running this task was replaced by a new instance at "+ip)
+	for _, l := range voided {
+		p.failUpstream(r.Context(), l.TaskID, "the pod running this task was replaced by a new instance at "+ip)
 	}
 	p.log.Info("pod registered", "pod_ip", ip, "name", req.DeviceName)
 	writeJSON(w, http.StatusOK, resp)
