@@ -97,6 +97,7 @@ func TestAuditIsJSONLinesWithoutCredentials(t *testing.T) {
 	pod.start()
 	pod.claimBatch()
 	pod.report("t1", "fail")
+	pod.completeReset("boot-2")
 	pod.claimBatch()
 
 	raw := h.audit.String()

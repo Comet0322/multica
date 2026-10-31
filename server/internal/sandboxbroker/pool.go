@@ -49,6 +49,9 @@ type PoolConfig struct {
 	// HeartbeatTimeout is how long a pod may stay silent before it is listed
 	// as lost. Zero means DefaultHeartbeatTimeout.
 	HeartbeatTimeout time.Duration
+	// ResetTimeout is how long a pod may stay in the resetting state before it
+	// is listed as lost. Zero means DefaultResetTimeout.
+	ResetTimeout time.Duration
 	// AuditLog receives the audit records as JSON Lines. Nil disables auditing.
 	AuditLog io.Writer
 	// LiteLLM, when set, gives every task its own short-lived LiteLLM key
@@ -60,12 +63,22 @@ type PoolConfig struct {
 // DefaultHeartbeatTimeout is three daemon heartbeat intervals (15s each).
 const DefaultHeartbeatTimeout = 45 * time.Second
 
+// DefaultResetTimeout bounds one reset: killing processes, emptying the
+// writable areas and restarting the daemon until it registers again.
+const DefaultResetTimeout = 2 * time.Minute
+
 func (c *PoolConfig) normalize() error {
 	if c.HeartbeatTimeout < 0 {
 		return fmt.Errorf("heartbeat timeout must not be negative")
 	}
 	if c.HeartbeatTimeout == 0 {
 		c.HeartbeatTimeout = DefaultHeartbeatTimeout
+	}
+	if c.ResetTimeout < 0 {
+		return fmt.Errorf("reset timeout must not be negative")
+	}
+	if c.ResetTimeout == 0 {
+		c.ResetTimeout = DefaultResetTimeout
 	}
 	if _, err := uuid.Parse(c.WorkspaceID); err != nil {
 		return fmt.Errorf("workspace ID must be a UUID")
@@ -141,14 +154,31 @@ type pod struct {
 	// time can do that.
 	lease    *lease
 	claiming bool
+	// dirty is set when a lease ends and cleared only by a registration with a
+	// new boot nonce: until then the pod may still hold the previous task's
+	// files and processes, so it is never lent out. resetID names the reset
+	// command the supervisor is asked to run; resetStarted starts the reset
+	// timeout; resetReported is set once the supervisor said it was done.
+	dirty         bool
+	resetID       string
+	resetStarted  time.Time
+	resetReported bool
 }
 
 // markLostLocked turns every pod whose heartbeat is overdue into a lost one.
-// Silence cannot tell a restart from a crash, so every state times out the
-// same way. Callers hold p.mu.
+// Silence cannot tell a restart from a crash, so every state but resetting
+// times out the same way. A resetting pod has its daemon stopped on purpose, so
+// only the reset timeout applies to it. Callers hold p.mu.
 func (p *Pool) markLostLocked() {
 	now := p.now()
 	for _, pd := range p.pods {
+		if pd.State == PodResetting {
+			if now.Sub(pd.resetStarted) > p.cfg.ResetTimeout {
+				pd.State = PodLost
+				p.log.Warn("pod lost: did not register again after reset", "pod_ip", pd.IP, "name", pd.Name, "reset_started", pd.resetStarted)
+			}
+			continue
+		}
 		if pd.State != PodLost && now.Sub(pd.LastSeen) > p.cfg.HeartbeatTimeout {
 			pd.State = PodLost
 			p.log.Warn("pod lost: heartbeat timed out", "pod_ip", pd.IP, "name", pd.Name, "last_seen", pd.LastSeen)
@@ -254,6 +284,8 @@ func (p *Pool) PodHandler() http.Handler {
 			p.serveRegister(w, r, ip)
 		case "/api/daemon/heartbeat":
 			p.serveHeartbeat(w, r, ip)
+		case controlPath:
+			p.serveControl(w, r, ip)
 		default:
 			p.serveDaemon(w, r, ip)
 		}
@@ -342,6 +374,11 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	next := &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now}
 	if old := p.pods[ip]; old != nil {
 		switch {
+		case old.BootNonce == req.BootNonce && old.dirty:
+			// The daemon that ran the previous task is still the one talking;
+			// the reset has not taken effect, so the pod stays out of the pool.
+			old.LastSeen = now
+			next = old
 		case old.BootNonce != req.BootNonce:
 			// Whatever the old instance held is void; the IP is a new pod's now.
 			p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
