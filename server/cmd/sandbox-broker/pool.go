@@ -24,8 +24,10 @@ import (
 // runs. Every variable is described in deploy/sandbox/POOL.md.
 type poolSettings struct {
 	workspacesFile string
-	podListen      string
-	adminListen    string
+	// workspacesGroupRead lets the workspace file be group-readable (a Kubernetes Secret volume).
+	workspacesGroupRead bool
+	podListen           string
+	adminListen         string
 	// gatewayListen, when set, is a listener serving only the git gateway's
 	// verification endpoints.
 	gatewayListen string
@@ -157,6 +159,15 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 			PodDrainGrace:    duration("SANDBOX_POD_DRAIN_GRACE"),
 		},
 	}
+	switch getenv("SANDBOX_WORKSPACES_FILE_GROUP_READ") {
+	case "":
+	case "true":
+		s.workspacesGroupRead = true
+		s.config.WorkspaceFileOptions = []sandboxbroker.LoadOption{sandboxbroker.AllowGroupRead()}
+	case "false":
+	default:
+		fail("SANDBOX_WORKSPACES_FILE_GROUP_READ must be true or false")
+	}
 	switch s.config.Placement {
 	case "", sandboxbroker.PlacementTask, sandboxbroker.PlacementIssue, sandboxbroker.PlacementChat:
 	default:
@@ -228,7 +239,7 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 // runPool starts the pool manager and reloads its workspace file on SIGHUP
 // until ctx ends.
 func runPool(ctx context.Context, log *slog.Logger, s poolSettings) error {
-	workspaces, err := sandboxbroker.LoadWorkspaces(s.workspacesFile)
+	workspaces, err := sandboxbroker.LoadWorkspaces(s.workspacesFile, s.config.WorkspaceFileOptions...)
 	if err != nil {
 		return err
 	}

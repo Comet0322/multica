@@ -114,7 +114,7 @@ func (p *Pool) Reload(ctx context.Context, workspaces []WorkspaceConfig) (Reload
 // ReloadFile loads the workspace file and applies it. Any failure leaves the
 // running configuration as it was and is logged without the file's contents.
 func (p *Pool) ReloadFile(ctx context.Context, path string) (ReloadResult, error) {
-	workspaces, err := LoadWorkspaces(path)
+	workspaces, err := LoadWorkspaces(path, p.cfg.WorkspaceFileOptions...)
 	if err == nil {
 		var res ReloadResult
 		if res, err = p.Reload(ctx, workspaces); err == nil {

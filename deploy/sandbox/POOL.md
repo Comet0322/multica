@@ -14,6 +14,7 @@ errors. Prefer the `_FILE` form with a mounted secret.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SANDBOX_WORKSPACES_FILE` | none | Workspace list (mode 0600). Selects pool mode. |
+| `SANDBOX_WORKSPACES_FILE_GROUP_READ` | `false` | `true` also accepts a workspace file its group can read (mode 0440/0640), for a Kubernetes Secret volume with `fsGroup`; group write and any access by others stay refused. |
 | `MULTICA_SERVER_URL` | none | Multica server base URL. |
 | `SANDBOX_BROKER_LISTEN` | `:8790` | Pod API listener. |
 | `SANDBOX_POOL_ADMIN_LISTEN` | `127.0.0.1:8791` | Admin listener (inventory, leases, git verify). |

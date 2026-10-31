@@ -30,6 +30,8 @@ const (
 // PoolConfig configures a Pool.
 type PoolConfig struct {
 	MulticaURL string
+	// WorkspaceFileOptions apply whenever the workspace file is re-read (SIGHUP).
+	WorkspaceFileOptions []LoadOption
 	// Workspaces lists the workspaces the manager serves from the shared pool.
 	// For a single-workspace deployment MulticaToken, WorkspaceID and BrokerID
 	// may be set instead; they describe one entry and cannot be combined with

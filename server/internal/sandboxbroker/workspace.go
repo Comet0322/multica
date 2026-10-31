@@ -65,9 +65,24 @@ func ParseWorkspaces(r io.Reader) ([]WorkspaceConfig, error) {
 	return f.Workspaces, nil
 }
 
+type loadOptions struct{ groupRead bool }
+
+// LoadOption adjusts LoadWorkspaces.
+type LoadOption func(*loadOptions)
+
+// AllowGroupRead accepts a workspace file that its group can also read.
+func AllowGroupRead() LoadOption { return func(o *loadOptions) { o.groupRead = true } }
+
 // LoadWorkspaces reads the workspace configuration file. The file holds PATs,
 // so it is refused when anyone but its owner can read or write it.
-func LoadWorkspaces(path string) ([]WorkspaceConfig, error) {
+//
+// AllowGroupRead relaxes the rule to owner-or-group read-only for volumes whose
+// files cannot be owner-only, such as a Kubernetes Secret with fsGroup.
+func LoadWorkspaces(path string, opts ...LoadOption) ([]WorkspaceConfig, error) {
+	var o loadOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open workspace config: %w", err)
@@ -80,7 +95,11 @@ func LoadWorkspaces(path string) ([]WorkspaceConfig, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("workspace config %s is not a regular file", path)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+	forbidden := os.FileMode(0o077)
+	if o.groupRead {
+		forbidden = 0o037 // group read stays; group write/execute and any other access do not
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&forbidden != 0 {
 		return nil, fmt.Errorf("workspace config %s has mode %04o; it holds credentials and must be readable by its owner only (chmod 600)", path, info.Mode().Perm())
 	}
 	return ParseWorkspaces(f)
