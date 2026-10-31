@@ -49,7 +49,7 @@ func (c *PoolConfig) normalizePlacement() error {
 	if c.PlacementWait == 0 {
 		c.PlacementWait = DefaultPlacementWait
 	}
-	return nil
+	return c.normalizeLifetime()
 }
 
 // parkedTask is a task the manager claimed upstream and has not yet handed to
@@ -85,7 +85,7 @@ func (p *Pool) freeLocked(pd *pod) bool {
 // it: an idle pod, or a pod bound to a key with a free slot. Nothing is
 // claimed while claimed tasks are still waiting for a pod.
 func (p *Pool) canClaimLocked(pd *pod) bool {
-	if pd.claiming || len(p.waiting) > 0 {
+	if pd.claiming || pd.draining || len(p.waiting) > 0 {
 		return false
 	}
 	switch pd.State {
@@ -119,7 +119,7 @@ func (p *Pool) podsByIPLocked(prefer *pod) []*pod {
 func (p *Pool) placeLocked(prefer *pod, key string) *pod {
 	pods := p.podsByIPLocked(prefer)
 	for _, pd := range pods {
-		if pd.State == PodLeased && pd.boundKey == key && p.freeLocked(pd) {
+		if pd.State == PodLeased && !pd.draining && pd.boundKey == key && p.freeLocked(pd) {
 			return pd
 		}
 	}
@@ -135,6 +135,9 @@ func (p *Pool) placeLocked(prefer *pod, key string) *pod {
 // the task's key. The lease starts when the pod picks the task up.
 func (p *Pool) assignLocked(pd *pod, t *parkedTask) {
 	pd.queue = append(pd.queue, t)
+	if pd.boundKey == "" {
+		pd.boundAt = p.now()
+	}
 	pd.boundKey = t.key
 	pd.State = PodLeased
 }
@@ -169,8 +172,10 @@ func (p *Pool) rebalanceLocked(polling *pod) (expired []*parkedTask) {
 			keep = append(keep, t)
 		}
 		pd.queue = keep
-		if pd.State == PodLeased && len(pd.leases) == 0 && len(pd.queue) == 0 {
-			pd.State, pd.boundKey = PodIdle, ""
+		if pd.State == PodLeased && len(pd.leases) == 0 && len(pd.queue) == 0 && pd.idleSince.IsZero() {
+			// Never ran a task: nothing to clean, so it simply unbinds. A pod
+			// that did run one is released by the idle timeout and reset.
+			pd.State, pd.boundKey, pd.boundAt = PodIdle, "", time.Time{}
 		}
 	}
 	sort.SliceStable(p.waiting, func(i, j int) bool { return p.waiting[i].claimedAt.Before(p.waiting[j].claimedAt) })
@@ -185,6 +190,7 @@ func (p *Pool) rebalanceLocked(polling *pod) (expired []*parkedTask) {
 			continue
 		}
 		still = append(still, t)
+		p.releaseIdleBoundLocked()
 	}
 	p.waiting = still
 	return expired
