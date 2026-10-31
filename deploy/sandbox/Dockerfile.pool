@@ -1,0 +1,94 @@
+# Pooled sandbox pod image: pod-supervisor as PID 1 supervising the stock
+# Multica daemon. The root filesystem is meant to run read-only with exactly
+# three writable areas (work root, HOME, TMPDIR), so a reset is a fresh pod.
+# Build from the repository root:
+#   docker build -f deploy/sandbox/Dockerfile.pool -t multica-sandbox-pool:<tag> .
+# Run (docker; Kubernetes uses the same settings with emptyDir volumes):
+#   docker run --read-only --tmpfs /work --tmpfs /home/agent --tmpfs /tmp \
+#     --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+#     --cap-add KILL --cap-add SETUID --cap-add SETGID \
+#     --security-opt no-new-privileges multica-sandbox-pool:<tag>
+# The default target installs real agent CLIs; --target fake uses a fake
+# Claude Code for credential-free testing.
+ARG GO_IMAGE=golang:1.27.3-alpine
+ARG BASE_IMAGE=node:22-slim
+
+FROM ${GO_IMAGE} AS builder
+WORKDIR /src/server
+COPY server/go.mod server/go.sum ./
+RUN go mod download
+COPY server/ ./
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o /out/multica ./cmd/multica \
+	&& CGO_ENABLED=0 go build -ldflags "-s -w" -o /out/pod-supervisor ./cmd/pod-supervisor
+
+FROM ${BASE_IMAGE} AS base
+# Addresses baked into the image. Defaults are placeholders; the cluster
+# manifests (or a rebuild) set the real in-cluster addresses.
+ARG MANAGER_URL=http://sandbox-manager.multica-sandbox.svc.cluster.local:8080
+ARG PACKAGE_MIRROR_URL=http://package-mirror.multica-sandbox.svc.cluster.local
+ARG GIT_GATEWAY_URL=http://git-gateway.multica-sandbox.svc.cluster.local/git/
+ARG GITLAB_URL=https://gitlab.example.com/
+
+# Common toolchains, installed at build time so agents never install globally
+# (the root filesystem is read-only) or reach the public internet.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		ca-certificates git openssh-client curl jq procps make build-essential \
+		python3 python3-pip python3-venv \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& npm install -g pnpm && npm cache clean --force
+
+# Package sources point at the internal mirror. --user, venv and in-project
+# installs work; global installs fail on the read-only root.
+COPY deploy/sandbox/pool/pip.conf /etc/pip.conf
+RUN sed -i "s|@PACKAGE_MIRROR_URL@|${PACKAGE_MIRROR_URL}|g" /etc/pip.conf \
+	&& printf 'registry=%s/npm/\n' "${PACKAGE_MIRROR_URL}" >/usr/local/etc/npmrc
+ENV GOPROXY=${PACKAGE_MIRROR_URL}/go,off
+
+# Every git operation, including the daemon's own clone and fetch, goes
+# through the git gateway.
+RUN git config --system "url.${GIT_GATEWAY_URL}.insteadOf" "${GITLAB_URL}"
+
+COPY --from=builder /out/multica /usr/local/bin/multica
+COPY --from=builder /out/pod-supervisor /usr/local/bin/pod-supervisor
+COPY deploy/sandbox/pool/entrypoint.sh /usr/local/bin/multica-pod-entrypoint
+
+# HOME template: the supervisor rebuilds HOME from it on every reset, so it
+# carries the daemon's CLI settings (manager address, placeholder token the
+# manager ignores) and the runtime-private skills. Nothing here is secret.
+COPY deploy/sandbox/home/ /etc/multica-sandbox/home-template/
+RUN mkdir -p /etc/multica-sandbox/home-template/.multica \
+	&& printf '{"server_url":"%s","token":"pool-placeholder"}\n' "${MANAGER_URL}" \
+		>/etc/multica-sandbox/home-template/.multica/config.json \
+	&& chmod 600 /etc/multica-sandbox/home-template/.multica/config.json \
+	&& mkdir -p /work /home/agent
+
+# The supervisor reads its layout from the environment (see the entrypoint).
+# MULTICA_GC_ENABLED=false: only the supervisor cleans the pod. The workspaces
+# root is a subdirectory of the work root: the daemon drops a task-context
+# marker there, and a daemon whose own cwd sits at or below the marker refuses
+# to start, which would break every crash restart.
+ENV POD_CONTROL_URL=${MANAGER_URL}/api/pod/control \
+	POD_WORK_ROOT=/work \
+	POD_HOME=/home/agent \
+	POD_TMPDIR=/tmp \
+	POD_HOME_TEMPLATE=/etc/multica-sandbox/home-template \
+	POD_UID=1000 \
+	POD_GID=1000 \
+	MULTICA_WORKSPACES_ROOT=/work/workspaces \
+	MULTICA_GC_ENABLED=false \
+	MULTICA_DAEMON_AUTO_UPDATE=false
+VOLUME ["/work", "/home/agent", "/tmp"]
+# PID 1 runs as root to supervise; it starts the daemon as UID/GID 1000.
+ENTRYPOINT ["/usr/local/bin/multica-pod-entrypoint"]
+
+FROM base AS fake
+COPY deploy/sandbox/fake/fake-claude /usr/local/bin/claude
+COPY deploy/sandbox/fake/skill/ /etc/multica-sandbox/home-template/
+
+FROM base AS agents
+# Space-separated npm packages providing the agent CLIs to expose.
+ARG AGENT_PACKAGES="@anthropic-ai/claude-code"
+RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g $AGENT_PACKAGES && npm cache clean --force; fi
