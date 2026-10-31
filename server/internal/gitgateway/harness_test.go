@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,10 @@ type fakeGitLab struct {
 	apiCalls int
 	gitReqs  []gitReq
 	recv     []recvReq
+	// pushStatus, when set, is the HTTP status receive-pack answers.
+	pushStatus int
+	// rejectRef, when set, makes receive-pack report that ref as "ng".
+	rejectRef string
 }
 
 // recvReq is a receive-pack body as GitLab saw it. Only the head is kept so a
@@ -79,6 +84,12 @@ func (f *fakeGitLab) setLevel(id int64, level int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.levels[levelKey(id, project)] = level
+}
+
+func (f *fakeGitLab) setPushOutcome(status int, rejectRef string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pushStatus, f.rejectRef = status, rejectRef
 }
 
 func (f *fakeGitLab) setFail(status int) {
@@ -145,8 +156,23 @@ func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.recv = append(f.recv, recvReq{Size: int64(n) + rest, Head: head[:n]})
 		f.mu.Unlock()
+		f.mu.Lock()
+		status, reject := f.pushStatus, f.rejectRef
+		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
-		io.WriteString(w, pkt("\x01"+pkt("unpack ok\n")+"0000")+"0000")
+		if status != 0 {
+			http.Error(w, "boom", status)
+			return
+		}
+		report := pkt("unpack ok\n")
+		for _, ref := range pushedRefs(head[:n]) {
+			if ref == reject {
+				report += pkt("ng " + ref + " pre-receive hook declined\n")
+			} else {
+				report += pkt("ok " + ref + "\n")
+			}
+		}
+		io.WriteString(w, pkt("\x01"+report+"0000")+"0000")
 		return
 	}
 	if r.URL.RawQuery == "service=git-receive-pack" {
@@ -255,6 +281,7 @@ type harness struct {
 	tokens  *gitgateway.TokenRegistry
 	clock   *fakeClock
 	audit   *syncBuffer
+	gw      *gitgateway.Gateway
 	gateway *httptest.Server
 }
 
@@ -275,6 +302,7 @@ func newHarness(t *testing.T, mutate ...func(*gitgateway.Config)) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.gw = g
 	h.gateway = httptest.NewServer(g)
 	t.Cleanup(h.gateway.Close)
 	return h
@@ -316,3 +344,21 @@ const (
 
 // pkt frames s as one pkt-line.
 func pkt(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }
+
+// pushedRefs lists the refs of the commands at the head of a receive-pack body.
+func pushedRefs(head []byte) []string {
+	var refs []string
+	for len(head) >= 4 {
+		n, err := strconv.ParseUint(string(head[:4]), 16, 16)
+		if err != nil || n < 4 || int(n) > len(head) {
+			break
+		}
+		line := string(head[4:n])
+		head = head[n:]
+		line, _, _ = strings.Cut(line, "\x00")
+		if parts := strings.SplitN(strings.TrimSpace(line), " ", 3); len(parts) == 3 {
+			refs = append(refs, parts[2])
+		}
+	}
+	return refs
+}
