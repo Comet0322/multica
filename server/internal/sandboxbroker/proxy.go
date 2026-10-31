@@ -19,6 +19,9 @@ type proxyContextKey struct{}
 type proxyRoute struct {
 	// brokerAuth replaces the sandbox credential with the broker's token.
 	brokerAuth bool
+	// token overrides the manager-wide credential when brokerAuth is set; the
+	// pool manager holds one PAT per workspace.
+	token string
 	// after runs with the upstream status code of a forwarded call.
 	after func(status int)
 }

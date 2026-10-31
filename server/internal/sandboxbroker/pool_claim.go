@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 )
@@ -25,18 +24,22 @@ type lease struct {
 	// Initiator and PodName are kept for the audit trail.
 	Initiator string
 	PodName   string
+	// WorkspaceID is the workspace the pod is bound to for this lease.
+	WorkspaceID string
 
 	pod *pod
+	ws  *workspace
 }
 
 // LeaseInfo is one lease in the lease query. EndedAt is nil while the lease is
 // active.
 type LeaseInfo struct {
-	TaskID    string     `json:"task_id"`
-	PodIP     string     `json:"pod_ip"`
-	StartedAt time.Time  `json:"started_at"`
-	EndedAt   *time.Time `json:"ended_at,omitempty"`
-	EndReason string     `json:"end_reason,omitempty"`
+	TaskID      string     `json:"task_id"`
+	WorkspaceID string     `json:"workspace_id"`
+	PodIP       string     `json:"pod_ip"`
+	StartedAt   time.Time  `json:"started_at"`
+	EndedAt     *time.Time `json:"ended_at,omitempty"`
+	EndReason   string     `json:"end_reason,omitempty"`
 }
 
 // Leases lists active and recently closed leases, oldest first.
@@ -45,7 +48,7 @@ func (p *Pool) Leases() []LeaseInfo {
 	defer p.mu.Unlock()
 	out := make([]LeaseInfo, 0, len(p.history))
 	for _, l := range p.history {
-		info := LeaseInfo{TaskID: l.TaskID, PodIP: l.PodIP, StartedAt: l.StartedAt, EndReason: l.EndReason}
+		info := LeaseInfo{TaskID: l.TaskID, WorkspaceID: l.WorkspaceID, PodIP: l.PodIP, StartedAt: l.StartedAt, EndReason: l.EndReason}
 		if !l.EndedAt.IsZero() {
 			ended := l.EndedAt
 			info.EndedAt = &ended
@@ -56,8 +59,8 @@ func (p *Pool) Leases() []LeaseInfo {
 }
 
 // startLeaseLocked assigns a task to an idle pod. Callers hold p.mu.
-func (p *Pool) startLeaseLocked(pd *pod, taskID, initiator string) *lease {
-	l := &lease{TaskID: taskID, PodIP: pd.IP, StartedAt: p.now(), Initiator: initiator, PodName: pd.Name, pod: pd}
+func (p *Pool) startLeaseLocked(pd *pod, ws *workspace, taskID, initiator string) *lease {
+	l := &lease{TaskID: taskID, PodIP: pd.IP, StartedAt: p.now(), Initiator: initiator, PodName: pd.Name, pod: pd, ws: ws, WorkspaceID: ws.cfg.WorkspaceID}
 	pd.lease = l
 	pd.State = PodLeased
 	p.leases[taskID] = l
@@ -100,8 +103,11 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 }
 
 // failUpstream reports a task the manager claimed as failed, with the reason.
-func (p *Pool) failUpstream(ctx context.Context, taskID, reason string) {
-	err := p.up.call(ctx, http.MethodPost, "/api/daemon/tasks/"+url.PathEscape(taskID)+"/fail", map[string]any{"error": reason}, nil)
+func (p *Pool) failUpstream(ctx context.Context, ws *workspace, taskID, reason string) {
+	if ws == nil {
+		return
+	}
+	err := ws.up.call(ctx, http.MethodPost, "/api/daemon/tasks/"+url.PathEscape(taskID)+"/fail", map[string]any{"error": reason}, nil)
 	if err != nil {
 		p.log.Warn("fail task upstream", "task_id", taskID, "error", err)
 	}
@@ -137,17 +143,18 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 			writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks})
 		}
 	case len(parts) == 3 && parts[0] == "workspaces" && (parts[2] == "repos" || parts[2] == "runtime-profiles"):
-		if !strings.EqualFold(parts[1], p.cfg.WorkspaceID) {
+		ws := p.workspaceByID(parts[1])
+		if ws == nil {
 			p.refuse(w, r, ip, "workspace is not served by this pool manager")
 			return
 		}
 		if parts[2] == "runtime-profiles" {
 			// Custom profiles launch arbitrary commands; pods only run the
 			// image's built-in providers.
-			writeJSON(w, http.StatusOK, map[string]any{"workspace_id": p.cfg.WorkspaceID, "runtime_profiles": []any{}})
+			writeJSON(w, http.StatusOK, map[string]any{"workspace_id": ws.cfg.WorkspaceID, "runtime_profiles": []any{}})
 			return
 		}
-		p.forward(w, r, &proxyRoute{brokerAuth: true})
+		p.forward(w, r, &proxyRoute{brokerAuth: true, token: ws.cfg.Token})
 	case len(parts) >= 3 && parts[0] == "tasks":
 		p.serveTask(w, r, ip, parts[1], parts[2])
 	case len(parts) >= 2 && parts[0] == "runtimes":
@@ -158,7 +165,7 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 }
 
 func (p *Pool) serveRuntimeScoped(w http.ResponseWriter, r *http.Request, ip string, parts []string) {
-	if !p.knowsRuntime(parts[1]) {
+	if p.workspaceByRuntime(parts[1]) == nil {
 		http.Error(w, "runtime not found", http.StatusNotFound)
 		return
 	}
@@ -188,26 +195,6 @@ func (p *Pool) serveRuntimeScoped(w http.ResponseWriter, r *http.Request, ip str
 	}
 }
 
-func (p *Pool) knowsRuntime(id string) bool {
-	return slices.Contains(p.runtimeIDs(), id)
-}
-
-// runtimeIDs lists the upstream runtime IDs of the registration.
-func (p *Pool) runtimeIDs() []string {
-	p.mu.Lock()
-	registration := p.registration
-	p.mu.Unlock()
-	var resp struct {
-		Runtimes []runtimeRef `json:"runtimes"`
-	}
-	_ = json.Unmarshal(registration, &resp)
-	ids := make([]string, 0, len(resp.Runtimes))
-	for _, rt := range resp.Runtimes {
-		ids = append(ids, rt.ID)
-	}
-	return ids
-}
-
 // claimFor claims at most one task upstream for the polling pod. It claims
 // only when the pod is idle: a pod that is leased, resetting or lost, or a
 // caller that is not a registered pod, gets nothing and causes no upstream
@@ -235,45 +222,79 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		p.mu.Unlock()
 	}()
 
-	known := p.runtimeIDs()
-	ids := known
-	if len(wanted) > 0 {
-		ids = slices.DeleteFunc(slices.Clone(wanted), func(id string) bool { return !slices.Contains(known, id) })
+	p.mu.Lock()
+	targets := p.claimTargetsLocked(pd, wanted)
+	p.mu.Unlock()
+
+	attempted, failed := 0, 0
+	for _, t := range targets {
+		if !p.reserveClaim(t.ws) {
+			continue
+		}
+		attempted++
+		p.mu.Lock()
+		p.rotor = (t.idx + 1) % len(p.wsOrder)
+		p.mu.Unlock()
+		raw, err := p.claimUpstream(r.Context(), t)
+		p.finishClaim(t.ws, err != nil)
+		if err != nil {
+			// One workspace's upstream failing must not hold back the others.
+			failed++
+			p.log.Warn("claim task for pod", "pod_ip", ip, "workspace_id", t.ws.cfg.WorkspaceID, "error", err)
+			continue
+		}
+		if raw == nil {
+			continue
+		}
+		return p.leaseClaimed(r.Context(), pd, t.ws, raw), true
 	}
-	if len(ids) == 0 {
-		return nil, true
-	}
-	var resp struct {
-		Tasks []json.RawMessage `json:"tasks"`
-	}
-	body := map[string]any{"daemon_id": p.cfg.BrokerID, "runtime_ids": ids, "max_tasks": 1}
-	if err := p.up.call(r.Context(), http.MethodPost, "/api/daemon/tasks/claim", body, &resp); err != nil {
-		p.log.Warn("claim task for pod", "pod_ip", ip, "error", err)
+	if attempted > 0 && failed == attempted {
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return nil, false
 	}
+	return nil, true
+}
+
+// claimUpstream claims at most one task from one workspace's runtimes. A nil
+// result with a nil error means the workspace has nothing queued.
+func (p *Pool) claimUpstream(ctx context.Context, t claimTarget) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, upstreamClaimTimeout)
+	defer cancel()
+	var resp struct {
+		Tasks []json.RawMessage `json:"tasks"`
+	}
+	body := map[string]any{"daemon_id": t.ws.cfg.BrokerID, "runtime_ids": t.runtimeIDs, "max_tasks": 1}
+	if err := t.ws.up.call(ctx, http.MethodPost, "/api/daemon/tasks/claim", body, &resp); err != nil {
+		return nil, err
+	}
 	if len(resp.Tasks) == 0 {
-		return nil, true
+		return nil, nil
 	}
 	// max_tasks is 1; anything beyond that would be an upstream bug, and the
 	// server reclaims what is never started.
-	raw := resp.Tasks[0]
+	return resp.Tasks[0], nil
+}
+
+// leaseClaimed binds a claimed task's pod to the task's workspace, or fails the
+// task upstream when it cannot run. It returns the task for the pod, or nil.
+func (p *Pool) leaseClaimed(ctx context.Context, pd *pod, ws *workspace, raw json.RawMessage) json.RawMessage {
+	ip := pd.IP
 	var ref claimedTaskRef
 	if err := json.Unmarshal(raw, &ref); err != nil || ref.ID == "" {
-		p.log.Error("claimed task has no ID; it will be reclaimed by the server", "pod_ip", ip)
-		return nil, true
+		p.log.Error("claimed task has no ID; it will be reclaimed by the server", "pod_ip", ip, "workspace_id", ws.cfg.WorkspaceID)
+		return nil
 	}
-	if !strings.EqualFold(ref.WorkspaceID, p.cfg.WorkspaceID) {
+	if !strings.EqualFold(ref.WorkspaceID, ws.cfg.WorkspaceID) {
 		const why = "the managed runtime does not serve this task's workspace"
-		p.auditDenied(ref, why)
-		p.failUpstream(r.Context(), ref.ID, why)
-		return nil, true
+		p.auditDenied(ws, ref, why)
+		p.failUpstream(ctx, ws, ref.ID, why)
+		return nil
 	}
 	if ref.initiator() == "" {
 		const why = "the task has no human initiator; the managed runtime only runs tasks on behalf of a person"
-		p.auditDenied(ref, why)
-		p.failUpstream(r.Context(), ref.ID, why)
-		return nil, true
+		p.auditDenied(ws, ref, why)
+		p.failUpstream(ctx, ws, ref.ID, why)
+		return nil
 	}
 
 	p.mu.Lock()
@@ -281,14 +302,14 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		// The pod was replaced or went silent while the claim was in flight.
 		p.mu.Unlock()
 		const why = "the pod was replaced before the task could start"
-		p.auditDenied(ref, why)
-		p.failUpstream(r.Context(), ref.ID, why)
-		return nil, true
+		p.auditDenied(ws, ref, why)
+		p.failUpstream(ctx, ws, ref.ID, why)
+		return nil
 	}
-	p.startLeaseLocked(pd, ref.ID, ref.initiator())
+	p.startLeaseLocked(pd, ws, ref.ID, ref.initiator())
 	p.mu.Unlock()
-	p.log.Info("leased pod to task", "pod_ip", ip, "task_id", ref.ID)
-	return raw, true
+	p.log.Info("leased pod to task", "pod_ip", ip, "task_id", ref.ID, "workspace_id", ws.cfg.WorkspaceID)
+	return raw
 }
 
 // serveTask forwards a pod's report on a task to Multica, provided the task is
@@ -302,7 +323,7 @@ func (p *Pool) serveTask(w http.ResponseWriter, r *http.Request, ip, taskID, act
 		p.refuse(w, r, ip, "task is not assigned to this pod")
 		return
 	}
-	route := &proxyRoute{brokerAuth: true, after: func(status int) {
+	route := &proxyRoute{brokerAuth: true, token: l.ws.cfg.Token, after: func(status int) {
 		if status < 200 || status > 299 || (action != "complete" && action != "fail") {
 			return
 		}
@@ -335,7 +356,7 @@ func (p *Pool) newProxy() *httputil.ReverseProxy {
 			pr.SetURL(target)
 			pr.Out.Host = target.Host
 			if route, _ := pr.In.Context().Value(proxyContextKey{}).(*proxyRoute); route != nil && route.brokerAuth {
-				pr.Out.Header.Set("Authorization", "Bearer "+p.cfg.MulticaToken)
+				pr.Out.Header.Set("Authorization", "Bearer "+route.token)
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
