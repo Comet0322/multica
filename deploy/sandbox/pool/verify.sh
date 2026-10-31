@@ -122,6 +122,10 @@ docker exec -u node:node -w /tmp -e POD_AGENT_SOCKET="$sock" -e PATH="$dpath" -e
 check "the agent user cannot use the launcher" bash -c "! docker exec $name test -e /tmp/agent-report2"
 
 echo "== system tooling"
+# Claude Code must not try its telemetry or update endpoints (egress denies
+# them); the daemon hands the pod's environment on to the agent CLI.
+[ "$(dx printenv CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)" = 1 ] && pass "image disables Claude Code nonessential traffic" || fail "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+[ "$(dx printenv DISABLE_AUTOUPDATER)" = 1 ] && pass "image disables Claude Code auto-update" || fail "DISABLE_AUTOUPDATER"
 git_rules="$(dx git config --system --get-regexp 'url\..*\.insteadof')"
 echo "$git_rules" | grep -q 'git-gateway' && pass "system gitconfig has insteadOf to the gateway: $git_rules" || fail "insteadOf"
 # An agent push needs the task token: git asks the credential helper, which

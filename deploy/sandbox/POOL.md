@@ -222,3 +222,30 @@ The split is not a full isolation of the daemon, because the daemon is unchanged
    equal to the installed CLIs.
 6. **Same-user processes.** Processes of one task can still signal and ptrace
    each other and those of other tasks in a shared pod, as before.
+
+## Claude Code in the pod
+
+Checked against Claude Code 2.1.314 with a fake Anthropic-style endpoint, the
+daemon's argument list (`--strict-mcp-config --mcp-config <file>`, stream-json)
+and an empty, even read-only, HOME:
+
+- `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` (the `DefaultLiteLLMEnv`
+  pair) are honoured: requests go to `<base>/v1/messages?beta=true` with
+  `Authorization: Bearer <key>` and `anthropic-version: 2023-06-01`. No login
+  or onboarding is needed. The model is the agent's `--model`, else Claude
+  Code's own default (`claude-opus-5-5` for this version): the task key's
+  `Models` must list it, and the small fast model
+  (`ANTHROPIC_DEFAULT_HAIKU_MODEL`) if the deployment maps it elsewhere.
+- The gateway's MCP entry (`type: http`, `headers.Authorization`) connects,
+  lists and calls its tools; the Bearer header is sent on every POST.
+- The image sets `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and
+  `DISABLE_AUTOUPDATER=1`; without them Claude Code opens a connection to
+  `api.anthropic.com` at start (telemetry). It is not fatal when blocked.
+- Claude Code needs a writable HOME only to keep session state; it still runs
+  with a read-only one, but `--resume` then has nothing to resume.
+- If the LiteLLM models are not served by Anthropic's own API (Bedrock,
+  Vertex, other vendors), add `ENABLE_TOOL_SEARCH=false` and
+  `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` to the agent's `custom_env` or
+  `LiteLLMConfig.Env`: by default Claude Code sends the `advanced-tool-use`,
+  `context-management` and other beta headers and defers MCP tools behind a
+  `ToolSearch` tool, none of which such backends are guaranteed to accept.
