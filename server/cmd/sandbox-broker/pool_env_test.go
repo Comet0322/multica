@@ -30,6 +30,7 @@ func TestLoadPoolReadsPlacementLifetimeAndAudit(t *testing.T) {
 	env := baseEnv()
 	env["SANDBOX_POOL_HEARTBEAT_TIMEOUT"] = "30s"
 	env["SANDBOX_POOL_RESET_TIMEOUT"] = "3m"
+	env["SANDBOX_POOL_LOST_RETENTION"] = "7m"
 	env["SANDBOX_PLACEMENT"] = "issue"
 	env["SANDBOX_POD_CONCURRENCY"] = "8"
 	env["SANDBOX_PLACEMENT_WAIT"] = "20s"
@@ -42,7 +43,7 @@ func TestLoadPoolReadsPlacementLifetimeAndAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := s.config
-	if c.HeartbeatTimeout != 30*time.Second || c.ResetTimeout != 3*time.Minute || c.Placement != sandboxbroker.PlacementIssue ||
+	if c.HeartbeatTimeout != 30*time.Second || c.ResetTimeout != 3*time.Minute || c.LostRetention != 7*time.Minute || c.Placement != sandboxbroker.PlacementIssue ||
 		c.PodConcurrency != 8 || c.PlacementWait != 20*time.Second || c.PodIdleTimeout != 5*time.Minute ||
 		c.PodMaxLifetime != time.Hour || c.PodDrainGrace != 2*time.Minute || s.auditFile != "/var/log/audit.jsonl" {
 		t.Fatalf("unexpected settings: %+v", s)
