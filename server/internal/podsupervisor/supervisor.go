@@ -183,7 +183,7 @@ func New(cfg Config) (*Supervisor, error) {
 			daemonUID = cfg.DaemonUser.UID
 		}
 		l, err := newLauncher(launcherConfig{
-			DaemonUID: daemonUID, Cred: cred, Home: cfg.Home, TmpDir: cfg.TmpDir,
+			DaemonUID: daemonUID, Cred: cred, Home: cfg.Home, TmpDir: cfg.TmpDir, DaemonTmp: filepath.Join(cfg.DaemonHome, "tmp"),
 			ShimDir: cfg.ShimDir, RealPath: realPath(pathOf(cfg.Env), cfg.ShimDir),
 		}, cfg.Logger)
 		if err != nil {

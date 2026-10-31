@@ -56,11 +56,14 @@ type launcherConfig struct {
 	// DaemonUID is the only user allowed to launch agents.
 	DaemonUID uint32
 	// Cred is the user agents run as; nil keeps the supervisor's own (tests).
-	Cred     *syscall.Credential
-	Home     string
-	TmpDir   string
-	ShimDir  string
-	RealPath []string
+	Cred   *syscall.Credential
+	Home   string
+	TmpDir string
+	// DaemonTmp is the daemon's private TMPDIR; files below it named in an
+	// agent's arguments are copied for the agent (see shareArgFiles).
+	DaemonTmp string
+	ShimDir   string
+	RealPath  []string
 }
 
 // launcher runs agent CLIs on behalf of the daemon, as another user.
@@ -231,7 +234,7 @@ func (l *launcher) command(req launchRequest, files []*os.File) (*exec.Cmd, func
 	if !filepath.IsAbs(req.Dir) {
 		return nil, noop, fmt.Errorf("working directory %q is not absolute", req.Dir)
 	}
-	args, cleanup := l.shareArgFiles(req.Args, req.Env)
+	args, cleanup := l.shareArgFiles(req.Args)
 	cmd := exec.Command(path, args...)
 	cmd.Args[0] = name
 	cmd.Dir = req.Dir
@@ -246,18 +249,13 @@ func (l *launcher) command(req launchRequest, files []*os.File) (*exec.Cmd, func
 const maxArgFile = 1 << 20
 
 // shareArgFiles replaces each argument that names a regular file in the
-// daemon's TMPDIR (as "path" or "--flag=path") with the path of a copy the agent
+// daemon's own TMPDIR (as "path" or "--flag=path") with the path of a copy the agent
 // user owns, in the agent's TMPDIR. The daemon keeps such files, the task's MCP
 // configuration among them, in its private home, which the agent cannot enter.
 // Nothing else is rewritten: only files directly the daemon's own, never links.
 // The returned function removes the copies once the agent has ended.
-func (l *launcher) shareArgFiles(args, env []string) ([]string, func()) {
-	var daemonTmp string
-	for _, kv := range env {
-		if v, ok := strings.CutPrefix(kv, "TMPDIR="); ok {
-			daemonTmp = v
-		}
-	}
+func (l *launcher) shareArgFiles(args []string) ([]string, func()) {
+	daemonTmp := l.DaemonTmp
 	if daemonTmp == "" || !filepath.IsAbs(daemonTmp) {
 		return args, func() {}
 	}
