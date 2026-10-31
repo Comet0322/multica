@@ -126,6 +126,17 @@ func (f *fakeMultica) enqueue(id string) {
 	f.queue = append(f.queue, map[string]any{
 		"id": id, "agent_id": "agent-1", "runtime_id": "runtime-a",
 		"workspace_id": harnessWorkspaceID, "issue_id": "issue-" + id,
+		"initiator_email": "alice@example.com",
+	})
+}
+
+// enqueueNoInitiator adds a task that no human triggered.
+func (f *fakeMultica) enqueueNoInitiator(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queue = append(f.queue, map[string]any{
+		"id": id, "agent_id": "agent-1", "runtime_id": "runtime-a",
+		"workspace_id": harnessWorkspaceID, "issue_id": "issue-" + id,
 	})
 }
 
@@ -186,6 +197,8 @@ type harness struct {
 	admin    *httptest.Server
 	// logs captures the manager's log output.
 	logs *syncBuffer
+	// audit captures the manager's audit log.
+	audit *syncBuffer
 }
 
 // syncBuffer is a log sink safe for the manager's concurrent handlers.
@@ -220,11 +233,13 @@ func newHarness(t *testing.T, expectedSize int, opts ...func(*sandboxbroker.Pool
 		opt(&cfg)
 	}
 	logs := &syncBuffer{}
+	audit := &syncBuffer{}
+	cfg.AuditLog = audit
 	pool, err := sandboxbroker.NewPool(cfg, slog.New(slog.NewTextHandler(logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, upstream: up, pool: pool, logs: logs}
+	h := &harness{t: t, upstream: up, pool: pool, logs: logs, audit: audit}
 	h.podAPI = httptest.NewServer(pool.PodHandler())
 	h.admin = httptest.NewServer(pool.AdminHandler())
 	t.Cleanup(h.podAPI.Close)

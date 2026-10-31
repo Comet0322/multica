@@ -43,6 +43,7 @@ type claimedTaskRef struct {
 	IssueID        string `json:"issue_id"`
 	ChatSessionID  string `json:"chat_session_id"`
 	AutopilotRunID string `json:"autopilot_run_id"`
+	InitiatorEmail string `json:"initiator_email"`
 }
 
 // placement is the sandbox a task runs in and the scope that sandbox serves,
