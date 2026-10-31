@@ -39,6 +39,10 @@ type fakeGitLab struct {
 	pushStatus int
 	// rejectRef, when set, makes receive-pack report that ref as "ng".
 	rejectRef string
+	// project settings and merge requests created through the API.
+	archived bool
+	mrAccess string // merge_requests_access_level; default "enabled"
+	mrs      []map[string]any
 }
 
 // recvReq is a receive-pack body as GitLab saw it. Only the head is kept so a
@@ -90,6 +94,18 @@ func (f *fakeGitLab) setPushOutcome(status int, rejectRef string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pushStatus, f.rejectRef = status, rejectRef
+}
+
+func (f *fakeGitLab) setProject(archived bool, mrAccess string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.archived, f.mrAccess = archived, mrAccess
+}
+
+func (f *fakeGitLab) createdMRs() []map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]map[string]any(nil), f.mrs...)
 }
 
 func (f *fakeGitLab) setFail(status int) {
@@ -206,6 +222,20 @@ func (f *fakeGitLab) api(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		json.NewEncoder(w).Encode(out)
+	case path == "/projects/group%2Fproj" && r.Method == http.MethodGet:
+		access := f.mrAccess
+		if access == "" {
+			access = "enabled"
+		}
+		json.NewEncoder(w).Encode(map[string]any{"archived": f.archived, "default_branch": "main", "merge_requests_access_level": access})
+	case path == "/projects/group%2Fproj/merge_requests" && r.Method == http.MethodPost:
+		var in map[string]any
+		json.NewDecoder(r.Body).Decode(&in)
+		in["iid"] = len(f.mrs) + 1
+		in["state"] = "opened"
+		in["web_url"] = "http://gitlab.example/group/proj/-/merge_requests/" + itoa(int64(len(f.mrs)+1))
+		f.mrs = append(f.mrs, in)
+		json.NewEncoder(w).Encode(in)
 	case strings.HasPrefix(path, "/projects/"):
 		rest := strings.TrimPrefix(path, "/projects/")
 		enc, id, ok := strings.Cut(rest, "/members/all/")

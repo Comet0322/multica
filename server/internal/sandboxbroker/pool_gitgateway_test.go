@@ -206,3 +206,73 @@ func TestMulticaPrefixedGitEnvNamesAreRejected(t *testing.T) {
 		t.Fatal("want an error for a MULTICA_ variable name")
 	}
 }
+
+// gatewayMCP reads the gitlab-gateway server out of a claimed task's mcp_config.
+func gatewayMCP(task map[string]any) (url, auth string, ok bool) {
+	agent, _ := task["agent"].(map[string]any)
+	cfg, _ := agent["mcp_config"].(map[string]any)
+	servers, _ := cfg["mcpServers"].(map[string]any)
+	entry, ok := servers[gitgateway.MCPServerName].(map[string]any)
+	if !ok {
+		return "", "", false
+	}
+	headers, _ := entry["headers"].(map[string]any)
+	url, _ = entry["url"].(string)
+	auth, _ = headers["Authorization"].(string)
+	return url, auth, entry["type"] == "http"
+}
+
+func TestClaimInjectsTheGatewayMCPServerWithTheTaskToken(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1, withGateway(func(c *sandboxbroker.GitGatewayConfig) {
+		c.MCPURL = "http://git-gateway.pool.svc:8081/mcp"
+	}))
+	h.upstream.enqueueTask("t1", "alice@example.com", nil)
+	pod := h.newPod("127.0.0.2", "pool-0")
+	pod.start()
+
+	task := pod.claimTask()
+	url, auth, ok := gatewayMCP(task)
+	if !ok || url != "http://git-gateway.pool.svc:8081/mcp" {
+		t.Fatalf("gateway MCP entry = %q ok=%v in %v", url, ok, task["agent"])
+	}
+	token := envOf(t, task)["GIT_GATEWAY_TOKEN"]
+	if auth != "Bearer "+token {
+		t.Fatalf("MCP authorization does not carry the task's git token")
+	}
+	var id gitgateway.Identity
+	status, raw := h.adminPost("/v1/git/verify-token", map[string]string{"token": strings.TrimPrefix(auth, "Bearer ")})
+	if status != http.StatusOK || json.Unmarshal(raw, &id) != nil || id.TaskID != "t1" {
+		t.Fatalf("MCP token identity = %+v (%d)", id, status)
+	}
+	if strings.Contains(h.logs.String(), token) || strings.Contains(h.audit.String(), token) {
+		t.Fatal("the git token leaked into logs or the audit trail")
+	}
+}
+
+func TestClaimWithoutMCPURLLeavesMCPConfigAlone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1, withGateway())
+	h.upstream.enqueueTask("t1", "alice@example.com", nil)
+	pod := h.newPod("127.0.0.2", "pool-0")
+	pod.start()
+
+	task := pod.claimTask()
+	if _, _, ok := gatewayMCP(task); ok {
+		t.Fatalf("gateway MCP entry injected without an MCP URL: %v", task["agent"])
+	}
+	if agent, _ := task["agent"].(map[string]any); agent["mcp_config"] != nil {
+		t.Fatalf("mcp_config touched: %v", agent["mcp_config"])
+	}
+}
+
+func TestMCPURLMustBeAnHTTPURL(t *testing.T) {
+	t.Parallel()
+	_, err := sandboxbroker.NewPool(sandboxbroker.PoolConfig{
+		MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+		Git: &sandboxbroker.GitGatewayConfig{MCPURL: "git-gateway/mcp"},
+	}, nil)
+	if err == nil {
+		t.Fatal("a non-URL MCP address was accepted")
+	}
+}
