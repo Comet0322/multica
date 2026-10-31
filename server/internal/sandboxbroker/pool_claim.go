@@ -37,12 +37,14 @@ type lease struct {
 // LeaseInfo is one lease in the lease query. EndedAt is nil while the lease is
 // active.
 type LeaseInfo struct {
-	TaskID      string     `json:"task_id"`
-	WorkspaceID string     `json:"workspace_id"`
-	PodIP       string     `json:"pod_ip"`
-	StartedAt   time.Time  `json:"started_at"`
-	EndedAt     *time.Time `json:"ended_at,omitempty"`
-	EndReason   string     `json:"end_reason,omitempty"`
+	TaskID      string `json:"task_id"`
+	WorkspaceID string `json:"workspace_id"`
+	// Initiator is the email of the person the task runs for.
+	Initiator string     `json:"initiator,omitempty"`
+	PodIP     string     `json:"pod_ip"`
+	StartedAt time.Time  `json:"started_at"`
+	EndedAt   *time.Time `json:"ended_at,omitempty"`
+	EndReason string     `json:"end_reason,omitempty"`
 }
 
 // Leases lists active and recently closed leases, oldest first.
@@ -51,7 +53,7 @@ func (p *Pool) Leases() []LeaseInfo {
 	defer p.mu.Unlock()
 	out := make([]LeaseInfo, 0, len(p.history))
 	for _, l := range p.history {
-		info := LeaseInfo{TaskID: l.TaskID, WorkspaceID: l.WorkspaceID, PodIP: l.PodIP, StartedAt: l.StartedAt, EndReason: l.EndReason}
+		info := LeaseInfo{TaskID: l.TaskID, WorkspaceID: l.WorkspaceID, Initiator: l.Initiator, PodIP: l.PodIP, StartedAt: l.StartedAt, EndReason: l.EndReason}
 		if !l.EndedAt.IsZero() {
 			ended := l.EndedAt
 			info.EndedAt = &ended
@@ -113,7 +115,7 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 			}
 			// The pod rejoins the pool only after the supervisor has cleaned
 			// it and the daemon registered again.
-			p.startResetLocked(pd)
+			p.startResetLocked(pd, "task ended: "+reason, l)
 		}
 	}
 }

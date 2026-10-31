@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -13,16 +16,66 @@ import (
 // so a pod only ever sees and answers its own command.
 const controlPath = "/pod/control"
 
+// How a reset ends. A pod comes back in two steps, neither of which needs the
+// daemon to cooperate: the supervisor reports the reset done after it started
+// the new daemon (the acknowledgement), and the next registration from the
+// pod's IP after that is the new daemon's, which completes the reset. A
+// registration before the acknowledgement is the old daemon's (or races the
+// report) and changes nothing. A daemon that also sends a new boot nonce is
+// recognised as a new instance at once.
+
 // startResetLocked marks a pod as resetting and issues a new reset command for
-// its supervisor. Callers hold p.mu.
-func (p *Pool) startResetLocked(pd *pod) {
+// its supervisor. l is the lease whose end caused the reset, nil when none did.
+// Callers hold p.mu.
+func (p *Pool) startResetLocked(pd *pod, reason string, l *lease) {
 	pd.State = PodResetting
 	pd.boundKey, pd.draining = "", false
 	pd.dirty = true
 	pd.resetID = uuid.NewString()
 	pd.resetStarted = p.now()
 	pd.resetReported = false
-	p.log.Info("pod reset started", "pod_ip", pd.IP, "reset_id", pd.resetID)
+	pd.resetLease = l
+	p.log.Info("pod reset started", "pod_ip", pd.IP, "reset_id", pd.resetID, "reason", reason)
+	p.auditReset(pd, AuditAllow, "reset started: "+reason)
+}
+
+// completeResetLocked records that a dirty pod's reset finished. The caller
+// replaces the pod's entry with a clean one. Callers hold p.mu.
+func (p *Pool) completeResetLocked(pd *pod) {
+	p.log.Info("pod reset completed", "pod_ip", pd.IP, "reset_id", pd.resetID)
+	p.auditReset(pd, AuditAllow, "reset completed: the daemon registered again")
+}
+
+// auditReset records a reset event of the pod, tied to the task whose end
+// caused it when there was one. Callers hold p.mu.
+func (p *Pool) auditReset(pd *pod, decision, reason string) {
+	rec := AuditRecord{Action: AuditReset, Decision: decision, Reason: reason, PodIP: pd.IP, PodName: pd.Name}
+	if l := pd.resetLease; l != nil {
+		rec.TaskID, rec.WorkspaceID, rec.Initiator = l.TaskID, l.WorkspaceID, l.Initiator
+	}
+	p.audit(rec)
+}
+
+// boundText flattens whitespace and cuts s to at most n bytes, for text that
+// came from outside and goes into logs and audit records.
+func boundText(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > n {
+		s = s[:n] + "..."
+	}
+	return s
+}
+
+// initiatorsOf lists the distinct initiators of the tasks the pod holds, sorted.
+func initiatorsOf(pd *pod) []string {
+	var out []string
+	for _, l := range pd.leases {
+		if l.Initiator != "" && !slices.Contains(out, l.Initiator) {
+			out = append(out, l.Initiator)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // serveControl answers a supervisor's poll with its pending reset command, or
@@ -73,8 +126,9 @@ func (p *Pool) serveControl(w http.ResponseWriter, r *http.Request, ip string) {
 			case "done":
 				pd.resetReported = true
 			case "failed":
-				pd.State = PodLost
 				p.log.Warn("pod lost: reset failed", "pod_ip", ip, "reset_id", rep.ID, "error", rep.Error)
+				p.auditReset(pd, AuditDeny, "reset failed: "+boundText(rep.Error, 200))
+				p.loseLocked(pd)
 			}
 		}
 		p.mu.Unlock()

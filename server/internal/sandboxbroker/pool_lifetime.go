@@ -45,8 +45,9 @@ func (p *Pool) sharedLocked(pd *pod) bool {
 
 // forcedTask is a task cut off by its pod's expiry.
 type forcedTask struct {
-	ws *workspace
-	id string
+	ws     *workspace
+	id     string
+	reason string
 }
 
 // expireSharedLocked releases shared pods whose time is up. A pod with no
@@ -69,16 +70,16 @@ func (p *Pool) expireSharedLocked() {
 		switch {
 		case pd.draining && len(pd.leases) == 0:
 			p.log.Info("pod released: maximum lifetime reached", "pod_ip", pd.IP)
-			p.startResetLocked(pd)
+			p.startResetLocked(pd, "maximum lifetime reached", nil)
 		case pd.draining && now.Sub(pd.boundAt) >= p.cfg.PodMaxLifetime+p.cfg.PodDrainGrace:
 			p.log.Warn("pod released: tasks outlasted the grace after the maximum lifetime", "pod_ip", pd.IP, "tasks", len(pd.leases))
 			for _, l := range pd.leases {
-				p.forced = append(p.forced, forcedTask{ws: l.ws, id: l.TaskID})
+				p.forced = append(p.forced, forcedTask{ws: l.ws, id: l.TaskID, reason: "the pod reached its maximum lifetime before the task finished"})
 				p.endLeaseLocked(l, "pod lifetime exceeded")
 			}
 		case !pd.draining && p.idleLocked(pd) && !pd.claiming && now.Sub(pd.idleSince) >= p.cfg.PodIdleTimeout:
 			p.log.Info("pod released: idle timeout", "pod_ip", pd.IP, "idle_since", pd.idleSince)
-			p.startResetLocked(pd)
+			p.startResetLocked(pd, "idle timeout", nil)
 		}
 	}
 }
@@ -102,7 +103,7 @@ func (p *Pool) releaseIdleBoundLocked() {
 	for _, pd := range pods {
 		if p.idleLocked(pd) && !pd.claiming {
 			p.log.Info("idle bound pod released for a waiting task", "pod_ip", pd.IP)
-			p.startResetLocked(pd)
+			p.startResetLocked(pd, "released for a waiting task", nil)
 			return
 		}
 	}
@@ -116,6 +117,6 @@ func (p *Pool) reportForced(ctx context.Context) {
 	p.forced = nil
 	p.mu.Unlock()
 	for _, t := range ids {
-		p.failUpstream(ctx, t.ws, t.id, "the pod reached its maximum lifetime before the task finished")
+		p.failUpstream(ctx, t.ws, t.id, t.reason)
 	}
 }

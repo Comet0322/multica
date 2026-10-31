@@ -241,15 +241,20 @@ type pod struct {
 	boundAt   time.Time
 	idleSince time.Time
 	draining  bool
-	// dirty is set when a lease ends and cleared only by a registration with a
-	// new boot nonce: until then the pod may still hold the previous task's
-	// files and processes, so it is never lent out. resetID names the reset
-	// command the supervisor is asked to run; resetStarted starts the reset
-	// timeout; resetReported is set once the supervisor said it was done.
+	// dirty is set when the pod may hold files or processes of an earlier task
+	// (a lease ended, the pod was lost while bound, or the manager has never
+	// seen it) and is cleared only when a reset completes: the supervisor
+	// reported the reset done, then the daemon registered again. Until then
+	// the pod is never lent out. resetID names the reset command the
+	// supervisor is asked to run; resetStarted starts the reset timeout;
+	// resetReported is set once the supervisor said it was done (the new
+	// daemon was started); resetLease is the lease whose end caused the reset,
+	// for the audit trail, nil when none did.
 	dirty         bool
 	resetID       string
 	resetStarted  time.Time
 	resetReported bool
+	resetLease    *lease
 }
 
 // markLostLocked turns every pod whose heartbeat is overdue into a lost one.
@@ -261,17 +266,39 @@ func (p *Pool) markLostLocked() {
 	for _, pd := range p.pods {
 		if pd.State == PodResetting {
 			if now.Sub(pd.resetStarted) > p.cfg.ResetTimeout {
-				pd.State = PodLost
 				p.log.Warn("pod lost: did not register again after reset", "pod_ip", pd.IP, "name", pd.Name, "reset_started", pd.resetStarted)
+				p.auditReset(pd, AuditDeny, "reset timed out: the pod did not register again in time")
+				p.loseLocked(pd)
 			}
 			continue
 		}
 		if pd.State != PodLost && now.Sub(pd.LastSeen) > p.cfg.HeartbeatTimeout {
-			pd.State = PodLost
 			p.log.Warn("pod lost: heartbeat timed out", "pod_ip", pd.IP, "name", pd.Name, "last_seen", pd.LastSeen)
+			p.loseLocked(pd)
 		}
 	}
 	p.expireSharedLocked()
+}
+
+// loseLocked marks the pod lost and ends every lease it holds: the pod is out
+// of the pool, so the tasks on it are over. Each lease's LiteLLM key and git
+// token are revoked and the task is failed upstream. A pod that held work
+// stays dirty, so if it comes back it is reset before it is lent again.
+// Callers hold p.mu.
+func (p *Pool) loseLocked(pd *pod) {
+	pd.State = PodLost
+	held := make([]*lease, 0, len(pd.leases))
+	for _, l := range pd.leases {
+		held = append(held, l)
+	}
+	if len(held) > 0 || pd.boundKey != "" {
+		pd.dirty = true
+	}
+	pd.boundKey, pd.draining = "", false
+	for _, l := range held {
+		p.forced = append(p.forced, forcedTask{ws: l.ws, id: l.TaskID, reason: "the pod running this task was lost"})
+		p.endLeaseLocked(l, "pod lost")
+	}
 }
 
 // PodInfo is one pod's entry in the inventory.
@@ -280,7 +307,9 @@ type PodInfo struct {
 	Name  string `json:"name"`
 	State string `json:"state"`
 	// WorkspaceID is the workspace the pod is lent to; empty unless leased.
-	WorkspaceID  string    `json:"workspace_id,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	// Initiators are the people whose tasks the pod currently holds, sorted.
+	Initiators   []string  `json:"initiators,omitempty"`
 	RegisteredAt time.Time `json:"registered_at"`
 	LastSeen     time.Time `json:"last_seen"`
 }
@@ -361,6 +390,7 @@ func (p *Pool) Inventory() Inventory {
 		if l := firstLease(pd); l != nil {
 			info.WorkspaceID = l.WorkspaceID
 		}
+		info.Initiators = initiatorsOf(pd)
 		inv.Pods = append(inv.Pods, info)
 	}
 	sort.Slice(inv.Pods, func(i, j int) bool { return inv.Pods[i].IP < inv.Pods[j].IP })
@@ -504,38 +534,57 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	p.mu.Lock()
 	next := &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now,
 		workspaces: map[string]struct{}{ws.cfg.WorkspaceID: {}}}
-	if old := p.pods[ip]; old != nil {
-		switch {
-		case old.BootNonce == req.BootNonce && old.dirty:
-			// The daemon that ran the previous task is still the one talking;
-			// the reset has not taken effect, so the pod stays out of the pool.
-			old.LastSeen = now
-			next = old
-		case old.BootNonce != req.BootNonce:
-			// Whatever the old instance held is void; the IP is a new pod's now.
-			p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
-			for _, l := range old.leases {
-				voided = append(voided, l)
-			}
-			for _, l := range voided {
-				p.endLeaseLocked(l, "pod instance replaced")
-			}
-			// Tasks queued for the old instance never started; place them again.
-			p.waiting = append(p.waiting, old.queue...)
-		case len(old.leases) > 0 || len(old.queue) > 0 || p.idleLocked(old):
-			// The same instance registering again still runs its tasks.
-			next.State, next.leases = PodLeased, old.leases
-			next.boundKey, next.queue = old.boundKey, old.queue
-			next.boundAt, next.idleSince, next.draining = old.boundAt, old.idleSince, old.draining
-			for _, l := range next.leases {
-				l.pod = next
-			}
-			next.RegisteredAt = old.RegisteredAt
-			maps.Copy(next.workspaces, old.workspaces)
-		default:
-			// Another workspace's registration from the same instance.
-			maps.Copy(next.workspaces, old.workspaces)
+	old := p.pods[ip]
+	switch {
+	case old == nil:
+		// A pod the manager has not seen may hold anything: it can be a busy
+		// pod re-registering after a manager restart, whose registry was lost.
+		// It is reset before it is ever lent out.
+		p.startResetLocked(next, "pod seen for the first time; it may hold an earlier task's files", nil)
+	case old.BootNonce == req.BootNonce && old.dirty && old.resetReported:
+		// The supervisor reported the reset done after it started the new
+		// daemon, and this registration came after that: it is the new
+		// daemon's. The pod is clean and joins the pool.
+		p.completeResetLocked(old)
+	case old.BootNonce == req.BootNonce && old.dirty:
+		// The daemon that ran the previous task is still the one talking; the
+		// reset has not been reported done, so the pod stays out of the pool.
+		old.LastSeen = now
+		if old.State == PodLost {
+			// It came back without a finished reset (lost mid-task, or a
+			// reset failed or timed out): reset it again.
+			p.startResetLocked(old, "pod registered again without a finished reset", nil)
 		}
+		next = old
+	case old.BootNonce != req.BootNonce:
+		// Whatever the old instance held is void; the IP is a new pod's now.
+		p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
+		if old.dirty {
+			p.completeResetLocked(old)
+		}
+		// Detached first, so ending its leases does not start a reset on it.
+		delete(p.pods, ip)
+		for _, l := range old.leases {
+			voided = append(voided, l)
+		}
+		for _, l := range voided {
+			p.endLeaseLocked(l, "pod instance replaced")
+		}
+		// Tasks queued for the old instance never started; place them again.
+		p.waiting = append(p.waiting, old.queue...)
+	case len(old.leases) > 0 || len(old.queue) > 0 || p.idleLocked(old):
+		// The same instance registering again still runs its tasks.
+		next.State, next.leases = PodLeased, old.leases
+		next.boundKey, next.queue = old.boundKey, old.queue
+		next.boundAt, next.idleSince, next.draining = old.boundAt, old.idleSince, old.draining
+		for _, l := range next.leases {
+			l.pod = next
+		}
+		next.RegisteredAt = old.RegisteredAt
+		maps.Copy(next.workspaces, old.workspaces)
+	default:
+		// Another workspace's registration from the same instance.
+		maps.Copy(next.workspaces, old.workspaces)
 	}
 	p.pods[ip] = next
 	p.mu.Unlock()
