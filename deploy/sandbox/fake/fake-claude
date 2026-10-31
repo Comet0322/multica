@@ -8,6 +8,16 @@ case "${1:-}" in
 	exit 0
 	;;
 esac
+if [ -n "${FAKE_CLAUDE_REPORT:-}" ]; then
+	# For deploy/sandbox/pool/verify.sh: who this agent runs as and what it can touch.
+	{
+		echo "uid=$(id -u)"
+		echo "home=$HOME"
+		echo "cwd=$(pwd)"
+		touch ./agent-wrote 2>/dev/null && echo "cwd-writable=yes" || echo "cwd-writable=no"
+		cat /tmp/.multica-daemon/.multica/config.json >/dev/null 2>&1 && echo "daemon-config=readable" || echo "daemon-config=hidden"
+	} >"$FAKE_CLAUDE_REPORT"
+fi
 prompt="$(head -n 1)"
 issue="$(printf '%s' "$prompt" | grep -oE 'assigned issue ID is: [0-9a-f-]{36}' | head -n 1 | sed 's/.* //')"
 note="no issue ID in prompt"

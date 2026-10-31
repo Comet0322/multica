@@ -39,11 +39,12 @@ func killDescendants() error {
 }
 
 // reapZombies collects exited orphans that were reparented to the supervisor,
-// leaving keepPid (the daemon, reaped by its own Wait) alone.
-func reapZombies(keepPid int) {
+// leaving alone the processes keep names (the daemon and the agents the
+// supervisor started, each reaped by its own Wait).
+func reapZombies(keep func(pid int) bool) {
 	self := os.Getpid()
 	for _, p := range listProcs() {
-		if p.ppid == self && p.zombie && p.pid != keepPid {
+		if p.ppid == self && p.zombie && !keep(p.pid) {
 			reapProc(p.pid)
 		}
 	}

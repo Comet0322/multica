@@ -42,7 +42,8 @@ spec:
               value: 2s
           securityContext:
             # Same settings as deploy/sandbox/pool/verify.sh. PID 1 must be
-            # root to supervise and drops to uid/gid 1000 for the daemon.
+            # root to supervise; it starts the daemon as uid 1001 and every
+            # agent as uid 1000 (see deploy/sandbox/POOL.md).
             runAsUser: 0
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false # no-new-privileges

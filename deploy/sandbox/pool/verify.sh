@@ -75,7 +75,8 @@ echo "== identities and capabilities"
 [ "$(dx cat /proc/1/comm)" = "pod-supervisor" ] && pass "PID 1 is pod-supervisor" || fail "PID 1 is pod-supervisor"
 daemon_uid="$(dx sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm)" = multica ] && awk "/^Uid:/{print \$2}" $p/status; done' | head -1)"
 [ -n "$daemon_uid" ] && [ "$daemon_uid" != 0 ] && pass "daemon runs as non-root (uid $daemon_uid)" || fail "daemon runs as non-root (uid '$daemon_uid')"
-[ "$(dx id -u node)" = "$daemon_uid" ] && pass "daemon uid is the image's node user" || fail "daemon uid is the image's node user"
+[ "$(dx id -u sandboxd)" = "$daemon_uid" ] && pass "daemon uid is the image's sandboxd user" || fail "daemon uid is the image's sandboxd user"
+[ "$daemon_uid" != "$(dx id -u node)" ] && pass "daemon and agent users differ" || fail "daemon and agent users differ"
 daemon_caps="$(dx sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm)" = multica ] && awk "/^CapEff:/{print \$2}" $p/status; done' | head -1)"
 [ "$daemon_caps" = "0000000000000000" ] && pass "daemon has no effective capabilities" || fail "daemon capabilities: $daemon_caps"
 pid1_caps="$(dx awk '/^CapBnd:/{print $2}' /proc/1/status)"
@@ -84,10 +85,41 @@ pid1_caps="$(dx awk '/^CapBnd:/{print $2}' /proc/1/status)"
 dx sh -c 'cat /proc/1/status' | grep -q '^NoNewPrivs:\s*1' && pass "no-new-privileges set" || fail "no-new-privileges set"
 
 echo "== daemon settings"
-dx sh -c 'cat /home/agent/.multica/config.json' | grep -q "$mgr" && pass "HOME template config points at the manager" || fail "HOME template config points at the manager"
-dx sh -c 'cat /home/agent/.multica/config.json' | grep -q '"token":"pool-placeholder"' && pass "HOME template config has the placeholder token" || fail "placeholder token"
+dcfg=/tmp/.multica-daemon/.multica
+dx sh -c "cat $dcfg/config.json" | grep -q "$mgr" && pass "daemon config points at the manager" || fail "daemon config points at the manager"
+dx sh -c "cat $dcfg/config.json" | grep -q '"token":"pool-placeholder"' && pass "daemon config has the placeholder token" || fail "placeholder token"
 # The daemon logs its effective config at startup.
-dx cat /home/agent/.multica/daemon.log | grep -F 'gc: disabled' >/dev/null && pass "daemon logs gc: disabled" || fail "daemon logs gc: disabled"
+dx cat $dcfg/daemon.log | grep -F 'gc: disabled' >/dev/null && pass "daemon logs gc: disabled" || fail "daemon logs gc: disabled"
+
+echo "== daemon and agent are different users"
+daemon_pid="$(dx pgrep -x multica | head -1)"
+# Not readable even by root once capabilities are dropped, which is the point;
+# the abstract socket's name is in the socket table instead.
+sock="$(dx sh -c "grep -o '@multica-pod-agents-[0-9a-f]*' /proc/net/unix | head -1 | tr -d @")"
+dpath="/usr/local/libexec/pod-agents:$(dx sh -c 'echo $PATH')"
+[ -n "$sock" ] && pass "the supervisor listens for agent launches" || fail "the launcher socket is not listening"
+dx test -x /usr/local/libexec/pod-agents/claude && pass "the claude shim exists" || fail "the claude shim exists"
+node_uid="$(dx id -u node)"
+# Plays what the daemon does: start the agent CLI by name, in a task directory
+# it created, with a task variable.
+dx sh -c 'rm -rf /work/t && mkdir -m 755 /work/t && : > /work/t/f'
+dx chown sandboxd:node /work/t /work/t/f
+docker exec -u sandboxd:node -w /work/t -e POD_AGENT_SOCKET="$sock" -e PATH="$dpath" -e HOME=/tmp/.multica-daemon \
+	-e FAKE_CLAUDE_REPORT=/tmp/agent-report "$name" sh -c 'echo "" | claude' >/dev/null 2>&1
+report="$(dx cat /tmp/agent-report 2>/dev/null)"
+echo "$report" | grep -qx "uid=$node_uid" && pass "an agent started by the daemon runs as uid $node_uid" || fail "agent uid: $report"
+echo "$report" | grep -qx "home=/home/agent" && pass "the agent gets the agent HOME" || fail "agent HOME: $report"
+echo "$report" | grep -qx 'daemon-config=hidden' && pass "the agent cannot read the daemon's CLI config" || fail "daemon config visible to the agent: $report"
+echo "$report" | grep -qx 'cwd-writable=yes' && pass "the agent can write in the task directory the daemon made" || fail "agent cannot write in the task directory: $report"
+check "the agent user cannot list the daemon's HOME" bash -c "! docker exec -u node $name ls /tmp/.multica-daemon"
+check "the agent user cannot read the daemon's process environment" bash -c "! docker exec -u node $name cat /proc/$daemon_pid/environ"
+check "the agent user cannot signal the daemon" bash -c "! docker exec -u node $name kill -0 $daemon_pid"
+check "the agent user cannot ptrace the daemon" bash -c "! docker exec -u node $name python3 -c 'import ctypes,sys; l=ctypes.CDLL(None,use_errno=True); sys.exit(0 if l.ptrace(16,int(sys.argv[1]),0,0)==0 else 1)' $daemon_pid"
+check "the agent user cannot rename the daemon's HOME" bash -c "! docker exec -u node $name mv /tmp/.multica-daemon /tmp/x"
+dx rm -f /tmp/agent-report2
+docker exec -u node:node -w /tmp -e POD_AGENT_SOCKET="$sock" -e PATH="$dpath" -e FAKE_CLAUDE_REPORT=/tmp/agent-report2 \
+	"$name" sh -c 'echo "" | claude' >/dev/null 2>&1
+check "the agent user cannot use the launcher" bash -c "! docker exec $name test -e /tmp/agent-report2"
 
 echo "== system tooling"
 # Claude Code must not try its telemetry or update endpoints (egress denies
@@ -141,7 +173,8 @@ procs="$(dx ps -eo pid,comm --no-headers | grep -vE ' (ps|sh)$' | awk '{print $2
 echo "processes after reset: $procs"
 [ "$procs" = "multica pod-supervisor " ] && pass "only PID 1 and the new daemon remain" || fail "only PID 1 and the new daemon remain: $procs"
 check "leftover files removed from all three areas" dx sh -c '! ls /work/leftover /home/agent/leftover /tmp/leftover'
-check "HOME rebuilt from the template" dx test -f /home/agent/.multica/config.json
+check "daemon HOME rebuilt from its template" dx test -f /tmp/.multica-daemon/.multica/config.json
+check "agent HOME rebuilt from its template" dx test -d /home/agent/.claude
 regs="$(state | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["registrations"]))')"
 [ "$regs" -ge 2 ] && pass "new daemon registered again ($regs registrations)" || fail "new daemon registered again ($regs)"
 
