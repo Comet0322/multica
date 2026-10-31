@@ -51,6 +51,10 @@ type PoolConfig struct {
 	HeartbeatTimeout time.Duration
 	// AuditLog receives the audit records as JSON Lines. Nil disables auditing.
 	AuditLog io.Writer
+	// LiteLLM, when set, gives every task its own short-lived LiteLLM key
+	// owned by the initiator. Nil leaves model access to the agent's own
+	// settings.
+	LiteLLM *LiteLLMConfig
 }
 
 // DefaultHeartbeatTimeout is three daemon heartbeat intervals (15s each).
@@ -73,6 +77,13 @@ func (c *PoolConfig) normalize() error {
 	c.MulticaURL = strings.TrimRight(c.MulticaURL, "/")
 	if strings.TrimSpace(c.MulticaToken) == "" {
 		return fmt.Errorf("Multica token is required")
+	}
+	if c.LiteLLM != nil {
+		llm := *c.LiteLLM
+		if err := llm.normalize(); err != nil {
+			return err
+		}
+		c.LiteLLM = &llm
 	}
 	if c.ExpectedSize < 0 {
 		return fmt.Errorf("expected pool size must not be negative")
@@ -114,6 +125,8 @@ type Pool struct {
 	proxy   *httputil.ReverseProxy
 	// auditLog is nil when auditing is off.
 	auditLog *auditLog
+	// llm is nil when tasks get no LiteLLM key.
+	llm *litellm
 }
 
 type pod struct {
@@ -172,6 +185,9 @@ func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
 	p := &Pool{cfg: cfg, log: log, now: time.Now, pods: map[string]*pod{}, leases: map[string]*lease{}}
 	p.proxy = p.newProxy()
 	p.auditLog = newAuditLog(cfg.AuditLog, func(err error) { p.log.Error("write audit record", "error", err) })
+	if cfg.LiteLLM != nil {
+		p.llm = newLiteLLM(*cfg.LiteLLM)
+	}
 	p.up = newUpstream(cfg.MulticaURL, cfg.MulticaToken, p.identityHeaders)
 	return p, nil
 }
