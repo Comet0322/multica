@@ -150,3 +150,75 @@ with network policy. The gateway keeps its record of pushed branches in
 memory, so run one replica; the record is dropped when the task ends only if
 the gateway shares the manager's token registry, and otherwise ages out
 (`PushLogTTL`, 24 hours) or is capped at 10000 tasks.
+
+## Daemon and agent users
+
+Inside a pool pod PID 1 is root (capabilities CHOWN, DAC_OVERRIDE, FOWNER,
+KILL, SETUID, SETGID, no-new-privileges). The Multica daemon runs as
+`sandboxd` (uid 1001) and every agent as `node` (uid 1000); both have primary
+group 1000.
+
+The stock daemon starts each agent as its own user and cannot be told
+otherwise, so the split is done around it:
+
+- The daemon's `PATH` starts with `/usr/local/libexec/pod-agents`, which holds
+  a hard link of `pod-supervisor` named like each installed agent CLI
+  (`AGENT_COMMANDS` build argument, default `claude`). The daemon finds and
+  runs that "CLI". Run under an agent's name the binary is a shim: it sends its
+  arguments, working directory, environment and stdin/stdout/stderr
+  (`SCM_RIGHTS`) to the supervisor over an abstract unix socket, and the
+  supervisor runs the real CLI, found on the `PATH` without the shim directory,
+  as uid 1000 in its own process group. The shim relays signals and exits with
+  the agent's status. If the shim dies (the daemon kills its process group) the
+  agent and its process tree are killed.
+- Only a peer with uid 1001 (`SO_PEERCRED`) may use the socket, and only to run
+  a CLI name found on the real `PATH`. No agent can start while a reset is in
+  progress.
+- The daemon's `HOME` is `/tmp/.multica-daemon` (mode 0700, uid 1001) and holds
+  its CLI config (manager URL, placeholder token). `/tmp` is sticky, so the
+  agent user cannot rename or remove it. `/home/agent` is the agent's `HOME`.
+  Both are rebuilt from their templates on reset.
+- The supervisor runs with umask 002. Before launching, the shim opens the
+  files the daemon created in the task directory to the shared group. `git`
+  trusts both users (`safe.directory *`, `core.sharedRepository group`).
+
+What the agent user cannot do, checked by `pool/verify.sh` against a container:
+read the daemon's config or `HOME`, read `/proc/<daemon>/environ`, signal or
+`ptrace` the daemon, rename its `HOME`, or use the launcher.
+
+### Residual risks
+
+The split is not a full isolation of the daemon, because the daemon is unchanged:
+
+1. **The daemon runs code that the agent can influence.** The daemon and the
+   agent share the task files and the bare repository cache (`.repos`), which
+   the agent must be able to write for commits to work. The daemon runs `git`
+   there as uid 1001. An agent can plant a repository config (`core.fsmonitor`,
+   a filter driver, an alias, `core.sshCommand`) or a hook there and have it
+   executed as the daemon the next time the daemon runs git in that repository,
+   for example in `multica repo checkout`. That gives the agent the daemon's
+   user and so its `HOME` and process. What it reaches this way is the
+   placeholder token and the manager address, neither of which is a secret
+   (anything in the pod can already call the manager from the pod's IP), plus
+   the ability to signal or ptrace the daemon. It does not reach the
+   supervisor, root, or any credential of the manager, LiteLLM or GitLab. A fix
+   needs the daemon to run git as the agent user or to keep the cache out of
+   the agent's reach, i.e. a daemon change.
+2. **Daemon network surface.** The agent shares the pod's network namespace,
+   so it can reach the daemon's local HTTP listener (the `multica repo
+   checkout` endpoint, authorised by the task token) and the manager. The
+   manager already treats the pod's IP, not a secret, as the identity.
+3. **Files created later by the daemon.** Files that the daemon creates itself
+   (not through `git`) in a task directory after the agent was started get
+   mode 0755 and are not writable by the agent. Directories and files created
+   before launch, and everything `git` creates (umask 002), are.
+4. **Workspace-level boundary.** All task directories in a shared pod are
+   readable by both users (decision B in the spec); the user split does not
+   separate tasks from each other.
+5. **Agent CLIs not shimmed.** Only the names in `AGENT_COMMANDS` run as the
+   agent user. Anything else the daemon starts by itself (its own `git`,
+   helper processes) runs as the daemon user, and an agent CLI that is missing
+   from `AGENT_COMMANDS` but installed would run as the daemon. Keep the list
+   equal to the installed CLIs.
+6. **Same-user processes.** Processes of one task can still signal and ptrace
+   each other and those of other tasks in a shared pod, as before.

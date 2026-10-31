@@ -6,6 +6,13 @@
 // template baked into the image, and the daemon is started again with a fresh
 // environment.
 //
+// # Daemon and agent users
+//
+// With Config.ShimDir set, the daemon and the agents run as different non-root
+// users, although the daemon starts agents as itself and cannot be changed:
+// see Config.ShimDir and deploy/sandbox/POOL.md, which also lists what the
+// split does not protect against.
+//
 // # Control channel
 //
 // The supervisor polls Config.ControlURL with GET every PollInterval. The
