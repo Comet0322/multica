@@ -1,0 +1,72 @@
+# Pool membership is enforced here: the manager identifies pods by source IP and
+# trusts that only pool pods can reach its pod listener.
+# PLACEHOLDER values: CIDRs and ports of LiteLLM, the git gateway and the
+# package mirror (set them in an overlay). The DNS rule assumes kube-dns in
+# kube-system.
+---
+# Pool pods: deny everything, then allow the listed egress. No ingress at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pool-pod-egress
+spec:
+  podSelector:
+    matchLabels:
+      multica.io/sandbox-role: pool-pod
+  policyTypes: [Ingress, Egress]
+  ingress: [] # nothing connects to a pod; reset commands are polled, not pushed
+  egress:
+    # Manager pod listener only (never the admin port).
+    - to:
+        - podSelector:
+            matchLabels:
+              multica.io/sandbox-role: manager
+      ports:
+        - {protocol: TCP, port: 8080}
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # LiteLLM
+    - to:
+        - ipBlock: {cidr: 10.0.10.0/24} # PLACEHOLDER
+      ports:
+        - {protocol: TCP, port: 4000} # PLACEHOLDER
+    # Git/MCP gateway
+    - to:
+        - ipBlock: {cidr: 10.0.11.0/24} # PLACEHOLDER
+      ports:
+        - {protocol: TCP, port: 8081} # PLACEHOLDER
+    # Internal package mirror
+    - to:
+        - ipBlock: {cidr: 10.0.12.0/24} # PLACEHOLDER
+      ports:
+        - {protocol: TCP, port: 80} # PLACEHOLDER
+        - {protocol: TCP, port: 443}
+---
+# Manager: the pod listener accepts only pool pods (the admin listener is
+# loopback-bound and not reachable over the network). Egress is left open
+# (Multica, LiteLLM, gateway); tighten it in an overlay if your CNI allows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: manager-ingress
+spec:
+  podSelector:
+    matchLabels:
+      multica.io/sandbox-role: manager
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              multica.io/sandbox-role: pool-pod
+      ports:
+        - {protocol: TCP, port: 8080}

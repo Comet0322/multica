@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multica-sandbox
+  labels:
+    # The pool container runs PID 1 as root with six capabilities (see
+    # pool.yaml), so the namespace cannot enforce the "restricted" profile.
+    pod-security.kubernetes.io/enforce: baseline

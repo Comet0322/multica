@@ -1,0 +1,21 @@
+# Pool manifests. Replicas and image tags live here, under version control.
+# Replace every PLACEHOLDER (images, hosts, CIDRs) in an overlay; nothing in
+# this directory is secret.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: multica-sandbox
+resources:
+  - namespace.yaml
+  - pool.yaml
+  - manager.yaml
+  - networkpolicy.yaml
+images:
+  - name: multica-sandbox-pool
+    newName: registry.example.com/multica/sandbox-pool # PLACEHOLDER
+    newTag: PLACEHOLDER
+  - name: multica-sandbox-manager
+    newName: registry.example.com/multica/sandbox-manager # PLACEHOLDER
+    newTag: PLACEHOLDER
+replicas:
+  - name: sandbox-pool
+    count: 4 # expected pool size; keep in step with the manager's expected-size setting
