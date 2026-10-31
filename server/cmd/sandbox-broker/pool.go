@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -188,10 +189,14 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 	// The git gateway is on when SANDBOX_GIT_GATEWAY_URL, the address pods use
 	// for it, is set.
 	gitEnv := envMap("SANDBOX_GIT_GATEWAY_ENV")
+	gitMCP := strings.TrimSpace(getenv("SANDBOX_GIT_GATEWAY_MCP_URL"))
 	if gitURL := getenv("SANDBOX_GIT_GATEWAY_URL"); gitURL != "" {
-		s.config.Git = &sandboxbroker.GitGatewayConfig{URL: gitURL, Env: gitEnv}
-	} else if len(gitEnv) > 0 {
-		fail("SANDBOX_GIT_GATEWAY_ENV needs SANDBOX_GIT_GATEWAY_URL")
+		if u, err := url.Parse(gitMCP); gitMCP != "" && (err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "") {
+			fail("SANDBOX_GIT_GATEWAY_MCP_URL must be an http(s) URL such as http://git-gateway:8081/mcp")
+		}
+		s.config.Git = &sandboxbroker.GitGatewayConfig{URL: gitURL, MCPURL: gitMCP, Env: gitEnv}
+	} else if len(gitEnv) > 0 || gitMCP != "" {
+		fail("SANDBOX_GIT_GATEWAY_ENV and SANDBOX_GIT_GATEWAY_MCP_URL need SANDBOX_GIT_GATEWAY_URL")
 	}
 
 	if s.podListen == "" {

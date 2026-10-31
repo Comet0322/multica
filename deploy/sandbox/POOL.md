@@ -66,6 +66,7 @@ Enabled by `SANDBOX_GIT_GATEWAY_URL`, the gateway address as pods reach it.
 | --- | --- | --- |
 | `SANDBOX_GIT_GATEWAY_URL` | off | Gateway base URL for pods. |
 | `SANDBOX_GIT_GATEWAY_ENV` | `GIT_GATEWAY_TOKEN=${GIT_TOKEN}` | `NAME=VALUE,...` forced into the agent env. `${GIT_TOKEN}` and `${GIT_GATEWAY_URL}` are replaced. Names must not start with `MULTICA_`. |
+| `SANDBOX_GIT_GATEWAY_MCP_URL` | off | The gateway's MCP endpoint as agents reach it, always `<SANDBOX_GIT_GATEWAY_URL>/mcp` (for example `http://git-gateway:8081/mcp`). Each task then gets a `gitlab-gateway` MCP server carrying its token. Must be http(s); only valid with `SANDBOX_GIT_GATEWAY_URL`. |
 
 The gateway (`cmd/git-gateway`) is a separate process, but the token registry
 lives in the manager. The manager serves the gateway's verification endpoints
@@ -75,6 +76,21 @@ on the **admin** listener, so run the gateway with:
 GIT_GATEWAY_VERIFY_URL=http://<manager>:8791/v1/git/verify-token
 GIT_GATEWAY_POD_VERIFY_URL=http://<manager>:8791/v1/git/verify-pod
 ```
+
+The gateway serves git at `/` and its MCP tools at `/mcp` on the same
+`GIT_GATEWAY_LISTEN` listener, so the MCP URL is the gateway URL plus `/mcp`.
+
+Gateway policy (all optional; invalid values stop the gateway at startup with
+an error that names the variable):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `GIT_GATEWAY_BRANCH_PREFIX` | `agent/` | A task may push only `refs/heads/<prefix><task id>/*`. |
+| `GIT_GATEWAY_MIN_READ_LEVEL` | `20` | Lowest GitLab access level that may clone: 10, 20, 30, 40, 50 or guest, reporter, developer, maintainer, owner. |
+| `GIT_GATEWAY_MIN_PUSH_LEVEL` | `30` | Lowest access level that may push or open a merge request; not below the read level. |
+| `GIT_GATEWAY_MR_TARGETS` | project default branch | Comma list of branches a merge request may target. |
+| `GIT_GATEWAY_MR_LABEL` | `created-by-agent` | Label on every merge request the gateway opens. |
+| `GIT_GATEWAY_TASK_URL` | none | http(s) link template for the merge request description; `{task_id}` and `{workspace_id}` are replaced. |
 
 Because the default admin listener is loopback-only, set
 `SANDBOX_POOL_ADMIN_LISTEN` to an address the gateway can reach (for example
