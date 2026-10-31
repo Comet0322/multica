@@ -44,6 +44,15 @@ type Config struct {
 	// BranchPrefix starts every task's branch namespace: a task may update only
 	// refs/heads/<BranchPrefix><task id>/*. Default "agent/".
 	BranchPrefix string
+	// MRTargets lists the branches a merge request may target. Empty allows
+	// only the project's default branch.
+	MRTargets []string
+	// MRLabel is the label the gateway puts on every merge request it opens;
+	// default "created-by-agent".
+	MRLabel string
+	// TaskURL turns a task into a link for the merge request description:
+	// {task_id} and {workspace_id} are replaced. Empty gives the bare task id.
+	TaskURL string
 	// Audit receives one JSON line per decision.
 	Audit io.Writer
 
@@ -86,6 +95,9 @@ func New(cfg Config) (*Gateway, error) {
 	}
 	if cfg.BranchPrefix == "" {
 		cfg.BranchPrefix = defaultBranchPrefix
+	}
+	if cfg.MRLabel == "" {
+		cfg.MRLabel = defaultMRLabel
 	}
 	if cfg.CacheTTL == 0 {
 		cfg.CacheTTL = defaultCacheTTL

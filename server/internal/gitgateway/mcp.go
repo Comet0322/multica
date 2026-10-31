@@ -16,9 +16,10 @@ import (
 // can do through a tool only what their own GitLab access allows.
 
 const (
-	mcpMaxBody     = 1 << 20
-	mcpMaxNoteSize = 64 << 10
-	mcpDefaultVer  = "2025-03-26"
+	mcpMaxBody      = 1 << 20
+	mcpMaxNoteSize  = 64 << 10
+	mcpMaxTitleSize = 255
+	mcpDefaultVer   = "2025-03-26"
 )
 
 var mcpVersions = map[string]bool{"2024-11-05": true, "2025-03-26": true, "2025-06-18": true}
@@ -128,6 +129,11 @@ type toolArgs struct {
 	State   string `json:"state"`
 	IID     int    `json:"iid"`
 	Body    string `json:"body"`
+
+	SourceBranch string `json:"source_branch"`
+	TargetBranch string `json:"target_branch"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
 }
 
 // callTool runs one tool for the task's initiator. A refused or failed call is
@@ -170,10 +176,23 @@ func (g *Gateway) callTool(ctx context.Context, id Identity, params json.RawMess
 	if why := a.validate(p.Name); why != "" {
 		return refuse(why)
 	}
-	if status, reason := g.authorizeRead(ctx, id.Initiator, project); status != 0 {
+	allowReason := fmt.Sprintf("initiator has at least access level %d", g.cfg.MinReadLevel)
+	var mr mrRequest
+	if p.Name == toolCreateMR {
+		// Opening a merge request is a write: asked afresh, at the push level.
+		if status, reason := g.authorizePush(ctx, id.Initiator, project); status != 0 {
+			return refuse(reason)
+		}
+		var why string
+		if mr, why = g.checkCreateMR(ctx, id, project, a); why != "" {
+			return refuse(why)
+		}
+		allowReason = fmt.Sprintf("initiator has at least access level %d; source branch %s was pushed by this task and target %s is allowed",
+			g.cfg.MinPushLevel, mr.source, mr.target)
+	} else if status, reason := g.authorizeRead(ctx, id.Initiator, project); status != 0 {
 		return refuse(reason)
 	}
-	rec.Decision, rec.Reason, rec.Time = AuditAllow, fmt.Sprintf("initiator has at least access level %d", g.cfg.MinReadLevel), g.now().UTC()
+	rec.Decision, rec.Reason, rec.Time = AuditAllow, allowReason, g.now().UTC()
 	g.audit.write(rec)
 
 	var (
@@ -187,6 +206,8 @@ func (g *Gateway) callTool(ctx context.Context, id Identity, params json.RawMess
 		out, err = g.gitlab.getMergeRequest(ctx, project, a.IID)
 	case "list_merge_requests":
 		out, err = g.gitlab.listMergeRequests(ctx, project, a.stateOrDefault())
+	case toolCreateMR:
+		out, err = g.gitlab.createMergeRequest(ctx, project, mr)
 	case "comment_on_merge_request":
 		// The note is written with the admin token, so it says whose task it is.
 		text := fmt.Sprintf("_Posted by an agent on behalf of %s._\n\n%s", id.Initiator, a.Body)
@@ -222,6 +243,18 @@ func (a toolArgs) validate(tool string) string {
 		case "opened", "closed", "merged", "all":
 		default:
 			return "state must be opened, closed, merged or all"
+		}
+	}
+	if tool == toolCreateMR {
+		switch {
+		case strings.TrimSpace(a.SourceBranch) == "":
+			return "source_branch is required"
+		case strings.TrimSpace(a.Title) == "":
+			return "title is required"
+		case len(a.Title) > mcpMaxTitleSize:
+			return "title is too long"
+		case len(a.Description) > mcpMaxNoteSize:
+			return "description is too long"
 		}
 	}
 	if tool == "comment_on_merge_request" {
@@ -300,6 +333,18 @@ var mcpTools = []mcpTool{
 			"state":   map[string]any{"type": "string", "enum": []string{"opened", "closed", "merged", "all"}},
 		}),
 		Annotations: readOnly,
+	},
+	{
+		Name: toolCreateMR,
+		Description: "Open a merge request from a branch this task pushed. The target defaults to the project's default branch. " +
+			"The gateway appends who the request is for and which task made it to the description.",
+		InputSchema: schema([]string{"project", "source_branch", "title"}, map[string]any{
+			"project":       projectProp,
+			"source_branch": map[string]any{"type": "string", "description": "Branch this task pushed through the gateway"},
+			"target_branch": map[string]any{"type": "string", "description": "Branch to merge into; default is the project's default branch"},
+			"title":         map[string]any{"type": "string"},
+			"description":   map[string]any{"type": "string", "description": "Merge request description (Markdown)"},
+		}),
 	},
 	{
 		Name:        "comment_on_merge_request",

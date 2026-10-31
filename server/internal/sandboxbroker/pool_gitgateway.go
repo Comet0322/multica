@@ -27,6 +27,10 @@ type GitGatewayConfig struct {
 	// URL is the gateway base URL as pods reach it; it fills
 	// GitURLPlaceholder.
 	URL string
+	// MCPURL, when set, is the gateway's MCP endpoint as agents reach it. Every
+	// task then gets a "gitlab-gateway" http MCP server carrying its token.
+	// Empty leaves the agent's MCP configuration untouched.
+	MCPURL string
 	// Env lists the agent environment variables the manager forces, after the
 	// agent's own settings are merged. Values may use the placeholders above.
 	// Names must not start with MULTICA_. Empty selects DefaultGitGatewayEnv.
@@ -44,6 +48,11 @@ func (c *GitGatewayConfig) normalize() error {
 			return fmt.Errorf("git gateway URL: %w", err)
 		}
 		c.URL = strings.TrimRight(c.URL, "/")
+	}
+	if c.MCPURL != "" {
+		if err := checkBaseURL(c.MCPURL); err != nil {
+			return fmt.Errorf("git gateway MCP URL: %w", err)
+		}
 	}
 	if c.Registry == nil {
 		c.Registry = gitgateway.NewTokenRegistry()
@@ -99,6 +108,9 @@ func (p *Pool) issueGitToken(raw json.RawMessage, ref claimedTaskRef) (json.RawM
 		env[name] = repl.Replace(value)
 	}
 	out, err := forceAgentEnv(raw, env)
+	if err == nil && p.cfg.Git.MCPURL != "" {
+		out, err = gitgateway.InjectMCPConfig(out, p.cfg.Git.MCPURL, token)
+	}
 	if err != nil {
 		p.cfg.Git.Registry.Revoke(ref.ID)
 		return nil, err
