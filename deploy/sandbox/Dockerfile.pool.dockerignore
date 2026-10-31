@@ -1,0 +1,6 @@
+# Takes precedence over the root .dockerignore, which excludes /deploy/.
+*
+!server/
+!deploy/sandbox/
+server/bin
+server/tmp
