@@ -45,9 +45,21 @@ type PoolConfig struct {
 	// Providers limits which agent CLIs a pod reports become upstream
 	// runtimes. Empty exposes every reported provider.
 	Providers []string
+	// HeartbeatTimeout is how long a pod may stay silent before it is listed
+	// as lost. Zero means DefaultHeartbeatTimeout.
+	HeartbeatTimeout time.Duration
 }
 
+// DefaultHeartbeatTimeout is three daemon heartbeat intervals (15s each).
+const DefaultHeartbeatTimeout = 45 * time.Second
+
 func (c *PoolConfig) normalize() error {
+	if c.HeartbeatTimeout < 0 {
+		return fmt.Errorf("heartbeat timeout must not be negative")
+	}
+	if c.HeartbeatTimeout == 0 {
+		c.HeartbeatTimeout = DefaultHeartbeatTimeout
+	}
 	if _, err := uuid.Parse(c.WorkspaceID); err != nil {
 		return fmt.Errorf("workspace ID must be a UUID")
 	}
@@ -98,8 +110,22 @@ type pod struct {
 	IP           string
 	Name         string
 	State        string
+	BootNonce    string
 	RegisteredAt time.Time
 	LastSeen     time.Time
+}
+
+// markLostLocked turns every pod whose heartbeat is overdue into a lost one.
+// Silence cannot tell a restart from a crash, so every state times out the
+// same way. Callers hold p.mu.
+func (p *Pool) markLostLocked() {
+	now := p.now()
+	for _, pd := range p.pods {
+		if pd.State != PodLost && now.Sub(pd.LastSeen) > p.cfg.HeartbeatTimeout {
+			pd.State = PodLost
+			p.log.Warn("pod lost: heartbeat timed out", "pod_ip", pd.IP, "name", pd.Name, "last_seen", pd.LastSeen)
+		}
+	}
 }
 
 // PodInfo is one pod's entry in the inventory.
@@ -143,6 +169,7 @@ func (p *Pool) identityHeaders() map[string]string {
 func (p *Pool) Inventory() Inventory {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.markLostLocked()
 	inv := Inventory{ExpectedSize: p.cfg.ExpectedSize, Pods: []PodInfo{}}
 	for _, pd := range p.pods {
 		switch pd.State {
@@ -218,13 +245,30 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	}
 	var req struct {
 		DeviceName string `json:"device_name"`
-		Runtimes   []struct {
+		// BootNonce is random per pod start; a new one on a known IP means the
+		// IP now belongs to a new instance.
+		BootNonce string `json:"boot_nonce"`
+		// PodIP is the address the daemon believes it has. Optional.
+		PodIP    string `json:"pod_ip"`
+		Runtimes []struct {
 			Type string `json:"type"`
 		} `json:"runtimes"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	// A self-reported address that differs from the source address means
+	// something rewrote it (SNAT, a proxy). Pod identity rests on the source IP,
+	// so this is a deployment error to surface on day one; it is not a security
+	// check.
+	if req.PodIP != "" {
+		if reported := net.ParseIP(req.PodIP); reported == nil || !reported.Equal(net.ParseIP(ip)) {
+			reason := fmt.Sprintf("registration rejected: pod reports IP %q but the request came from %s; the source address is being rewritten (SNAT?)", req.PodIP, ip)
+			p.log.Warn("refused pod registration", "pod_ip", ip, "reported_ip", req.PodIP, "reason", reason)
+			http.Error(w, reason, http.StatusForbidden)
+			return
+		}
 	}
 	headers := map[string]string{}
 	for _, h := range []string{"X-Client-Platform", "X-Client-Version", "X-Client-OS", "X-Client-Capabilities"} {
@@ -259,7 +303,11 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 
 	now := p.now()
 	p.mu.Lock()
-	p.pods[ip] = &pod{IP: ip, Name: req.DeviceName, State: PodIdle, RegisteredAt: now, LastSeen: now}
+	if old := p.pods[ip]; old != nil && old.BootNonce != req.BootNonce {
+		// Whatever the old instance held is void; the IP is a new pod's now.
+		p.log.Info("pod instance replaced", "pod_ip", ip, "old_name", old.Name, "old_state", old.State)
+	}
+	p.pods[ip] = &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now}
 	p.mu.Unlock()
 	p.log.Info("pod registered", "pod_ip", ip, "name", req.DeviceName)
 	writeJSON(w, http.StatusOK, resp)
@@ -352,13 +400,20 @@ func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string)
 		return
 	}
 	p.mu.Lock()
+	p.markLostLocked()
 	pd := p.pods[ip]
-	if pd != nil {
+	lost := pd != nil && pd.State == PodLost
+	if pd != nil && !lost {
 		pd.LastSeen = p.now()
 	}
 	p.mu.Unlock()
 	if pd == nil {
 		http.Error(w, "pod not registered", http.StatusNotFound)
+		return
+	}
+	if lost {
+		// A lost pod comes back only by registering again.
+		http.Error(w, "pod was marked lost after its heartbeat timed out; register again", http.StatusConflict)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"runtime_id": req.RuntimeID, "status": "ok"})
