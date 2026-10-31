@@ -7,13 +7,15 @@ Plain YAML for the sandbox pod pool (kustomize-friendly, no secrets).
 | `kustomization.yaml` | Pool size (`replicas`) and image tags, version-controlled. Every `PLACEHOLDER` is replaced in an overlay |
 | `namespace.yaml` | `multica-sandbox` namespace (Pod Security `baseline`: the pod's PID 1 is root with six capabilities) |
 | `pool.yaml` | Pod pool Deployment: no `hostNetwork`, read-only root, three `emptyDir` areas (`/work`, `/home/agent`, `/tmp`), all capabilities dropped except CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETUID, SETGID, no privilege escalation, no service account token. Matches `../verify.sh` |
-| `manager.yaml` | Manager Deployment (1 replica) and a ClusterIP Service exposing the pod listener (`8080`) only. The admin listener (`8090`) is not in the Service |
+| `manager.yaml` | Manager Deployment (1 replica) and a ClusterIP Service exposing the pod listener (`8080`) only. The admin listener (`8791`) is not in the Service |
 | `networkpolicy.yaml` | Pod egress limited to manager, DNS, LiteLLM, git gateway, package mirror; manager pod listener reachable only from pool pods |
 
 The pool image's manager address and control URL (`<manager>/pod/control`) are
 baked in at build time (`--build-arg MANAGER_URL=http://sandbox-manager.multica-sandbox.svc.cluster.local:8080`).
-Manager ports and its config reference in `manager.yaml` are placeholders until
-the manager's `main` lands.
+The manager's env settings come from `server/cmd/sandbox-broker/pool.go`; the
+admin listener binds to loopback inside the manager pod (reach it with
+`kubectl port-forward`), and the workspaces file is mounted from a Secret you
+create out of band.
 
 Offline check (no cluster): `kubectl kustomize deploy/sandbox/pool/k8s`.
 
@@ -35,20 +37,20 @@ Set `NS=multica-sandbox`, `POD=$(kubectl -n $NS get pod -l multica.io/sandbox-ro
 3. **Egress denied** (each must time out or be refused; use `--max-time 5`):
    - `curl --max-time 5 https://example.com` (public internet)
    - `curl --max-time 5 <GitLab URL>` (direct GitLab, bypassing the gateway)
-   - `curl --max-time 5 http://<manager-ip>:8090/v1/inventory` (admin listener)
+   - `curl --max-time 5 http://<manager-ip>:8791/v1/inventory` (admin listener; must fail even if the policy were loosened, as it binds to loopback)
    - `curl --max-time 5 http://<another pool pod IP>:<any port>` (pod to pod)
 4. **Manager only reachable from the pool.** From a throwaway pod WITHOUT the
    `multica.io/sandbox-role=pool-pod` label in the same namespace:
    `curl --max-time 5 http://$MGR/healthz` must fail.
 5. **Source IP / SNAT check.** Pods register and the manager logs no
    "registration rejected: pod reports IP ... the source address is being rewritten" lines; `GET /v1/inventory` (via
-   `kubectl port-forward deploy/sandbox-manager 8090:8090`) lists every pod
+   `kubectl port-forward deploy/sandbox-manager 8791:8791`) lists every pod
    with its own pod IP (`kubectl -n $NS get pod -o wide`), none showing a node
    or gateway IP. A mismatch means SNAT or a mesh rewrites addresses: fix the
    CNI/mesh before continuing.
 6. **Fake task: lease, release, reset.** Without LLM or git, run a fake task
    (the `fake` image target's agent) through the manager. Watch
-   `curl -s localhost:8090/v1/inventory` and `/v1/leases`: pod goes idle ->
+   `curl -s localhost:8791/v1/inventory` and `/v1/leases`: pod goes idle ->
    leased (task id and initiator visible) -> resetting -> idle. After the reset
    confirm in the pod: `kubectl -n $NS exec $POD -- ls /work /home/agent /tmp`
    shows only the rebuilt HOME template, and only `pod-supervisor` plus

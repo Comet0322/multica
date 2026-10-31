@@ -1,9 +1,10 @@
 # The pool manager. One replica: the registry is in memory and rebuilt from pod
 # re-registration after a restart. It serves two listeners:
 #   pod listener   :8080  standard daemon protocol + /pod/control, for pods
-#   admin listener :8090  read-only /v1/inventory and /v1/leases, never for pods
-# Ports and the config reference are placeholders until the manager's main
-# lands; keep them in step with its settings.
+#   admin listener 127.0.0.1:8791  read-only /v1/inventory and /v1/leases. It
+#     binds to loopback inside the pod, so nothing on the network (pods
+#     included) can reach it; admins use `kubectl port-forward`.
+# Settings are the sandbox-broker pool settings (server/cmd/sandbox-broker/pool.go).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,12 +37,13 @@ spec:
           image: multica-sandbox-manager # tag set in kustomization.yaml
           ports:
             - {name: pod, containerPort: 8080}
-            - {name: admin, containerPort: 8090}
           env:
+            - {name: SANDBOX_BROKER_LISTEN, value: ":8080"}
+            - {name: SANDBOX_POOL_ADMIN_LISTEN, value: "127.0.0.1:8791"}
+            - {name: SANDBOX_POOL_SIZE, value: "4"} # expected size; match replicas in kustomization.yaml
             # Workspace PATs and LiteLLM admin credentials live in a Secret the
-            # operator creates out of band; only its name is referenced here.
-            - name: SANDBOX_MANAGER_CONFIG_FILE # PLACEHOLDER: the manager's real setting name
-              value: /etc/sandbox-manager/config.json
+            # operator creates out of band; only the file path is referenced here.
+            - {name: SANDBOX_WORKSPACES_FILE, value: /etc/sandbox-manager/workspaces.json}
           readinessProbe:
             httpGet: {path: /healthz, port: pod}
           securityContext:
@@ -56,9 +58,8 @@ spec:
             secretName: sandbox-manager-config # created out of band, not in this repo
 ---
 # ClusterIP for pods. It exposes ONLY the pod listener. The admin port is
-# deliberately absent here, and the NetworkPolicy also blocks it from pods.
-# Admins reach it with `kubectl port-forward deploy/sandbox-manager 8090:8090`
-# or an internal-only Service in an overlay.
+# loopback-bound and absent here. Admins use
+# `kubectl port-forward deploy/sandbox-manager 8791:8791`.
 apiVersion: v1
 kind: Service
 metadata:

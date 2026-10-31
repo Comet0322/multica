@@ -51,8 +51,8 @@ spec:
         - {protocol: TCP, port: 80} # PLACEHOLDER
         - {protocol: TCP, port: 443}
 ---
-# Manager: the pod listener accepts only pool pods; the admin listener accepts
-# nothing from pods, only the admin namespace placeholder. Egress is left open
+# Manager: the pod listener accepts only pool pods (the admin listener is
+# loopback-bound and not reachable over the network). Egress is left open
 # (Multica, LiteLLM, gateway); tighten it in an overlay if your CNI allows.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -70,9 +70,3 @@ spec:
               multica.io/sandbox-role: pool-pod
       ports:
         - {protocol: TCP, port: 8080}
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: multica-admin # PLACEHOLDER
-      ports:
-        - {protocol: TCP, port: 8090}
