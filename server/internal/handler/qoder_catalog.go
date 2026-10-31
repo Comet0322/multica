@@ -224,8 +224,9 @@ func isCloudAgentProvider(provider string) bool {
 }
 
 // cloudAgentServiceName names the cloud agent provider behind provider, or ""
-// for other providers. Its bridge runs existing issue runs only, so chat and
-// quick-create are refused before any work is persisted.
+// for other providers. Quick-create is refused for both bridges before any
+// work is persisted; chat only for Claude Managed Agents, whose bridge runs
+// issue runs only.
 func cloudAgentServiceName(provider string) string {
 	switch provider {
 	case qoderruntime.Provider:
