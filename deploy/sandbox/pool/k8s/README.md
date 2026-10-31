@@ -83,3 +83,18 @@ Set `NS=multica-sandbox`, `POD=$(kubectl -n $NS get pod -l multica.io/sandbox-ro
    to `agent/<task id>/x` succeeds and any other ref is refused with the
    gateway's reason, and `git credential fill` for a host other than the
    gateway returns no password.
+
+## Notes from the minikube smoke run (ticket 20)
+
+- An overlay's `images:` entries must match the names the base kustomization
+  already produced (`registry.example.com/multica/...`), not the short names in
+  the Deployments.
+- The manager reads `workspaces.json` from a Secret volume, which is
+  group-readable under `fsGroup`; the manifest sets
+  `SANDBOX_WORKSPACES_FILE_GROUP_READ=true` and `defaultMode: 0440` for that.
+- `../smoke/` holds the stand-ins (fake Multica, LiteLLM, a destination that
+  must stay unreachable, a package mirror) and an overlay used for a local
+  minikube run with Calico. Fill in the stand-in pod IPs as the `LITELLM_IP`
+  and `MIRROR_IP` markers before applying it.
+- Lost pods stay in the inventory as `lost` (they are not pruned), so after pod
+  replacement idle + leased + resetting + lost can exceed the declared size.
