@@ -161,7 +161,8 @@ func (l *launcher) handle(conn *net.UnixConn) {
 	if err := dec.Decode(&req); err != nil {
 		return
 	}
-	cmd, err := l.command(req, files)
+	cmd, cleanup, err := l.command(req, files)
+	defer cleanup()
 	if err == nil {
 		err = l.start(cmd)
 	}
@@ -217,25 +218,91 @@ func (l *launcher) handle(conn *net.UnixConn) {
 	_ = enc.Encode(reply)
 }
 
-func (l *launcher) command(req launchRequest, files []*os.File) (*exec.Cmd, error) {
+func (l *launcher) command(req launchRequest, files []*os.File) (*exec.Cmd, func(), error) {
+	noop := func() {}
 	name := req.Name
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\x00") {
-		return nil, fmt.Errorf("invalid agent name %q", name)
+		return nil, noop, fmt.Errorf("invalid agent name %q", name)
 	}
 	path, err := l.lookup(name)
 	if err != nil {
-		return nil, err
+		return nil, noop, err
 	}
 	if !filepath.IsAbs(req.Dir) {
-		return nil, fmt.Errorf("working directory %q is not absolute", req.Dir)
+		return nil, noop, fmt.Errorf("working directory %q is not absolute", req.Dir)
 	}
-	cmd := exec.Command(path, req.Args...)
+	args, cleanup := l.shareArgFiles(req.Args, req.Env)
+	cmd := exec.Command(path, args...)
 	cmd.Args[0] = name
 	cmd.Dir = req.Dir
 	cmd.Env = l.agentEnv(req.Env)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = files[0], files[1], files[2]
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: l.Cred}
-	return cmd, nil
+	return cmd, cleanup, nil
+}
+
+// maxArgFile bounds a file copied for the agent; these are small configuration
+// files (the MCP configuration of a task).
+const maxArgFile = 1 << 20
+
+// shareArgFiles replaces each argument that names a regular file in the
+// daemon's TMPDIR (as "path" or "--flag=path") with the path of a copy the agent
+// user owns, in the agent's TMPDIR. The daemon keeps such files, the task's MCP
+// configuration among them, in its private home, which the agent cannot enter.
+// Nothing else is rewritten: only files directly the daemon's own, never links.
+// The returned function removes the copies once the agent has ended.
+func (l *launcher) shareArgFiles(args, env []string) ([]string, func()) {
+	var daemonTmp string
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "TMPDIR="); ok {
+			daemonTmp = v
+		}
+	}
+	if daemonTmp == "" || !filepath.IsAbs(daemonTmp) {
+		return args, func() {}
+	}
+	var dirs []string
+	cleanup := func() {
+		for _, d := range dirs {
+			_ = os.RemoveAll(d)
+		}
+	}
+	out := make([]string, len(args))
+	for i, a := range args {
+		out[i] = a
+		prefix, val := "", a
+		if strings.HasPrefix(a, "--") {
+			if k, v, ok := strings.Cut(a, "="); ok {
+				prefix, val = k+"=", v
+			}
+		}
+		if !filepath.IsAbs(val) || !within(daemonTmp, val) {
+			continue
+		}
+		fi, err := os.Lstat(val)
+		if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxArgFile {
+			continue
+		}
+		data, err := os.ReadFile(val)
+		if err != nil {
+			continue
+		}
+		dir, err := os.MkdirTemp(l.TmpDir, "agent-arg-")
+		if err != nil {
+			continue
+		}
+		dirs = append(dirs, dir)
+		copyPath := filepath.Join(dir, filepath.Base(val))
+		if err := os.WriteFile(copyPath, data, 0o600); err != nil {
+			continue
+		}
+		if l.Cred != nil {
+			_ = os.Chown(dir, int(l.Cred.Uid), int(l.Cred.Gid))
+			_ = os.Chown(copyPath, int(l.Cred.Uid), int(l.Cred.Gid))
+		}
+		out[i] = prefix + copyPath
+	}
+	return out, cleanup
 }
 
 // lookup finds the real CLI on the PATH without the shim directory.
