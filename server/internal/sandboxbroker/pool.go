@@ -674,12 +674,15 @@ func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string)
 	p.mu.Unlock()
 	p.reportForced(r.Context())
 	if pd == nil {
-		http.Error(w, "pod not registered", http.StatusNotFound)
+		// The stock daemon registers again only on a 404 whose body says "runtime
+		// not found" (daemon.isRuntimeNotFoundError); without it a manager
+		// restart would leave every pod heartbeating into the void.
+		http.Error(w, "runtime not found: pod not registered with this manager", http.StatusNotFound)
 		return
 	}
 	if lost {
-		// A lost pod comes back only by registering again.
-		http.Error(w, "pod was marked lost after its heartbeat timed out; register again", http.StatusConflict)
+		// A lost pod comes back only by registering again; tell the daemon so.
+		http.Error(w, "runtime not found: pod was marked lost after its heartbeat timed out; register again", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"runtime_id": req.RuntimeID, "status": "ok"})

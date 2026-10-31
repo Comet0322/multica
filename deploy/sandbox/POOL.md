@@ -41,6 +41,10 @@ nothing from it to tell a reset has finished:
    daemon's. It completes the reset and the pod is `idle`. A registration
    before the acknowledgement is the old daemon's and changes nothing.
 
+The manager answers a heartbeat from a pod it does not know (or has marked lost)
+with `404 runtime not found`, which is what makes the stock daemon register again;
+this is how the pool rebuilds itself after a manager restart.
+
 A pod the manager has never seen is treated the same way: its registry entry
 is created `resetting`, and it is reset before it is lent. After a manager
 restart every pod, a busy one included, goes through this once, because the
