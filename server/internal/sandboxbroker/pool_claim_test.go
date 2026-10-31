@@ -174,10 +174,12 @@ func TestLeaseIsRecordedAndReleasedOnCompleteOrFail(t *testing.T) {
 			t.Fatalf("lease %s not closed: %+v", l.TaskID, l)
 		}
 	}
-	if inv := h.inventory(); inv.Leased != 0 || inv.Idle != 2 {
-		t.Fatalf("want both pods released, got %+v", inv)
+	if inv := h.inventory(); inv.Leased != 0 || inv.Resetting != 2 {
+		t.Fatalf("want both pods released into reset, got %+v", inv)
 	}
-	// A released pod can take new work, and the old task is no longer its own.
+	// A released pod takes new work once it was reset and registered again,
+	// and the old task is no longer its own.
+	a.completeReset("boot-2")
 	h.upstream.enqueue("t3")
 	if got := a.claimBatch(); !slices.Equal(got, []string{"t3"}) {
 		t.Fatalf("want t3 after release, got %v", got)
