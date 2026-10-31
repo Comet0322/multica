@@ -1,0 +1,34 @@
+# Smoke-test overlay for a local minikube cluster (see ../../k8s/README.md). The
+# LITELLM_IP / MIRROR_IP markers are the stand-in pods' IPs, substituted with
+# sed before applying (a NetworkPolicy ipBlock cannot name a Service).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../k8s
+# The base kustomization has already renamed the images, so an overlay matches
+# the renamed names, not the short ones in the Deployments.
+images:
+  - name: registry.example.com/multica/sandbox-pool
+    newName: multica-sandbox-pool
+    newTag: smoke
+  - name: registry.example.com/multica/sandbox-manager
+    newName: multica-sandbox-manager
+    newTag: smoke
+  - name: registry.example.com/multica/git-gateway
+    newName: multica-git-gateway
+    newTag: smoke
+replicas:
+  - name: sandbox-pool
+    count: 3
+patches:
+  - target: {kind: Deployment, name: sandbox-manager}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/3/value, value: "3"}
+      - {op: replace, path: /spec/template/spec/containers/0/env/4/value, value: "http://multica-upstream.smoke-ext.svc.cluster.local:8000"}
+      - {op: replace, path: /spec/template/spec/containers/0/env/8/value, value: "http://litellm.smoke-ext.svc.cluster.local:4000"}
+      - {op: replace, path: /spec/template/spec/containers/0/env/9/value, value: "http://litellm.smoke-ext.svc.cluster.local:4000"}
+      - {op: replace, path: /spec/template/spec/containers/0/env/11/value, value: "smoke-model"}
+  - target: {kind: NetworkPolicy, name: pool-pod-egress}
+    patch: |-
+      - {op: replace, path: /spec/egress/3/to/0/ipBlock/cidr, value: "LITELLM_IP/32"}
+      - {op: replace, path: /spec/egress/4/to/0/ipBlock/cidr, value: "MIRROR_IP/32"}
