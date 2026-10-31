@@ -1,0 +1,113 @@
+# Real services for the pool end-to-end run (ticket 21): Multica server and web,
+# LiteLLM, GitLab CE. Project name `pool21`. Nothing here is secret: every value
+# comes from the environment file `run.sh` generates outside the repository.
+#
+# The network has a fixed subnet and fixed addresses so the minikube node can be
+# attached to it (`docker network connect`) and pods can reach the services by IP,
+# which NetworkPolicy ipBlocks need anyway. Host ports are bound to 127.0.0.1.
+name: pool21
+
+services:
+  multica-pg:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: multica
+      POSTGRES_USER: multica
+      POSTGRES_PASSWORD: ${POOL21_DB_PASSWORD:?}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multica -d multica"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      pool21: {ipv4_address: 10.77.21.2}
+
+  backend:
+    image: ${MULTICA_BACKEND_IMAGE:-multica-backend:v070}
+    depends_on:
+      multica-pg: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:${POOL21_API_PORT:-18121}:8080"
+    environment:
+      DATABASE_URL: postgres://multica:${POOL21_DB_PASSWORD}@multica-pg:5432/multica?sslmode=disable
+      PORT: "8080"
+      APP_ENV: development
+      JWT_SECRET: ${POOL21_JWT_SECRET:?}
+      MULTICA_DEV_VERIFICATION_CODE: ${POOL21_DEV_CODE:?}
+      FRONTEND_ORIGIN: http://localhost:${POOL21_WEB_PORT:-13121}
+      MULTICA_APP_URL: http://localhost:${POOL21_WEB_PORT:-13121}
+      MULTICA_PUBLIC_URL: http://localhost:${POOL21_API_PORT:-18121}
+    networks:
+      pool21: {ipv4_address: 10.77.21.10}
+
+  web:
+    image: ${MULTICA_WEB_IMAGE:-multica-web:v070}
+    depends_on: [backend]
+    ports:
+      - "127.0.0.1:${POOL21_WEB_PORT:-13121}:3000"
+    environment:
+      HOSTNAME: "0.0.0.0"
+      REMOTE_API_URL: http://backend:8080
+    networks:
+      pool21: {ipv4_address: 10.77.21.11}
+
+  litellm-pg:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POOL21_DB_PASSWORD:?}
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      pool21: {ipv4_address: 10.77.21.21}
+
+  # The Anthropic key reaches LiteLLM only as a mounted file that the command
+  # reads into the process environment; it is never in the compose file or env.
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.98.0
+    depends_on:
+      litellm-pg: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "-c", "if [ -s /run/secrets/anthropic_key ]; then ANTHROPIC_API_KEY=$$(cat /run/secrets/anthropic_key); export ANTHROPIC_API_KEY; fi; exec litellm --config /app/config.yaml --port 4000"]
+    environment:
+      DATABASE_URL: postgresql://litellm:${POOL21_DB_PASSWORD}@litellm-pg:5432/litellm
+      LITELLM_MASTER_KEY: ${POOL21_LITELLM_MASTER_KEY:?}
+    volumes:
+      - ${POOL21_LITELLM_CONFIG:-./litellm-config.yaml}:/app/config.yaml:ro
+      - ${POOL21_ANTHROPIC_KEY_FILE:?}:/run/secrets/anthropic_key:ro
+    networks:
+      pool21: {ipv4_address: 10.77.21.20}
+
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    hostname: gitlab.pool21.test
+    shm_size: 256m
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://10.77.21.30'
+        puma['worker_processes'] = 0
+        sidekiq['concurrency'] = 5
+        prometheus_monitoring['enable'] = false
+        gitlab_rails['usage_ping_enabled'] = false
+        registry['enable'] = false
+        gitlab_pages['enable'] = false
+        gitlab_kas['enable'] = false
+    networks:
+      pool21: {ipv4_address: 10.77.21.30}
+
+  # Stand-in for the internal package mirror (none exists locally): answers 200.
+  mirror:
+    image: ghcr.io/berriai/litellm:v1.98.0
+    entrypoint: ["python3", "-m", "http.server", "80", "--directory", "/tmp"]
+    networks:
+      pool21: {ipv4_address: 10.77.21.40}
+
+networks:
+  pool21:
+    name: pool21
+    ipam:
+      config:
+        - subnet: 10.77.21.0/24

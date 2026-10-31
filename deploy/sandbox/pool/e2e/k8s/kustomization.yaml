@@ -1,0 +1,62 @@
+# Overlay for the ticket 21 run on minikube profile `pool21`: the real Multica,
+# LiteLLM, GitLab and a mirror stand-in run in the docker network 10.77.21.0/24
+# (e2e/compose.yaml), which the minikube node is attached to. Apply with
+# `kubectl apply -k deploy/sandbox/pool/e2e/k8s` after creating the two Secrets.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../k8s
+images:
+  - name: registry.example.com/multica/sandbox-pool
+    newName: multica-sandbox-pool
+    newTag: e2e
+  - name: registry.example.com/multica/sandbox-manager
+    newName: multica-sandbox-manager
+    newTag: e2e
+  - name: registry.example.com/multica/git-gateway
+    newName: multica-git-gateway
+    newTag: e2e
+replicas:
+  - name: sandbox-pool
+    count: 3
+patches:
+  - target: {kind: Deployment, name: sandbox-pool}
+    patch: |-
+      # minikube has 4 CPUs / 4 GiB for the whole node: three pods must fit.
+      - {op: replace, path: /spec/template/spec/containers/0/resources, value: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "2", memory: 1Gi}}}
+  - target: {kind: Deployment, name: sandbox-manager}
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: sandbox-manager}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                env:
+                  - {name: SANDBOX_POOL_SIZE, value: "3"}
+                  - {name: MULTICA_SERVER_URL, value: "http://10.77.21.10:8080"}
+                  - {name: SANDBOX_LITELLM_URL, value: "http://10.77.21.20:4000"}
+                  - {name: SANDBOX_LITELLM_POD_URL, value: "http://10.77.21.20:4000"}
+                  - {name: SANDBOX_LITELLM_MODELS, value: "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5,claude-haiku-4-5,claude-sonnet-4-5,claude-opus-4-5"}
+                  - {name: SANDBOX_LITELLM_MAX_BUDGET, value: "0.5"}
+                  - {name: SANDBOX_LITELLM_RPM_LIMIT, value: "20"}
+                  - {name: SANDBOX_PLACEMENT_WAIT, value: "60s"}
+  - target: {kind: Deployment, name: git-gateway}
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: git-gateway}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: gateway
+                env:
+                  - {name: GIT_GATEWAY_GITLAB_URL, value: "http://10.77.21.30"}
+                  - {name: GIT_GATEWAY_TASK_URL, value: "http://localhost:13121/tasks/{task_id}?ws={workspace_id}"}
+  - target: {kind: NetworkPolicy, name: pool-pod-egress}
+    patch: |-
+      - {op: replace, path: /spec/egress/3/to/0/ipBlock/cidr, value: "10.77.21.20/32"}
+      - {op: replace, path: /spec/egress/4/to/0/ipBlock/cidr, value: "10.77.21.40/32"}
