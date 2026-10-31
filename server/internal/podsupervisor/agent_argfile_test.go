@@ -22,7 +22,8 @@ if [ ! -e "$OUT/ran" ]; then
   printf '{"mcpServers":{}}' > "$TMPDIR/multica-mcp-1/mcp-config.json"
   chmod 600 "$TMPDIR/multica-mcp-1/mcp-config.json"
   echo "$TMPDIR/multica-mcp-1/mcp-config.json" > "$OUT/daemon.cfg"
-  fakeagent --strict-mcp-config --mcp-config "$TMPDIR/multica-mcp-1/mcp-config.json" --other=value > "$OUT/agent.out" 2>&1
+  # The agent's environment need not carry the daemon's TMPDIR.
+  TMPDIR=/nonexistent fakeagent --strict-mcp-config --mcp-config "$TMPDIR/multica-mcp-1/mcp-config.json" --other=value > "$OUT/agent.out" 2>&1
   echo $? > "$OUT/agent.status"
 fi
 exec sleep 100000
