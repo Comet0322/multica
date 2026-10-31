@@ -161,7 +161,7 @@ export function AgentConfigurationPanel({
               />
             </div>
           </DraftFieldRow>
-          {conversationStartersSupported && !cloudRuntime ? (
+          {conversationStartersSupported && !claudeRuntime ? (
             <DraftFieldRow
               compact={compact}
               align="start"

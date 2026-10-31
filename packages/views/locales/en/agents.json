@@ -173,6 +173,7 @@
     "section_profile": "Profile",
     "section_execution": "Execution",
     "qoder_execution_note": "Model, tools and skills are set on the agent in Qoder Cloud Agents.",
+    "claude_execution_note": "Model, tools and skills are set on the Claude agent.",
     "section_access": "Access",
     "section_properties": "Properties",
     "section_details": "Details",

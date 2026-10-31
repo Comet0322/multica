@@ -234,13 +234,13 @@ export function buildCreateAgentRequest(options: {
   const qoder = runtimeProvider === QODER_PROVIDER;
   const claude = runtimeProvider === CLAUDE_MANAGED_PROVIDER;
   // Cloud agent bridges refuse skills and execution overrides, and the form
-  // hides them (plus conversation starters) once one is chosen. Each keeps
-  // only its own remote agent binding.
+  // hides them once one is chosen (Claude Managed Agents also has no chat, so
+  // no conversation starters). Each keeps only its own remote agent binding.
   const draft: AgentDraft =
     qoder || claude
       ? {
           ...options.draft,
-          conversationStarters: [],
+          conversationStarters: claude ? [] : options.draft.conversationStarters,
           model: "",
           thinkingLevel: "",
           serviceTier: "",

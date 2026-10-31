@@ -164,6 +164,7 @@
     "section_profile": "프로필",
     "section_execution": "실행 설정",
     "qoder_execution_note": "모델, 도구, 스킬은 Qoder Cloud Agents의 에이전트에서 설정합니다.",
+    "claude_execution_note": "모델, 도구, 스킬은 Claude Managed Agents의 Claude 에이전트에서 설정합니다.",
     "section_access": "접근 권한",
     "section_properties": "속성",
     "section_details": "세부 정보",
