@@ -86,6 +86,13 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		}
 		return d
 	}
+	// Active dispatch is on by default; "0" turns it off.
+	wakeInterval := func() time.Duration {
+		if getenv("SANDBOX_POOL_WAKE_INTERVAL") == "" {
+			return time.Second
+		}
+		return duration("SANDBOX_POOL_WAKE_INTERVAL")
+	}
 	whole := func(name string) int {
 		raw := getenv(name)
 		if raw == "" {
@@ -155,6 +162,7 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 			Placement:        sandboxbroker.Placement(getenv("SANDBOX_PLACEMENT")),
 			PodConcurrency:   whole("SANDBOX_POD_CONCURRENCY"),
 			PlacementWait:    duration("SANDBOX_PLACEMENT_WAIT"),
+			WakeInterval:     wakeInterval(),
 			PodIdleTimeout:   duration("SANDBOX_POD_IDLE_TIMEOUT"),
 			PodMaxLifetime:   duration("SANDBOX_POD_MAX_LIFETIME"),
 			PodDrainGrace:    duration("SANDBOX_POD_DRAIN_GRACE"),
@@ -315,6 +323,7 @@ func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, 
 		servers = append(servers, &http.Server{Handler: pool.GatewayHandler(), ReadHeaderTimeout: 10 * time.Second})
 		listeners = append(listeners, gatewayLn)
 	}
+	go pool.Run(ctx)
 	serveErr := make(chan error, len(servers))
 	for i, ln := range listeners {
 		go func() { serveErr <- servers[i].Serve(ln) }()

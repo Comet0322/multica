@@ -74,6 +74,11 @@ type PoolConfig struct {
 	// PlacementWait bounds how long a claimed task waits in the manager for a
 	// pod that can take it. Zero means DefaultPlacementWait.
 	PlacementWait time.Duration
+	// WakeInterval turns on active dispatch: every interval the manager claims
+	// a task upstream for a free pod that holds a wake socket and tells that
+	// pod to pick it up, instead of waiting for the pod's next poll. Zero
+	// leaves dispatch to the pods' polling.
+	WakeInterval time.Duration
 	// PodIdleTimeout releases a shared pod that has run no task for this long.
 	// Zero means DefaultPodIdleTimeout. Shared (issue) placement only.
 	PodIdleTimeout time.Duration
@@ -128,6 +133,9 @@ func (c *PoolConfig) normalize() error {
 	}
 	if c.ResetTimeout == 0 {
 		c.ResetTimeout = DefaultResetTimeout
+	}
+	if c.WakeInterval < 0 {
+		return fmt.Errorf("wake interval must not be negative")
 	}
 	if c.UpstreamBackoff < 0 {
 		return fmt.Errorf("upstream backoff must not be negative")
@@ -201,6 +209,11 @@ type Pool struct {
 	workspaces map[string]*workspace
 	wsOrder    []*workspace
 	draining   []*workspace
+
+	// wakers are the open wake sockets by pod IP, guarded by wakeMu (never
+	// held together with mu).
+	wakeMu sync.Mutex
+	wakers map[string]*wakeConn
 
 	mu sync.Mutex
 	// rotor is the index in wsOrder where the next claim starts.
@@ -383,7 +396,7 @@ func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	p := &Pool{cfg: cfg, log: log, now: time.Now, pods: map[string]*pod{}, leases: map[string]*lease{}}
+	p := &Pool{cfg: cfg, log: log, now: time.Now, pods: map[string]*pod{}, wakers: map[string]*wakeConn{}, leases: map[string]*lease{}}
 	p.proxy = p.newProxy()
 	p.auditLog = newAuditLog(cfg.AuditLog, func(err error) { p.log.Error("write audit record", "error", err) })
 	p.workspaces = map[string]*workspace{}

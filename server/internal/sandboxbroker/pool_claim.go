@@ -146,8 +146,8 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 		// The manager owns the upstream runtime's lifetime.
 		writeJSON(w, http.StatusOK, okBody)
 	case rest == "ws":
-		// No wakeup socket: the daemon keeps polling claims over HTTP.
-		http.NotFound(w, r)
+		// The wake socket carries task hints only; claims stay on HTTP.
+		p.serveWake(w, r, ip)
 	case rest == "tasks/claim":
 		var req struct {
 			RuntimeIDs []string `json:"runtime_ids"`
@@ -294,7 +294,7 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		if raw == nil {
 			continue
 		}
-		return p.leaseClaimed(r.Context(), pd, t.ws, raw), true
+		return p.leaseClaimed(r.Context(), pd, t.ws, raw, false), true
 	}
 	if attempted > 0 && failed == attempted {
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
@@ -325,7 +325,10 @@ func (p *Pool) claimUpstream(ctx context.Context, t claimTarget) (json.RawMessag
 
 // leaseClaimed binds a claimed task's pod to the task's workspace, or fails the
 // task upstream when it cannot run. It returns the task for the pod, or nil.
-func (p *Pool) leaseClaimed(ctx context.Context, pd *pod, ws *workspace, raw json.RawMessage) json.RawMessage {
+//
+// With push set the task is never handed back: it stays queued on its pod,
+// which is woken to claim it, since no pod is polling for it right now.
+func (p *Pool) leaseClaimed(ctx context.Context, pd *pod, ws *workspace, raw json.RawMessage, push bool) json.RawMessage {
 	ip := pd.IP
 	var ref claimedTaskRef
 	if err := json.Unmarshal(raw, &ref); err != nil || ref.ID == "" {
@@ -394,9 +397,10 @@ func (p *Pool) leaseClaimed(ctx context.Context, pd *pod, ws *workspace, raw jso
 		return nil
 	}
 	p.assignLocked(target, t)
-	if target != pd {
+	if target != pd || push {
 		p.mu.Unlock()
-		p.log.Info("claimed task assigned to another pod", "task_id", ref.ID, "poll_ip", ip, "pod_ip", target.IP, "workspace_id", ws.cfg.WorkspaceID)
+		p.log.Info("claimed task assigned to pod", "task_id", ref.ID, "poll_ip", ip, "pod_ip", target.IP, "workspace_id", ws.cfg.WorkspaceID)
+		p.wakePod(target.IP)
 		return nil
 	}
 	p.takeQueuedLocked(pd)

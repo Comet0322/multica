@@ -73,9 +73,22 @@ and the pods in `/v1/inventory` name the initiators.
 | `SANDBOX_PLACEMENT` | `task` | `task`, `issue` or `chat`: which tasks share a pod. |
 | `SANDBOX_POD_CONCURRENCY` | 1 (`task`), 20 otherwise | Tasks a shared pod runs at once. |
 | `SANDBOX_PLACEMENT_WAIT` | `30s` | How long a claimed task waits for a pod. |
+| `SANDBOX_POOL_WAKE_INTERVAL` | `1s` | Active dispatch tick; `0` leaves dispatch to the pods' polling. |
 | `SANDBOX_POD_IDLE_TIMEOUT` | `15m` | Release a shared pod with no task for this long. |
 | `SANDBOX_POD_MAX_LIFETIME` | `2h` | Stop giving a shared pod new tasks after this. |
 | `SANDBOX_POD_DRAIN_GRACE` | `10m` | Time running tasks get after max lifetime. |
+
+## Task dispatch
+
+The stock daemon in a pod polls for a task every 30 seconds, so a task would
+wait that long for an idle pod. The manager therefore dispatches itself: the
+daemon opens its usual wake websocket on the manager, and every
+`SANDBOX_POOL_WAKE_INTERVAL` the manager claims one task upstream for a free
+pod that holds a socket, places it as a poll would, and sends the target pod
+the hint that makes it claim at once. The socket carries hints only: claims,
+heartbeats and results stay on HTTP, and the pod's polling remains the
+fallback and the liveness signal, so a pod without a socket or a lost hint is
+served by its next poll. Neither Multica nor the pod image changes.
 
 ## Audit
 
