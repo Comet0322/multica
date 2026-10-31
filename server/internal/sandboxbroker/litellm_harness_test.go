@@ -31,6 +31,8 @@ type fakeLiteLLM struct {
 	deleted   []string
 	// generateStatus, when non-zero, makes /key/generate fail with it.
 	generateStatus int
+	// generateMessage, when set, is the error text of that failure.
+	generateMessage string
 	// userInfoCalls counts /user/info lookups.
 	userInfoCalls int
 }
@@ -79,7 +81,11 @@ func (f *fakeLiteLLM) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if f.generateStatus != 0 {
 			w.WriteHeader(f.generateStatus)
-			writeJSON(w, map[string]any{"error": map[string]any{"message": "budget exceeded"}})
+			message := "budget exceeded"
+			if f.generateMessage != "" {
+				message = f.generateMessage
+			}
+			writeJSON(w, map[string]any{"error": map[string]any{"message": message}})
 			return
 		}
 		f.generated = append(f.generated, body)

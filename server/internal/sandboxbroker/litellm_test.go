@@ -93,11 +93,11 @@ func TestMulticaPrefixedEnvNamesAreRejected(t *testing.T) {
 	_, err := sandboxbroker.NewPool(sandboxbroker.PoolConfig{
 		MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
 		LiteLLM: &sandboxbroker.LiteLLMConfig{
-			URL: llm.URL, MasterKey: fakeLiteLLMMaster, Models: []string{"m"},
+			URL: llm.URL, MasterKey: fakeLiteLLMMaster, Models: []string{"m"}, MaxBudget: 5, RPMLimit: 60,
 			Env: map[string]string{"MULTICA_TOKEN": sandboxbroker.LiteLLMKeyPlaceholder},
 		},
 	}, nil)
-	if err == nil {
+	if err == nil || !strings.Contains(err.Error(), "MULTICA_") {
 		t.Fatal("want an error for a MULTICA_ variable name")
 	}
 }
