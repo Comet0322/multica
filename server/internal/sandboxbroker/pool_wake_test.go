@@ -332,3 +332,123 @@ func TestPollingIsUnchangedWhenDispatchIsOn(t *testing.T) {
 		t.Fatalf("leased pod was handed %v", got)
 	}
 }
+
+const workspacesChangedEvent = "daemon:workspaces_changed"
+
+// syncedWakePod syncs the pool once, registers a pod for A and opens its socket.
+func syncedWakePod(t *testing.T, up *syncMultica, ids ...string) (*harness, *wakeSocket) {
+	t.Helper()
+	h := newSyncHarness(t, up, withWake(time.Hour))
+	if _, err := h.pool.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	pod := h.newPod("127.0.0.2", "pool-0")
+	pod.nonce = "boot-1"
+	pod.registerFor(ids[0])
+	return h, pod.openWake()
+}
+
+func TestSyncTellsConnectedPodsAboutAddedWorkspaces(t *testing.T) {
+	t.Parallel()
+	up := newSyncMultica(t, wsA)
+	h, sock := syncedWakePod(t, up, wsA)
+
+	up.setWorkspaces(wsA, wsB)
+	if _, err := h.pool.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sock.next(5 * time.Second); got != workspacesChangedEvent {
+		t.Fatalf("want %s, got %q", workspacesChangedEvent, got)
+	}
+	if got := sock.next(300 * time.Millisecond); got != "" {
+		t.Fatalf("one change, one frame; got another: %q", got)
+	}
+}
+
+func TestSyncTellsConnectedPodsAboutRemovedWorkspaces(t *testing.T) {
+	t.Parallel()
+	up := newSyncMultica(t, wsA, wsB)
+	h, sock := syncedWakePod(t, up, wsA)
+
+	up.setWorkspaces(wsA)
+	if _, err := h.pool.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sock.next(5 * time.Second); got != workspacesChangedEvent {
+		t.Fatalf("want %s, got %q", workspacesChangedEvent, got)
+	}
+}
+
+func TestSyncSendsNothingWhenTheListIsUnchangedOrUnusable(t *testing.T) {
+	t.Parallel()
+	up := newSyncMultica(t, wsA)
+	h, sock := syncedWakePod(t, up, wsA)
+
+	if _, err := h.pool.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	up.setListStatus(http.StatusInternalServerError)
+	_, _ = h.pool.Sync(context.Background())
+	up.setListStatus(0)
+	up.setWorkspaces()
+	_, _ = h.pool.Sync(context.Background())
+	if got := sock.next(300 * time.Millisecond); got != "" {
+		t.Fatalf("nothing changed, yet got %q", got)
+	}
+}
+
+func TestSyncReachesEveryConnectedPod(t *testing.T) {
+	t.Parallel()
+	up := newSyncMultica(t, wsA)
+	h, first := syncedWakePod(t, up, wsA)
+	second := h.newPod("127.0.0.3", "pool-1")
+	second.nonce = "boot-2"
+	second.registerFor(wsA)
+	secondSock := second.openWake()
+
+	up.setWorkspaces(wsA, wsB)
+	if _, err := h.pool.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for name, s := range map[string]*wakeSocket{"first": first, "second": secondSock} {
+		if got := s.next(5 * time.Second); got != workspacesChangedEvent {
+			t.Fatalf("%s pod: want %s, got %q", name, workspacesChangedEvent, got)
+		}
+	}
+}
+
+func TestSyncWithoutSocketsDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	up := newSyncMultica(t, wsA)
+	h := newSyncHarness(t, up, withWake(time.Hour))
+	pod := h.newPod("127.0.0.2", "pool-0")
+	pod.nonce = "boot-1"
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = h.pool.Sync(context.Background()) // no pods at all
+		pod.registerFor(wsA)                     // a pod without a socket
+		up.setWorkspaces(wsA, wsB)
+		_, _ = h.pool.Sync(context.Background())
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Sync blocked without wake sockets")
+	}
+}
+
+func TestTaskHintsKeepTheirOwnFrameBesideWorkspaceChanges(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1, withWake(time.Hour))
+	h.upstream.enqueue("t1")
+	pod := h.newPod("127.0.0.2", "pool-0")
+	pod.start()
+	sock := pod.openWake()
+
+	h.dispatch()
+	if got := sock.next(5 * time.Second); got != wakeEvent {
+		t.Fatalf("a task hint must stay %s, got %q", wakeEvent, got)
+	}
+}

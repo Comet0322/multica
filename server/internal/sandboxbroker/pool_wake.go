@@ -45,10 +45,18 @@ var wakeFrame = func() []byte {
 	return frame
 }()
 
+// workspacesChangedFrame tells a daemon to re-read its workspace list at once.
+// Without it a pod that already has a runtime looks again only every 30 minutes,
+// so a workspace added to the account would stay without a runtime that long.
+var workspacesChangedFrame = func() []byte {
+	frame, _ := json.Marshal(protocol.Message{Type: protocol.EventDaemonWorkspacesChanged})
+	return frame
+}()
+
 // wakeConn is one pod's open socket.
 type wakeConn struct {
 	conn *websocket.Conn
-	send chan struct{}
+	send chan []byte
 }
 
 // serveWake upgrades a registered pod's connection and keeps it until either
@@ -70,7 +78,7 @@ func (p *Pool) serveWake(w http.ResponseWriter, r *http.Request, ip string) {
 	if err != nil {
 		return // Upgrade has already answered
 	}
-	wc := &wakeConn{conn: conn, send: make(chan struct{}, wakeSendBuffer)}
+	wc := &wakeConn{conn: conn, send: make(chan []byte, wakeSendBuffer)}
 	p.wakeMu.Lock()
 	if old := p.wakers[ip]; old != nil {
 		_ = old.conn.Close() // the pod reconnected; the old socket is stale
@@ -108,9 +116,9 @@ func (p *Pool) serveWake(w http.ResponseWriter, r *http.Request, ip string) {
 	defer ping.Stop()
 	for {
 		select {
-		case <-wc.send:
+		case frame := <-wc.send:
 			_ = conn.SetWriteDeadline(time.Now().Add(wakeWriteWait))
-			if err := conn.WriteMessage(websocket.TextMessage, wakeFrame); err != nil {
+			if err := conn.WriteMessage(websocket.TextMessage, frame); err != nil {
 				return
 			}
 		case <-ping.C:
@@ -133,8 +141,21 @@ func (p *Pool) wakePod(ip string) {
 		return
 	}
 	select {
-	case wc.send <- struct{}{}:
+	case wc.send <- wakeFrame:
 	default:
+	}
+}
+
+// notifyWorkspacesChanged sends every connected pod the hint to re-read its
+// workspace list. Like wakePod it never blocks.
+func (p *Pool) notifyWorkspacesChanged() {
+	p.wakeMu.Lock()
+	defer p.wakeMu.Unlock()
+	for _, wc := range p.wakers {
+		select {
+		case wc.send <- workspacesChangedFrame:
+		default:
+		}
 	}
 }
 

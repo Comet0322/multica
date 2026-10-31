@@ -57,7 +57,11 @@ func (p *Pool) Sync(ctx context.Context) (ReloadResult, error) {
 		p.log.Warn("the account belongs to no workspace; keeping the current ones")
 		return ReloadResult{}, nil
 	}
-	return p.Reload(ctx, list)
+	res, err := p.Reload(ctx, list)
+	if err == nil && (len(res.Added) > 0 || len(res.Removed) > 0) {
+		p.notifyWorkspacesChanged()
+	}
+	return res, err
 }
 
 // SyncLoop runs Sync every SyncInterval, and whenever now fires, until ctx
