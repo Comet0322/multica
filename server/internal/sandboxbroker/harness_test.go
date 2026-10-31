@@ -35,6 +35,14 @@ type fakeMultica struct {
 	calls []string
 	// registrations holds the bodies of /api/daemon/register calls received.
 	registrations []map[string]any
+	// queue holds tasks the fake hands out on claim; claims counts claim
+	// requests of either flavour that reached the server.
+	queue  []map[string]any
+	claims int
+	// taskCalls records forwarded task reports as "<task id> <action>"; failures
+	// maps a failed task id to the error text reported.
+	taskCalls []string
+	failures  map[string]string
 }
 
 func newFakeMultica(t *testing.T) *fakeMultica {
@@ -72,9 +80,90 @@ func (f *fakeMultica) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"runtimes": runtimes})
 	case "/api/daemon/heartbeat":
 		writeJSON(w, map[string]any{"status": "ok"})
+	case "/api/daemon/tasks/claim":
+		var body struct {
+			MaxTasks int `json:"max_tasks"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		tasks := []map[string]any{}
+		for len(tasks) < body.MaxTasks {
+			task := f.pop()
+			if task == nil {
+				break
+			}
+			tasks = append(tasks, task)
+		}
+		writeJSON(w, map[string]any{"tasks": tasks})
+	case "/api/daemon/runtimes/runtime-a/tasks/claim":
+		writeJSON(w, map[string]any{"task": f.pop()})
 	default:
-		http.NotFound(w, r)
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/daemon/tasks/"), "/")
+		if !strings.HasPrefix(r.URL.Path, "/api/daemon/tasks/") || len(parts) != 2 {
+			http.NotFound(w, r)
+			return
+		}
+		f.mu.Lock()
+		f.taskCalls = append(f.taskCalls, parts[0]+" "+parts[1])
+		if parts[1] == "fail" {
+			var body struct {
+				Error string `json:"error"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if f.failures == nil {
+				f.failures = map[string]string{}
+			}
+			f.failures[parts[0]] = body.Error
+		}
+		f.mu.Unlock()
+		writeJSON(w, map[string]any{"status": "ok"})
 	}
+}
+
+// enqueue adds a task the next claim will return.
+func (f *fakeMultica) enqueue(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queue = append(f.queue, map[string]any{
+		"id": id, "agent_id": "agent-1", "runtime_id": "runtime-a",
+		"workspace_id": harnessWorkspaceID, "issue_id": "issue-" + id,
+	})
+}
+
+func (f *fakeMultica) pop() map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.claims++
+	if len(f.queue) == 0 {
+		return nil
+	}
+	task := f.queue[0]
+	f.queue = f.queue[1:]
+	return task
+}
+
+func (f *fakeMultica) claimCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.claims
+}
+
+func (f *fakeMultica) queued() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.queue)
+}
+
+func (f *fakeMultica) taskCallsSeen() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.taskCalls...)
+}
+
+func (f *fakeMultica) failureOf(id string) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	msg, ok := f.failures[id]
+	return msg, ok
 }
 
 func (f *fakeMultica) registrationCount() int {
@@ -233,6 +322,78 @@ func (p *simPod) heartbeat() int {
 	p.h.t.Helper()
 	status, _ := p.call(http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": "runtime-a"})
 	return status
+}
+
+// claimBatch plays the daemon's machine-level claim and returns the task IDs
+// it was handed.
+func (p *simPod) claimBatch() []string {
+	p.h.t.Helper()
+	status, raw := p.call(http.MethodPost, "/api/daemon/tasks/claim", map[string]any{
+		"daemon_id": "pod-" + p.name, "runtime_ids": []string{"runtime-a"}, "max_tasks": 4,
+	})
+	if status != http.StatusOK {
+		p.h.t.Fatalf("batch claim: status %d: %s", status, raw)
+	}
+	var resp struct {
+		Tasks []struct {
+			ID string `json:"id"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		p.h.t.Fatal(err)
+	}
+	ids := []string{}
+	for _, task := range resp.Tasks {
+		ids = append(ids, task.ID)
+	}
+	return ids
+}
+
+// claimLegacy plays the single-runtime claim older servers need.
+func (p *simPod) claimLegacy() string {
+	p.h.t.Helper()
+	status, raw := p.call(http.MethodPost, "/api/daemon/runtimes/runtime-a/tasks/claim", map[string]any{})
+	if status != http.StatusOK {
+		p.h.t.Fatalf("legacy claim: status %d: %s", status, raw)
+	}
+	var resp struct {
+		Task *struct {
+			ID string `json:"id"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		p.h.t.Fatal(err)
+	}
+	if resp.Task == nil {
+		return ""
+	}
+	return resp.Task.ID
+}
+
+// report sends a task report (start, progress, complete, fail) and returns the
+// status code.
+func (p *simPod) report(taskID, action string) int {
+	p.h.t.Helper()
+	status, _ := p.call(http.MethodPost, "/api/daemon/tasks/"+taskID+"/"+action, map[string]any{"error": "boom"})
+	return status
+}
+
+// leases queries the manager's lease records.
+func (h *harness) leases() []sandboxbroker.LeaseInfo {
+	h.t.Helper()
+	resp, err := http.Get(h.admin.URL + "/v1/leases")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("leases status %d", resp.StatusCode)
+	}
+	var out []sandboxbroker.LeaseInfo
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		h.t.Fatal(err)
+	}
+	return out
 }
 
 // start runs the calls a daemon makes while starting up: renew its token, list
