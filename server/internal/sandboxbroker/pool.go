@@ -73,6 +73,10 @@ type PoolConfig struct {
 	// owned by the initiator. Nil leaves model access to the agent's own
 	// settings.
 	LiteLLM *LiteLLMConfig
+	// Git, when set, gives every task a git gateway token and serves the
+	// gateway's verification endpoints on AdminHandler. Nil leaves git to
+	// the image's own setup.
+	Git *GitGatewayConfig
 }
 
 // DefaultHeartbeatTimeout is three daemon heartbeat intervals (15s each).
@@ -111,6 +115,13 @@ func (c *PoolConfig) normalize() error {
 			return err
 		}
 		c.LiteLLM = &llm
+	}
+	if c.Git != nil {
+		git := *c.Git
+		if err := git.normalize(); err != nil {
+			return err
+		}
+		c.Git = &git
 	}
 	if c.ExpectedSize < 0 {
 		return fmt.Errorf("expected pool size must not be negative")
@@ -329,6 +340,7 @@ func (p *Pool) AdminHandler() http.Handler {
 	mux.HandleFunc("GET /v1/leases", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, p.Leases())
 	})
+	p.mountGit(mux)
 	return mux
 }
 
