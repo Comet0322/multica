@@ -91,6 +91,8 @@ func (f *fakeMultica) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"runtimes": runtimes})
 	case "/api/daemon/heartbeat":
 		writeJSON(w, map[string]any{"status": "ok"})
+	case "/api/daemon/runtimes/runtime-a/recover-orphans":
+		writeJSON(w, map[string]any{"orphaned": 0, "retried": 0})
 	case "/api/daemon/tasks/claim":
 		var body struct {
 			MaxTasks int `json:"max_tasks"`
