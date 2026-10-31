@@ -1,0 +1,66 @@
+# The pod pool. Pods are interchangeable and keep no state across a reset, so a
+# Deployment is enough; replicas (and the image tag, via kustomization.yaml)
+# are the only sizing knobs. The pool has no autoscaler.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-pool
+  labels:
+    app.kubernetes.io/name: sandbox-pool
+    app.kubernetes.io/part-of: multica-sandbox
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-pool
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sandbox-pool
+        multica.io/sandbox-role: pool-pod # the label the NetworkPolicies key on
+    spec:
+      hostNetwork: false # pod identity is the source IP; never share the node's
+      automountServiceAccountToken: false # no Kubernetes API access
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pod
+          image: multica-sandbox-pool # tag set in kustomization.yaml
+          imagePullPolicy: IfNotPresent
+          env:
+            # Reset poll interval; the manager address is baked into the image
+            # (POD_CONTROL_URL, HOME template config).
+            - name: POD_POLL_INTERVAL
+              value: 2s
+          securityContext:
+            # Same settings as deploy/sandbox/pool/verify.sh. PID 1 must be
+            # root to supervise and drops to uid/gid 1000 for the daemon.
+            runAsUser: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false # no-new-privileges
+            capabilities:
+              drop: ["ALL"]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETUID, SETGID]
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          volumeMounts:
+            - {name: work, mountPath: /work}
+            - {name: home, mountPath: /home/agent}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        # The only writable areas. Size limits keep one task from filling the node.
+        - name: work
+          emptyDir: {sizeLimit: 20Gi}
+        - name: home
+          emptyDir: {sizeLimit: 2Gi}
+        - name: tmp
+          emptyDir: {sizeLimit: 4Gi}
