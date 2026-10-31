@@ -43,6 +43,14 @@ type fakeGitLab struct {
 	archived bool
 	mrAccess string // merge_requests_access_level; default "enabled"
 	mrs      []map[string]any
+	// mrConflict, when set, is the body of a 409 that refuses merge requests.
+	mrConflict string
+}
+
+func (f *fakeGitLab) refuseMRsWith(body string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mrConflict = body
 }
 
 // recvReq is a receive-pack body as GitLab saw it. Only the head is kept so a
@@ -229,6 +237,10 @@ func (f *fakeGitLab) api(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{"archived": f.archived, "default_branch": "main", "merge_requests_access_level": access})
 	case path == "/projects/group%2Fproj/merge_requests" && r.Method == http.MethodPost:
+		if f.mrConflict != "" {
+			http.Error(w, f.mrConflict, http.StatusConflict)
+			return
+		}
 		var in map[string]any
 		json.NewDecoder(r.Body).Decode(&in)
 		in["iid"] = len(f.mrs) + 1

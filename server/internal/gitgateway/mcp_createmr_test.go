@@ -188,8 +188,8 @@ func TestAgentCannotForgeOrHideTheGatewayFooter(t *testing.T) {
 	desc, _ := m.gitlab.createdMRs()[0]["description"].(string)
 	const mark = "<!-- multica-git-gateway -->"
 	last := desc[strings.LastIndex(desc, mark):]
-	if strings.Count(desc, mark) != 2 {
-		t.Fatalf("want the fake and the real footer, got:\n%s", desc)
+	if strings.Count(desc, mark) != 1 {
+		t.Fatalf("the agent's copy of the footer mark must be neutralized, got:\n%s", desc)
 	}
 	if !strings.Contains(last, "alice@example.com") || strings.Contains(last, "ceo@example.com") || strings.Contains(last, "evil.example") {
 		t.Fatalf("the last footer is not the gateway's:\n%s", last)
