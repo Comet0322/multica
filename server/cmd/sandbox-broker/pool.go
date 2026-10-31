@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -18,16 +20,53 @@ import (
 
 // poolSettings is the pool manager's command-line environment. The manager is
 // selected by SANDBOX_WORKSPACES_FILE; without it the single-workspace broker
-// runs.
+// runs. Every variable is described in deploy/sandbox/POOL.md.
 type poolSettings struct {
 	workspacesFile string
 	podListen      string
 	adminListen    string
-	config         sandboxbroker.PoolConfig
+	// auditFile is where audit records are appended; "-" means standard output
+	// and empty disables auditing.
+	auditFile string
+	config    sandboxbroker.PoolConfig
+}
+
+// secretValue reads a secret from NAME or, when NAME_FILE is set, from that
+// file. Setting both is refused. Errors name the variable, never the value.
+func secretValue(getenv func(string) string, name string) (string, error) {
+	value, path := getenv(name), getenv(name+"_FILE")
+	if value != "" && path != "" {
+		return "", fmt.Errorf("set only one of %s and %s_FILE", name, name)
+	}
+	if path == "" {
+		return strings.TrimSpace(value), nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%s_FILE: cannot read %s", name, path)
+	}
+	return strings.TrimSpace(string(raw)), nil
+}
+
+// envPairs parses "NAME=VALUE,NAME=VALUE".
+func envPairs(raw string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, item := range strings.Split(raw, ",") {
+		if item = strings.TrimSpace(item); item == "" {
+			continue
+		}
+		name, value, ok := strings.Cut(item, "=")
+		if name = strings.TrimSpace(name); !ok || name == "" {
+			return nil, fmt.Errorf("%q is not NAME=VALUE", item)
+		}
+		out[name] = strings.TrimSpace(value)
+	}
+	return out, nil
 }
 
 func loadPool(getenv func(string) string) (poolSettings, error) {
 	var errs []string
+	fail := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
 	duration := func(name string) time.Duration {
 		raw := getenv(name)
 		if raw == "" {
@@ -35,36 +74,126 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		}
 		d, err := time.ParseDuration(raw)
 		if err != nil {
-			errs = append(errs, name+" must be a duration such as 10m")
+			fail("%s must be a duration such as 10m", name)
+		} else if d < 0 {
+			fail("%s must not be negative", name)
 		}
 		return d
 	}
-	size := 0
-	if raw := getenv("SANDBOX_POOL_SIZE"); raw != "" {
+	whole := func(name string) int {
+		raw := getenv(name)
+		if raw == "" {
+			return 0
+		}
 		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			fail("%s must be a whole number, 0 or more", name)
+			return 0
+		}
+		return n
+	}
+	decimal := func(name string) float64 {
+		raw := getenv(name)
+		if raw == "" {
+			return 0
+		}
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil || n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
+			fail("%s must be a number, 0 or more", name)
+			return 0
+		}
+		return n
+	}
+	list := func(name string) []string {
+		var out []string
+		for _, item := range strings.Split(getenv(name), ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				out = append(out, item)
+			}
+		}
+		return out
+	}
+	envMap := func(name string) map[string]string {
+		m, err := envPairs(getenv(name))
 		if err != nil {
-			errs = append(errs, "SANDBOX_POOL_SIZE must be a whole number")
+			fail("%s: %v", name, err)
 		}
-		size = n
-	}
-	var providers []string
-	for _, item := range strings.Split(getenv("SANDBOX_PROVIDERS"), ",") {
-		if item = strings.TrimSpace(item); item != "" {
-			providers = append(providers, item)
+		if len(m) == 0 {
+			return nil
 		}
+		return m
 	}
+	secret := func(name string) string {
+		v, err := secretValue(getenv, name)
+		if err != nil {
+			fail("%s", err)
+		}
+		return v
+	}
+
 	s := poolSettings{
 		workspacesFile: getenv("SANDBOX_WORKSPACES_FILE"),
 		podListen:      getenv("SANDBOX_BROKER_LISTEN"),
 		adminListen:    getenv("SANDBOX_POOL_ADMIN_LISTEN"),
+		auditFile:      getenv("SANDBOX_AUDIT_FILE"),
 		config: sandboxbroker.PoolConfig{
-			MulticaURL:   getenv("MULTICA_SERVER_URL"),
-			Name:         getenv("SANDBOX_BROKER_NAME"),
-			ExpectedSize: size,
-			Providers:    providers,
-			DrainTimeout: duration("SANDBOX_POOL_DRAIN_TIMEOUT"),
+			MulticaURL:       getenv("MULTICA_SERVER_URL"),
+			Name:             getenv("SANDBOX_BROKER_NAME"),
+			ExpectedSize:     whole("SANDBOX_POOL_SIZE"),
+			Providers:        list("SANDBOX_PROVIDERS"),
+			DrainTimeout:     duration("SANDBOX_POOL_DRAIN_TIMEOUT"),
+			HeartbeatTimeout: duration("SANDBOX_POOL_HEARTBEAT_TIMEOUT"),
+			ResetTimeout:     duration("SANDBOX_POOL_RESET_TIMEOUT"),
+			Placement:        sandboxbroker.Placement(getenv("SANDBOX_PLACEMENT")),
+			PodConcurrency:   whole("SANDBOX_POD_CONCURRENCY"),
+			PlacementWait:    duration("SANDBOX_PLACEMENT_WAIT"),
+			PodIdleTimeout:   duration("SANDBOX_POD_IDLE_TIMEOUT"),
+			PodMaxLifetime:   duration("SANDBOX_POD_MAX_LIFETIME"),
+			PodDrainGrace:    duration("SANDBOX_POD_DRAIN_GRACE"),
 		},
 	}
+	switch s.config.Placement {
+	case "", sandboxbroker.PlacementTask, sandboxbroker.PlacementIssue, sandboxbroker.PlacementChat:
+	default:
+		fail("SANDBOX_PLACEMENT must be task, issue or chat")
+	}
+
+	// LiteLLM is on when SANDBOX_LITELLM_URL is set; its other variables
+	// without it are a mistake, not something to ignore silently.
+	llmEnv := envMap("SANDBOX_LITELLM_ENV")
+	llm := &sandboxbroker.LiteLLMConfig{
+		URL:         getenv("SANDBOX_LITELLM_URL"),
+		PodURL:      getenv("SANDBOX_LITELLM_POD_URL"),
+		MasterKey:   secret("SANDBOX_LITELLM_MASTER_KEY"),
+		Models:      list("SANDBOX_LITELLM_MODELS"),
+		MaxBudget:   decimal("SANDBOX_LITELLM_MAX_BUDGET"),
+		RPMLimit:    whole("SANDBOX_LITELLM_RPM_LIMIT"),
+		TaskTimeout: duration("SANDBOX_LITELLM_TASK_TIMEOUT"),
+		Margin:      duration("SANDBOX_LITELLM_MARGIN"),
+		Env:         llmEnv,
+	}
+	if llm.URL != "" {
+		if llm.MasterKey == "" {
+			fail("SANDBOX_LITELLM_MASTER_KEY or SANDBOX_LITELLM_MASTER_KEY_FILE is required with SANDBOX_LITELLM_URL")
+		}
+		if len(llm.Models) == 0 {
+			fail("SANDBOX_LITELLM_MODELS must list at least one model")
+		}
+		s.config.LiteLLM = llm
+	} else if llm.PodURL != "" || llm.MasterKey != "" || len(llm.Models) > 0 || llm.MaxBudget != 0 || llm.RPMLimit != 0 ||
+		llm.TaskTimeout != 0 || llm.Margin != 0 || len(llmEnv) > 0 || getenv("SANDBOX_LITELLM_MASTER_KEY_FILE") != "" {
+		fail("SANDBOX_LITELLM_* settings need SANDBOX_LITELLM_URL")
+	}
+
+	// The git gateway is on when SANDBOX_GIT_GATEWAY_URL, the address pods use
+	// for it, is set.
+	gitEnv := envMap("SANDBOX_GIT_GATEWAY_ENV")
+	if gitURL := getenv("SANDBOX_GIT_GATEWAY_URL"); gitURL != "" {
+		s.config.Git = &sandboxbroker.GitGatewayConfig{URL: gitURL, Env: gitEnv}
+	} else if len(gitEnv) > 0 {
+		fail("SANDBOX_GIT_GATEWAY_ENV needs SANDBOX_GIT_GATEWAY_URL")
+	}
+
 	if s.podListen == "" {
 		s.podListen = ":8790"
 	}
@@ -86,9 +215,19 @@ func runPool(ctx context.Context, log *slog.Logger, s poolSettings) error {
 		return err
 	}
 	s.config.Workspaces = workspaces
+	if s.auditFile != "" {
+		w, closeAudit, err := openAudit(s.auditFile)
+		if err != nil {
+			return err
+		}
+		defer closeAudit()
+		s.config.AuditLog = w
+	}
+	// Range and URL checks of the pool itself run here, before anything
+	// listens.
 	pool, err := sandboxbroker.NewPool(s.config, log)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid pool configuration: %w", err)
 	}
 	podLn, err := net.Listen("tcp", s.podListen)
 	if err != nil {
@@ -107,8 +246,26 @@ func runPool(ctx context.Context, log *slog.Logger, s poolSettings) error {
 	return servePool(ctx, log, pool, s.workspacesFile, podLn, adminLn, hup)
 }
 
+// openAudit opens the audit log for appending. "-" is standard output. The
+// file is private to the manager's user: it names people and tasks.
+func openAudit(path string) (io.Writer, func(), error) {
+	if path == "-" {
+		return os.Stdout, func() {}, nil
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("SANDBOX_AUDIT_FILE: %w", err)
+	}
+	return f, func() { _ = f.Close() }, nil
+}
+
 // servePool serves the pod and admin APIs and applies the workspace file each
 // time reload fires. A reload that fails is logged and changes nothing.
+//
+// The admin API also carries the git gateway's verification endpoints when
+// the pool has a git gateway configured (pool.AdminHandler mounts them), so
+// the separate git-gateway process points its GIT_GATEWAY_VERIFY_URL and
+// GIT_GATEWAY_POD_VERIFY_URL at this listener.
 func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, path string, podLn, adminLn net.Listener, reload <-chan os.Signal) error {
 	servers := []*http.Server{
 		{Handler: pool.PodHandler(), ReadHeaderTimeout: 10 * time.Second},
