@@ -276,6 +276,8 @@ type simPod struct {
 	// the daemon claims for itself. Both are omitted when empty.
 	nonce      string
 	reportedIP string
+	// seen is set by the first start; see start.
+	seen bool
 }
 
 func (h *harness) newPod(ip, name string) *simPod {
@@ -413,7 +415,40 @@ func (h *harness) leases() []sandboxbroker.LeaseInfo {
 
 // start runs the calls a daemon makes while starting up: renew its token, list
 // workspaces, then register its runtimes. It returns the register response.
+//
+// The first start of a pod plays the whole arrival of a pod the manager has
+// never seen: the manager resets such a pod before lending it, so the
+// supervisor takes the reset command and reports it done once the new daemon
+// is up, and the daemon registers again. The pod is idle when start returns.
 func (p *simPod) start() map[string]any {
+	p.h.t.Helper()
+	resp := p.startRaw()
+	if p.settleFirstSeen() {
+		resp = p.startRaw()
+	}
+	return resp
+}
+
+// settleFirstSeen plays the supervisor for the reset the manager orders for a
+// pod it has never seen. It reports whether the daemon has to register again.
+func (p *simPod) settleFirstSeen() bool {
+	p.h.t.Helper()
+	if p.seen {
+		return false
+	}
+	p.seen = true
+	cmd := p.pollControl()
+	if cmd == nil || cmd.Command != "reset" {
+		return false
+	}
+	if code := p.reportControl(cmd.ID, "done"); code != http.StatusOK {
+		p.h.t.Fatalf("report first-seen reset done: status %d", code)
+	}
+	return true
+}
+
+// startRaw is one daemon start with no supervisor involved.
+func (p *simPod) startRaw() map[string]any {
 	p.h.t.Helper()
 	if status, _ := p.call(http.MethodPost, "/api/tokens/current/renew", map[string]any{}); status != http.StatusOK {
 		p.h.t.Fatalf("renew token: status %d", status)

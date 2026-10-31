@@ -177,6 +177,15 @@ func (p *simPod) registerFor(workspaceID string) []string {
 // startAll plays a daemon that watches every workspace the manager lists.
 func (p *simPod) startAll() []string {
 	p.h.t.Helper()
+	ids := p.startAllRaw()
+	if p.settleFirstSeen() {
+		ids = p.startAllRaw()
+	}
+	return ids
+}
+
+func (p *simPod) startAllRaw() []string {
+	p.h.t.Helper()
 	status, raw := p.call(http.MethodGet, "/api/workspaces", nil)
 	if status != http.StatusOK {
 		p.h.t.Fatalf("list workspaces: status %d", status)
@@ -447,6 +456,9 @@ func TestInventoryLeasesAndAuditCarryTheWorkspace(t *testing.T) {
 
 	pod.report("tb", "complete")
 	for _, rec := range h.auditRecords() {
+		if rec.TaskID == "" {
+			continue // a pod-level reset record, tied to no workspace
+		}
 		if rec.WorkspaceID != wsB {
 			t.Fatalf("audit record without workspace B: %+v", rec)
 		}

@@ -44,7 +44,12 @@ func TestTaskWithoutInitiatorIsRejectedAndNeverLeased(t *testing.T) {
 	if len(h.leases()) != 0 {
 		t.Fatalf("a rejected task must not create a lease: %+v", h.leases())
 	}
-	recs := h.auditRecords()
+	var recs []sandboxbroker.AuditRecord
+	for _, r := range h.auditRecords() {
+		if r.Action != sandboxbroker.AuditReset {
+			recs = append(recs, r)
+		}
+	}
 	if len(recs) != 1 {
 		t.Fatalf("want 1 audit record, got %+v", recs)
 	}
@@ -83,8 +88,8 @@ func TestAuditTracesLeaseAndReleaseByTaskID(t *testing.T) {
 		}
 		seq = append(seq, r.Action)
 	}
-	if strings.Join(seq, ",") != "lease,release" {
-		t.Fatalf("want lease then release for t1, got %v", seq)
+	if strings.Join(seq, ",") != "lease,release,reset" {
+		t.Fatalf("want lease, release, then the reset it causes for t1, got %v", seq)
 	}
 }
 
