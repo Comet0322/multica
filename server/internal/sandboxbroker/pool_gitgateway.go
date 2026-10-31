@@ -78,6 +78,17 @@ func (p *Pool) mountGit(mux *http.ServeMux) {
 	mux.Handle("POST /v1/git/verify-pod", gitgateway.PodVerifyHandler(p.gitIdentitiesForIP))
 }
 
+// GatewayHandler serves only the git gateway's verification endpoints, for a
+// listener of their own: the gateway is not a pod and must not get the rest of
+// the admin API, and pods must not get either. It is empty (every path 404s)
+// when the pool has no git gateway. Expose it to the gateway only; the
+// endpoints are unauthenticated.
+func (p *Pool) GatewayHandler() http.Handler {
+	mux := http.NewServeMux()
+	p.mountGit(mux)
+	return mux
+}
+
 // gitIdentitiesForIP lists the tasks leased to the live pod at ip. A pod that
 // is idle, resetting, lost or unknown holds none, so its daemon reads nothing.
 func (p *Pool) gitIdentitiesForIP(ip string) []gitgateway.Identity {

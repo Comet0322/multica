@@ -26,6 +26,9 @@ type poolSettings struct {
 	workspacesFile string
 	podListen      string
 	adminListen    string
+	// gatewayListen, when set, is a listener serving only the git gateway's
+	// verification endpoints.
+	gatewayListen string
 	// auditFile is where audit records are appended; "-" means standard output
 	// and empty disables auditing.
 	auditFile string
@@ -136,6 +139,7 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		workspacesFile: getenv("SANDBOX_WORKSPACES_FILE"),
 		podListen:      getenv("SANDBOX_BROKER_LISTEN"),
 		adminListen:    getenv("SANDBOX_POOL_ADMIN_LISTEN"),
+		gatewayListen:  getenv("SANDBOX_POOL_GATEWAY_LISTEN"),
 		auditFile:      getenv("SANDBOX_AUDIT_FILE"),
 		config: sandboxbroker.PoolConfig{
 			MulticaURL:       getenv("MULTICA_SERVER_URL"),
@@ -205,6 +209,9 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		fail("SANDBOX_GIT_GATEWAY_ENV and SANDBOX_GIT_GATEWAY_MCP_URL need SANDBOX_GIT_GATEWAY_URL")
 	}
 
+	if s.gatewayListen != "" && s.config.Git == nil {
+		fail("SANDBOX_POOL_GATEWAY_LISTEN needs SANDBOX_GIT_GATEWAY_URL")
+	}
 	if s.podListen == "" {
 		s.podListen = ":8790"
 	}
@@ -250,11 +257,18 @@ func runPool(ctx context.Context, log *slog.Logger, s poolSettings) error {
 		return fmt.Errorf("listen for administrators: %w", err)
 	}
 	defer adminLn.Close()
+	var gatewayLn net.Listener
+	if s.gatewayListen != "" {
+		if gatewayLn, err = net.Listen("tcp", s.gatewayListen); err != nil {
+			return fmt.Errorf("listen for the git gateway: %w", err)
+		}
+		defer gatewayLn.Close()
+	}
 
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
-	return servePool(ctx, log, pool, s.workspacesFile, podLn, adminLn, hup)
+	return servePool(ctx, log, pool, s.workspacesFile, podLn, adminLn, gatewayLn, hup)
 }
 
 // openAudit opens the audit log for appending. "-" is standard output. The
@@ -274,16 +288,23 @@ func openAudit(path string) (io.Writer, func(), error) {
 // time reload fires. A reload that fails is logged and changes nothing.
 //
 // The admin API also carries the git gateway's verification endpoints when
-// the pool has a git gateway configured (pool.AdminHandler mounts them), so
-// the separate git-gateway process points its GIT_GATEWAY_VERIFY_URL and
-// GIT_GATEWAY_POD_VERIFY_URL at this listener.
-func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, path string, podLn, adminLn net.Listener, reload <-chan os.Signal) error {
+// the pool has a git gateway configured (pool.AdminHandler mounts them). That
+// listener is loopback-only by default, so a gateway in another pod uses
+// gatewayLn instead: a listener (nil for none) that serves just those two
+// endpoints (pool.GatewayHandler), which the network policy can open to the
+// gateway alone.
+func servePool(ctx context.Context, log *slog.Logger, pool *sandboxbroker.Pool, path string, podLn, adminLn, gatewayLn net.Listener, reload <-chan os.Signal) error {
 	servers := []*http.Server{
 		{Handler: pool.PodHandler(), ReadHeaderTimeout: 10 * time.Second},
 		{Handler: pool.AdminHandler(), ReadHeaderTimeout: 10 * time.Second},
 	}
-	serveErr := make(chan error, 2)
-	for i, ln := range []net.Listener{podLn, adminLn} {
+	listeners := []net.Listener{podLn, adminLn}
+	if gatewayLn != nil {
+		servers = append(servers, &http.Server{Handler: pool.GatewayHandler(), ReadHeaderTimeout: 10 * time.Second})
+		listeners = append(listeners, gatewayLn)
+	}
+	serveErr := make(chan error, len(servers))
+	for i, ln := range listeners {
 		go func() { serveErr <- servers[i].Serve(ln) }()
 	}
 	defer func() {
