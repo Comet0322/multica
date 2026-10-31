@@ -101,7 +101,15 @@ func (g *Gateway) servePush(w http.ResponseWriter, r *http.Request, id Identity,
 	if req != nil {
 		out.Body = io.NopCloser(io.MultiReader(bytes.NewReader(req.head), req.rest))
 	}
-	g.proxy.ServeHTTP(w, out)
+	if req == nil {
+		g.proxy.ServeHTTP(w, out)
+		return
+	}
+	rr := &reportRecorder{ResponseWriter: w}
+	g.proxy.ServeHTTP(rr, out)
+	if rr.status >= 200 && rr.status < 300 {
+		g.recordPush(id.TaskID, rt.project, req.cmds, rr.buf.Bytes())
+	}
 }
 
 // branchNamespace is the ref prefix the task may write to.
