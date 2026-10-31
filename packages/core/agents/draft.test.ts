@@ -365,3 +365,17 @@ it("drops settings a Qoder runtime cannot run from a draft started elsewhere", (
   expect(local).not.toHaveProperty("runtime_config");
   expect(local.skill_ids).toEqual(["skill-1"]);
 });
+
+it("drops conversation starters for Claude Managed Agents, which has no chat", () => {
+  const current: AgentDraft = {
+    ...draft(),
+    claudeAgentId: "agent_claude",
+    conversationStarters: [{ label: "Plan", prompt: "Plan it" }],
+  };
+  const request = buildCreateAgentRequest({
+    draft: current,
+    runtimeId: "rt-claude",
+    runtimeProvider: "claude_managed",
+  });
+  expect(request.conversation_starters).toBeUndefined();
+});
