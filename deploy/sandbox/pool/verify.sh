@@ -90,6 +90,10 @@ dx sh -c 'cat /home/agent/.multica/config.json' | grep -q '"token":"pool-placeho
 dx cat /home/agent/.multica/daemon.log | grep -F 'gc: disabled' >/dev/null && pass "daemon logs gc: disabled" || fail "daemon logs gc: disabled"
 
 echo "== system tooling"
+# Claude Code must not try its telemetry or update endpoints (egress denies
+# them); the daemon hands the pod's environment on to the agent CLI.
+[ "$(dx printenv CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)" = 1 ] && pass "image disables Claude Code nonessential traffic" || fail "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+[ "$(dx printenv DISABLE_AUTOUPDATER)" = 1 ] && pass "image disables Claude Code auto-update" || fail "DISABLE_AUTOUPDATER"
 git_rules="$(dx git config --system --get-regexp 'url\..*\.insteadof')"
 echo "$git_rules" | grep -q 'git-gateway' && pass "system gitconfig has insteadOf to the gateway: $git_rules" || fail "insteadOf"
 # An agent push needs the task token: git asks the credential helper, which
