@@ -59,6 +59,9 @@ type PoolConfig struct {
 	// ResetTimeout is how long a pod may stay in the resetting state before it
 	// is listed as lost. Zero means DefaultResetTimeout.
 	ResetTimeout time.Duration
+	// LostRetention is how long a lost pod stays in the inventory before it is
+	// pruned. Zero means DefaultLostRetention.
+	LostRetention time.Duration
 	// AuditLog receives the audit records as JSON Lines. Nil disables auditing.
 	AuditLog io.Writer
 	// Placement decides which tasks share a pod: PlacementTask (the default,
@@ -104,7 +107,16 @@ const DefaultHeartbeatTimeout = 45 * time.Second
 // writable areas and restarting the daemon until it registers again.
 const DefaultResetTimeout = 2 * time.Minute
 
+// DefaultLostRetention is how long a lost pod stays listed before it is pruned.
+const DefaultLostRetention = 10 * time.Minute
+
 func (c *PoolConfig) normalize() error {
+	if c.LostRetention < 0 {
+		return fmt.Errorf("lost retention must not be negative")
+	}
+	if c.LostRetention == 0 {
+		c.LostRetention = DefaultLostRetention
+	}
 	if c.HeartbeatTimeout < 0 {
 		return fmt.Errorf("heartbeat timeout must not be negative")
 	}
@@ -195,6 +207,8 @@ type Pool struct {
 	rotor int
 	// pods is keyed by source IP.
 	pods map[string]*pod
+	// prunedTotal counts lost pods dropped after the retention period.
+	prunedTotal int
 	// identity headers are taken from the first pod and replayed to every
 	// other one; pods are homogeneous. Each workspace keeps its own runtime
 	// registration.
@@ -221,6 +235,8 @@ type pod struct {
 	BootNonce    string
 	RegisteredAt time.Time
 	LastSeen     time.Time
+	// lostAt is when the pod was listed lost; the retention runs from it.
+	lostAt time.Time
 	// workspaces are the workspaces the pod's daemon has registered for in its
 	// current boot. A pod is lent only to workspaces in this set, so after a
 	// reset it serves a workspace only once it registered for it again.
@@ -272,6 +288,7 @@ type pod struct {
 // only the reset timeout applies to it. Callers hold p.mu.
 func (p *Pool) markLostLocked() {
 	now := p.now()
+	p.pruneLostLocked()
 	for _, pd := range p.pods {
 		if pd.State == PodResetting {
 			if now.Sub(pd.resetStarted) > p.cfg.ResetTimeout {
@@ -289,6 +306,21 @@ func (p *Pool) markLostLocked() {
 	p.expireSharedLocked()
 }
 
+// pruneLostLocked drops pods that have been lost for the retention period. A
+// lost pod holds no leases (they ended when it was lost), so nothing else
+// refers to it; if its IP registers again it is a pod seen for the first time.
+// Callers hold p.mu.
+func (p *Pool) pruneLostLocked() {
+	now := p.now()
+	for ip, pd := range p.pods {
+		if pd.State == PodLost && now.Sub(pd.lostAt) > p.cfg.LostRetention {
+			p.log.Info("lost pod pruned", "pod_ip", ip, "name", pd.Name, "lost_at", pd.lostAt)
+			delete(p.pods, ip)
+			p.prunedTotal++
+		}
+	}
+}
+
 // loseLocked marks the pod lost and ends every lease it holds: the pod is out
 // of the pool, so the tasks on it are over. Each lease's LiteLLM key and git
 // token are revoked and the task is failed upstream. A pod that held work
@@ -296,6 +328,7 @@ func (p *Pool) markLostLocked() {
 // Callers hold p.mu.
 func (p *Pool) loseLocked(pd *pod) {
 	pd.State = PodLost
+	pd.lostAt = p.now()
 	held := make([]*lease, 0, len(pd.leases))
 	for _, l := range pd.leases {
 		held = append(held, l)
@@ -330,6 +363,9 @@ type Inventory struct {
 	Leased       int `json:"leased"`
 	Resetting    int `json:"resetting"`
 	Lost         int `json:"lost"`
+	// PrunedTotal counts lost pods dropped from the inventory since the manager
+	// started.
+	PrunedTotal int `json:"pruned_total"`
 	// Workspaces lists each served workspace with its lease count and cap.
 	Workspaces []WorkspaceInfo `json:"workspaces"`
 	// Draining lists workspaces removed by a reload that still hold leases;
@@ -371,7 +407,7 @@ func (p *Pool) Inventory() Inventory {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.markLostLocked()
-	inv := Inventory{ExpectedSize: p.cfg.ExpectedSize, Pods: []PodInfo{}, Workspaces: []WorkspaceInfo{}}
+	inv := Inventory{ExpectedSize: p.cfg.ExpectedSize, PrunedTotal: p.prunedTotal, Pods: []PodInfo{}, Workspaces: []WorkspaceInfo{}}
 	for _, ws := range p.wsOrder {
 		inv.Workspaces = append(inv.Workspaces, WorkspaceInfo{
 			WorkspaceID: ws.cfg.WorkspaceID, Name: ws.cfg.RuntimeName,
@@ -551,6 +587,7 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 	now := p.now()
 	var voided []*lease
 	p.mu.Lock()
+	p.pruneLostLocked()
 	next := &pod{IP: ip, Name: req.DeviceName, State: PodIdle, BootNonce: req.BootNonce, RegisteredAt: now, LastSeen: now,
 		workspaces: map[string]struct{}{ws.cfg.WorkspaceID: {}}}
 	old := p.pods[ip]

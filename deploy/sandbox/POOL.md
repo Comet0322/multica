@@ -24,6 +24,7 @@ errors. Prefer the `_FILE` form with a mounted secret.
 | `SANDBOX_POOL_DRAIN_TIMEOUT` | `10m` | How long a removed workspace keeps its leases. |
 | `SANDBOX_POOL_HEARTBEAT_TIMEOUT` | `45s` | Silence after which a pod is listed lost. |
 | `SANDBOX_POOL_RESET_TIMEOUT` | `2m` | Longest a pod may stay resetting. |
+| `SANDBOX_POOL_LOST_RETENTION` | `10m` | How long a lost pod stays in the inventory before it is pruned (counted in `pruned_total`); a pod registering from a pruned IP is first-seen and reset. |
 | `SANDBOX_POOL_GATEWAY_LISTEN` | off | Listener that serves only the git gateway's two verify endpoints (needs `SANDBOX_GIT_GATEWAY_URL`). |
 
 ## How a pod is reset and rejoins

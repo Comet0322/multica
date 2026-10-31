@@ -151,6 +151,7 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 			DrainTimeout:     duration("SANDBOX_POOL_DRAIN_TIMEOUT"),
 			HeartbeatTimeout: duration("SANDBOX_POOL_HEARTBEAT_TIMEOUT"),
 			ResetTimeout:     duration("SANDBOX_POOL_RESET_TIMEOUT"),
+			LostRetention:    duration("SANDBOX_POOL_LOST_RETENTION"),
 			Placement:        sandboxbroker.Placement(getenv("SANDBOX_PLACEMENT")),
 			PodConcurrency:   whole("SANDBOX_POD_CONCURRENCY"),
 			PlacementWait:    duration("SANDBOX_PLACEMENT_WAIT"),

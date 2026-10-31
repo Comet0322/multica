@@ -96,5 +96,7 @@ Set `NS=multica-sandbox`, `POD=$(kubectl -n $NS get pod -l multica.io/sandbox-ro
   must stay unreachable, a package mirror) and an overlay used for a local
   minikube run with Calico. Fill in the stand-in pod IPs as the `LITELLM_IP`
   and `MIRROR_IP` markers before applying it.
-- Lost pods stay in the inventory as `lost` (they are not pruned), so after pod
-  replacement idle + leased + resetting + lost can exceed the declared size.
+- Lost pods stay in the inventory as `lost` for `SANDBOX_POOL_LOST_RETENTION`
+  (default 10m) and are then pruned (`pruned_total` in the inventory counts
+  them), so after pod replacement the count can exceed the declared size only
+  until the retention runs out.
