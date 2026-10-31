@@ -69,6 +69,16 @@ type PoolConfig struct {
 	// PlacementWait bounds how long a claimed task waits in the manager for a
 	// pod that can take it. Zero means DefaultPlacementWait.
 	PlacementWait time.Duration
+	// PodIdleTimeout releases a shared pod that has run no task for this long.
+	// Zero means DefaultPodIdleTimeout. Shared (issue) placement only.
+	PodIdleTimeout time.Duration
+	// PodMaxLifetime stops a shared pod from taking new tasks this long after
+	// it was bound. Zero means DefaultPodMaxLifetime.
+	PodMaxLifetime time.Duration
+	// PodDrainGrace is how long the tasks still running at that point may
+	// finish before the pod is released and they are failed. Zero means
+	// DefaultPodDrainGrace.
+	PodDrainGrace time.Duration
 	// LiteLLM, when set, gives every task its own short-lived LiteLLM key
 	// owned by the initiator. Nil leaves model access to the agent's own
 	// settings.
@@ -186,7 +196,9 @@ type Pool struct {
 	history []*lease
 	// waiting holds claimed tasks no pod could take yet.
 	waiting []*parkedTask
-	proxy   *httputil.ReverseProxy
+	// forced holds tasks cut off by a pod's expiry, not yet failed upstream.
+	forced []forcedTask
+	proxy  *httputil.ReverseProxy
 	// auditLog is nil when auditing is off.
 	auditLog *auditLog
 	// llm is nil when tasks get no LiteLLM key.
@@ -214,6 +226,14 @@ type pod struct {
 	boundKey string
 	queue    []*parkedTask
 	claiming bool
+	// boundAt is when the pod was bound to its key and idleSince when its last
+	// task ended (zero until then); a shared pod is kept bound for the next
+	// task of the key until the idle timeout. draining is set once the pod
+	// passed its maximum lifetime: it takes no new task and is released when
+	// its running ones end or the grace runs out.
+	boundAt   time.Time
+	idleSince time.Time
+	draining  bool
 	// dirty is set when a lease ends and cleared only by a registration with a
 	// new boot nonce: until then the pod may still hold the previous task's
 	// files and processes, so it is never lent out. resetID names the reset
@@ -244,6 +264,7 @@ func (p *Pool) markLostLocked() {
 			p.log.Warn("pod lost: heartbeat timed out", "pod_ip", pd.IP, "name", pd.Name, "last_seen", pd.LastSeen)
 		}
 	}
+	p.expireSharedLocked()
 }
 
 // PodInfo is one pod's entry in the inventory.
@@ -484,10 +505,11 @@ func (p *Pool) serveRegister(w http.ResponseWriter, r *http.Request, ip string) 
 			}
 			// Tasks queued for the old instance never started; place them again.
 			p.waiting = append(p.waiting, old.queue...)
-		case len(old.leases) > 0 || len(old.queue) > 0:
+		case len(old.leases) > 0 || len(old.queue) > 0 || p.idleLocked(old):
 			// The same instance registering again still runs its tasks.
 			next.State, next.leases = PodLeased, old.leases
 			next.boundKey, next.queue = old.boundKey, old.queue
+			next.boundAt, next.idleSince, next.draining = old.boundAt, old.idleSince, old.draining
 			for _, l := range next.leases {
 				l.pod = next
 			}
@@ -603,6 +625,7 @@ func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string)
 		pd.LastSeen = p.now()
 	}
 	p.mu.Unlock()
+	p.reportForced(r.Context())
 	if pd == nil {
 		http.Error(w, "pod not registered", http.StatusNotFound)
 		return

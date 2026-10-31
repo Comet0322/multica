@@ -155,7 +155,7 @@ func TestTaskWaitingPastTheLimitIsFailed(t *testing.T) {
 
 func TestSharedPodResetsOnlyAfterItsLastTaskEnds(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, 1, sharedPods(3, 0))
+	h := newHarness(t, 1, sharedPods(3, 0), lifetimes(150*time.Millisecond, time.Hour, time.Hour))
 	h.upstream.enqueueIn("t1", "issue-1", "")
 	h.upstream.enqueueIn("t2", "issue-1", "")
 	a := h.newPod("127.0.0.2", "pool-0")
@@ -172,8 +172,13 @@ func TestSharedPodResetsOnlyAfterItsLastTaskEnds(t *testing.T) {
 	if status := a.report("t2", "complete"); status != 200 {
 		t.Fatalf("complete t2: %d", status)
 	}
+	// The shared pod stays bound for a follow-up task until it idles out.
+	if inv := h.inventory(); inv.Leased != 1 || inv.Resetting != 0 {
+		t.Fatalf("pod should stay bound right after its last task: %+v", inv)
+	}
+	time.Sleep(300 * time.Millisecond)
 	if inv := h.inventory(); inv.Resetting != 1 {
-		t.Fatalf("pod should reset after its last task: %+v", inv)
+		t.Fatalf("pod should reset after its last task and the idle timeout: %+v", inv)
 	}
 }
 

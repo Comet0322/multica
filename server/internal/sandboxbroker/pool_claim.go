@@ -104,9 +104,15 @@ func (p *Pool) endLeaseLocked(l *lease, reason string) {
 	if pd := l.pod; pd != nil && pd.leases[l.TaskID] == l {
 		delete(pd.leases, l.TaskID)
 		if pd.State == PodLeased && p.pods[pd.IP] == pd && len(pd.leases) == 0 && len(pd.queue) == 0 {
+			if p.sharedLocked(pd) && !pd.draining {
+				// A shared pod stays bound to its key for the next task until
+				// it idles out or reaches its lifetime; tasks of one binding
+				// never reset the pod between them.
+				pd.idleSince = p.now()
+				return
+			}
 			// The pod rejoins the pool only after the supervisor has cleaned
-			// it and the daemon registered again. A shared pod gets there once
-			// its last task has ended.
+			// it and the daemon registered again.
 			p.startResetLocked(pd)
 		}
 	}
@@ -231,6 +237,7 @@ func (p *Pool) claimFor(w http.ResponseWriter, r *http.Request, ip string, wante
 		pd.claiming = true
 	}
 	p.mu.Unlock()
+	p.reportForced(r.Context())
 	p.failParked(r.Context(), expired)
 	if queued != nil {
 		return queued, true

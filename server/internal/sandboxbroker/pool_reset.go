@@ -17,6 +17,7 @@ const controlPath = "/pod/control"
 // its supervisor. Callers hold p.mu.
 func (p *Pool) startResetLocked(pd *pod) {
 	pd.State = PodResetting
+	pd.boundKey, pd.draining = "", false
 	pd.dirty = true
 	pd.resetID = uuid.NewString()
 	pd.resetStarted = p.now()
