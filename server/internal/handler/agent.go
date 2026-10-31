@@ -1516,7 +1516,7 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-		if isCloudAgentProvider(runtime.Provider) {
+	if isCloudAgentProvider(runtime.Provider) {
 		raw, _ := json.Marshal(req.RuntimeConfig)
 		if err := validateCloudAgentConfig(runtime.Provider, raw); err != nil {
 			writeError(w, 400, err.Error())
@@ -2122,7 +2122,7 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-				if isCloudAgentProvider(provider) {
+		if isCloudAgentProvider(provider) {
 			if runtimeChange {
 				raw := existing.RuntimeConfig
 				if req.RuntimeConfig != nil {
