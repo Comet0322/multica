@@ -65,10 +65,14 @@ ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 # Every git operation, including the daemon's own clone and fetch, goes
 # through the git gateway. The daemon (sandboxd) and the agent (node) work in
 # the same repositories, so git must accept the other user's files and keep
-# its own files group-writable.
+# its own files group-writable. A pod has no user of its own, so commits get
+# the daemon's fallback identity unless the task sets another: without one
+# every `git commit` in a pod fails.
 RUN git config --system "url.${GIT_GATEWAY_URL}.insteadOf" "${GITLAB_URL}" \
 	&& git config --system safe.directory '*' \
-	&& git config --system core.sharedRepository group
+	&& git config --system core.sharedRepository group \
+	&& git config --system user.name "Multica Agent" \
+	&& git config --system user.email "agent@multica.local"
 
 # Pushes carry the task's token: a system-level credential helper answers with
 # user "agent" and $GIT_GATEWAY_TOKEN (set in the agent's environment by the
