@@ -350,7 +350,7 @@ func (s *Supervisor) keepRunnerOpen(ctx context.Context) {
 // rebuilds the daemon's home.
 func (s *Supervisor) prepareDirs() error {
 	for _, dir := range []string{s.cfg.WorkRoot, s.cfg.TmpDir, s.cfg.DaemonHome} {
-		if err := os.MkdirAll(dir, 0o770); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return err
 		}
 	}
