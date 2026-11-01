@@ -818,10 +818,13 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 	p.mu.Lock()
 	registration := ws.registration
 	p.mu.Unlock()
-	if len(registration) > 0 {
-		return registration, nil
-	}
 	body, err := p.upstreamRegistration(ws, captured)
+	if len(registration) > 0 {
+		if err != nil || coversProviders(registration, body) {
+			return registration, nil
+		}
+		return p.registerMoreProviders(ctx, ws, body)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -882,6 +885,63 @@ func (p *Pool) ensureRegistered(ctx context.Context, ws *workspace, captured jso
 	}
 	p.mu.Unlock()
 	p.log.Info("registered pool runtimes", "workspace_id", ws.cfg.WorkspaceID, "runtimes", len(resp.Runtimes))
+	p.shareRuntimes(bg, ws, resp.Runtimes)
+	return raw, nil
+}
+
+// coversProviders reports whether the stored upstream registration has a
+// runtime for every provider the registration body would register.
+func coversProviders(stored json.RawMessage, body map[string]any) bool {
+	var have struct {
+		Runtimes []struct {
+			Provider string `json:"provider"`
+		} `json:"runtimes"`
+	}
+	if json.Unmarshal(stored, &have) != nil {
+		return true
+	}
+	known := map[string]bool{}
+	for _, rt := range have.Runtimes {
+		known[rt.Provider] = true
+	}
+	want, _ := body["runtimes"].([]any)
+	for _, item := range want {
+		rt, _ := item.(map[string]any)
+		if typ, _ := rt["type"].(string); !known[typ] {
+			return false
+		}
+	}
+	return true
+}
+
+// registerMoreProviders registers again, upstream, when a pod offers agent CLIs
+// the stored registration has no runtime for (the image gained one while the
+// manager kept running). Registering the same machine again only adds the new
+// runtimes. The workspace's tasks and keys are untouched.
+func (p *Pool) registerMoreProviders(ctx context.Context, ws *workspace, body map[string]any) (json.RawMessage, error) {
+	var raw json.RawMessage
+	if err := ws.up.call(ctx, http.MethodPost, "/api/daemon/register", body, &raw); err != nil {
+		return nil, fmt.Errorf("register runtime: %w", err)
+	}
+	var resp struct {
+		Runtimes []runtimeRef `json:"runtimes"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("decode registration: %w", err)
+	}
+	if len(resp.Runtimes) == 0 {
+		return nil, errors.New("registration returned no runtimes")
+	}
+	bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+	p.mu.Lock()
+	ws.registration = raw
+	ws.shared = false
+	for _, rt := range resp.Runtimes {
+		delete(ws.goneRuntimes, rt.ID)
+	}
+	p.mu.Unlock()
+	p.log.Info("registered more pool runtimes", "workspace_id", ws.cfg.WorkspaceID, "runtimes", len(resp.Runtimes))
 	p.shareRuntimes(bg, ws, resp.Runtimes)
 	return raw, nil
 }

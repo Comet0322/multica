@@ -80,3 +80,54 @@ func TestModelListRequestIsHandedToOnePodAndItsReportRelayed(t *testing.T) {
 		t.Fatalf("a finished request was handed out again: %s", raw)
 	}
 }
+
+// A new image can add an agent CLI while the manager keeps running. The pod
+// that offers it must get its runtime, not an error that sends its daemon into a
+// restart loop.
+func TestPodOfferingANewAgentCLIGetsItsRuntimeWithoutAManagerRestart(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 2)
+	oldPod := h.newPod("127.0.0.2", "pool-0")
+	oldPod.start()
+	if h.upstream.registrationCount() != 1 {
+		t.Fatalf("registrations after the first pod: %d", h.upstream.registrationCount())
+	}
+
+	newPod := h.newPod("127.0.0.3", "pool-1")
+	status, raw := newPod.call(http.MethodPost, "/api/daemon/register", map[string]any{
+		"workspace_id": harnessWorkspaceID, "daemon_id": "pod-pool-1", "device_name": "pool-1", "boot_nonce": "n1",
+		"runtimes": []map[string]any{
+			{"name": "claude", "type": "claude", "version": "1.0.0", "status": "online"},
+			{"name": "opencode", "type": "opencode", "version": "1.19.5", "status": "online"},
+		},
+	})
+	if status != 200 {
+		t.Fatalf("registration of a pod with a new CLI: %d %s", status, raw)
+	}
+	var resp struct {
+		Runtimes []struct {
+			Provider string `json:"provider"`
+		} `json:"runtimes"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, rt := range resp.Runtimes {
+		got = append(got, rt.Provider)
+	}
+	if len(got) != 2 || !strings.Contains(strings.Join(got, ","), "opencode") {
+		t.Fatalf("runtimes handed to the pod = %v, want claude and opencode", got)
+	}
+	if n := h.upstream.registrationCount(); n != 2 {
+		t.Fatalf("upstream registrations = %d, want 2", n)
+	}
+	// The pod that offers only claude is still served, with no further upstream registration.
+	oldPod2 := h.newPod("127.0.0.4", "pool-2")
+	if status, _ := oldPod2.register(); status != 200 {
+		t.Fatalf("registration of a pod with the old set: %d", status)
+	}
+	if n := h.upstream.registrationCount(); n != 2 {
+		t.Fatalf("a pod with a known set caused an upstream registration: %d", n)
+	}
+}

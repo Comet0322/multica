@@ -459,3 +459,20 @@ and an empty, even read-only, HOME:
   pod port. Use a CNI that enforces them (Calico in the reference setup) and
   check that node-local traffic (hostNetwork pods, the node itself) cannot
   reach port 8080 of the manager.
+## Agent CLIs in the image
+
+The image carries Claude Code and opencode (1.19.5, the last 1.x release). Both
+are listed in `AGENT_PACKAGES` and `AGENT_COMMANDS` of `Dockerfile.pool`; each
+command gets a shim, so the daemon starts it in the agent container.
+
+opencode reaches LiteLLM through the provider in
+`deploy/sandbox/home/.config/opencode/opencode.json`, which reads
+`OPENAI_BASE_URL` and `OPENAI_API_KEY` from the task's environment (the manager
+sets them per task). Only that provider is enabled and it names only the models
+LiteLLM serves, so the model picker of an opencode agent shows exactly those
+(`litellm/<model>`). To offer another model, add it to the file and to
+`SANDBOX_LITELLM_MODELS` of the manager.
+
+Auto-update and the model catalog download are switched off
+(`OPENCODE_DISABLE_AUTOUPDATE`, `OPENCODE_DISABLE_MODELS_FETCH`): the pods'
+network policy allows neither.

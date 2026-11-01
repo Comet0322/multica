@@ -62,9 +62,13 @@ ENV GOPROXY=${PACKAGE_MIRROR_URL}/go,off
 # Claude Code phones api.anthropic.com for telemetry and update checks, which
 # the egress policy denies. The daemon passes the pod's environment on to the
 # agent CLI, so these silence that traffic for every task. (The model endpoint
-# is LiteLLM, injected per task as ANTHROPIC_BASE_URL.)
+# is LiteLLM, injected per task as ANTHROPIC_BASE_URL. opencode reaches it
+# through the provider in its config template, from OPENAI_BASE_URL; it has no
+# other provider enabled, so its model list is what LiteLLM serves.)
 ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-	DISABLE_AUTOUPDATER=1
+	DISABLE_AUTOUPDATER=1 \
+	OPENCODE_DISABLE_AUTOUPDATE=true \
+	OPENCODE_DISABLE_MODELS_FETCH=true
 
 # Every git operation, including the daemon's own clone and fetch, goes
 # through the git gateway. The daemon (sandboxd) and the agent (node) work in
@@ -152,8 +156,8 @@ USER 1001:2000
 
 FROM base AS agents
 # Space-separated npm packages providing the agent CLIs to expose.
-ARG AGENT_PACKAGES="@anthropic-ai/claude-code"
-ARG AGENT_COMMANDS="claude"
+ARG AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai@1.19.5"
+ARG AGENT_COMMANDS="claude opencode"
 # The base stage points npm at the internal package mirror; when that mirror
 # does not serve the agent CLIs (or the build runs outside the cluster
 # network), AGENT_NPM_REGISTRY names the registry to install them from. The
