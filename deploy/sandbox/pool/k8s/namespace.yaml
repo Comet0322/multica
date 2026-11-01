@@ -3,6 +3,6 @@ kind: Namespace
 metadata:
   name: multica-sandbox
   labels:
-    # The pool container runs PID 1 as root with six capabilities (see
-    # pool.yaml), so the namespace cannot enforce the "restricted" profile.
-    pod-security.kubernetes.io/enforce: baseline
+    # No pod here runs as root or with a capability (pool.yaml, manager.yaml,
+    # git-gateway.yaml), so the namespace enforces the "restricted" profile.
+    pod-security.kubernetes.io/enforce: restricted

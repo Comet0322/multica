@@ -16,7 +16,7 @@ import (
 )
 
 // RunShim is the whole program when this binary runs under the name of an
-// agent CLI. It makes the supervisor run the real CLI, as the agent user, with
+// agent CLI. It makes the runner, in the agent container, run the real CLI with
 // the shim's own arguments, working directory, environment and stdio, and
 // returns the exit status the CLI had. To the daemon that started it, the shim
 // is the agent: it can signal it, wait for it and kill its process group.
@@ -52,7 +52,7 @@ func RunShim(name string, args []string) int {
 		return 126
 	}
 	enc, dec := json.NewEncoder(conn), json.NewDecoder(conn)
-	if err := enc.Encode(launchRequest{Name: name, Args: args, Dir: dir, Env: os.Environ()}); err != nil {
+	if err := enc.Encode(launchRequest{Name: name, Args: args, Dir: dir, Env: os.Environ(), Files: collectArgFiles(args, os.Getenv(daemonTmpEnv))}); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		return 126
 	}
@@ -113,6 +113,48 @@ func RunShim(name string, args []string) int {
 		return 128 + reply.Signal
 	}
 	return reply.Code
+}
+
+// collectArgFiles reads the files that arguments name below the daemon's
+// private TMPDIR (as "path" or "--flag=path"): the task's MCP configuration,
+// which the daemon keeps there and the agent container cannot see. Only
+// regular files directly the daemon's own are read, never links, and only
+// small ones. The runner writes the copies and rewrites the arguments.
+func collectArgFiles(args []string, daemonTmp string) []argFile {
+	if daemonTmp == "" || !filepath.IsAbs(daemonTmp) {
+		return nil
+	}
+	src, err := os.OpenRoot(daemonTmp)
+	if err != nil {
+		return nil
+	}
+	defer src.Close()
+	var files []argFile
+	for i, a := range args {
+		prefix, val := "", a
+		if strings.HasPrefix(a, "--") {
+			if k, v, ok := strings.Cut(a, "="); ok {
+				prefix, val = k+"=", v
+			}
+		}
+		if !filepath.IsAbs(val) || !within(daemonTmp, val) {
+			continue
+		}
+		rel, err := filepath.Rel(daemonTmp, val)
+		if err != nil {
+			continue
+		}
+		fi, err := src.Lstat(rel)
+		if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxArgFile {
+			continue
+		}
+		data, err := src.ReadFile(rel)
+		if err != nil {
+			continue
+		}
+		files = append(files, argFile{Index: i, Prefix: prefix, Name: filepath.Base(val), Data: data})
+	}
+	return files
 }
 
 // stdioDescriptors returns descriptors for stdin, stdout and stderr; one that

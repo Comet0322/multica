@@ -2,10 +2,7 @@
 
 package podsupervisor
 
-import (
-	"errors"
-	"syscall"
-)
+import "errors"
 
 type procInfo struct {
 	pid, ppid int
@@ -19,7 +16,5 @@ func descendants(int) []procInfo { return nil }
 func killProc(int) {}
 
 func reapProc(int) {}
-
-func credentialAttr(uid, gid uint32) *syscall.SysProcAttr { return nil }
 
 func setSharedUmask() {}

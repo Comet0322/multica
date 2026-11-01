@@ -16,43 +16,40 @@ import (
 
 // The daemon cannot be changed and starts agents as itself, so the pod puts a
 // shim named like each agent CLI first on the daemon's PATH. The shim asks the
-// supervisor, which holds the privileges, to run the real CLI as the agent
-// user. Tests run unprivileged, so both users are the test user; what they
-// check is the protocol, the environment and the process lifetime. The uid
-// switch itself is checked against a real container by pool/verify.sh.
+// runner, in the agent container, to run the real CLI. Tests run both as the
+// test user in one process namespace, so what they check is the protocol, the
+// environment and the process lifetime. That the containers cannot see each
+// other's volumes and processes is checked against a real cluster by the e2e
+// scenarios.
 
 type splitPod struct {
 	*pod
-	shimDir, realDir, daemonHome string
-	taskDir                      string
+	realDir  string
+	taskDir  string
+	daemonHm string
 }
 
-// startSplitPod starts the supervisor in split mode around a stub daemon
-// script and a stub "fakeagent" CLI. Further shim names can be added with
-// names; they have no real CLI behind them.
+// startSplitPod starts the pod around a stub daemon script and a stub
+// "fakeagent" CLI. Further shim names can be added with names; they have no
+// real CLI behind them.
 func startSplitPod(t *testing.T, daemon, agent string, names ...string) *splitPod {
 	t.Helper()
 	var sp *splitPod
 	startPod(t, "", func(p *pod) {
-		sp = &splitPod{pod: p}
-		sp.shimDir = filepath.Join(p.out, "shims")
+		sp = &splitPod{pod: p, daemonHm: p.daemonHome}
 		sp.realDir = filepath.Join(p.out, "real")
-		sp.daemonHome = filepath.Join(p.tmp, "daemon-home")
 		sp.taskDir = filepath.Join(p.work, "task")
-		dtpl := filepath.Join(p.out, "daemon-template")
-		for _, d := range []string{sp.shimDir, sp.realDir, filepath.Join(dtpl, ".multica")} {
-			must(t, os.MkdirAll(d, 0o755))
-		}
-		must(t, os.WriteFile(filepath.Join(dtpl, ".multica", "config.json"), []byte(`{"token":"daemon-only"}`), 0o600))
+		must(t, os.MkdirAll(sp.realDir, 0o755))
+		must(t, os.MkdirAll(filepath.Join(p.daemonTpl, ".multica"), 0o755))
+		must(t, os.WriteFile(filepath.Join(p.daemonTpl, ".multica", "config.json"), []byte(`{"token":"daemon-only"}`), 0o600))
 		must(t, os.WriteFile(filepath.Join(sp.realDir, "fakeagent"), []byte(agent), 0o755))
 		for _, n := range append([]string{"fakeagent"}, names...) {
-			if err := os.Link(supervisorBin, filepath.Join(sp.shimDir, n)); err != nil {
+			if err := os.Link(supervisorBin, filepath.Join(p.shimDir, n)); err != nil {
 				t.Fatal(err)
 			}
 		}
 		must(t, os.WriteFile(filepath.Join(p.out, "daemon.sh"), []byte(daemon), 0o755))
-		p.args = []string{"-shim-dir", sp.shimDir, "-daemon-home", sp.daemonHome, "-daemon-home-template", dtpl}
-		p.env = []string{"PATH=" + os.Getenv("PATH") + ":" + sp.realDir, "TASKDIR=" + sp.taskDir, "SHIMDIR=" + sp.shimDir}
+		p.env = []string{"PATH=" + os.Getenv("PATH") + ":" + sp.realDir, "TASKDIR=" + sp.taskDir, "SHIMDIR=" + p.shimDir}
 	})
 	return sp
 }
@@ -143,8 +140,8 @@ func TestAgentRunsThroughShimWithTheAgentsEnvironment(t *testing.T) {
 	if got := p.outFile("daemon.path"); !strings.HasPrefix(got, p.shimDir+":") {
 		t.Errorf("daemon PATH = %q, want the shim directory first", got)
 	}
-	if got := p.outFile("daemon.umask"); got != "0002" {
-		t.Errorf("daemon umask = %s, want 0002 so the agent user can share its files", got)
+	if got := p.outFile("daemon.umask"); got != "0007" {
+		t.Errorf("daemon umask = %s, want 0007 so only the pod's shared group can use its files", got)
 	}
 }
 
@@ -257,26 +254,16 @@ exec sleep 100000
 	}
 }
 
-func TestDaemonHomeIsPrivateAndRebuiltOnReset(t *testing.T) {
+func TestDaemonHomeIsRebuiltOnReset(t *testing.T) {
 	p := startSplitPod(t, daemonRunning(`:`), echoAgent)
 	p.waitDaemonStarts(1)
 	cfg := filepath.Join(p.daemonHome, ".multica", "config.json")
 
-	fi, err := os.Stat(p.daemonHome)
-	must(t, err)
-	if fi.Mode().Perm() != 0o700 {
-		t.Errorf("daemon home mode = %v, want 0700", fi.Mode().Perm())
-	}
 	if got := readFile(t, cfg); !strings.Contains(got, "daemon-only") {
 		t.Errorf("daemon config not restored from its template: %q", got)
 	}
 	if _, err := os.Stat(filepath.Join(p.home, ".multica")); err == nil {
 		t.Errorf("the daemon's CLI config is inside the agent's HOME")
-	}
-	tmp, err := os.Stat(p.tmp)
-	must(t, err)
-	if tmp.Mode()&os.ModeSticky == 0 || tmp.Mode().Perm() != 0o777 {
-		t.Errorf("tmpdir mode = %v, want sticky and world-writable so the agent user cannot rename the daemon's directory", tmp.Mode())
 	}
 
 	must(t, os.WriteFile(cfg, []byte("tampered"), 0o600))
@@ -295,20 +282,28 @@ func TestDaemonHomeIsPrivateAndRebuiltOnReset(t *testing.T) {
 	}
 }
 
-func TestSplitConfigIsValidated(t *testing.T) {
+func TestConfigIsValidated(t *testing.T) {
 	base := podsupervisor.Config{
-		DaemonCmd: []string{"/bin/true"}, WorkRoot: "/w", Home: "/h", TmpDir: "/t", ControlURL: "http://x",
-		ShimDir: "/shims",
+		DaemonCmd: []string{"/bin/true"}, WorkRoot: "/w", TmpDir: "/t", ControlURL: "http://x",
 	}
-	if _, err := podsupervisor.New(base); err == nil || !strings.Contains(err.Error(), "daemon home") {
-		t.Errorf("shim dir without a daemon home: err = %v", err)
+	for _, want := range []string{"shim dir", "daemon home", "agent socket"} {
+		if _, err := podsupervisor.New(base); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %s: err = %v", want, err)
+		}
+		switch want {
+		case "shim dir":
+			base.ShimDir = "/shims"
+		case "daemon home":
+			base.DaemonHome = "/t/daemon"
+		case "agent socket":
+			base.AgentSocket = "sock"
+		}
 	}
-	base.DaemonHome = "/elsewhere/daemon"
-	if _, err := podsupervisor.New(base); err == nil || !strings.Contains(err.Error(), "below the tmpdir") {
-		t.Errorf("daemon home outside the tmpdir: err = %v", err)
+	if _, err := podsupervisor.New(base); err == nil || !strings.Contains(err.Error(), "a volume of its own") {
+		t.Errorf("daemon home below the tmpdir: err = %v", err)
 	}
-	base.DaemonHome = "/t/daemon"
+	base.DaemonHome = "/home/daemon"
 	if _, err := podsupervisor.New(base); err != nil {
-		t.Errorf("valid split config rejected: %v", err)
+		t.Errorf("valid config rejected: %v", err)
 	}
 }

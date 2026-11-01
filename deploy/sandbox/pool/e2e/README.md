@@ -7,4 +7,4 @@ Nothing here holds a secret: `lib.sh` reads `$P21/{env,state,gitlab.token,anthro
 - `setup-gitlab.sh`, `setup-multica.sh`: seed GitLab (demo/app, demo/readonly, alice, bob) and Multica (two workspaces, bot PAT, users).
 - `secscan.sh <pod-ip>`: while a task runs, scans every process's environment/arguments (read on the node) and the pod's files for the long-lived secrets; prints names and counts only.
 - `gitpolicy.sh <pod-ip> <task-id>`: from a leased pod with the task's gateway token, tries pushes to main, to another task's namespace and to the task's own namespace.
-- `agent-isolation.py`: piped into `kubectl exec -i <pod> -- python3 -`, drops to the agent uid and tries to read the daemon's files and environment.
+- `agent-isolation.py`: piped into `kubectl exec -i <pod> -c agent-runner -- python3 -`, runs as the agent and tries to read the daemon's files and environment.

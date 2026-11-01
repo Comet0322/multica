@@ -5,8 +5,8 @@ Plain YAML for the sandbox pod pool (kustomize-friendly, no secrets).
 | File | What |
 |---|---|
 | `kustomization.yaml` | Pool size (`replicas`) and image tags, version-controlled. Every `PLACEHOLDER` is replaced in an overlay |
-| `namespace.yaml` | `multica-sandbox` namespace (Pod Security `baseline`: the pod's PID 1 is root with six capabilities) |
-| `pool.yaml` | Pod pool Deployment: no `hostNetwork`, read-only root, three `emptyDir` areas (`/work`, `/home/agent`, `/tmp`), all capabilities dropped except CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETUID, SETGID, no privilege escalation, no service account token. Matches `../verify.sh` |
+| `namespace.yaml` | `multica-sandbox` namespace (Pod Security `restricted`: no pod runs as root or with a capability) |
+| `pool.yaml` | Pod pool Deployment, two containers (`daemon`, uid 1001, and `agent-runner`, uid 1000): no `hostNetwork`, read-only root, `emptyDir` volumes (`/work`, `/tmp`, `/dev/shm` shared; `/home/daemon` and `/home/agent` one container each), all capabilities dropped, no privilege escalation, no root, no service account token |
 | `manager.yaml` | Manager Deployment (1 replica) with its environment (Multica URL, LiteLLM, git gateway, audit to stdout), a ClusterIP Service exposing the pod listener (`8080`) only, and a second Service (`sandbox-manager-gateway`, `8792`) for the gateway listener that serves only the git verify endpoints. The admin listener (`8791`) is in neither Service |
 | `git-gateway.yaml` | Git/MCP gateway Deployment (1 replica: it keeps the pushed-branch record in memory) and its ClusterIP Service (`8081`). It reaches the manager through `sandbox-manager-gateway` |
 | `networkpolicy.yaml` | Pod egress limited to manager (`8080`), git gateway (`8081`), DNS, LiteLLM and the package mirror; in-cluster services are matched by pod labels, external ones by `ipBlock` placeholders. The manager's pod listener is reachable only from pool pods, its gateway listener only from the gateway; the gateway only from pool pods |
@@ -70,7 +70,8 @@ Set `NS=multica-sandbox`, `POD=$(kubectl -n $NS get pod -l multica.io/sandbox-ro
    `curl -s localhost:8791/v1/inventory` and `/v1/leases`: pod goes idle ->
    leased (task id and initiator visible) -> resetting -> idle. After the reset
    confirm in the pod: `kubectl -n $NS exec $POD -- ls /work /home/agent /tmp`
-   shows only the rebuilt HOME template, and only `pod-supervisor` plus
+   (in the `agent-runner` container, `-c agent-runner`) shows only the rebuilt HOME
+   template, and only `pod-supervisor` plus, in the `daemon` container,
    `multica` processes remain.
 7. **Inventory matches the cluster.** Idle + leased + resetting + lost equals
    the expected size, and the pod IPs in `/v1/inventory` equal

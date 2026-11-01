@@ -3,8 +3,6 @@
 package podsupervisor
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,24 +16,34 @@ import (
 	"syscall"
 )
 
-// socketEnv names the environment variable that tells a shim where the
-// supervisor listens.
-const socketEnv = "POD_AGENT_SOCKET"
-
-// Wire protocol between a shim and the supervisor, over one stream socket:
+// Wire protocol between a shim and the runner, over one stream socket:
 //
-//  1. shim -> supervisor: one byte carrying the shim's stdin, stdout and
-//     stderr as SCM_RIGHTS.
-//  2. shim -> supervisor: a launchRequest as JSON.
-//  3. supervisor -> shim: launchReply{Started: true}, or launchReply{Error}.
-//  4. shim -> supervisor, any time: launchControl{Signal} to signal the
-//     agent's process group. Closing the socket kills the agent.
-//  5. supervisor -> shim: launchReply{Exited: true, Code or Signal}.
+//  1. shim -> runner: one byte carrying the shim's stdin, stdout and stderr
+//     as SCM_RIGHTS.
+//  2. shim -> runner: a launchRequest as JSON.
+//  3. runner -> shim: launchReply{Started: true}, or launchReply{Error}.
+//  4. shim -> runner, any time: launchControl{Signal} to signal the agent's
+//     process group. Closing the socket kills the agent.
+//  5. runner -> shim: launchReply{Exited: true, Code or Signal}.
 type launchRequest struct {
 	Name string   `json:"name"`
 	Args []string `json:"args"`
 	Dir  string   `json:"dir"`
 	Env  []string `json:"env"`
+	// Files are the contents of files the daemon named in Args that live in
+	// its private TMPDIR, which the agent's container cannot see (see
+	// argFile).
+	Files []argFile `json:"files,omitempty"`
+}
+
+// argFile is a file the daemon passed to the agent by path. The daemon keeps
+// such files, the task's MCP configuration among them, in its private home.
+// The shim reads them there and the runner writes a copy the agent can open.
+type argFile struct {
+	Index  int    `json:"index"`  // position in Args
+	Prefix string `json:"prefix"` // "--flag=" when the argument was a flag with a value
+	Name   string `json:"name"`   // base name of the original
+	Data   []byte `json:"data"`
 }
 
 type launchControl struct {
@@ -55,22 +63,18 @@ type launchReply struct {
 type launcherConfig struct {
 	// DaemonUID is the only user allowed to launch agents.
 	DaemonUID uint32
-	// Cred is the user agents run as; nil keeps the supervisor's own (tests).
-	Cred   *syscall.Credential
-	Home   string
-	TmpDir string
-	// DaemonTmp is the daemon's private TMPDIR; files below it named in an
-	// agent's arguments are copied for the agent (see shareArgFiles).
-	DaemonTmp string
-	ShimDir   string
-	RealPath  []string
+	// Socket is the abstract socket name the shims connect to.
+	Socket   string
+	Home     string
+	TmpDir   string
+	ShimDir  string
+	RealPath []string
 }
 
-// launcher runs agent CLIs on behalf of the daemon, as another user.
+// launcher runs agent CLIs on behalf of the daemon, in the runner's container.
 type launcher struct {
 	launcherConfig
-	log    *slog.Logger
-	socket string // abstract socket name, random per pod start
+	log *slog.Logger
 
 	ln net.Listener
 	mu sync.Mutex
@@ -79,23 +83,18 @@ type launcher struct {
 	pids map[int]struct{}
 }
 
-func newLauncher(cfg launcherConfig, log *slog.Logger) (*launcher, error) {
-	var b [12]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return nil, err
-	}
+func newLauncher(cfg launcherConfig, log *slog.Logger) *launcher {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &launcher{launcherConfig: cfg, log: log, socket: "multica-pod-agents-" + hex.EncodeToString(b[:]),
-		pids: map[int]struct{}{}}, nil
+	return &launcher{launcherConfig: cfg, log: log, pids: map[int]struct{}{}}
 }
 
 func (l *launcher) listen() error {
 	if l == nil {
 		return nil
 	}
-	ln, err := net.Listen("unix", "@"+l.socket)
+	ln, err := net.Listen("unix", "@"+l.Socket)
 	if err != nil {
 		return err
 	}
@@ -130,6 +129,13 @@ func (l *launcher) allow(open bool) {
 	l.mu.Lock()
 	l.open = open
 	l.mu.Unlock()
+}
+
+// isOpen reports whether agents may start.
+func (l *launcher) isOpen() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.open
 }
 
 // owns reports whether pid is an agent the launcher waits for itself.
@@ -235,7 +241,7 @@ func (l *launcher) command(req launchRequest, files []*os.File) (*spec, func(), 
 	if !filepath.IsAbs(req.Dir) {
 		return nil, noop, fmt.Errorf("working directory %q is not absolute", req.Dir)
 	}
-	args, cleanup := l.shareArgFiles(req.Args)
+	args, cleanup := l.writeArgFiles(req.Args, req.Files)
 	return &spec{
 		program: path,
 		argv0:   name,
@@ -244,7 +250,7 @@ func (l *launcher) command(req launchRequest, files []*os.File) (*spec, func(), 
 			Dir:   req.Dir,
 			Env:   l.agentEnv(req.Env),
 			Files: []*os.File{files[0], files[1], files[2]},
-			Sys:   &syscall.SysProcAttr{Setpgid: true, Credential: l.Cred},
+			Sys:   &syscall.SysProcAttr{Setpgid: true},
 		},
 	}, cleanup, nil
 }
@@ -253,50 +259,21 @@ func (l *launcher) command(req launchRequest, files []*os.File) (*spec, func(), 
 // files (the MCP configuration of a task).
 const maxArgFile = 1 << 20
 
-// shareArgFiles replaces each argument that names a regular file in the
-// daemon's own TMPDIR (as "path" or "--flag=path") with the path of a copy the agent
-// user owns, in the agent's TMPDIR. The daemon keeps such files, the task's MCP
-// configuration among them, in its private home, which the agent cannot enter.
-// Nothing else is rewritten: only files directly the daemon's own, never links.
-// The returned function removes the copies once the agent has ended.
-func (l *launcher) shareArgFiles(args []string) ([]string, func()) {
-	daemonTmp := l.DaemonTmp
-	if daemonTmp == "" || !filepath.IsAbs(daemonTmp) {
-		return args, func() {}
-	}
+// writeArgFiles replaces each argument the shim sent a file for with the path
+// of a copy in the agent's TMPDIR, and returns the arguments and a function
+// that removes the copies once the agent has ended. Each copy goes into a fresh
+// directory through an os.Root on it, so a name cannot lead out of it.
+func (l *launcher) writeArgFiles(args []string, files []argFile) ([]string, func()) {
 	var dirs []string
 	cleanup := func() {
 		for _, d := range dirs {
 			_ = os.RemoveAll(d)
 		}
 	}
-	src, err := os.OpenRoot(daemonTmp)
-	if err != nil {
-		return args, func() {}
-	}
-	defer src.Close()
-	out := make([]string, len(args))
-	for i, a := range args {
-		out[i] = a
-		prefix, val := "", a
-		if strings.HasPrefix(a, "--") {
-			if k, v, ok := strings.Cut(a, "="); ok {
-				prefix, val = k+"=", v
-			}
-		}
-		if !filepath.IsAbs(val) || !within(daemonTmp, val) {
-			continue
-		}
-		rel, err := filepath.Rel(daemonTmp, val)
-		if err != nil {
-			continue
-		}
-		fi, err := src.Lstat(rel)
-		if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxArgFile {
-			continue
-		}
-		data, err := src.ReadFile(rel)
-		if err != nil {
+	out := append([]string(nil), args...)
+	for _, f := range files {
+		if f.Index < 0 || f.Index >= len(out) || len(f.Data) > maxArgFile ||
+			f.Name == "" || f.Name == "." || f.Name == ".." || strings.ContainsAny(f.Name, "/\x00") {
 			continue
 		}
 		dir, err := os.MkdirTemp(l.TmpDir, "agent-arg-")
@@ -304,32 +281,18 @@ func (l *launcher) shareArgFiles(args []string) ([]string, func()) {
 			continue
 		}
 		dirs = append(dirs, dir)
-		copyPath, ok := l.writeAgentCopy(dir, filepath.Base(val), data)
-		if !ok {
+		dst, err := os.OpenRoot(dir)
+		if err != nil {
 			continue
 		}
-		out[i] = prefix + copyPath
+		err = dst.WriteFile(f.Name, f.Data, 0o600)
+		_ = dst.Close()
+		if err != nil {
+			continue
+		}
+		out[f.Index] = f.Prefix + filepath.Join(dir, f.Name)
 	}
 	return out, cleanup
-}
-
-// writeAgentCopy writes one argument file into dir, a fresh directory made for
-// it, and hands both to the agent user. The write goes through an os.Root on
-// dir, so the name cannot lead out of it.
-func (l *launcher) writeAgentCopy(dir, name string, data []byte) (string, bool) {
-	dst, err := os.OpenRoot(dir)
-	if err != nil {
-		return "", false
-	}
-	defer dst.Close()
-	if err := dst.WriteFile(name, data, 0o600); err != nil {
-		return "", false
-	}
-	if l.Cred != nil {
-		_ = os.Chown(dir, int(l.Cred.Uid), int(l.Cred.Gid))
-		_ = dst.Chown(name, int(l.Cred.Uid), int(l.Cred.Gid))
-	}
-	return filepath.Join(dir, name), true
 }
 
 // lookup finds the real CLI on the PATH without the shim directory.
@@ -351,7 +314,7 @@ func (l *launcher) agentEnv(in []string) []string {
 	path := strings.Join(l.RealPath, ":")
 	for _, kv := range in {
 		switch {
-		case hasAnyPrefix(kv, []string{"HOME=", "TMPDIR=", socketEnv + "="}):
+		case hasAnyPrefix(kv, []string{"HOME=", "TMPDIR=", socketEnv + "=", daemonTmpEnv + "="}):
 		case strings.HasPrefix(kv, "PATH="):
 			path = strings.Join(realPath(strings.TrimPrefix(kv, "PATH="), l.ShimDir), ":")
 		default:

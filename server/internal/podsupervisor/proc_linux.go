@@ -96,11 +96,7 @@ func reapProc(pid int) {
 	_, _ = syscall.Wait4(pid, &ws, syscall.WNOHANG, nil)
 }
 
-// credentialAttr runs a child as the given non-root user.
-func credentialAttr(uid, gid uint32) *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid}}
-}
-
-// setSharedUmask makes the processes started from here create group-writable
-// files; the daemon and the agent user share a group.
-func setSharedUmask() { syscall.Umask(0o002) }
+// setSharedUmask makes the processes started from here create files that the
+// pod's shared group can read and write, and nobody else can touch: the daemon
+// and the agents run as different users that share only that group.
+func setSharedUmask() { syscall.Umask(0o007) }

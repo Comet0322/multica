@@ -1,17 +1,27 @@
-// Package podsupervisor is the PID 1 of a pooled sandbox pod. It runs the
-// Multica daemon as a non-root user, restarts it when it crashes, and on a
-// reset command puts the pod back into a clean state without restarting the
-// container: every descendant process is killed, the three writable areas
-// (work root, HOME, TMPDIR) are emptied, HOME is rebuilt from the read-only
-// template baked into the image, and the daemon is started again with a fresh
-// environment.
+// Package podsupervisor holds the two programs of a pooled sandbox pod, which
+// has two containers of one image and no root anywhere.
 //
-// # Daemon and agent users
+// The Supervisor is the daemon container's PID 1. It runs the Multica daemon,
+// restarts it when it crashes, and on a reset command puts the pod back into a
+// clean state without restarting the containers: it stops the daemon, has the
+// Runner close, kills every descendant, empties the shared writable areas
+// (work root, TMPDIR, shared memory) and the daemon's home, rebuilds the
+// daemon's home from the read-only template baked into the image, and starts
+// the daemon again with a fresh environment.
 //
-// With Config.ShimDir set, the daemon and the agents run as different non-root
-// users, although the daemon starts agents as itself and cannot be changed:
-// see Config.ShimDir and deploy/sandbox/POOL.md, which also lists what the
-// split does not protect against.
+// The Runner is the agent container's PID 1. It starts the agent CLIs for the
+// daemon and cleans the agent's home. See runner.go for how the two meet.
+//
+// # Daemon and agents
+//
+// The stock daemon starts agents as itself and cannot be changed, so its PATH
+// starts with Config.ShimDir, which holds one hard link of the binary per
+// agent CLI name. A shim sends its argv, working directory, environment and
+// stdio to the Runner, which runs the real CLI in the agent container. The
+// daemon container's secrets (the daemon's home, its processes) are not
+// visible there: the volumes are not mounted and the process namespace is not
+// shared. See deploy/sandbox/SANDBOX.md, which also lists what the split does
+// not protect against.
 //
 // # Control channel
 //
@@ -58,7 +68,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -71,65 +80,53 @@ const (
 	// defaultUnknownTimeout is how long the control URL may answer 404
 	// before the supervisor exits.
 	defaultUnknownTimeout = 5 * time.Minute
+	// defaultRunnerTimeout is how long the supervisor waits for the runner to
+	// come up; the two containers start independently.
+	defaultRunnerTimeout = 2 * time.Minute
+	// runnerCheckEvery is how many reap ticks lie between two checks that the
+	// runner is still open.
+	runnerCheckEvery = 5
 	// resetAttempts is how often a failing reset is tried before the
 	// supervisor gives up and exits; resetRetryDelay is the first pause
 	// between tries, doubled each time.
 	resetAttempts   = 3
 	resetRetryDelay = time.Second
+	// runnerRetryDelay is the pause between two tries to reach the runner.
+	runnerRetryDelay = 500 * time.Millisecond
 )
 
-// User is the non-root identity the daemon runs as.
-type User struct {
-	UID, GID uint32
-}
-
-// Config describes one pod.
+// Config describes the daemon container of one pod.
 type Config struct {
 	// DaemonCmd is the command (argv) that starts the daemon.
 	DaemonCmd []string
-	// DaemonUser is required when the supervisor runs as root. When the
-	// supervisor already runs as a non-root user it may be nil.
-	DaemonUser *User
 	// Env is the complete base environment of the daemon. The supervisor adds
-	// HOME and TMPDIR. Nothing else is inherited, so each restart starts from
-	// the same clean environment.
+	// HOME, TMPDIR, PATH and the runner's socket. Nothing else is inherited, so
+	// each restart starts from the same clean environment.
 	Env []string
 
+	// WorkRoot and TmpDir are shared with the agent container and emptied on
+	// reset.
 	WorkRoot string
-	// Home is HOME of the agent processes (and of the daemon when ShimDir is
-	// empty).
-	Home   string
-	TmpDir string
-	// HomeTemplate is copied into Home on every reset. Empty means an empty
-	// HOME.
-	HomeTemplate string
+	TmpDir   string
+	// ShmDir, when set, is shared with the agent container and emptied on every
+	// reset. Mount an emptyDir (medium Memory) on /dev/shm and name it here, or
+	// files a task leaves in shared memory survive into the next workspace's
+	// task. Empty takes POD_SHM_DIR from Env.
+	ShmDir string
 
-	// ShimDir switches on the daemon/agent user split. The stock daemon starts
-	// every agent CLI as its own user, so the supervisor cannot give the agent
-	// another user by itself. Instead the daemon's PATH starts with ShimDir,
-	// which holds one hard link of this binary per agent CLI name ("claude",
-	// "codex", ...). A shim sends its argv, working directory, environment and
-	// stdio to the supervisor over a socket only the daemon user may use, and
-	// the supervisor runs the real CLI, found on the remaining PATH, as
-	// AgentUser. The daemon then runs as DaemonUser with its own HOME
-	// (DaemonHome), which the agent user cannot read.
-	ShimDir string
-	// AgentUser is the user agents run as. Required when the supervisor runs
-	// as root and ShimDir is set; it must differ from DaemonUser.
-	AgentUser *User
-	// DaemonHome is HOME of the daemon (mode 0700, owned by DaemonUser), and
-	// must be below TmpDir: that area is made sticky and world-writable so the
-	// agent user cannot rename it. DaemonHomeTemplate is copied into it on
-	// every reset; it carries the daemon's CLI config.
+	// DaemonHome is HOME of the daemon, mounted in this container only; the
+	// daemon's TMPDIR is its tmp subdirectory. Both are emptied on every reset
+	// and DaemonHome is rebuilt from DaemonHomeTemplate, which carries the
+	// daemon's CLI config.
 	DaemonHome         string
 	DaemonHomeTemplate string
 
-	// ShmDir, when set, is emptied on every reset and kept world-writable
-	// with the sticky bit, like /tmp. Mount an emptyDir (medium Memory) on
-	// /dev/shm and name it here, or files a task leaves in shared memory
-	// survive into the next workspace's task. Empty takes POD_SHM_DIR from
-	// Env.
-	ShmDir string
+	// ShimDir holds one hard link of this binary per agent CLI name and starts
+	// the daemon's PATH.
+	ShimDir string
+	// AgentSocket is the abstract socket name of the runner in the agent
+	// container.
+	AgentSocket string
 
 	ControlURL   string
 	PollInterval time.Duration
@@ -138,18 +135,22 @@ type Config struct {
 	// before the supervisor exits so the container restarts. Zero means
 	// defaultUnknownTimeout.
 	UnknownTimeout time.Duration
-	HTTPClient     *http.Client
-	Logger         *slog.Logger
+	// RunnerTimeout is how long the runner may stay unreachable when the
+	// supervisor starts, before it exits so the container restarts. Zero means
+	// defaultRunnerTimeout.
+	RunnerTimeout time.Duration
+	HTTPClient    *http.Client
+	Logger        *slog.Logger
 }
 
 // Supervisor runs the daemon and serves reset commands.
 type Supervisor struct {
-	cfg        Config
-	log        *slog.Logger
-	owner      *owner // the daemon user
-	agentOwner *owner // the agent user; the daemon user unless ShimDir is set
-	launcher   *launcher
-	resets     chan resetRequest
+	cfg    Config
+	log    *slog.Logger
+	runner runnerClient
+	// realPath is where the real agent CLIs are: the PATH without the shims.
+	realPath []string
+	resets   chan resetRequest
 	// giveUp makes Run return with the error: the pod cannot be brought back
 	// without restarting the container.
 	giveUp chan error
@@ -165,29 +166,14 @@ func New(cfg Config) (*Supervisor, error) {
 	if len(cfg.DaemonCmd) == 0 {
 		errs = append(errs, "daemon command is required")
 	}
-	for name, v := range map[string]string{"work root": cfg.WorkRoot, "home": cfg.Home, "tmpdir": cfg.TmpDir, "control url": cfg.ControlURL} {
+	for name, v := range map[string]string{"work root": cfg.WorkRoot, "tmpdir": cfg.TmpDir, "control url": cfg.ControlURL,
+		"shim dir": cfg.ShimDir, "daemon home": cfg.DaemonHome, "agent socket": cfg.AgentSocket} {
 		if v == "" {
 			errs = append(errs, name+" is required")
 		}
 	}
-	if os.Geteuid() == 0 && (cfg.DaemonUser == nil || cfg.DaemonUser.UID == 0) {
-		errs = append(errs, "daemon must run as a non-root user")
-	}
-	if cfg.ShimDir != "" {
-		switch {
-		case cfg.DaemonHome == "":
-			errs = append(errs, "daemon home is required with a shim dir")
-		case !within(cfg.TmpDir, cfg.DaemonHome):
-			errs = append(errs, "daemon home must be below the tmpdir")
-		}
-		if os.Geteuid() == 0 {
-			switch {
-			case cfg.AgentUser == nil || cfg.AgentUser.UID == 0:
-				errs = append(errs, "agents must run as a non-root user")
-			case cfg.DaemonUser != nil && cfg.AgentUser.UID == cfg.DaemonUser.UID:
-				errs = append(errs, "agent user must differ from the daemon user")
-			}
-		}
+	if cfg.DaemonHome != "" && (cfg.DaemonHome == cfg.TmpDir || cfg.DaemonHome == cfg.WorkRoot || within(cfg.TmpDir, cfg.DaemonHome) || within(cfg.WorkRoot, cfg.DaemonHome) || within(cfg.DaemonHome, cfg.TmpDir) || within(cfg.DaemonHome, cfg.WorkRoot)) {
+		errs = append(errs, "daemon home must be a volume of its own")
 	}
 	if len(errs) > 0 {
 		return nil, errors.New(strings.Join(errs, "; "))
@@ -201,6 +187,9 @@ func New(cfg Config) (*Supervisor, error) {
 	if cfg.UnknownTimeout <= 0 {
 		cfg.UnknownTimeout = defaultUnknownTimeout
 	}
+	if cfg.RunnerTimeout <= 0 {
+		cfg.RunnerTimeout = defaultRunnerTimeout
+	}
 	if cfg.ShmDir == "" {
 		cfg.ShmDir = envValue(cfg.Env, "POD_SHM_DIR")
 	}
@@ -210,34 +199,11 @@ func New(cfg Config) (*Supervisor, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	s := &Supervisor{cfg: cfg, log: cfg.Logger, resets: make(chan resetRequest), giveUp: make(chan error, 1)}
-	if cfg.DaemonUser != nil && os.Geteuid() == 0 {
-		s.owner = &owner{uid: int(cfg.DaemonUser.UID), gid: int(cfg.DaemonUser.GID)}
-	}
-	s.agentOwner = s.owner
-	if cfg.ShimDir != "" {
-		var cred *syscall.Credential
-		if cfg.AgentUser != nil && os.Geteuid() == 0 {
-			s.agentOwner = &owner{uid: int(cfg.AgentUser.UID), gid: int(cfg.AgentUser.GID)}
-			cred = &syscall.Credential{Uid: cfg.AgentUser.UID, Gid: cfg.AgentUser.GID, Groups: []uint32{cfg.AgentUser.GID}}
-		}
-		daemonUID, ok := ID32(os.Geteuid())
-		if !ok {
-			return nil, fmt.Errorf("effective user id %d is out of range", os.Geteuid())
-		}
-		if cfg.DaemonUser != nil && os.Geteuid() == 0 {
-			daemonUID = cfg.DaemonUser.UID
-		}
-		l, err := newLauncher(launcherConfig{
-			DaemonUID: daemonUID, Cred: cred, Home: cfg.Home, TmpDir: cfg.TmpDir, DaemonTmp: filepath.Join(cfg.DaemonHome, "tmp"),
-			ShimDir: cfg.ShimDir, RealPath: realPath(pathOf(cfg.Env), cfg.ShimDir),
-		}, cfg.Logger)
-		if err != nil {
-			return nil, err
-		}
-		s.launcher = l
-	}
-	return s, nil
+	return &Supervisor{
+		cfg: cfg, log: cfg.Logger, runner: runnerClient{socket: cfg.AgentSocket},
+		realPath: realPath(pathOf(cfg.Env), cfg.ShimDir),
+		resets:   make(chan resetRequest), giveUp: make(chan error, 1),
+	}, nil
 }
 
 // Run blocks until ctx is cancelled, then stops the daemon and every
@@ -246,16 +212,15 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if err := becomeSubreaper(); err != nil {
 		return fmt.Errorf("become subreaper: %w", err)
 	}
-	if s.launcher != nil {
-		// Agent and daemon share the task files through their common group.
-		setSharedUmask()
-		if err := s.launcher.listen(); err != nil {
-			return fmt.Errorf("listen for agent launches: %w", err)
-		}
-		defer s.launcher.shutdown()
-	}
+	// The daemon and the agents share the task files through their common group.
+	setSharedUmask()
 	if err := s.prepareDirs(); err != nil {
 		return fmt.Errorf("prepare directories: %w", err)
+	}
+	// A runner that outlived a restart of this container may still hold agents
+	// of the old daemon; close it before the new daemon starts.
+	if err := s.closeRunner(ctx, s.cfg.RunnerTimeout); err != nil {
+		return err
 	}
 	// The server learns of the restart (and of this address) before the
 	// daemon calls it.
@@ -268,19 +233,15 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		restart <-chan time.Time
 	)
 	start := func() {
-		c, ch, err := s.startDaemon()
+		c, ch, err := s.startDaemon(ctx)
 		if err != nil {
 			s.log.Error("start daemon failed", "error", err)
 			restart = time.After(s.cfg.RestartDelay)
 			return
 		}
 		cmd, exited, restart = c, ch, nil
-		s.launcher.allow(true)
 	}
 	stop := func() {
-		// No agent may start between the daemon's death and the end of the
-		// reset; one that did would outlive the clean-up.
-		s.launcher.allow(false)
 		if cmd == nil {
 			return
 		}
@@ -296,6 +257,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	start()
 	reap := time.NewTicker(zombieReapInterval)
 	defer reap.Stop()
+	ticks := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -325,7 +287,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			if cmd != nil {
 				daemon = cmd.Process.Pid
 			}
-			reapZombies(func(pid int) bool { return pid == daemon || s.launcher.owns(pid) })
+			reapZombies(func(pid int) bool { return pid == daemon })
+			if ticks++; ticks%runnerCheckEvery == 0 && cmd != nil {
+				s.keepRunnerOpen(ctx)
+			}
 		case req := <-s.resets:
 			restart = nil
 			stop()
@@ -342,45 +307,58 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	}
 }
 
-// prepareDirs makes sure the three writable areas exist, are clean and are
-// owned by the daemon user, and restores HOME from the template.
-func (s *Supervisor) prepareDirs() error {
-	for _, dir := range s.dirs() {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
+// closeRunner closes the runner, waiting up to wait for it to be reachable.
+func (s *Supervisor) closeRunner(ctx context.Context, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
+	for {
+		callCtx, cancel := context.WithTimeout(ctx, runnerCallTimeout)
+		_, err := s.runner.call(callCtx, opClose)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil || time.Now().After(deadline) {
 			return err
 		}
-		if err := s.dirOwner(dir).chownPath(dir); err != nil {
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(runnerRetryDelay):
+		}
+	}
+}
+
+// keepRunnerOpen reopens a runner that restarted (it starts closed) while the
+// daemon is running.
+func (s *Supervisor) keepRunnerOpen(ctx context.Context) {
+	callCtx, cancel := context.WithTimeout(ctx, defaultControlClient)
+	defer cancel()
+	reply, err := s.runner.call(callCtx, opStatus)
+	if err != nil {
+		s.log.Warn("agent runner unreachable", "error", err)
+		return
+	}
+	if !reply.Open {
+		s.log.Warn("agent runner was closed while the daemon runs; opening it")
+		if _, err := s.runner.call(callCtx, opOpen); err != nil {
+			s.log.Error("open the agent runner", "error", err)
+		}
+	}
+}
+
+// prepareDirs makes sure the shared writable areas exist and are clean, and
+// rebuilds the daemon's home.
+func (s *Supervisor) prepareDirs() error {
+	for _, dir := range []string{s.cfg.WorkRoot, s.cfg.TmpDir, s.cfg.DaemonHome} {
+		if err := os.MkdirAll(dir, 0o770); err != nil {
 			return err
 		}
 	}
 	return s.cleanDirs()
 }
 
-// dirOwner is who owns a writable area. With the user split, HOME belongs to
-// the agent user, and TMPDIR to root with the sticky bit so that the daemon's
-// private directory inside it cannot be renamed or removed by the agent user.
-func (s *Supervisor) dirOwner(dir string) *owner {
-	if s.cfg.ShimDir == "" {
-		return s.owner
-	}
-	switch dir {
-	case s.cfg.Home:
-		return s.agentOwner
-	case s.cfg.TmpDir:
-		if os.Geteuid() == 0 {
-			return &owner{}
-		}
-		return nil
-	}
-	return s.owner
-}
-
-func (s *Supervisor) dirs() []string {
-	return []string{s.cfg.WorkRoot, s.cfg.Home, s.cfg.TmpDir}
-}
-
 func (s *Supervisor) cleanDirs() error {
-	for _, dir := range s.dirs() {
+	for _, dir := range []string{s.cfg.WorkRoot, s.cfg.TmpDir} {
 		if err := emptyDir(dir); err != nil {
 			return err
 		}
@@ -389,36 +367,19 @@ func (s *Supervisor) cleanDirs() error {
 		if err := emptyDir(s.cfg.ShmDir); err != nil {
 			return fmt.Errorf("empty shared memory: %w", err)
 		}
-		// Every user may create files there, nobody may remove another's.
-		if err := os.Chmod(s.cfg.ShmDir, os.ModeSticky|0o777); err != nil {
-			return err
-		}
-	}
-	if s.cfg.ShimDir != "" {
-		if err := os.Chmod(s.cfg.TmpDir, os.ModeSticky|0o777); err != nil {
-			return err
-		}
-	}
-	if err := restoreTemplate(s.cfg.HomeTemplate, s.cfg.Home, s.agentOwner); err != nil {
-		return err
 	}
 	return s.prepareDaemonHome()
 }
 
-// prepareDaemonHome rebuilds the daemon's private HOME (user split only).
+// prepareDaemonHome rebuilds the daemon's private HOME and TMPDIR.
 func (s *Supervisor) prepareDaemonHome() error {
-	if s.cfg.ShimDir == "" {
-		return nil
+	if err := emptyDir(s.cfg.DaemonHome); err != nil {
+		return err
 	}
-	for _, dir := range []string{s.cfg.DaemonHome, s.daemonTmp()} {
-		if err := os.Mkdir(dir, 0o700); err != nil {
-			return err
-		}
-		if err := s.owner.chownPath(dir); err != nil {
-			return err
-		}
+	if err := os.Mkdir(s.daemonTmp(), 0o700); err != nil {
+		return err
 	}
-	return restoreTemplate(s.cfg.DaemonHomeTemplate, s.cfg.DaemonHome, s.owner)
+	return restoreTemplate(s.cfg.DaemonHomeTemplate, s.cfg.DaemonHome)
 }
 
 func (s *Supervisor) daemonTmp() string { return filepath.Join(s.cfg.DaemonHome, "tmp") }
@@ -428,7 +389,7 @@ func (s *Supervisor) daemonTmp() string { return filepath.Join(s.cfg.DaemonHome,
 func (s *Supervisor) resetWithRetry(ctx context.Context) error {
 	delay := resetRetryDelay
 	for attempt := 1; ; attempt++ {
-		err := s.resetEnvironment()
+		err := s.resetEnvironment(ctx)
 		if err == nil || attempt >= resetAttempts {
 			return err
 		}
@@ -442,9 +403,14 @@ func (s *Supervisor) resetWithRetry(ctx context.Context) error {
 	}
 }
 
-// resetEnvironment kills every descendant and returns the pod to its initial
-// state. The daemon must already be stopped.
-func (s *Supervisor) resetEnvironment() error {
+// resetEnvironment returns the pod to its initial state: the runner kills the
+// agents and empties what it owns, then this side kills every descendant and
+// empties the rest. The daemon must already be stopped. The runner stays
+// closed until the daemon is started again.
+func (s *Supervisor) resetEnvironment(ctx context.Context) error {
+	if err := s.closeRunner(ctx, 0); err != nil {
+		return err
+	}
 	if err := killDescendants(); err != nil {
 		return fmt.Errorf("kill processes: %w", err)
 	}
@@ -454,7 +420,14 @@ func (s *Supervisor) resetEnvironment() error {
 	return nil
 }
 
-func (s *Supervisor) startDaemon() (*child, chan error, error) {
+func (s *Supervisor) startDaemon(ctx context.Context) (*child, chan error, error) {
+	// Agents may start only once the daemon runs.
+	callCtx, cancel := context.WithTimeout(ctx, defaultControlClient)
+	_, err := s.runner.call(callCtx, opOpen)
+	cancel()
+	if err != nil {
+		return nil, nil, err
+	}
 	// A process started without a standard input gets none; the daemon reads
 	// nothing from it.
 	null, err := os.Open(os.DevNull)
@@ -467,9 +440,6 @@ func (s *Supervisor) startDaemon() (*child, chan error, error) {
 		Env:   s.daemonEnv(),
 		Files: []*os.File{null, os.Stdout, os.Stderr},
 	}
-	if s.cfg.DaemonUser != nil && os.Geteuid() == 0 {
-		attr.Sys = credentialAttr(s.cfg.DaemonUser.UID, s.cfg.DaemonUser.GID)
-	}
 	cmd, err := startChild(&spec{program: s.cfg.DaemonCmd[0], argv0: s.cfg.DaemonCmd[0], args: s.cfg.DaemonCmd[1:], attr: attr})
 	if err != nil {
 		return nil, nil, err
@@ -480,24 +450,17 @@ func (s *Supervisor) startDaemon() (*child, chan error, error) {
 }
 
 func (s *Supervisor) daemonEnv() []string {
-	home, tmp := s.cfg.Home, s.cfg.TmpDir
-	skip := []string{"HOME=", "TMPDIR="}
-	if s.cfg.ShimDir != "" {
-		home, tmp = s.cfg.DaemonHome, s.daemonTmp()
-		skip = append(skip, "PATH=", socketEnv+"=")
-	}
-	env := make([]string, 0, len(s.cfg.Env)+4)
+	skip := []string{"HOME=", "TMPDIR=", "PATH=", socketEnv + "=", daemonTmpEnv + "="}
+	env := make([]string, 0, len(s.cfg.Env)+5)
 	for _, kv := range s.cfg.Env {
 		if !hasAnyPrefix(kv, skip) {
 			env = append(env, kv)
 		}
 	}
-	env = append(env, "HOME="+home, "TMPDIR="+tmp)
-	if s.cfg.ShimDir != "" {
-		// The shims come first so the daemon finds them instead of the CLIs.
-		env = append(env, "PATH="+s.cfg.ShimDir+":"+strings.Join(s.launcher.RealPath, ":"), socketEnv+"="+s.launcher.socket)
-	}
-	return env
+	// The shims come first so the daemon finds them instead of the CLIs.
+	return append(env, "HOME="+s.cfg.DaemonHome, "TMPDIR="+s.daemonTmp(),
+		"PATH="+s.cfg.ShimDir+":"+strings.Join(s.realPath, ":"),
+		socketEnv+"="+s.cfg.AgentSocket, daemonTmpEnv+"="+s.daemonTmp())
 }
 
 func hasAnyPrefix(s string, prefixes []string) bool {

@@ -1,13 +1,13 @@
 import os,sys,subprocess
-os.setgid(1000); os.setgroups([1000]); os.setuid(1000)
+# Run in the agent-runner container: it is the agent user already, and nothing here needs more.
 print("uid",os.getuid(),"gid",os.getgid())
 def t(d,f):
     try: r=f(); print("FAIL-readable" if r is not False else "ok-blocked", d, str(r)[:80])
     except Exception as e: print("ok-blocked", d, type(e).__name__)
-t("ls /tmp/.multica-daemon", lambda: os.listdir("/tmp/.multica-daemon"))
-t("cat daemon config.json", lambda: open("/tmp/.multica-daemon/.multica/config.json").read())
+t("ls /home/daemon", lambda: os.listdir("/home/daemon"))
+t("cat daemon config.json", lambda: open("/home/daemon/.multica/config.json").read())
 dp=[p for p in os.listdir("/proc") if p.isdigit() and open(f"/proc/{p}/comm").read().strip()=="multica"]
-print("daemon pids",dp)
+print("daemon pids (none expected: separate process namespace)",dp)
 for p in dp:
     t(f"read /proc/{p}/environ", lambda: open(f"/proc/{p}/environ").read())
     t(f"kill -0 {p}", lambda: os.kill(int(p),0))

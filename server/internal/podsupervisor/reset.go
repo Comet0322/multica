@@ -86,10 +86,10 @@ func removeIn(root *os.Root, name string) error {
 		return err
 	}
 	if fi.IsDir() {
-		// A read-only directory can neither be listed nor emptied.
-		if err := root.Chmod(name, 0o700); err != nil {
-			return err
-		}
+		// A read-only directory can neither be listed nor emptied. Only its
+		// owner can open it up; for another user's directory the removal below
+		// reports the real failure.
+		_ = root.Chmod(name, 0o700)
 		sub, err := root.OpenRoot(name)
 		if err != nil {
 			return err
@@ -103,36 +103,11 @@ func removeIn(root *os.Root, name string) error {
 	return root.Remove(name)
 }
 
-// owner is the non-root user that must own the restored files.
-type owner struct{ uid, gid int }
-
-func (o *owner) chown(root *os.Root, name string) error {
-	if o == nil {
-		return nil
-	}
-	return root.Chown(name, o.uid, o.gid)
-}
-
-// chownPath hands a directory the supervisor itself just created to the user.
-func (o *owner) chownPath(path string) error {
-	if o == nil {
-		return nil
-	}
-	return os.Chown(path, o.uid, o.gid)
-}
-
-func (o *owner) lchown(root *os.Root, name string) error {
-	if o == nil {
-		return nil
-	}
-	return root.Lchown(name, o.uid, o.gid)
-}
-
 // restoreTemplate copies the read-only template tree into dst, preserving
-// file modes and symlinks. owner, when set, is applied to every copied entry.
+// file modes and symlinks.
 // The template is read and dst is written through os.Root handles, so neither
 // a link in the template nor one planted in dst can redirect a copy.
-func restoreTemplate(template, dst string, own *owner) error {
+func restoreTemplate(template, dst string) error {
 	if template == "" {
 		return nil
 	}
@@ -169,10 +144,7 @@ func restoreTemplate(template, dst string, own *owner) error {
 			if err != nil {
 				return err
 			}
-			if err := out.Symlink(link, rel); err != nil {
-				return err
-			}
-			return own.lchown(out, rel)
+			return out.Symlink(link, rel)
 		case d.IsDir():
 			// Created writable so children can be added; the final mode is
 			// applied once the directory is fully populated.
@@ -180,9 +152,9 @@ func restoreTemplate(template, dst string, own *owner) error {
 				return err
 			}
 			dirs = append(dirs, dirMode{rel, info.Mode().Perm()})
-			return own.chown(out, rel)
+			return nil
 		case info.Mode().IsRegular():
-			return copyFile(src, out, rel, info.Mode().Perm(), own)
+			return copyFile(src, out, rel, info.Mode().Perm())
 		default:
 			return fmt.Errorf("template entry %s has unsupported type %v", rel, d.Type())
 		}
@@ -198,7 +170,7 @@ func restoreTemplate(template, dst string, own *owner) error {
 	return nil
 }
 
-func copyFile(src, dst *os.Root, rel string, mode fs.FileMode, own *owner) error {
+func copyFile(src, dst *os.Root, rel string, mode fs.FileMode) error {
 	in, err := src.Open(rel)
 	if err != nil {
 		return err
@@ -213,9 +185,6 @@ func copyFile(src, dst *os.Root, rel string, mode fs.FileMode, own *owner) error
 		return err
 	}
 	if err := out.Close(); err != nil {
-		return err
-	}
-	if err := own.chown(dst, rel); err != nil {
 		return err
 	}
 	return dst.Chmod(rel, mode)

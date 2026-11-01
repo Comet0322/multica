@@ -9,11 +9,11 @@ import (
 )
 
 // The daemon writes the MCP configuration of a task (it carries the gateway
-// token) to a 0600 file in its own TMPDIR, which is inside its private home,
-// and hands the path to the agent CLI as --mcp-config. The agent user cannot
-// open that file or even reach its directory, so Claude Code failed at start
-// with EACCES. The supervisor gives the agent a copy it can read, outside the
-// daemon's home, and passes that path instead.
+// ticket) to a 0600 file in its own TMPDIR, which is inside its private home,
+// and hands the path to the agent CLI as --mcp-config. The agent container does
+// not have that volume, so Claude Code failed at start. The shim reads the file
+// and the runner gives the agent a copy in the shared TMPDIR, passing that
+// path instead.
 const argFileDaemon = `#!/bin/sh
 echo $$ >> "$OUT/pids"
 if [ ! -e "$OUT/ran" ]; then

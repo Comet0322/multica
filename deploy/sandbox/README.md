@@ -22,7 +22,7 @@ and the manual smoke test are in [pool/k8s](pool/k8s).
 
 | File | What |
 |---|---|
-| `Dockerfile.pool` | The pod image (daemon, agent CLIs, pod supervisor) |
+| `Dockerfile.pool` | The pod image (daemon, agent CLIs, pod supervisor and agent runner; two non-root containers per pod) |
 | `Dockerfile.manager` | The pool manager |
 | `Dockerfile.gateway` | The git gateway |
 | `home/` | Files copied into the agent's home at every pod reset |

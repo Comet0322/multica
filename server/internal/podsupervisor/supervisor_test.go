@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -63,6 +64,29 @@ type controlServer struct {
 	eventRejects int
 	// onPost sees every post as it arrives.
 	onPost func(rep podsupervisor.Report)
+}
+
+// serveRunner answers the control socket like a runner that does nothing, for
+// tests that run the supervisor in-process.
+func serveRunner(t *testing.T, socket string) func() {
+	t.Helper()
+	ln, err := net.Listen("unix", "@"+socket+"-ctl")
+	must(t, err)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				var req map[string]string
+				_ = json.NewDecoder(c).Decode(&req)
+				_ = json.NewEncoder(c).Encode(map[string]any{"open": req["op"] != "close"})
+			}()
+		}
+	}()
+	return func() { _ = ln.Close() }
 }
 
 func newControlServer(t *testing.T) *controlServer {
@@ -140,17 +164,25 @@ func eventually(t *testing.T, d time.Duration, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// pod is one pod: the supervisor and the runner as two processes of the test
+// user, each with the flags the two containers get.
 type pod struct {
-	t        *testing.T
-	ctl      *controlServer
-	out      string // test-owned directory, never touched by resets
-	work     string
-	home     string
-	tmp      string
-	template string
-	args     []string // extra supervisor flags, set by the setup function
-	env      []string // extra supervisor environment
-	cmd      *exec.Cmd
+	t          *testing.T
+	ctl        *controlServer
+	out        string // test-owned directory, never touched by resets
+	work       string
+	home       string // the agent's HOME, the runner's
+	tmp        string
+	template   string // the agent's HOME template
+	daemonHome string // the daemon's HOME, the supervisor's
+	daemonTpl  string
+	shimDir    string
+	socket     string
+	args       []string // extra supervisor flags, set by the setup function
+	runnerArgs []string // extra runner flags
+	env        []string // extra environment of both
+	cmd        *exec.Cmd
+	runner     *exec.Cmd
 }
 
 const daemonScript = `#!/bin/sh
@@ -172,15 +204,19 @@ func startPod(t *testing.T, mark string, setup func(p *pod)) *pod {
 	t.Helper()
 	root := t.TempDir()
 	p := &pod{
-		t:        t,
-		ctl:      newControlServer(t),
-		out:      filepath.Join(root, "out"),
-		work:     filepath.Join(root, "work"),
-		home:     filepath.Join(root, "home"),
-		tmp:      filepath.Join(root, "tmp"),
-		template: filepath.Join(root, "template"),
+		t:          t,
+		ctl:        newControlServer(t),
+		out:        filepath.Join(root, "out"),
+		work:       filepath.Join(root, "work"),
+		home:       filepath.Join(root, "home"),
+		tmp:        filepath.Join(root, "tmp"),
+		template:   filepath.Join(root, "template"),
+		daemonHome: filepath.Join(root, "daemon-home"),
+		daemonTpl:  filepath.Join(root, "daemon-template"),
+		shimDir:    filepath.Join(root, "shims"),
+		socket:     fmt.Sprintf("podsupervisor-test-%d-%d", os.Getpid(), time.Now().UnixNano()),
 	}
-	for _, d := range []string{p.out, p.work, p.home, p.tmp, p.template} {
+	for _, d := range []string{p.out, p.work, p.home, p.tmp, p.template, p.daemonHome, p.daemonTpl, p.shimDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -192,28 +228,49 @@ func startPod(t *testing.T, mark string, setup func(p *pod)) *pod {
 	if setup != nil {
 		setup(p)
 	}
+	env := append([]string{"PATH=" + os.Getenv("PATH"), "OUT=" + p.out, "MARK=" + mark, "SPAWN=" + map[bool]string{true: "1"}[mark != ""]}, p.env...)
+
+	runnerArgs := append([]string{
+		"-role", "runner", "-agent-socket", p.socket, "-daemon-uid", strconv.Itoa(os.Getuid()),
+		"-work-root", p.work, "-tmpdir", p.tmp, "-shim-dir", p.shimDir,
+		"-home", p.home, "-home-template", p.template,
+	}, p.runnerArgs...)
+	p.runner = exec.Command(supervisorBin, runnerArgs...)
+	p.runner.Env = env
+	p.runner.Stderr = io.Discard
+	if err := p.runner.Start(); err != nil {
+		t.Fatal(err)
+	}
+
 	args := append([]string{
-		"-control-url", p.ctl.srv.URL,
-		"-work-root", p.work, "-home", p.home, "-tmpdir", p.tmp,
-		"-home-template", p.template,
+		"-control-url", p.ctl.srv.URL, "-agent-socket", p.socket,
+		"-work-root", p.work, "-tmpdir", p.tmp, "-shim-dir", p.shimDir,
+		"-daemon-home", p.daemonHome, "-daemon-home-template", p.daemonTpl,
 		"-poll-interval", "50ms",
 	}, p.args...)
 	p.cmd = exec.Command(supervisorBin, append(args, "--", script)...)
-	p.cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "OUT=" + p.out, "MARK=" + mark, "SPAWN=" + map[bool]string{true: "1"}[mark != ""]}, p.env...)
+	p.cmd.Env = env
 	p.cmd.Stderr = io.Discard
 	if err := p.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		_ = p.cmd.Process.Signal(syscall.SIGTERM)
+	stopProc := func(cmd *exec.Cmd) {
+		if cmd.ProcessState != nil {
+			return
+		}
+		_ = cmd.Process.Signal(syscall.SIGTERM)
 		done := make(chan struct{})
-		go func() { _ = p.cmd.Wait(); close(done) }()
+		go func() { _ = cmd.Wait(); close(done) }()
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
-			_ = p.cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 			<-done
 		}
+	}
+	t.Cleanup(func() {
+		stopProc(p.cmd)
+		stopProc(p.runner)
 		// Make read-only trees removable for t.TempDir cleanup.
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if d != nil && d.IsDir() {
@@ -443,7 +500,7 @@ func TestRestartedDaemonGetsFreshEnvironment(t *testing.T) {
 	if strings.Contains(second, "AGENT_SET") {
 		t.Errorf("agent-set variable survived the reset:\n%s", second)
 	}
-	for _, want := range []string{"HOME=" + p.home, "TMPDIR=" + p.tmp} {
+	for _, want := range []string{"HOME=" + p.daemonHome, "TMPDIR=" + filepath.Join(p.daemonHome, "tmp")} {
 		if !strings.Contains(second, want+"\n") {
 			t.Errorf("environment lacks %s:\n%s", want, second)
 		}
@@ -686,9 +743,6 @@ func TestShmDirIsEmptiedAtStartAndOnEveryReset(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("shm not emptied at start: %v", entries)
 	}
-	if fi, err := os.Stat(shm); err != nil || fi.Mode()&os.ModeSticky == 0 || fi.Mode().Perm() != 0o777 {
-		t.Fatalf("shm must be world-writable with the sticky bit: %v %v", fi, err)
-	}
 
 	must(t, os.WriteFile(filepath.Join(shm, "probe"), []byte("secret"), 0o644))
 	if rep := p.ctl.reset(t, "r1"); rep.Status != "done" {
@@ -743,14 +797,19 @@ func TestUnknownPodTimeoutEndsTheSupervisor(t *testing.T) {
 		}))
 		defer srv.Close()
 		root := t.TempDir()
-		for _, d := range []string{"work", "home", "tmp"} {
+		for _, d := range []string{"work", "daemon-home", "tmp", "shims"} {
 			must(t, os.Mkdir(filepath.Join(root, d), 0o755))
 		}
+		// A runner that answers every call, which is all this test needs.
+		socket := fmt.Sprintf("podsupervisor-unknown-%d-%d", os.Getpid(), time.Now().UnixNano())
+		stopRunner := serveRunner(t, socket)
+		defer stopRunner()
 		script := filepath.Join(root, "daemon.sh")
 		must(t, os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755))
 		s, err := podsupervisor.New(podsupervisor.Config{
 			DaemonCmd: []string{script}, Env: []string{"PATH=" + os.Getenv("PATH")},
-			WorkRoot: filepath.Join(root, "work"), Home: filepath.Join(root, "home"), TmpDir: filepath.Join(root, "tmp"),
+			WorkRoot: filepath.Join(root, "work"), TmpDir: filepath.Join(root, "tmp"), DaemonHome: filepath.Join(root, "daemon-home"),
+			ShimDir: filepath.Join(root, "shims"), AgentSocket: socket,
 			ControlURL: srv.URL, PollInterval: 20 * time.Millisecond, UnknownTimeout: 300 * time.Millisecond,
 		})
 		must(t, err)

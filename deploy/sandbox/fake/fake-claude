@@ -15,7 +15,7 @@ if [ -n "${FAKE_CLAUDE_REPORT:-}" ]; then
 		echo "home=$HOME"
 		echo "cwd=$(pwd)"
 		touch ./agent-wrote 2>/dev/null && echo "cwd-writable=yes" || echo "cwd-writable=no"
-		cat /tmp/.multica-daemon/.multica/config.json >/dev/null 2>&1 && echo "daemon-config=readable" || echo "daemon-config=hidden"
+		cat /home/daemon/.multica/config.json >/dev/null 2>&1 && echo "daemon-config=readable" || echo "daemon-config=hidden"
 	} >"$FAKE_CLAUDE_REPORT"
 fi
 prompt="$(head -n 1)"

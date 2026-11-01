@@ -3,35 +3,20 @@
 package podsupervisor
 
 import (
+	"context"
 	"errors"
-	"log/slog"
-	"syscall"
 )
 
-const socketEnv = "POD_AGENT_SOCKET"
+// Runner is not supported off Linux.
+type Runner struct{}
 
-type launcherConfig struct {
-	DaemonUID uint32
-	Cred      *syscall.Credential
-	Home      string
-	TmpDir    string
-	ShimDir   string
-	RealPath  []string
+// NewRunner is not supported off Linux.
+func NewRunner(RunnerConfig) (*Runner, error) {
+	return nil, errors.New("the agent runner requires Linux")
 }
 
-type launcher struct {
-	launcherConfig
-	socket string
-}
-
-func newLauncher(launcherConfig, *slog.Logger) (*launcher, error) {
-	return nil, errors.New("the user split requires Linux")
-}
-
-func (*launcher) listen() error { return nil }
-func (*launcher) shutdown()     {}
-func (*launcher) allow(bool)    {}
-func (*launcher) owns(int) bool { return false }
+// Run is not supported off Linux.
+func (*Runner) Run(context.Context) error { return errors.New("the agent runner requires Linux") }
 
 // RunShim is not supported off Linux.
 func RunShim(name string, args []string) int { return 126 }
