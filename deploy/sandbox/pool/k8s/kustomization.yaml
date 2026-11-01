@@ -1,0 +1,19 @@
+# Sandbox manager manifests (the sandbox pods have their own kustomization in
+# sandbox/). Image tags live here, under version control.
+# Replace every PLACEHOLDER (images, hosts, CIDRs) in an overlay; nothing in
+# this directory is secret.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: multica-sandbox
+resources:
+  - namespace.yaml
+  - manager.yaml
+  - git-gateway.yaml
+  - networkpolicy.yaml
+images:
+  - name: multica-sandbox-manager
+    newName: registry.example.com/multica/sandbox-manager # PLACEHOLDER
+    newTag: PLACEHOLDER
+  - name: multica-git-gateway
+    newName: registry.example.com/multica/git-gateway # PLACEHOLDER
+    newTag: PLACEHOLDER

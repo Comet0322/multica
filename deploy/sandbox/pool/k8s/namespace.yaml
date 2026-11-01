@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multica-sandbox
+  labels:
+    # No pod here runs as root or with a capability (manager.yaml,
+    # git-gateway.yaml, and the sandbox pods in sandbox/pool.yaml), so the
+    # namespace enforces the "restricted" profile.
+    pod-security.kubernetes.io/enforce: restricted
