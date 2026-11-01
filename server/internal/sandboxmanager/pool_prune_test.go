@@ -53,7 +53,7 @@ func TestPodRegisteringAfterPruneIsFirstSeenAndReset(t *testing.T) {
 func TestNegativeLostRetentionIsRejected(t *testing.T) {
 	t.Parallel()
 	_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-		MulticaURL: "http://multica:8080", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+		MulticaURL: "http://multica:8080", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID,
 		LostRetention: -time.Second,
 	}, nil)
 	if err == nil {

@@ -36,7 +36,7 @@ var ErrUnknownToken = errors.New("gitgateway: unknown or revoked token")
 // Resolver is the gateway's view of the manager. Any error other than
 // ErrUnknownToken means the manager could not answer, and the gateway refuses.
 type Resolver interface {
-	Resolve(ctx context.Context, token string) (Identity, error)
+	Resolve(ctx context.Context, ticket string) (Identity, error)
 }
 
 // TokenRegistry is the manager-side table of live gateway tokens. The manager
@@ -44,9 +44,9 @@ type Resolver interface {
 // ends. Tokens are opaque random strings that mean nothing outside the
 // gateway.
 type TokenRegistry struct {
-	mu     sync.Mutex
-	tokens map[string]Identity
-	byTask map[string]string
+	mu      sync.Mutex
+	tickets map[string]Identity
+	byTask  map[string]string
 	// onRevoke holds the functions to call after a token is revoked.
 	onRevoke []func(taskID string)
 }
@@ -55,7 +55,7 @@ type TokenRegistry struct {
 const maxReplyBytes = 1 << 20
 
 func NewTokenRegistry() *TokenRegistry {
-	return &TokenRegistry{tokens: map[string]Identity{}, byTask: map[string]string{}}
+	return &TokenRegistry{tickets: map[string]Identity{}, byTask: map[string]string{}}
 }
 
 // Issue returns a fresh token for the task. A task keeps a single live token:
@@ -65,25 +65,25 @@ func (r *TokenRegistry) Issue(id Identity) (string, error) {
 	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("gitgateway: generate token: %w", err)
 	}
-	token := "gwt_" + base64.RawURLEncoding.EncodeToString(raw)
+	ticket := "gwt_" + base64.RawURLEncoding.EncodeToString(raw)
 	id.Initiator = strings.ToLower(strings.TrimSpace(id.Initiator))
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if old, ok := r.byTask[id.TaskID]; ok {
-		delete(r.tokens, old)
+		delete(r.tickets, old)
 	}
-	r.tokens[token] = id
-	r.byTask[id.TaskID] = token
-	return token, nil
+	r.tickets[ticket] = id
+	r.byTask[id.TaskID] = ticket
+	return ticket, nil
 }
 
 // Revoke ends the task's token and tells the revoke hooks. It is safe to call
 // for unknown tasks.
 func (r *TokenRegistry) Revoke(taskID string) {
 	r.mu.Lock()
-	token, ok := r.byTask[taskID]
+	ticket, ok := r.byTask[taskID]
 	if ok {
-		delete(r.tokens, token)
+		delete(r.tickets, ticket)
 		delete(r.byTask, taskID)
 	}
 	hooks := r.onRevoke
@@ -105,10 +105,10 @@ func (r *TokenRegistry) OnRevoke(hook func(taskID string)) {
 }
 
 // Resolve implements Resolver for in-process use.
-func (r *TokenRegistry) Resolve(_ context.Context, token string) (Identity, error) {
+func (r *TokenRegistry) Resolve(_ context.Context, ticket string) (Identity, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	id, ok := r.tokens[token]
+	id, ok := r.tickets[ticket]
 	if !ok {
 		return Identity{}, ErrUnknownToken
 	}
@@ -125,13 +125,13 @@ func (r *TokenRegistry) VerifyHandler() http.Handler {
 			return
 		}
 		var body struct {
-			Token string `json:"token"`
+			Ticket string `json:"token"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 4096)).Decode(&body); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		id, err := r.Resolve(req.Context(), body.Token)
+		id, err := r.Resolve(req.Context(), body.Ticket)
 		if err != nil {
 			http.Error(w, "unknown token", http.StatusNotFound)
 			return
@@ -147,12 +147,12 @@ type HTTPResolver struct {
 	Client *http.Client
 }
 
-func (h HTTPResolver) Resolve(ctx context.Context, token string) (Identity, error) {
+func (h HTTPResolver) Resolve(ctx context.Context, ticket string) (Identity, error) {
 	client := h.Client
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Second}
 	}
-	payload, _ := json.Marshal(map[string]string{"token": token})
+	payload, _ := json.Marshal(map[string]string{"token": ticket})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.URL, bytes.NewReader(payload))
 	if err != nil {
 		return Identity{}, err

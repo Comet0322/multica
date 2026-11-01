@@ -22,16 +22,16 @@ func (c *gitlabClient) post(ctx context.Context, path string, body any) (int, []
 	if err != nil {
 		return 0, nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("PRIVATE-TOKEN", c.ticket)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, redact(err, c.token)
+		return 0, nil, redact(err, c.ticket)
 	}
 	defer resp.Body.Close()
 	out, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return 0, nil, redact(err, c.token)
+		return 0, nil, redact(err, c.ticket)
 	}
 	return resp.StatusCode, out, nil
 }

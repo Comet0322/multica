@@ -169,7 +169,7 @@ func newSyncHarness(t *testing.T, up *syncMultica, mutate ...func(*sandboxmanage
 	t.Helper()
 	logs, audit := &syncBuffer{}, &syncBuffer{}
 	cfg := sandboxmanager.PoolConfig{
-		MulticaURL: up.URL, Token: patPool, Name: "Pool",
+		MulticaURL: up.URL, Ticket: patPool, Name: "Pool",
 		UpstreamBackoff: time.Minute, AuditLog: audit,
 		DrainTimeout: time.Minute, DrainPoll: 5 * time.Millisecond,
 	}
@@ -326,18 +326,18 @@ func TestSyncNeedsAToken(t *testing.T) {
 func TestPoolTokenCannotBeCombinedWithWorkspaceSettings(t *testing.T) {
 	t.Parallel()
 	cases := map[string]sandboxmanager.PoolConfig{
-		"workspace list": {Workspaces: []sandboxmanager.WorkspaceConfig{{WorkspaceID: wsA, Token: patA}}},
+		"workspace list": {Workspaces: []sandboxmanager.WorkspaceConfig{{WorkspaceID: wsA, Ticket: patA}}},
 		"workspace ID":   {WorkspaceID: wsA},
-		"upstream token": {MulticaToken: patA},
+		"upstream token": {MulticaTicket: patA},
 		"manager ID":     {ManagerID: "manager"},
 	}
 	for name, cfg := range cases {
-		cfg.MulticaURL, cfg.Token = "http://127.0.0.1:1", patPool
+		cfg.MulticaURL, cfg.Ticket = "http://127.0.0.1:1", patPool
 		if _, err := sandboxmanager.NewPool(cfg, nil); err == nil {
 			t.Errorf("%s with a Token: want an error", name)
 		}
 	}
-	if _, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{MulticaURL: "http://127.0.0.1:1", Token: patPool}, nil); err != nil {
+	if _, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{MulticaURL: "http://127.0.0.1:1", Ticket: patPool}, nil); err != nil {
 		t.Fatalf("a Token alone must be valid: %v", err)
 	}
 }
@@ -350,7 +350,7 @@ func TestPoolRefusesBadSyncSettings(t *testing.T) {
 		"unknown visibility":     func(c *sandboxmanager.PoolConfig) { c.RuntimeVisibility = "workspace" },
 		"visibility capitalised": func(c *sandboxmanager.PoolConfig) { c.RuntimeVisibility = "Public" },
 	} {
-		cfg := sandboxmanager.PoolConfig{MulticaURL: "http://127.0.0.1:1", Token: patPool}
+		cfg := sandboxmanager.PoolConfig{MulticaURL: "http://127.0.0.1:1", Ticket: patPool}
 		mutate(&cfg)
 		if _, err := sandboxmanager.NewPool(cfg, nil); err == nil {
 			t.Errorf("%s: want an error", name)

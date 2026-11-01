@@ -207,7 +207,7 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 			p.refuse(w, r, ip, "workspace repos are served only to a pod working for the workspace")
 			return
 		}
-		p.forward(w, r, &proxyRoute{managerAuth: true, token: ws.cfg.Token})
+		p.forward(w, r, &proxyRoute{managerAuth: true, ticket: ws.cfg.Ticket})
 	case len(parts) >= 3 && parts[0] == "tasks":
 		p.serveTask(w, r, ip, parts[1], parts[2])
 	case len(parts) >= 2 && parts[0] == "runtimes":
@@ -223,11 +223,11 @@ func (p *Pool) serveDaemon(w http.ResponseWriter, r *http.Request, ip string) {
 // unchanged and never gets a workspace PAT. Only a registered pod may send it,
 // and only with a task token ("mat_"): the daemon's placeholder is no credential.
 func (p *Pool) serveAgentAPI(w http.ResponseWriter, r *http.Request, ip string) {
-	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	ticket, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	p.mu.Lock()
 	registered := p.pods[ip] != nil
 	p.mu.Unlock()
-	if !registered || !strings.HasPrefix(strings.TrimSpace(token), "mat_") {
+	if !registered || !strings.HasPrefix(strings.TrimSpace(ticket), "mat_") {
 		p.refuse(w, r, ip, "endpoint not supported by the pool manager")
 		return
 	}
@@ -495,7 +495,7 @@ func (p *Pool) serveTask(w http.ResponseWriter, r *http.Request, ip, taskID, act
 		p.refuse(w, r, ip, "task is not assigned to this pod")
 		return
 	}
-	route := &proxyRoute{managerAuth: true, token: l.ws.cfg.Token, after: func(status int) {
+	route := &proxyRoute{managerAuth: true, ticket: l.ws.cfg.Ticket, after: func(status int) {
 		if !terminalAction(action) {
 			return
 		}
@@ -538,7 +538,7 @@ func (p *Pool) newProxy() *httputil.ReverseProxy {
 			pr.SetURL(target)
 			pr.Out.Host = target.Host
 			if route, _ := pr.In.Context().Value(proxyContextKey{}).(*proxyRoute); route != nil && route.managerAuth {
-				pr.Out.Header.Set("Authorization", "Bearer "+route.token)
+				pr.Out.Header.Set("Authorization", "Bearer "+route.ticket)
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {

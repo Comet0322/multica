@@ -34,8 +34,8 @@ func (h *harness) adminPost(path string, body any) (int, []byte) {
 	return resp.StatusCode, buf.Bytes()
 }
 
-func (h *harness) verifyToken(token string) int {
-	status, _ := h.adminPost("/v1/git/verify-token", map[string]string{"token": token})
+func (h *harness) verifyToken(ticket string) int {
+	status, _ := h.adminPost("/v1/git/verify-token", map[string]string{"token": ticket})
 	return status
 }
 
@@ -63,8 +63,8 @@ func TestGitTokenIsInjectedForcedAndVerifiableByTheGateway(t *testing.T) {
 
 	task := pod.claimTask()
 	env := envOf(t, task)
-	token := env["GIT_GATEWAY_TOKEN"]
-	if !strings.HasPrefix(token, "gwt_") || env["KEEP_ME"] != "yes" {
+	ticket := env["GIT_GATEWAY_TOKEN"]
+	if !strings.HasPrefix(ticket, "gwt_") || env["KEEP_ME"] != "yes" {
 		t.Fatalf("token not forced over the agent's env: %v", env)
 	}
 	for name := range env {
@@ -72,12 +72,12 @@ func TestGitTokenIsInjectedForcedAndVerifiableByTheGateway(t *testing.T) {
 			t.Fatalf("injected variable %s starts with MULTICA_", name)
 		}
 	}
-	status, raw := h.adminPost("/v1/git/verify-token", map[string]string{"token": token})
+	status, raw := h.adminPost("/v1/git/verify-token", map[string]string{"token": ticket})
 	var id gitgateway.Identity
 	if status != http.StatusOK || json.Unmarshal(raw, &id) != nil || id.TaskID != "t1" || id.Initiator != "alice@example.com" || id.WorkspaceID != harnessWorkspaceID {
 		t.Fatalf("identity = %+v (%d)", id, status)
 	}
-	if strings.Contains(h.logs.String(), token) || strings.Contains(h.audit.String(), token) {
+	if strings.Contains(h.logs.String(), ticket) || strings.Contains(h.audit.String(), ticket) {
 		t.Fatal("the git token leaked into logs or the audit trail")
 	}
 }
@@ -129,11 +129,11 @@ func TestGitTokenIsRevokedWhenTheLeasePodIsReplaced(t *testing.T) {
 	pod := h.newPod("127.0.0.2", "pool-0")
 	pod.nonce = "boot-1"
 	pod.start()
-	token := envOf(t, pod.claimTask())["GIT_GATEWAY_TOKEN"]
+	ticket := envOf(t, pod.claimTask())["GIT_GATEWAY_TOKEN"]
 
 	pod.nonce = "boot-2"
 	pod.register()
-	if h.verifyToken(token) != http.StatusNotFound {
+	if h.verifyToken(ticket) != http.StatusNotFound {
 		t.Fatal("token survived the pod being replaced")
 	}
 }
@@ -199,7 +199,7 @@ func TestWithoutGatewayConfiguredTasksAndAdminAreUntouched(t *testing.T) {
 func TestMulticaPrefixedGitEnvNamesAreRejected(t *testing.T) {
 	t.Parallel()
 	_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-		MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+		MulticaURL: "http://127.0.0.1:1", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID,
 		Git: &sandboxmanager.GitGatewayConfig{Env: map[string]string{"MULTICA_TOKEN": sandboxmanager.GitAuthPlaceholder}},
 	}, nil)
 	if err == nil {
@@ -236,8 +236,8 @@ func TestClaimInjectsTheGatewayMCPServerWithTheTaskToken(t *testing.T) {
 	if !ok || url != "http://git-gateway.pool.svc:8081/mcp" {
 		t.Fatalf("gateway MCP entry = %q ok=%v in %v", url, ok, task["agent"])
 	}
-	token := envOf(t, task)["GIT_GATEWAY_TOKEN"]
-	if auth != "Bearer "+token {
+	ticket := envOf(t, task)["GIT_GATEWAY_TOKEN"]
+	if auth != "Bearer "+ticket {
 		t.Fatalf("MCP authorization does not carry the task's git token")
 	}
 	var id gitgateway.Identity
@@ -245,7 +245,7 @@ func TestClaimInjectsTheGatewayMCPServerWithTheTaskToken(t *testing.T) {
 	if status != http.StatusOK || json.Unmarshal(raw, &id) != nil || id.TaskID != "t1" {
 		t.Fatalf("MCP token identity = %+v (%d)", id, status)
 	}
-	if strings.Contains(h.logs.String(), token) || strings.Contains(h.audit.String(), token) {
+	if strings.Contains(h.logs.String(), ticket) || strings.Contains(h.audit.String(), ticket) {
 		t.Fatal("the git token leaked into logs or the audit trail")
 	}
 }
@@ -269,7 +269,7 @@ func TestClaimWithoutMCPURLLeavesMCPConfigAlone(t *testing.T) {
 func TestMCPURLMustBeAnHTTPURL(t *testing.T) {
 	t.Parallel()
 	_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-		MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+		MulticaURL: "http://127.0.0.1:1", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID,
 		Git: &sandboxmanager.GitGatewayConfig{MCPURL: "git-gateway/mcp"},
 	}, nil)
 	if err == nil {

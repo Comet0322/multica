@@ -19,8 +19,8 @@ func TestLoadPoolReadsTheTokenFromAFile(t *testing.T) {
 	}
 	env := map[string]string{"SANDBOX_POOL_TOKEN_FILE": path, "MULTICA_SERVER_URL": "http://multica:8080"}
 	s, err := loadPool(envLookup(env))
-	if err != nil || s.config.Token != "mul_pat_from_file" {
-		t.Fatalf("token from file: %v, %+v", err, s.config.Token)
+	if err != nil || s.config.Ticket != "mul_pat_from_file" {
+		t.Fatalf("token from file: %v, %+v", err, s.config.Ticket)
 	}
 }
 
@@ -107,8 +107,8 @@ func TestMainNeedsAToken(t *testing.T) {
 		main()
 		return
 	}
-	tokenFile := filepath.Join(t.TempDir(), "token")
-	if err := os.WriteFile(tokenFile, []byte("mul_pat_x\n"), 0o600); err != nil {
+	ticketFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(ticketFile, []byte("mul_pat_x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	run := func(env ...string) string {
@@ -127,7 +127,7 @@ func TestMainNeedsAToken(t *testing.T) {
 	if out := run("SANDBOX_POOL_TOKEN=mul_pat_x"); !strings.Contains(out, "sandbox pool manager stopped") || strings.Contains(out, "mul_pat_x") {
 		t.Fatalf("SANDBOX_POOL_TOKEN must select the pool manager:\n%s", out)
 	}
-	if out := run("SANDBOX_POOL_TOKEN_FILE=" + tokenFile); !strings.Contains(out, "sandbox pool manager stopped") {
+	if out := run("SANDBOX_POOL_TOKEN_FILE=" + ticketFile); !strings.Contains(out, "sandbox pool manager stopped") {
 		t.Fatalf("SANDBOX_POOL_TOKEN_FILE must select the pool manager:\n%s", out)
 	}
 	for _, env := range [][]string{{"SANDBOX_WORKSPACES_FILE=/etc/pool/workspaces.json"}, {}} {

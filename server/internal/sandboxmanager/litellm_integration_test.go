@@ -19,7 +19,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/sandboxmanager"
 )
 
-func litellmDo(t *testing.T, method, base, path, bearer string, body any) (int, []byte) {
+func litellmDo(t *testing.T, method, base, path, carrier string, body any) (int, []byte) {
 	t.Helper()
 	var rd io.Reader
 	if body != nil {
@@ -30,7 +30,7 @@ func litellmDo(t *testing.T, method, base, path, bearer string, body any) (int, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Authorization", "Bearer "+carrier)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

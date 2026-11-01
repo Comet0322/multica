@@ -91,7 +91,7 @@ func TestMulticaPrefixedEnvNamesAreRejected(t *testing.T) {
 	t.Parallel()
 	llm := newFakeLiteLLM(t)
 	_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-		MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+		MulticaURL: "http://127.0.0.1:1", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID,
 		LiteLLM: &sandboxmanager.LiteLLMConfig{
 			URL: llm.URL, MasterKey: fakeLiteLLMMaster, Models: []string{"m"}, MaxBudget: 5, RPMLimit: 60,
 			Env: map[string]string{"MULTICA_TOKEN": sandboxmanager.LiteLLMKeyPlaceholder},

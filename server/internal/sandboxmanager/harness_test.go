@@ -265,11 +265,11 @@ func newHarness(t *testing.T, expectedSize int, opts ...func(*sandboxmanager.Poo
 	t.Helper()
 	up := newFakeMultica(t)
 	cfg := sandboxmanager.PoolConfig{
-		MulticaURL:   up.URL,
-		MulticaToken: harnessPAT,
-		WorkspaceID:  harnessWorkspaceID,
-		Name:         "Test Pool",
-		ExpectedSize: expectedSize,
+		MulticaURL:    up.URL,
+		MulticaTicket: harnessPAT,
+		WorkspaceID:   harnessWorkspaceID,
+		Name:          "Test Pool",
+		ExpectedSize:  expectedSize,
 	}
 	for _, opt := range opts {
 		opt(&cfg)

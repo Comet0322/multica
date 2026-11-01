@@ -155,7 +155,7 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 		auditFile:     getenv("SANDBOX_AUDIT_FILE"),
 		config: sandboxmanager.PoolConfig{
 			MulticaURL:        getenv("MULTICA_SERVER_URL"),
-			Token:             secret("SANDBOX_POOL_TOKEN"),
+			Ticket:            secret("SANDBOX_POOL_TOKEN"),
 			MaxLeases:         whole("SANDBOX_POOL_MAX_LEASES"),
 			SyncInterval:      duration("SANDBOX_POOL_SYNC_INTERVAL"),
 			RuntimeVisibility: getenv("SANDBOX_POOL_RUNTIME_VISIBILITY"),
@@ -182,7 +182,7 @@ func loadPool(getenv func(string) string) (poolSettings, error) {
 	default:
 		fail("SANDBOX_POOL_RUNTIME_VISIBILITY must be public or private")
 	}
-	if s.config.Token == "" {
+	if s.config.Ticket == "" {
 		fail("SANDBOX_POOL_TOKEN or SANDBOX_POOL_TOKEN_FILE is required")
 	}
 	switch s.config.Placement {

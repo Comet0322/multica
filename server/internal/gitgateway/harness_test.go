@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	adminToken = "glpat-ADMIN-SECRET"
-	project    = "group/proj"
+	adminTicket = "glpat-ADMIN-SECRET"
+	project     = "group/proj"
 )
 
 // fakeGitLab answers the API calls the gateway makes and serves git endpoints
@@ -153,7 +153,7 @@ func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if r.Header.Get("PRIVATE-TOKEN") != adminToken {
+		if r.Header.Get("PRIVATE-TOKEN") != adminTicket {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -169,7 +169,7 @@ func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 		Auth: r.Header.Get("Authorization"), Cookie: r.Header.Get("Cookie"),
 	})
 	f.mu.Unlock()
-	if _, pw, _ := r.BasicAuth(); pw != adminToken {
+	if _, pw, _ := r.BasicAuth(); pw != adminTicket {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -334,7 +334,7 @@ func newHarness(t *testing.T, mutate ...func(*gitgateway.Config)) *harness {
 		clock: &fakeClock{t: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)}, audit: &syncBuffer{},
 	}
 	cfg := gitgateway.Config{
-		GitLabURL: h.gitlab.srv.URL, AdminToken: adminToken, Resolver: h.tokens,
+		GitLabURL: h.gitlab.srv.URL, AdminTicket: adminTicket, Resolver: h.tokens,
 		Audit: h.audit, Now: h.clock.Now,
 	}
 	for _, m := range mutate {
@@ -360,14 +360,14 @@ func (h *harness) issue(taskID, email string) string {
 }
 
 // get sends a request the way git does: the token is the Basic password.
-func (h *harness) do(method, rawPath, token, body string) (int, string) {
+func (h *harness) do(method, rawPath, ticket, body string) (int, string) {
 	h.t.Helper()
 	req, err := http.NewRequest(method, h.gateway.URL+rawPath, strings.NewReader(body))
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if token != "" {
-		req.SetBasicAuth("task", token)
+	if ticket != "" {
+		req.SetBasicAuth("task", ticket)
 	}
 	req.Header.Set("Cookie", "session=client-cookie")
 	resp, err := h.gateway.Client().Do(req)

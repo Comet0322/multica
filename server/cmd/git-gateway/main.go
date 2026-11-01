@@ -139,19 +139,19 @@ func load(getenv func(string) string) (gitgateway.Config, string, error) {
 	}
 	cfg := gitgateway.Config{
 		GitLabURL:     getenv("GIT_GATEWAY_GITLAB_URL"),
-		AdminToken:    strings.TrimSpace(getenv("GIT_GATEWAY_GITLAB_TOKEN")),
+		AdminTicket:   strings.TrimSpace(getenv("GIT_GATEWAY_GITLAB_TOKEN")),
 		CacheTTL:      duration("GIT_GATEWAY_CACHE_TTL"),
 		LookupTimeout: duration("GIT_GATEWAY_LOOKUP_TIMEOUT"),
 		Audit:         os.Stdout,
 	}
-	if path := getenv("GIT_GATEWAY_GITLAB_TOKEN_FILE"); path != "" && cfg.AdminToken == "" {
+	if path := getenv("GIT_GATEWAY_GITLAB_TOKEN_FILE"); path != "" && cfg.AdminTicket == "" {
 		if raw, err := readConfigFile(path); err != nil {
 			errs = append(errs, "GIT_GATEWAY_GITLAB_TOKEN_FILE is unreadable")
 		} else {
-			cfg.AdminToken = strings.TrimSpace(string(raw))
+			cfg.AdminTicket = strings.TrimSpace(string(raw))
 		}
 	}
-	if cfg.AdminToken == "" {
+	if cfg.AdminTicket == "" {
 		errs = append(errs, "GIT_GATEWAY_GITLAB_TOKEN or GIT_GATEWAY_GITLAB_TOKEN_FILE is required")
 	}
 	if cfg.GitLabURL == "" {

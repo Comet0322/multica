@@ -88,11 +88,11 @@ func (p *Pool) Reload(ctx context.Context, workspaces []WorkspaceConfig) (Reload
 				ws.drainGen++
 				ws.cfg.MaxLeases = wc.MaxLeases
 			} else {
-				ws = &workspace{cfg: wc, up: newUpstream(p.cfg.MulticaURL, wc.Token, p.identityHeaders)}
+				ws = &workspace{cfg: wc, up: newUpstream(p.cfg.MulticaURL, wc.Ticket, p.identityHeaders)}
 			}
 			res.Added = append(res.Added, wc.WorkspaceID)
 		} else {
-			if ws.cfg.Token != wc.Token || ws.cfg.RuntimeName != wc.RuntimeName || ws.cfg.Placement != wc.Placement {
+			if ws.cfg.Ticket != wc.Ticket || ws.cfg.RuntimeName != wc.RuntimeName || ws.cfg.Placement != wc.Placement {
 				res.Unapplied = append(res.Unapplied, wc.WorkspaceID)
 			}
 			if ws.cfg.MaxLeases != wc.MaxLeases {

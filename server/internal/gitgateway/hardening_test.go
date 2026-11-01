@@ -40,14 +40,14 @@ func TestGitLabErrorBodyEchoingASecretIsRedacted(t *testing.T) {
 		c.Logger = slog.New(slog.NewTextHandler(logs, nil))
 	})
 	m.push("refs/heads/agent/t1/fix")
-	m.gitlab.refuseMRsWith(`{"message":["duplicate for ` + adminToken + `"]}`)
+	m.gitlab.refuseMRsWith(`{"message":["duplicate for ` + adminTicket + `"]}`)
 
 	text, isErr := m.createMR(map[string]any{"source_branch": "agent/t1/fix", "title": "T"})
 	if !isErr {
 		t.Fatalf("create succeeded: %q", text)
 	}
 	for name, got := range map[string]string{"tool result": text, "log": logs.String(), "audit": m.audit.String()} {
-		if strings.Contains(got, adminToken) {
+		if strings.Contains(got, adminTicket) {
 			t.Errorf("%s echoes the admin token: %s", name, got)
 		}
 	}

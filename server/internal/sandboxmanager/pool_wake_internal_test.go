@@ -8,7 +8,7 @@ import (
 
 func TestWakeSendsNeverBlockWhenASocketIsBacklogged(t *testing.T) {
 	t.Parallel()
-	p, err := NewPool(PoolConfig{MulticaURL: "http://127.0.0.1:1", Token: "x", WakeInterval: time.Hour}, nil)
+	p, err := NewPool(PoolConfig{MulticaURL: "http://127.0.0.1:1", Ticket: "x", WakeInterval: time.Hour}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

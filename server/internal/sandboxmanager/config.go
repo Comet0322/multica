@@ -34,7 +34,7 @@ type proxyRoute struct {
 	managerAuth bool
 	// token is the credential used when managerAuth is set; the pool manager
 	// holds one PAT per workspace.
-	token string
+	ticket string
 	// after runs with the upstream status code of a forwarded call.
 	after func(status int)
 }

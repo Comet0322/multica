@@ -13,8 +13,8 @@ const MCPServerName = "gitlab-gateway"
 // server written into agent.mcp_config.mcpServers, carrying the task's token.
 // The agent's own servers stay; any entry whose name matches the gateway's
 // (ignoring case) is dropped, so the user cannot shadow it.
-func InjectMCPConfig(task json.RawMessage, mcpURL, token string) (json.RawMessage, error) {
-	if mcpURL == "" || token == "" {
+func InjectMCPConfig(task json.RawMessage, mcpURL, ticket string) (json.RawMessage, error) {
+	if mcpURL == "" || ticket == "" {
 		return nil, errors.New("gitgateway: MCP URL and token are required")
 	}
 	var t map[string]json.RawMessage
@@ -47,7 +47,7 @@ func InjectMCPConfig(task json.RawMessage, mcpURL, token string) (json.RawMessag
 	entry, err := json.Marshal(map[string]any{
 		"type":    "http",
 		"url":     mcpURL,
-		"headers": map[string]string{"Authorization": "Bearer " + token},
+		"headers": map[string]string{"Authorization": "Bearer " + ticket},
 	})
 	if err != nil {
 		return nil, err

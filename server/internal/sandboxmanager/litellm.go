@@ -124,7 +124,7 @@ func newLiteLLM(cfg LiteLLMConfig) *litellm {
 }
 
 // taskKey is an issued key; the secret never leaves memory and logs.
-type taskKey struct{ secret string }
+type taskKey struct{ sealed string }
 
 // call performs one admin request. A non-2xx answer is returned as status with
 // a short error detail; err is set only when LiteLLM could not be reached.
@@ -168,7 +168,7 @@ func (l *litellm) call(ctx context.Context, method, path string, in, out any, ta
 // task key involved, if any) are removed before the text is cut, and so
 // before it reaches an error, a log line, the audit trail or a task's failure
 // message.
-func errorDetail(data []byte, secrets []string) string {
+func errorDetail(data []byte, sealeds []string) string {
 	var e struct {
 		Detail any `json:"detail"`
 		Error  any `json:"error"`
@@ -189,9 +189,9 @@ func errorDetail(data []byte, secrets []string) string {
 			}
 		}
 	}
-	for _, secret := range secrets {
-		if secret != "" {
-			text = strings.ReplaceAll(text, secret, "[redacted]")
+	for _, sealed := range sealeds {
+		if sealed != "" {
+			text = strings.ReplaceAll(text, sealed, "[redacted]")
 		}
 	}
 	text = strings.Join(strings.Fields(text), " ")
@@ -249,7 +249,7 @@ func (l *litellm) issue(ctx context.Context, ref claimedTaskRef, initiator strin
 	case status != http.StatusOK || issued.Key == "":
 		return taskKey{}, &llmFailure{fmt.Sprintf("LiteLLM did not issue a key for %s (HTTP %d%s)", initiator, status, withDetail(detail))}
 	}
-	return taskKey{secret: issued.Key}, nil
+	return taskKey{sealed: issued.Key}, nil
 }
 
 func withDetail(detail string) string {
@@ -311,7 +311,7 @@ func (l *litellm) revokeWithRetry(key taskKey, log func(error)) {
 	var last error
 	for attempt := 1; attempt <= 3; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		status, detail, err := l.call(ctx, http.MethodPost, "/key/delete", map[string]any{"keys": []string{key.secret}}, nil, key.secret)
+		status, detail, err := l.call(ctx, http.MethodPost, "/key/delete", map[string]any{"keys": []string{key.sealed}}, nil, key.sealed)
 		cancel()
 		switch {
 		case err != nil:
@@ -359,7 +359,7 @@ func (l *litellm) inject(raw json.RawMessage, key taskKey) (json.RawMessage, err
 			return nil, err
 		}
 	}
-	repl := strings.NewReplacer(LiteLLMKeyPlaceholder, key.secret, LiteLLMURLPlaceholder, l.cfg.PodURL)
+	repl := strings.NewReplacer(LiteLLMKeyPlaceholder, key.sealed, LiteLLMURLPlaceholder, l.cfg.PodURL)
 	for name, value := range l.cfg.Env {
 		env[name] = repl.Replace(value)
 	}

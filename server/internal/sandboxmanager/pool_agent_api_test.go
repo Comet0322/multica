@@ -8,13 +8,13 @@ import (
 
 // callWithToken sends one request the way an agent's multica CLI does: to the
 // manager, with the task's own token instead of the daemon's placeholder.
-func (p *simPod) callWithToken(token, method, path string) int {
+func (p *simPod) callWithToken(ticket, method, path string) int {
 	p.h.t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), method, p.h.podAPI.URL+path, nil)
 	if err != nil {
 		p.h.t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	resp, err := p.client.Do(req)
 	if err != nil {
 		p.h.t.Fatal(err)

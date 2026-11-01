@@ -23,7 +23,7 @@ const DefaultSyncInterval = 30 * time.Second
 
 // listWorkspaces asks Multica which workspaces the token's account belongs to.
 func (p *Pool) listWorkspaces(ctx context.Context) ([]WorkspaceConfig, error) {
-	up := newUpstream(p.cfg.MulticaURL, p.cfg.Token, p.identityHeaders)
+	up := newUpstream(p.cfg.MulticaURL, p.cfg.Ticket, p.identityHeaders)
 	var list []struct {
 		ID string `json:"id"`
 	}
@@ -36,7 +36,7 @@ func (p *Pool) listWorkspaces(ctx context.Context) ([]WorkspaceConfig, error) {
 	}
 	out := make([]WorkspaceConfig, 0, len(list))
 	for _, w := range list {
-		out = append(out, WorkspaceConfig{WorkspaceID: w.ID, Token: p.cfg.Token, RuntimeName: p.cfg.Name})
+		out = append(out, WorkspaceConfig{WorkspaceID: w.ID, Ticket: p.cfg.Ticket, RuntimeName: p.cfg.Name})
 	}
 	return out, nil
 }
@@ -73,7 +73,7 @@ func (p *Pool) recordSync(err error) {
 // intervals. That is what turns a revoked or expired PAT, or an unreachable
 // Multica, into a visible signal; serving goes on meanwhile.
 func (p *Pool) notReady() string {
-	if p.cfg.Token == "" {
+	if p.cfg.Ticket == "" {
 		return ""
 	}
 	p.mu.Lock()
@@ -97,7 +97,7 @@ func (p *Pool) notReady() string {
 // registered runtimes, and the hint that sends pods to register a workspace
 // that has no registration yet.
 func (p *Pool) Sync(ctx context.Context) (ReloadResult, error) {
-	if p.cfg.Token == "" {
+	if p.cfg.Ticket == "" {
 		return ReloadResult{}, errors.New("workspace discovery needs a Token")
 	}
 	list, err := p.listWorkspaces(ctx)
@@ -193,7 +193,7 @@ func (p *Pool) unregisteredWithPods() bool {
 // visibility by hand afterwards keeps that choice. Failures are logged and
 // retried on the next Sync.
 func (p *Pool) reconcileVisibility(ctx context.Context) {
-	if p.cfg.Token == "" || p.cfg.RuntimeVisibility != "public" {
+	if p.cfg.Ticket == "" || p.cfg.RuntimeVisibility != "public" {
 		return
 	}
 	type pending struct {
@@ -242,7 +242,7 @@ func (p *Pool) reconcileVisibility(ctx context.Context) {
 // SyncLoop runs Sync every SyncInterval, and whenever now fires, until ctx
 // ends.
 func (p *Pool) SyncLoop(ctx context.Context, now <-chan struct{}) {
-	if p.cfg.Token == "" {
+	if p.cfg.Ticket == "" {
 		return
 	}
 	t := time.NewTicker(p.cfg.SyncInterval)
@@ -265,7 +265,7 @@ func (p *Pool) SyncLoop(ctx context.Context, now <-chan struct{}) {
 // failure is retried by every Sync (reconcileVisibility) until the runtimes are
 // seen with the wanted visibility.
 func (p *Pool) shareRuntimes(ctx context.Context, ws *workspace, runtimes []runtimeRef) {
-	if p.cfg.Token == "" || p.cfg.RuntimeVisibility != "public" {
+	if p.cfg.Ticket == "" || p.cfg.RuntimeVisibility != "public" {
 		return
 	}
 	hdr := map[string]string{"X-Workspace-ID": ws.cfg.WorkspaceID}

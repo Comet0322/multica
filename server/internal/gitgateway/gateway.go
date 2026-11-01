@@ -23,7 +23,7 @@ type Config struct {
 	// GitLabURL is the GitLab base URL, e.g. https://gitlab.example.com.
 	GitLabURL string
 	// AdminToken is the GitLab administrator token. It stays in this process.
-	AdminToken string
+	AdminTicket string
 	// Resolver answers which task a token belongs to.
 	Resolver Resolver
 	// PodResolver, when set, lets a request without a task token be
@@ -88,7 +88,7 @@ func New(cfg Config) (*Gateway, error) {
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
 		return nil, errors.New("gitgateway: GitLabURL must be an http(s) URL")
 	}
-	if cfg.AdminToken == "" {
+	if cfg.AdminTicket == "" {
 		return nil, errors.New("gitgateway: AdminToken is required")
 	}
 	if cfg.Resolver == nil {
@@ -124,7 +124,7 @@ func New(cfg Config) (*Gateway, error) {
 	}
 	g := &Gateway{
 		cfg:    cfg,
-		gitlab: &gitlabClient{base: base.String(), token: cfg.AdminToken, http: cfg.HTTPClient},
+		gitlab: &gitlabClient{base: base.String(), ticket: cfg.AdminTicket, http: cfg.HTTPClient},
 		base:   base,
 		users:  newTTLCache[gitlabUser](cfg.CacheTTL, now),
 		levels: newTTLCache[int](cfg.CacheTTL, now),
@@ -137,7 +137,7 @@ func New(cfg Config) (*Gateway, error) {
 		Rewrite:   g.rewrite,
 		Transport: cfg.Transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			g.log.Error("git gateway upstream failed", "error", redact(err, cfg.AdminToken))
+			g.log.Error("git gateway upstream failed", "error", redact(err, cfg.AdminTicket))
 			http.Error(w, "git upstream unavailable", http.StatusBadGateway)
 		},
 	}
@@ -172,12 +172,12 @@ func (g *Gateway) rewrite(pr *httputil.ProxyRequest) {
 		// push report can be read.
 		out.Header.Del("Accept-Encoding")
 	}
-	out.SetBasicAuth("git-gateway", g.cfg.AdminToken)
+	out.SetBasicAuth("git-gateway", g.cfg.AdminTicket)
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	token := bearerOrBasicPassword(r)
-	if token == "" {
+	ticket := bearerOrBasicPassword(r)
+	if ticket == "" {
 		if g.cfg.PodResolver != nil {
 			g.serveDaemonRead(w, r)
 			return
@@ -186,7 +186,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task token required", http.StatusUnauthorized)
 		return
 	}
-	id, err := g.cfg.Resolver.Resolve(r.Context(), token)
+	id, err := g.cfg.Resolver.Resolve(r.Context(), ticket)
 	switch {
 	case errors.Is(err, ErrUnknownToken):
 		g.deny(w, r, AuditRecord{Action: "git.request", Reason: "unknown or revoked task token"}, http.StatusUnauthorized)

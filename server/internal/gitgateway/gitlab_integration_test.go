@@ -26,14 +26,14 @@ func TestRealGitLabClone(t *testing.T) {
 		}
 		return v
 	}
-	url, token, proj := env("GITLAB_URL"), env("ADMIN_TOKEN"), env("PROJECT")
+	url, ticket, proj := env("GITLAB_URL"), env("ADMIN_TOKEN"), env("PROJECT")
 	reporter, outsider := env("REPORTER_EMAIL"), env("OUTSIDER_EMAIL")
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
 
 	reg := gitgateway.NewTokenRegistry()
-	g, err := gitgateway.New(gitgateway.Config{GitLabURL: url, AdminToken: token, Resolver: reg})
+	g, err := gitgateway.New(gitgateway.Config{GitLabURL: url, AdminTicket: ticket, Resolver: reg})
 	if err != nil {
 		t.Fatal(err)
 	}

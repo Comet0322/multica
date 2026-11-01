@@ -28,7 +28,7 @@ type WorkspaceConfig struct {
 	WorkspaceID string
 	// Token is the PAT the manager acts with in this workspace. It is a secret
 	// and never logged.
-	Token string
+	Ticket string
 	// RuntimeName is the runtime name members see in this workspace.
 	RuntimeName string
 	// MaxLeases caps concurrent leases for the workspace; 0 means no cap.
@@ -46,7 +46,7 @@ func (w *WorkspaceConfig) normalize(multicaURL, defaultName string) error {
 		return fmt.Errorf("workspace ID must be a UUID")
 	}
 	w.WorkspaceID = strings.ToLower(w.WorkspaceID)
-	if strings.TrimSpace(w.Token) == "" {
+	if strings.TrimSpace(w.Ticket) == "" {
 		return fmt.Errorf("workspace %s: Multica token is required", w.WorkspaceID)
 	}
 	if w.MaxLeases < 0 {

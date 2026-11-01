@@ -190,7 +190,7 @@ func TestInvalidPlacementConfigIsRejected(t *testing.T) {
 		"negative waiting": func(c *sandboxmanager.PoolConfig) { c.PlacementWait = -time.Second },
 	} {
 		cfg := sandboxmanager.PoolConfig{
-			MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+			MulticaURL: "http://127.0.0.1:1", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID,
 		}
 		opt(&cfg)
 		if _, err := sandboxmanager.NewPool(cfg, nil); err == nil {

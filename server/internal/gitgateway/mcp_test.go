@@ -26,7 +26,7 @@ func newMCPHarness(t *testing.T) (*mcpFake, *gitgateway.TokenRegistry, *httptest
 	gl := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(gl.Close)
 	tokens := gitgateway.NewTokenRegistry()
-	g, err := gitgateway.New(gitgateway.Config{GitLabURL: gl.URL, AdminToken: adminToken, Resolver: tokens})
+	g, err := gitgateway.New(gitgateway.Config{GitLabURL: gl.URL, AdminTicket: adminTicket, Resolver: tokens})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func (f *mcpFake) addUser(email string, id int64, level int) {
 func (f *mcpFake) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if r.Header.Get("PRIVATE-TOKEN") != adminToken {
+	if r.Header.Get("PRIVATE-TOKEN") != adminTicket {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -88,12 +88,12 @@ func (f *mcpFake) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // rpc posts one JSON-RPC message and returns the HTTP status and decoded reply.
-func rpc(t *testing.T, srv *httptest.Server, token, method string, params any) (int, map[string]any) {
+func rpc(t *testing.T, srv *httptest.Server, ticket, method string, params any) (int, map[string]any) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 	req, _ := http.NewRequest("POST", srv.URL, strings.NewReader(string(body)))
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	resp, err := srv.Client().Do(req)
 	if err != nil {
@@ -105,9 +105,9 @@ func rpc(t *testing.T, srv *httptest.Server, token, method string, params any) (
 	return resp.StatusCode, out
 }
 
-func call(t *testing.T, srv *httptest.Server, token, tool string, args map[string]any) (text string, isError bool) {
+func call(t *testing.T, srv *httptest.Server, ticket, tool string, args map[string]any) (text string, isError bool) {
 	t.Helper()
-	code, out := rpc(t, srv, token, "tools/call", map[string]any{"name": tool, "arguments": args})
+	code, out := rpc(t, srv, ticket, "tools/call", map[string]any{"name": tool, "arguments": args})
 	if code != 200 {
 		t.Fatalf("%s: status %d", tool, code)
 	}

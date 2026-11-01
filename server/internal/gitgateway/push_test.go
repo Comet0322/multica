@@ -267,8 +267,8 @@ func TestPushAuditRecordsRefsAndNoCredentials(t *testing.T) {
 		len(r.Refs) != 1 || r.Refs[0] != "refs/heads/main" {
 		t.Fatalf("deny record = %+v", r)
 	}
-	for _, secret := range []string{tok, adminToken} {
-		if strings.Contains(h.audit.String(), secret) {
+	for _, sealed := range []string{tok, adminTicket} {
+		if strings.Contains(h.audit.String(), sealed) {
 			t.Fatalf("audit log contains a credential")
 		}
 	}

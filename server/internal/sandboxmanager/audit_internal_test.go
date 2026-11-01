@@ -10,7 +10,7 @@ func TestResetIsAuditedWithTheLeaseIdentity(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	p, err := NewPool(PoolConfig{
-		MulticaURL: "http://127.0.0.1:1", MulticaToken: "x",
+		MulticaURL: "http://127.0.0.1:1", MulticaTicket: "x",
 		WorkspaceID: "11111111-2222-4333-8444-555555555555", AuditLog: &buf,
 	}, nil)
 	if err != nil {

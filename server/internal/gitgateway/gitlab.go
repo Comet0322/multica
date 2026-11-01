@@ -29,9 +29,9 @@ type gitlabUser struct {
 // gitlabClient asks GitLab about people and their access. Every failure is an
 // error and is never cached, so the caller can only refuse.
 type gitlabClient struct {
-	base  string
-	token string
-	http  *http.Client
+	base   string
+	ticket string
+	http   *http.Client
 }
 
 func (c *gitlabClient) get(ctx context.Context, path string, query url.Values) (int, []byte, error) {
@@ -43,32 +43,32 @@ func (c *gitlabClient) get(ctx context.Context, path string, query url.Values) (
 	if err != nil {
 		return 0, nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	req.Header.Set("PRIVATE-TOKEN", c.ticket)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, redact(err, c.token)
+		return 0, nil, redact(err, c.ticket)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return 0, nil, redact(err, c.token)
+		return 0, nil, redact(err, c.ticket)
 	}
 	return resp.StatusCode, body, nil
 }
 
 // redact keeps the admin token out of error text.
-func redact(err error, token string) error {
-	if token == "" {
+func redact(err error, ticket string) error {
+	if ticket == "" {
 		return err
 	}
-	return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), token, "[redacted]"))
+	return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), ticket, "[redacted]"))
 }
 
 // scrub keeps the admin token out of text taken from one of GitLab's answers,
 // which can echo what it was sent. Such text is bounded as well.
 func (c *gitlabClient) scrub(s string) string {
-	if c.token != "" {
-		s = strings.ReplaceAll(s, c.token, "[redacted]")
+	if c.ticket != "" {
+		s = strings.ReplaceAll(s, c.ticket, "[redacted]")
 	}
 	if len(s) > 300 {
 		s = s[:300] + "..."

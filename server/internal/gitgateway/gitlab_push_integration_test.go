@@ -27,13 +27,13 @@ func TestRealGitLabPush(t *testing.T) {
 		}
 		return v
 	}
-	url, token, proj, dev := env("GITLAB_URL"), env("ADMIN_TOKEN"), env("PROJECT"), env("DEVELOPER_EMAIL")
+	url, ticket, proj, dev := env("GITLAB_URL"), env("ADMIN_TOKEN"), env("PROJECT"), env("DEVELOPER_EMAIL")
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
 
 	reg := gitgateway.NewTokenRegistry()
-	g, err := gitgateway.New(gitgateway.Config{GitLabURL: url, AdminToken: token, Resolver: reg})
+	g, err := gitgateway.New(gitgateway.Config{GitLabURL: url, AdminTicket: ticket, Resolver: reg})
 	if err != nil {
 		t.Fatal(err)
 	}

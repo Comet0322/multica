@@ -14,7 +14,7 @@ import (
 // the send buffer cannot crowd it out, and repeated hints coalesce.
 func TestWorkspacesChangedIsNotCrowdedOutByWakes(t *testing.T) {
 	t.Parallel()
-	p, err := NewPool(PoolConfig{MulticaURL: "http://127.0.0.1:1", Token: "x", WakeInterval: time.Hour}, nil)
+	p, err := NewPool(PoolConfig{MulticaURL: "http://127.0.0.1:1", Ticket: "x", WakeInterval: time.Hour}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestWorkspacesChangedIsNotCrowdedOutByWakes(t *testing.T) {
 // buffer.
 func TestWorkspacesChangedReachesASocketWithoutTheSignal(t *testing.T) {
 	t.Parallel()
-	p, err := NewPool(PoolConfig{MulticaURL: "http://127.0.0.1:1", Token: "x"}, nil)
+	p, err := NewPool(PoolConfig{MulticaURL: "http://127.0.0.1:1", Ticket: "x"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

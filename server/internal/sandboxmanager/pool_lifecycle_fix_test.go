@@ -538,7 +538,7 @@ func TestLeaseMaxDefaultsAndValidation(t *testing.T) {
 	t.Run("negative is refused", func(t *testing.T) {
 		t.Parallel()
 		_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-			MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID, LeaseMax: -time.Second,
+			MulticaURL: "http://127.0.0.1:1", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID, LeaseMax: -time.Second,
 		}, nil)
 		if err == nil {
 			t.Fatal("a negative LeaseMax must be refused")

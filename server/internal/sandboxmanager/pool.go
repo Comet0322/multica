@@ -34,7 +34,7 @@ type PoolConfig struct {
 	// manager serves every workspace that account belongs to, found by Sync, and
 	// registers its runtimes in local mode like a member's own daemon; the
 	// workspace fields below are then not used.
-	Token string
+	Ticket string
 	// MaxLeases caps concurrent leases in each discovered workspace; 0 means no
 	// cap.
 	MaxLeases int
@@ -49,9 +49,9 @@ type PoolConfig struct {
 	// when Token is not set. For a single-workspace deployment MulticaToken,
 	// WorkspaceID and ManagerID may be set instead; they describe one entry and
 	// cannot be combined with Workspaces.
-	Workspaces   []WorkspaceConfig
-	MulticaToken string
-	WorkspaceID  string
+	Workspaces    []WorkspaceConfig
+	MulticaTicket string
+	WorkspaceID   string
 	// ManagerID is the upstream daemon_id. It must stay stable across restarts
 	// or the server registers a new runtime row.
 	ManagerID string
@@ -230,22 +230,22 @@ func (c *PoolConfig) normalize() error {
 	default:
 		return fmt.Errorf("runtime visibility must be public or private")
 	}
-	legacy := c.WorkspaceID != "" || c.MulticaToken != "" || c.ManagerID != ""
-	if c.Token != "" {
+	legacy := c.WorkspaceID != "" || c.MulticaTicket != "" || c.ManagerID != ""
+	if c.Ticket != "" {
 		if len(c.Workspaces) > 0 || legacy {
 			return fmt.Errorf("set Token alone, or a workspace list, not both")
 		}
-		c.Token = strings.TrimSpace(c.Token)
+		c.Ticket = strings.TrimSpace(c.Ticket)
 		return nil // the workspaces arrive with the first Sync
 	}
 	if len(c.Workspaces) > 0 && legacy {
 		return fmt.Errorf("set either Workspaces or the single-workspace fields, not both")
 	}
 	if len(c.Workspaces) == 0 {
-		c.Workspaces = []WorkspaceConfig{{WorkspaceID: c.WorkspaceID, Token: c.MulticaToken, ManagerID: c.ManagerID}}
+		c.Workspaces = []WorkspaceConfig{{WorkspaceID: c.WorkspaceID, Ticket: c.MulticaTicket, ManagerID: c.ManagerID}}
 	}
 	c.Workspaces = slices.Clone(c.Workspaces)
-	c.WorkspaceID, c.MulticaToken, c.ManagerID = "", "", ""
+	c.WorkspaceID, c.MulticaTicket, c.ManagerID = "", "", ""
 	if err := c.normalizeWorkspaces(c.Workspaces); err != nil {
 		return err
 	}
@@ -505,7 +505,7 @@ func NewPool(cfg PoolConfig, log *slog.Logger) (*Pool, error) {
 	p.auditLog = newAuditLog(cfg.AuditLog, func(err error) { p.log.Error("write audit record", "error", err) })
 	p.workspaces = map[string]*workspace{}
 	for _, wc := range cfg.Workspaces {
-		ws := &workspace{cfg: wc, up: newUpstream(cfg.MulticaURL, wc.Token, p.identityHeaders)}
+		ws := &workspace{cfg: wc, up: newUpstream(cfg.MulticaURL, wc.Ticket, p.identityHeaders)}
 		p.workspaces[wc.WorkspaceID] = ws
 		p.wsOrder = append(p.wsOrder, ws)
 	}
@@ -893,7 +893,7 @@ func (p *Pool) upstreamRegistration(ws *workspace, captured json.RawMessage) (ma
 // runtimeMode is the mode the pool's runtimes are registered in. A manager that
 // finds its workspaces from a PAT appears as that account's own local daemon.
 func (p *Pool) runtimeMode() string {
-	if p.cfg.Token != "" {
+	if p.cfg.Ticket != "" {
 		return "local"
 	}
 	return "cloud"

@@ -303,9 +303,9 @@ func TestAuditRecordsDecisionsWithoutCredentials(t *testing.T) {
 	if r := recs[3]; r.Decision != gitgateway.AuditDeny || r.TaskID != "" {
 		t.Fatalf("forged token record = %+v", r)
 	}
-	for _, secret := range []string{tok, guest, "gwt_forged", adminToken} {
-		if strings.Contains(h.audit.String(), secret) {
-			t.Fatalf("audit log contains a credential: %q", secret)
+	for _, sealed := range []string{tok, guest, "gwt_forged", adminTicket} {
+		if strings.Contains(h.audit.String(), sealed) {
+			t.Fatalf("audit log contains a credential: %q", sealed)
 		}
 	}
 }

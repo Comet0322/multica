@@ -109,18 +109,18 @@ func (p *Pool) gitIdentitiesForIP(ip string) []gitgateway.Identity {
 // issueGitToken gives the claimed task a gateway token and returns the task
 // body with the configured environment injected.
 func (p *Pool) issueGitToken(raw json.RawMessage, ref claimedTaskRef) (json.RawMessage, error) {
-	token, err := p.cfg.Git.Registry.Issue(gitgateway.Identity{TaskID: ref.ID, WorkspaceID: ref.WorkspaceID, Initiator: ref.initiator()})
+	ticket, err := p.cfg.Git.Registry.Issue(gitgateway.Identity{TaskID: ref.ID, WorkspaceID: ref.WorkspaceID, Initiator: ref.initiator()})
 	if err != nil {
 		return nil, err
 	}
-	repl := strings.NewReplacer(GitAuthPlaceholder, token, GitURLPlaceholder, p.cfg.Git.URL)
+	repl := strings.NewReplacer(GitAuthPlaceholder, ticket, GitURLPlaceholder, p.cfg.Git.URL)
 	env := make(map[string]string, len(p.cfg.Git.Env))
 	for name, value := range p.cfg.Git.Env {
 		env[name] = repl.Replace(value)
 	}
 	out, err := forceAgentEnv(raw, env)
 	if err == nil && p.cfg.Git.MCPURL != "" {
-		out, err = gitgateway.InjectMCPConfig(out, p.cfg.Git.MCPURL, token)
+		out, err = gitgateway.InjectMCPConfig(out, p.cfg.Git.MCPURL, ticket)
 	}
 	if err != nil {
 		p.cfg.Git.Registry.Revoke(ref.ID)

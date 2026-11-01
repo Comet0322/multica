@@ -68,8 +68,8 @@ func rewriteRegistration(captured json.RawMessage, id registrationIdentity) (map
 }
 
 type upstream struct {
-	base, token string
-	client      *http.Client
+	base, ticket string
+	client       *http.Client
 	// headers returns the daemon identity headers to replay on every call.
 	headers func() map[string]string
 }
@@ -101,9 +101,9 @@ func runtimeNotFound(err error) bool {
 	return ok && e.RuntimeNotFound
 }
 
-func newUpstream(base, token string, headers func() map[string]string) *upstream {
+func newUpstream(base, ticket string, headers func() map[string]string) *upstream {
 	return &upstream{
-		base: base, token: token, headers: headers,
+		base: base, ticket: ticket, headers: headers,
 		client: &http.Client{
 			Timeout:       30 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -138,7 +138,7 @@ func (u *upstream) callWith(ctx context.Context, extra map[string]string, method
 	for k, v := range extra {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("Authorization", "Bearer "+u.token)
+	req.Header.Set("Authorization", "Bearer "+u.ticket)
 	req.Header.Set("Accept", "application/json")
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")

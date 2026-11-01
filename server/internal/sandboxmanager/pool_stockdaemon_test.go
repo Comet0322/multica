@@ -117,16 +117,16 @@ func TestLostPodEndsItsLeases(t *testing.T) {
 	healthy.start()
 	task := pod.claimTask()
 	key := llm.keyOf("t1")
-	token := envOf(t, task)["GIT_GATEWAY_TOKEN"]
-	if key == "" || token == "" {
-		t.Fatalf("task got no credentials: key %q token %q", key, token)
+	ticket := envOf(t, task)["GIT_GATEWAY_TOKEN"]
+	if key == "" || ticket == "" {
+		t.Fatalf("task got no credentials: key %q token %q", key, ticket)
 	}
 
 	time.Sleep(3500 * time.Millisecond)
 	healthy.heartbeat() // any pod's traffic notices the silence and reports it
 
 	eventually(t, "key revoked", func() bool { return llm.isDeleted(key) })
-	if h.verifyToken(token) != http.StatusNotFound {
+	if h.verifyToken(ticket) != http.StatusNotFound {
 		t.Fatal("git token survived the pod being lost")
 	}
 	eventually(t, "task failed upstream", func() bool {

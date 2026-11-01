@@ -233,8 +233,8 @@ func (p *simPod) claimFrom(runtimeIDs []string) []string {
 }
 
 func twoWorkspaces(a, b func(*sandboxmanager.WorkspaceConfig)) []sandboxmanager.WorkspaceConfig {
-	ca := sandboxmanager.WorkspaceConfig{WorkspaceID: wsA, Token: patA, RuntimeName: "Pool A"}
-	cb := sandboxmanager.WorkspaceConfig{WorkspaceID: wsB, Token: patB, RuntimeName: "Pool B"}
+	ca := sandboxmanager.WorkspaceConfig{WorkspaceID: wsA, Ticket: patA, RuntimeName: "Pool A"}
+	cb := sandboxmanager.WorkspaceConfig{WorkspaceID: wsB, Ticket: patB, RuntimeName: "Pool B"}
 	if a != nil {
 		a(&ca)
 	}
@@ -478,11 +478,11 @@ func TestInventoryLeasesAndAuditCarryTheWorkspace(t *testing.T) {
 func TestPoolRejectsBadWorkspaceEntries(t *testing.T) {
 	t.Parallel()
 	cases := map[string][]sandboxmanager.WorkspaceConfig{
-		"duplicate":      {{WorkspaceID: wsA, Token: patA}, {WorkspaceID: wsA, Token: patB}},
+		"duplicate":      {{WorkspaceID: wsA, Ticket: patA}, {WorkspaceID: wsA, Ticket: patB}},
 		"missing PAT":    {{WorkspaceID: wsA}},
-		"bad ID":         {{WorkspaceID: "nope", Token: patA}},
-		"negative quota": {{WorkspaceID: wsA, Token: patA, MaxLeases: -1}},
-		"bad placement":  {{WorkspaceID: wsA, Token: patA, Placement: "pod"}},
+		"bad ID":         {{WorkspaceID: "nope", Ticket: patA}},
+		"negative quota": {{WorkspaceID: wsA, Ticket: patA, MaxLeases: -1}},
+		"bad placement":  {{WorkspaceID: wsA, Ticket: patA, Placement: "pod"}},
 	}
 	for name, ws := range cases {
 		if _, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{MulticaURL: "http://127.0.0.1:1", Workspaces: ws}, nil); err == nil {

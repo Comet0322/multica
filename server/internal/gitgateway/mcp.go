@@ -55,13 +55,13 @@ func (g *Gateway) serveMCP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	token := bearerOrBasicPassword(r)
-	if token == "" {
+	ticket := bearerOrBasicPassword(r)
+	if ticket == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="git gateway"`)
 		http.Error(w, "task token required", http.StatusUnauthorized)
 		return
 	}
-	id, err := g.cfg.Resolver.Resolve(r.Context(), token)
+	id, err := g.cfg.Resolver.Resolve(r.Context(), ticket)
 	switch {
 	case errors.Is(err, ErrUnknownToken):
 		g.audit.write(AuditRecord{Action: "mcp.request", Decision: AuditDeny, Reason: "unknown or revoked task token", Time: g.now().UTC()})
@@ -110,7 +110,7 @@ func (g *Gateway) serveMCP(w http.ResponseWriter, r *http.Request) {
 	case "tools/list":
 		resp.Result = map[string]any{"tools": mcpTools}
 	case "tools/call":
-		resp.Result, resp.Error = g.callTool(r.Context(), id, token, req.Params)
+		resp.Result, resp.Error = g.callTool(r.Context(), id, ticket, req.Params)
 	default:
 		resp.Error = &rpcError{Code: -32601, Message: "method not found"}
 	}
@@ -139,7 +139,7 @@ type toolArgs struct {
 // callTool runs one tool for the task's initiator. A refused or failed call is
 // a tool result with isError set, so the model reads why; only a malformed
 // call is a protocol error.
-func (g *Gateway) callTool(ctx context.Context, id Identity, token string, params json.RawMessage) (any, *rpcError) {
+func (g *Gateway) callTool(ctx context.Context, id Identity, ticket string, params json.RawMessage) (any, *rpcError) {
 	var p struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -218,7 +218,7 @@ func (g *Gateway) callTool(ctx context.Context, id Identity, token string, param
 		return toolResult("not found: check the project, merge request and branch names", true), nil
 	case err != nil:
 		// GitLab's answers can echo what the agent sent, the task token included.
-		g.log.Error("mcp gateway gitlab call failed", "tool", p.Name, "error", redact(redact(err, g.cfg.AdminToken), token))
+		g.log.Error("mcp gateway gitlab call failed", "tool", p.Name, "error", redact(redact(err, g.cfg.AdminTicket), ticket))
 		return toolResult("gitlab is unavailable", true), nil
 	}
 	text, _ := json.Marshal(out)

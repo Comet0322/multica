@@ -185,11 +185,11 @@ func TestReloadRefusesInvalidConfigAndKeepsTheCurrentOne(t *testing.T) {
 
 	bad := map[string][]sandboxmanager.WorkspaceConfig{
 		"empty":      {},
-		"duplicate":  {{WorkspaceID: wsA, Token: patA}, {WorkspaceID: wsA, Token: patB}},
-		"missing":    {{WorkspaceID: wsB, Token: patB}, {WorkspaceID: wsA}},
-		"bad ID":     {{WorkspaceID: "nope", Token: patA}},
-		"placement":  {{WorkspaceID: wsA, Token: patA, Placement: "pod"}},
-		"bad quota":  {{WorkspaceID: wsA, Token: patA, MaxLeases: -1}},
+		"duplicate":  {{WorkspaceID: wsA, Ticket: patA}, {WorkspaceID: wsA, Ticket: patB}},
+		"missing":    {{WorkspaceID: wsB, Ticket: patB}, {WorkspaceID: wsA}},
+		"bad ID":     {{WorkspaceID: "nope", Ticket: patA}},
+		"placement":  {{WorkspaceID: wsA, Ticket: patA, Placement: "pod"}},
+		"bad quota":  {{WorkspaceID: wsA, Ticket: patA, MaxLeases: -1}},
 		"drops both": nil,
 	}
 	for name, list := range bad {
@@ -209,7 +209,7 @@ func TestReloadAppliesLeaseCapAndFlagsChangesThatNeedARestart(t *testing.T) {
 	up := newMultiMultica(t, a, b)
 	h := newReloadHarness(t, up, twoWorkspaces(nil, nil), time.Minute)
 
-	next := twoWorkspaces(func(c *sandboxmanager.WorkspaceConfig) { c.MaxLeases = 3 }, func(c *sandboxmanager.WorkspaceConfig) { c.Token = "rotated" })
+	next := twoWorkspaces(func(c *sandboxmanager.WorkspaceConfig) { c.MaxLeases = 3 }, func(c *sandboxmanager.WorkspaceConfig) { c.Ticket = "rotated" })
 	res, err := h.pool.Reload(context.Background(), next)
 	if err != nil {
 		t.Fatal(err)

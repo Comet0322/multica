@@ -31,14 +31,14 @@ func TestRealGitLabCreateMR(t *testing.T) {
 		}
 		return v
 	}
-	base, token, proj, dev := strings.TrimRight(env("GITLAB_URL"), "/"), env("ADMIN_TOKEN"), env("PROJECT"), env("DEVELOPER_EMAIL")
+	base, ticket, proj, dev := strings.TrimRight(env("GITLAB_URL"), "/"), env("ADMIN_TOKEN"), env("PROJECT"), env("DEVELOPER_EMAIL")
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
 
 	reg := gitgateway.NewTokenRegistry()
 	g, err := gitgateway.New(gitgateway.Config{
-		GitLabURL: base, AdminToken: token, Resolver: reg,
+		GitLabURL: base, AdminTicket: ticket, Resolver: reg,
 		TaskURL: "https://multica.example/tasks/{task_id}",
 	})
 	if err != nil {
@@ -73,7 +73,7 @@ func TestRealGitLabCreateMR(t *testing.T) {
 	api := func(method, path string) map[string]any {
 		t.Helper()
 		req, _ := http.NewRequest(method, base+"/api/v4"+path, nil)
-		req.Header.Set("PRIVATE-TOKEN", token)
+		req.Header.Set("PRIVATE-TOKEN", ticket)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)

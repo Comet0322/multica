@@ -77,7 +77,7 @@ func TestLoadPoolReadsTheEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := s.config
-	if c.Token != "mul_pat_pool" || s.podListen != ":8790" || s.adminListen != "127.0.0.1:9000" ||
+	if c.Ticket != "mul_pat_pool" || s.podListen != ":8790" || s.adminListen != "127.0.0.1:9000" ||
 		c.ExpectedSize != 4 || len(c.Providers) != 2 || c.DrainTimeout != 5*time.Minute ||
 		c.MaxLeases != 6 || c.SyncInterval != 45*time.Second || c.RuntimeVisibility != "private" {
 		t.Fatalf("unexpected settings: %+v", s)
@@ -94,7 +94,7 @@ func servedBy(t *testing.T, up *fakeMultica, syncInterval time.Duration, hup cha
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	pool, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-		MulticaURL: up.URL, Token: "mul_pat_pool", SyncInterval: syncInterval,
+		MulticaURL: up.URL, Ticket: "mul_pat_pool", SyncInterval: syncInterval,
 	}, log)
 	if err != nil {
 		t.Fatal(err)

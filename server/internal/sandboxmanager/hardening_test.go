@@ -25,7 +25,7 @@ func TestLiteLLMNeedsBudgetAndRateCaps(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
-				MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
+				MulticaURL: "http://127.0.0.1:1", MulticaTicket: harnessPAT, WorkspaceID: harnessWorkspaceID,
 				LiteLLM: &sandboxmanager.LiteLLMConfig{
 					URL: llm.URL, MasterKey: fakeLiteLLMMaster, Models: []string{"m"},
 					MaxBudget: c.budget, RPMLimit: c.rpm,

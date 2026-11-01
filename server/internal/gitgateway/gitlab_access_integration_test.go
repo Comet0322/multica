@@ -32,14 +32,14 @@ func TestRealGitLabAccessMatrix(t *testing.T) {
 		}
 		return v
 	}
-	url, token, proj := env("GITLAB_URL"), env("ADMIN_TOKEN"), env("PROJECT")
+	url, ticket, proj := env("GITLAB_URL"), env("ADMIN_TOKEN"), env("PROJECT")
 	guest, blocked, groupDev := env("GUEST_EMAIL"), env("BLOCKED_EMAIL"), env("GROUP_DEV_EMAIL")
 	dev, archived, noMR := env("DEVELOPER_EMAIL"), env("ARCHIVED_PROJECT"), env("NO_MR_PROJECT")
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
 	reg := gitgateway.NewTokenRegistry()
-	g, err := gitgateway.New(gitgateway.Config{GitLabURL: url, AdminToken: token, Resolver: reg})
+	g, err := gitgateway.New(gitgateway.Config{GitLabURL: url, AdminTicket: ticket, Resolver: reg})
 	if err != nil {
 		t.Fatal(err)
 	}
