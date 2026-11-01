@@ -9,7 +9,7 @@
 #   admin listener   127.0.0.1:8791  read-only /v1/inventory and /v1/leases. It
 #     binds to loopback inside the pod, so nothing on the network (pods
 #     included) can reach it; admins use `kubectl port-forward`.
-# Settings are the sandbox-broker pool settings (deploy/sandbox/POOL.md).
+# Settings are the sandbox-manager pool settings (deploy/sandbox/POOL.md).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,8 +35,8 @@ spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
-        # The image's user is named ("broker"), which runAsNonRoot cannot
-        # verify; Dockerfile.broker creates it as 65532.
+        # The image's user is named ("manager"), which runAsNonRoot cannot
+        # verify; Dockerfile.manager creates it as 65532.
         runAsUser: 65532
         runAsGroup: 65532
         fsGroup: 65532 # lets the Secret files below be read by the manager
@@ -49,7 +49,7 @@ spec:
             - {name: pod, containerPort: 8080}
             - {name: gateway, containerPort: 8792}
           env:
-            - {name: SANDBOX_BROKER_LISTEN, value: ":8080"}
+            - {name: SANDBOX_MANAGER_LISTEN, value: ":8080"}
             - {name: SANDBOX_POOL_ADMIN_LISTEN, value: "127.0.0.1:8791"}
             - {name: SANDBOX_POOL_GATEWAY_LISTEN, value: ":8792"}
             - {name: SANDBOX_POOL_SIZE, value: "4"} # expected size; match replicas in kustomization.yaml

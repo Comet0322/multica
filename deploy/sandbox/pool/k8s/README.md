@@ -20,7 +20,7 @@ admin listener binds to loopback inside the manager pod (reach it with
 this repo: `sandbox-manager-config` (keys `pool-token`,
 `litellm-master-key`) and `git-gateway-gitlab-token` (key `token`, the GitLab
 administrator token). The images are `multica-sandbox-pool`
-(`../../Dockerfile.pool`), `multica-sandbox-manager` (`../../Dockerfile.broker`)
+(`../../Dockerfile.pool`), `multica-sandbox-manager` (`../../Dockerfile.manager`)
 and `multica-git-gateway` (`../../Dockerfile.gateway`).
 
 Offline check (no cluster): `kubectl kustomize deploy/sandbox/pool/k8s`.

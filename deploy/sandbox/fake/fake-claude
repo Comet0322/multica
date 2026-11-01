@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stand-in for Claude Code for credential-free trials of the sandbox runtime. It speaks just
 # enough stream-json for the daemon and proves the agent can reach the Multica
-# API with its task token through the broker.
+# API with its task token through the manager.
 case "${1:-}" in
 --version | -v)
 	echo "2.1.0 (Claude Code)"

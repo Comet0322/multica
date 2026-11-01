@@ -1,6 +1,6 @@
 # Pool manager configuration
 
-`sandbox-broker` runs as the pool manager when `SANDBOX_POOL_TOKEN` (or
+`sandbox-manager` runs as the pool manager when `SANDBOX_POOL_TOKEN` (or
 `SANDBOX_POOL_TOKEN_FILE`) is set. The manager is a normal Multica account's
 local daemon: it serves every workspace that account belongs to, finds new ones
 by itself, and needs no workspace list (SIGHUP looks again at once). The settings are read once at startup; a bad
@@ -22,9 +22,9 @@ errors. Prefer the `_FILE` form with a mounted secret.
 | `SANDBOX_POOL_LEASE_MAX` | `SANDBOX_LITELLM_TASK_TIMEOUT` with LiteLLM, else `2h` | Longest a lease may last. A task still leased after it is failed upstream ("task exceeded the maximum lease time") and its pod reset. |
 | `SANDBOX_POOL_RUNTIME_VISIBILITY` | `public` | Visibility set on the runtime registered in each workspace. A runtime starts private to its owner, so `public` is what lets every member bind agents to it; `private` leaves sharing to the owner. |
 | `MULTICA_SERVER_URL` | none | Multica server base URL. |
-| `SANDBOX_BROKER_LISTEN` | `:8790` | Pod API listener. Also serves `/healthz` (liveness: always 200) and `/readyz` (200 only if a workspace listing succeeded within three sync intervals, else 503). |
+| `SANDBOX_MANAGER_LISTEN` | `:8790` | Pod API listener. Also serves `/healthz` (liveness: always 200) and `/readyz` (200 only if a workspace listing succeeded within three sync intervals, else 503). |
 | `SANDBOX_POOL_ADMIN_LISTEN` | `127.0.0.1:8791` | Admin listener (inventory, leases, git verify). |
-| `SANDBOX_BROKER_NAME` | `Managed Sandbox` | Machine and default runtime name. |
+| `SANDBOX_MANAGER_NAME` | `Managed Sandbox` | Machine and default runtime name. |
 | `SANDBOX_POOL_SIZE` | 0 | Declared pod count, shown next to live counts. |
 | `SANDBOX_PROVIDERS` | all | Comma list of agent CLIs exposed as runtimes. |
 | `SANDBOX_POOL_DRAIN_TIMEOUT` | `10m` | How long a removed workspace keeps its leases. |

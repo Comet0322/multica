@@ -6,7 +6,7 @@ pod, runs, and the pod is reset before anyone else uses it. Agents therefore
 have the same features as on a local runtime.
 
 ```
-Multica server ──/api/daemon/*── sandbox-broker (pool manager) ── pods (multica daemon + agent CLIs)
+Multica server ──/api/daemon/*── sandbox-manager (pool manager) ── pods (multica daemon + agent CLIs)
                  (bot PAT)                ▲                              │
                                           └── daemon and agent traffic ──┘
 ```
@@ -23,7 +23,7 @@ and the manual smoke test are in [pool/k8s](pool/k8s).
 | File | What |
 |---|---|
 | `Dockerfile.pool` | The pod image (daemon, agent CLIs, pod supervisor) |
-| `Dockerfile.broker` | The pool manager |
+| `Dockerfile.manager` | The pool manager |
 | `Dockerfile.gateway` | The git gateway |
 | `home/` | Files copied into the agent's home at every pod reset |
 | `fake/` | A stand-in agent CLI for tests without a model |
