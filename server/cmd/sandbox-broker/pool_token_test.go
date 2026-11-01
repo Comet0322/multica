@@ -99,9 +99,10 @@ func TestStartupStopsWhenTheFirstWorkspaceListingFails(t *testing.T) {
 	}
 }
 
-// TestMainSelectsTheModeFromTheToken re-runs this test binary as the
-// sandbox-broker command and looks at which mode it reports.
-func TestMainSelectsTheModeFromTheToken(t *testing.T) {
+// TestMainNeedsAToken re-runs this test binary as the sandbox-broker command:
+// it runs the pool manager with a token and stops with a message naming the
+// token variables without one. There is no other mode.
+func TestMainNeedsAToken(t *testing.T) {
 	if os.Getenv("SANDBOX_TEST_RUN_MAIN") == "1" {
 		main()
 		return
@@ -114,7 +115,7 @@ func TestMainSelectsTheModeFromTheToken(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMainSelectsTheModeFromTheToken$")
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMainNeedsAToken$")
 		// The listing goes to a closed port, so a pool manager stops at once.
 		cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "SANDBOX_TEST_RUN_MAIN=1", "MULTICA_SERVER_URL=http://127.0.0.1:1"}, env...)
 		out, err := cmd.CombinedOutput()
@@ -129,11 +130,10 @@ func TestMainSelectsTheModeFromTheToken(t *testing.T) {
 	if out := run("SANDBOX_POOL_TOKEN_FILE=" + tokenFile); !strings.Contains(out, "sandbox pool manager stopped") {
 		t.Fatalf("SANDBOX_POOL_TOKEN_FILE must select the pool manager:\n%s", out)
 	}
-	// The retired variable no longer selects the pool manager.
-	if out := run("SANDBOX_WORKSPACES_FILE=/etc/pool/workspaces.json"); strings.Contains(out, "sandbox pool manager stopped") || !strings.Contains(out, "invalid sandbox broker configuration") {
-		t.Fatalf("without a token the single-workspace broker must run:\n%s", out)
-	}
-	if out := run(); !strings.Contains(out, "invalid sandbox broker configuration") {
-		t.Fatalf("without a token the single-workspace broker must run:\n%s", out)
+	for _, env := range [][]string{{"SANDBOX_WORKSPACES_FILE=/etc/pool/workspaces.json"}, {}} {
+		out := run(env...)
+		if !strings.Contains(out, "SANDBOX_POOL_TOKEN or SANDBOX_POOL_TOKEN_FILE is required") {
+			t.Fatalf("without a token the manager must say which variable to set:\n%s", out)
+		}
 	}
 }

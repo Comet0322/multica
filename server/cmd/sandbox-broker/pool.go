@@ -19,10 +19,8 @@ import (
 	"github.com/multica-ai/multica/server/internal/sandboxbroker"
 )
 
-// poolSettings is the pool manager's command-line environment. The manager is
-// selected by SANDBOX_POOL_TOKEN (or SANDBOX_POOL_TOKEN_FILE); without it the
-// single-workspace broker runs. Every variable is described in
-// deploy/sandbox/POOL.md.
+// poolSettings is the pool manager's command-line environment. Every variable
+// is described in deploy/sandbox/POOL.md.
 type poolSettings struct {
 	podListen   string
 	adminListen string

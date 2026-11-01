@@ -45,10 +45,6 @@ spec:
       containers:
         - name: manager
           image: multica-sandbox-manager # tag set in kustomization.yaml
-          # Skip the image's compose entrypoint: it bootstraps a demo account
-          # and needs SANDBOX_BROKER_STATE_DIR. Pool mode takes its settings
-          # from the environment alone.
-          command: [/usr/local/bin/sandbox-broker]
           ports:
             - {name: pod, containerPort: 8080}
             - {name: gateway, containerPort: 8792}

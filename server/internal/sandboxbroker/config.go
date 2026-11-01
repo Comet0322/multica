@@ -1,134 +1,22 @@
-// Package sandboxbroker exposes one hidden-infrastructure Multica runtime and
-// executes its tasks in sandboxes that run the stock Multica daemon.
+// Package sandboxbroker runs the sandbox pool manager: it registers one runtime
+// per Multica workspace and runs the tasks of those runtimes in a fixed pool of
+// pods, each running the stock Multica daemon. See deploy/sandbox/POOL.md.
 //
-// Upstream, the broker is an ordinary daemon: it registers runtimes with
-// runtime_mode "cloud", heartbeats, claims tasks and keeps their prepare lease
-// alive. Downstream, it impersonates the Multica server for the daemon inside
-// each sandbox: register/heartbeat/claim are answered locally, task-scoped
-// calls are forwarded with the broker's credential after an ownership check,
-// and everything else under /api/ passes through untouched so agents' task
-// tokens keep working. The daemon code is never modified; every supported
-// endpoint is listed in proxy.go so protocol drift surfaces as a logged 403.
+// Upstream, the manager is an ordinary daemon: it registers runtimes,
+// heartbeats and claims tasks. Downstream, it impersonates the Multica server
+// for the daemon inside each pod: register, heartbeat and claim are answered
+// locally, task-scoped calls are forwarded with the workspace's credential after
+// an ownership check, and everything else under /api/ passes through untouched
+// so agents' task tokens keep working. The daemon code is never modified.
 package sandboxbroker
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"github.com/google/uuid"
 )
-
-type Config struct {
-	MulticaURL   string
-	MulticaToken string
-	WorkspaceID  string
-	// BrokerID is the upstream daemon_id. It must stay stable across restarts
-	// or the server registers a new runtime row.
-	BrokerID string
-	// Name is the machine and runtime name members see.
-	Name string
-	// ListenAddr serves the sandbox-facing API.
-	ListenAddr string
-	// SandboxURL is how sandboxes reach ListenAddr.
-	SandboxURL string
-	Image      string
-	// Providers limits which agent CLIs detected in the image become upstream
-	// runtimes. Empty exposes every detected provider.
-	Providers []string
-	StateDir  string
-	// MaxConcurrency bounds tasks claimed but not finished across sandboxes.
-	MaxConcurrency int
-	// IdleTimeout stops a sandbox's compute once it has had no task this long.
-	IdleTimeout time.Duration
-	// StartTimeout fails tasks whose sandbox never starts their run.
-	StartTimeout time.Duration
-	// Isolation decides which tasks share a sandbox; default IsolationIssue.
-	Isolation Isolation
-	// CleanupGrace is how long a finished issue, chat or autopilot run keeps
-	// its sandbox, in case it is reopened.
-	CleanupGrace time.Duration
-	// VolumeTTL deletes any sandbox, volume included, unused this long.
-	VolumeTTL time.Duration
-	// SandboxEnv is added to every sandbox, e.g. LLM gateway settings.
-	SandboxEnv map[string]string
-
-	PollInterval      time.Duration
-	HeartbeatInterval time.Duration
-	LeaseInterval     time.Duration
-}
-
-func (c *Config) normalize() error {
-	if _, err := uuid.Parse(c.WorkspaceID); err != nil {
-		return fmt.Errorf("workspace ID must be a UUID")
-	}
-	c.WorkspaceID = strings.ToLower(c.WorkspaceID)
-	if err := checkBaseURL(c.MulticaURL); err != nil {
-		return fmt.Errorf("Multica URL: %w", err)
-	}
-	if err := checkBaseURL(c.SandboxURL); err != nil {
-		return fmt.Errorf("sandbox URL: %w", err)
-	}
-	c.MulticaURL = strings.TrimRight(c.MulticaURL, "/")
-	c.SandboxURL = strings.TrimRight(c.SandboxURL, "/")
-	if strings.TrimSpace(c.MulticaToken) == "" {
-		return fmt.Errorf("Multica token is required")
-	}
-	if c.Image == "" {
-		return fmt.Errorf("sandbox image is required")
-	}
-	if c.StateDir == "" {
-		return fmt.Errorf("state directory is required")
-	}
-	if c.ListenAddr == "" {
-		c.ListenAddr = ":8790"
-	}
-	if c.Name == "" {
-		c.Name = "Managed Sandbox"
-	}
-	if c.BrokerID == "" {
-		sum := sha256.Sum256([]byte(c.MulticaURL + "\x00" + c.WorkspaceID))
-		c.BrokerID = "sandbox-broker-" + hex.EncodeToString(sum[:])[:24]
-	}
-	switch c.Isolation {
-	case "":
-		c.Isolation = IsolationIssue
-	case IsolationIssue, IsolationTask, IsolationAgent:
-	default:
-		return fmt.Errorf("isolation must be issue, task or agent")
-	}
-	if c.MaxConcurrency == 0 {
-		c.MaxConcurrency = 4
-	}
-	if c.MaxConcurrency < 1 {
-		return fmt.Errorf("max concurrency must be positive")
-	}
-	defaults := []struct {
-		d   *time.Duration
-		def time.Duration
-	}{
-		{&c.IdleTimeout, 10 * time.Minute},
-		{&c.StartTimeout, 10 * time.Minute},
-		{&c.CleanupGrace, time.Hour},
-		{&c.VolumeTTL, 7 * 24 * time.Hour},
-		{&c.PollInterval, 3 * time.Second},
-		{&c.HeartbeatInterval, 15 * time.Second},
-		// The server's prepare lease lasts 45s.
-		{&c.LeaseInterval, 15 * time.Second},
-	}
-	for _, d := range defaults {
-		if *d.d == 0 {
-			*d.d = d.def
-		}
-		if *d.d < time.Millisecond {
-			return fmt.Errorf("durations must be positive")
-		}
-	}
-	return nil
-}
 
 func checkBaseURL(raw string) error {
 	u, err := url.Parse(raw)
@@ -136,4 +24,41 @@ func checkBaseURL(raw string) error {
 		return fmt.Errorf("must be an http(s) base URL")
 	}
 	return nil
+}
+
+type proxyContextKey struct{}
+
+// proxyRoute carries per-request forwarding decisions into the reverse proxy.
+type proxyRoute struct {
+	// brokerAuth replaces the pod's credential with the workspace's token.
+	brokerAuth bool
+	// token is the credential used when brokerAuth is set; the pool manager
+	// holds one PAT per workspace.
+	token string
+	// after runs with the upstream status code of a forwarded call.
+	after func(status int)
+}
+
+// runtimeRef is a registered runtime as the server reports it.
+type runtimeRef struct {
+	ID       string `json:"id"`
+	Provider string `json:"provider"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+var okBody = map[string]string{"status": "ok"}
+
+// taskTokenPath matches daemon endpoints the server authorizes with a
+// task-scoped token carried in the claim (RemoteMCPDaemonToken).
+func taskTokenPath(path string) bool {
+	parts := strings.Split(strings.TrimPrefix(path, "/api/daemon/"), "/")
+	if len(parts) < 3 || parts[0] != "tasks" {
+		return false
+	}
+	return parts[2] == "plugin-hooks" || (len(parts) == 5 && parts[4] == "credential")
 }
