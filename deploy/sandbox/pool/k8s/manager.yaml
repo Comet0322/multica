@@ -69,6 +69,7 @@ spec:
             - {name: SANDBOX_LITELLM_POD_URL, value: "http://litellm.example.com:4000"} # PLACEHOLDER: as pods reach it
             - {name: SANDBOX_LITELLM_MASTER_KEY_FILE, value: /etc/sandbox-manager/litellm-master-key}
             - {name: SANDBOX_LITELLM_MODELS, value: "PLACEHOLDER-model"} # PLACEHOLDER: comma list
+            - {name: SANDBOX_PROVIDERS, value: "claude,opencode"} # the image's agent CLIs; a pod cannot add other runtimes
             - {name: SANDBOX_LITELLM_MAX_BUDGET, value: "5"} # PLACEHOLDER: per task key
             - {name: SANDBOX_LITELLM_RPM_LIMIT, value: "60"} # PLACEHOLDER: per task key
             # Git gateway, as pods reach it (see git-gateway.yaml). The MCP URL

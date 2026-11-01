@@ -26,7 +26,7 @@ errors. Prefer the `_FILE` form with a mounted secret.
 | `SANDBOX_POOL_ADMIN_LISTEN` | `127.0.0.1:8791` | Admin listener (inventory, leases, git verify). |
 | `SANDBOX_MANAGER_NAME` | `Managed Sandbox` | Machine and default runtime name. |
 | `SANDBOX_POOL_SIZE` | 0 | Declared pod count, shown next to live counts. |
-| `SANDBOX_PROVIDERS` | all | Comma list of agent CLIs exposed as runtimes. |
+| `SANDBOX_PROVIDERS` | all | Comma list of agent CLIs exposed as runtimes. Set it to the image's CLIs: a pod can otherwise add runtimes of any type. |
 | `SANDBOX_POOL_DRAIN_TIMEOUT` | `10m` | How long a removed workspace keeps its leases. |
 | `SANDBOX_POOL_HEARTBEAT_TIMEOUT` | `45s` | Silence after which a pod is listed lost. |
 | `SANDBOX_POOL_RESET_TIMEOUT` | `2m` | Longest a pod may stay resetting. |
