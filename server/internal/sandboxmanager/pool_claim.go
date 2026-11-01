@@ -286,6 +286,18 @@ func (p *Pool) serveRuntimeScoped(w http.ResponseWriter, r *http.Request, ip str
 			out = task
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"task": out})
+	case len(rest) == 3 && rest[0] == "models" && rest[2] == "result":
+		// The report of a model list request the manager handed to this pod.
+		ws := p.workspaceByRuntime(parts[1])
+		if !p.modelRequestHeldBy(parts[1], rest[1], ip) {
+			p.refuse(w, r, ip, "model list request is not assigned to this pod")
+			return
+		}
+		p.forward(w, r, &proxyRoute{managerAuth: true, ticket: ws.cfg.Ticket, after: func(status int) {
+			if status < http.StatusInternalServerError {
+				p.finishModelRequest(parts[1], rest[1])
+			}
+		}})
 	case len(rest) == 1 && rest[0] == "recover-orphans":
 		// Upstream this would fail every other pod's tasks on the shared
 		// runtime; the manager handles lost pods itself.

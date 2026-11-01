@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // Pod states. A pod is identified by the source IP of its requests; the pool
@@ -283,6 +285,9 @@ type Pool struct {
 	prunedTotal int
 	// beatAt is when each upstream runtime was last heartbeated, by runtime ID.
 	beatAt map[string]time.Time
+	// modelReqs holds the model list request Multica has open for a runtime,
+	// by runtime ID; see pool_models.go.
+	modelReqs map[string]*modelRequest
 	// identity headers are taken from the first pod and replayed to every
 	// other one; pods are homogeneous. Each workspace keeps its own runtime
 	// registration.
@@ -937,7 +942,11 @@ func (p *Pool) serveHeartbeat(w http.ResponseWriter, r *http.Request, ip string)
 		return
 	}
 	p.relayHeartbeat(req.RuntimeID)
-	writeJSON(w, http.StatusOK, map[string]any{"runtime_id": req.RuntimeID, "status": "ok"})
+	answer := map[string]any{"runtime_id": req.RuntimeID, "status": "ok"}
+	if id := p.takeModelRequest(req.RuntimeID, ip); id != "" {
+		answer["pending_model_list"] = protocol.DaemonHeartbeatPendingModelList{ID: id}
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 // upstreamHeartbeatEvery is how often a runtime is heartbeated upstream, however
@@ -965,8 +974,12 @@ func (p *Pool) relayHeartbeat(runtimeID string) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), upstreamClaimTimeout)
 			defer cancel()
-			err := ws.up.call(ctx, http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": runtimeID}, nil)
+			var ack protocol.DaemonHeartbeatAckPayload
+			err := ws.up.call(ctx, http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": runtimeID}, &ack)
 			p.recordUpstream(ws, "heartbeat", err)
+			if err == nil && ack.PendingModelList != nil && ack.PendingModelList.ID != "" {
+				p.noteModelRequest(runtimeID, ack.PendingModelList.ID)
+			}
 			if err != nil {
 				p.log.Warn("heartbeat runtime upstream", "workspace_id", ws.cfg.WorkspaceID, "runtime_id", runtimeID, "error", err)
 			}
