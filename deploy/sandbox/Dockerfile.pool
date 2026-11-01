@@ -1,0 +1,178 @@
+# Pooled sandbox pod image. A pod runs two containers of this image, neither of
+# them as root: the daemon container (POD_ROLE unset) has pod-supervisor as
+# PID 1, supervising the stock Multica daemon as uid 1001; the agent container
+# (POD_ROLE=runner) has pod-supervisor as PID 1 too and runs the agent CLIs as
+# uid 1000. The root filesystem is meant to run read-only; the writable areas
+# are volumes (work root, TMPDIR and /dev/shm shared by both containers, the
+# daemon's HOME and the agent's HOME one container each), so a reset is a fresh
+# pod. Build from the repository root:
+#   docker build -f deploy/sandbox/Dockerfile.pool -t multica-sandbox-pool:<tag> .
+# Run: see deploy/sandbox/pool/k8s/sandbox/pool.yaml, which sets the users, the
+# group 2000 the containers share, the volumes and the dropped capabilities.
+# The default target installs real agent CLIs; --target fake uses a fake
+# Claude Code for credential-free testing.
+ARG GO_IMAGE=golang:1.27.3-alpine
+ARG BASE_IMAGE=node:22-slim
+
+FROM ${GO_IMAGE} AS builder
+WORKDIR /src/server
+COPY server/go.mod server/go.sum ./
+RUN go mod download
+COPY server/ ./
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o /out/multica ./cmd/multica \
+	&& CGO_ENABLED=0 go build -ldflags "-s -w" -o /out/pod-supervisor ./cmd/pod-supervisor
+
+FROM ${BASE_IMAGE} AS base
+# Addresses baked into the image. Defaults are placeholders; the cluster
+# manifests (or a rebuild) set the real in-cluster addresses.
+ARG MANAGER_URL=http://sandbox-manager.multica-sandbox.svc.cluster.local:8080
+ARG PACKAGE_MIRROR_URL=http://package-mirror.multica-sandbox.svc.cluster.local
+# The gateway serves git at its root (pool/k8s/git-gateway.yaml, port 8081),
+# so the URL has no path prefix.
+ARG GIT_GATEWAY_URL=http://git-gateway.multica-sandbox.svc.cluster.local:8081/
+ARG GITLAB_URL=https://gitlab.example.com/
+
+# The daemon and the agents run in different containers as different non-root
+# users that share group 2000 (the pod's fsGroup): the agent user is the
+# image's node (1000), the daemon's is sandboxd (1001). The containers set the
+# users themselves; the entries only give the ids names. See "Daemon and agent
+# containers" in deploy/sandbox/SANDBOX.md.
+RUN groupadd --gid 2000 sandbox \
+	&& useradd --uid 1001 --gid 2000 --no-create-home --home-dir /nonexistent \
+		--shell /usr/sbin/nologin sandboxd
+
+# Common toolchains, installed at build time so agents never install globally
+# (the root filesystem is read-only) or reach the public internet.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		ca-certificates git openssh-client curl jq procps make build-essential \
+		python3 python3-pip python3-venv \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& npm install -g pnpm && npm cache clean --force
+
+# Package sources point at the internal mirror. --user, venv and in-project
+# installs work; global installs fail on the read-only root.
+COPY deploy/sandbox/pool/pip.conf /etc/pip.conf
+RUN sed -i "s|@PACKAGE_MIRROR_URL@|${PACKAGE_MIRROR_URL}|g" /etc/pip.conf \
+	&& printf 'registry=%s/npm/\n' "${PACKAGE_MIRROR_URL}" >/usr/local/etc/npmrc
+ENV GOPROXY=${PACKAGE_MIRROR_URL}/go,off
+
+# Claude Code phones api.anthropic.com for telemetry and update checks, which
+# the egress policy denies. The daemon passes the pod's environment on to the
+# agent CLI, so these silence that traffic for every task. (The model endpoint
+# is LiteLLM, injected per task as ANTHROPIC_BASE_URL. opencode reaches it
+# through the provider in its config template, from OPENAI_BASE_URL; it has no
+# other provider enabled, so its model list is what LiteLLM serves.)
+ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+	DISABLE_AUTOUPDATER=1 \
+	OPENCODE_DISABLE_AUTOUPDATE=true \
+	OPENCODE_DISABLE_MODELS_FETCH=true
+
+# Every git operation, including the daemon's own clone and fetch, goes
+# through the git gateway. The daemon (sandboxd) and the agent (node) work in
+# the same repositories (in separate containers), so git must accept the other
+# user's files and keep its own files group-writable. A pod has no user of its own, so commits get
+# the daemon's fallback identity unless the task sets another: without one
+# every `git commit` in a pod fails.
+RUN git config --system "url.${GIT_GATEWAY_URL}.insteadOf" "${GITLAB_URL}" \
+	&& git config --system safe.directory '*' \
+	&& git config --system core.sharedRepository group \
+	&& git config --system user.name "Multica Agent" \
+	&& git config --system user.email "agent@multica.local"
+
+# Pushes carry the task's token: a system-level credential helper answers with
+# user "agent" and $GIT_GATEWAY_TOKEN (set in the agent's environment by the
+# manager) for the gateway's host only, never for any other server. The
+# pattern is the gateway's origin, so it holds for every path under it.
+COPY deploy/sandbox/pool/git-credential-gateway /usr/local/bin/git-credential-gateway
+RUN chmod 0755 /usr/local/bin/git-credential-gateway \
+	&& origin="$(printf '%s' "${GIT_GATEWAY_URL}" | sed -E 's|^([a-z]+://[^/]+).*|\1|')" \
+	&& git config --system "credential.${origin}.helper" /usr/local/bin/git-credential-gateway
+
+COPY --from=builder /out/multica /usr/local/bin/multica
+COPY --from=builder /out/pod-supervisor /usr/local/bin/pod-supervisor
+COPY deploy/sandbox/pool/entrypoint.sh /usr/local/bin/multica-pod-entrypoint
+
+# Templates rebuilt on every reset. The agent's HOME (runner) gets the
+# runtime-private skills. The daemon's own HOME, a volume the agent container
+# does not have, gets the daemon's CLI settings (manager address and a
+# placeholder token the manager ignores); the template is the daemon user's
+# alone, so the agent container's copy of the image cannot read it either.
+# Nothing here is a real secret.
+COPY deploy/sandbox/home/ /etc/multica-sandbox/home-template/
+RUN mkdir -p /etc/multica-sandbox/daemon-template/.multica \
+	&& printf '{"server_url":"%s","token":"pool-placeholder"}\n' "${MANAGER_URL}" \
+		>/etc/multica-sandbox/daemon-template/.multica/config.json \
+	&& chown -R 1001:2000 /etc/multica-sandbox/daemon-template \
+	&& chmod 700 /etc/multica-sandbox/daemon-template /etc/multica-sandbox/daemon-template/.multica \
+	&& chmod 600 /etc/multica-sandbox/daemon-template/.multica/config.json \
+	&& mkdir -p /work /home/agent /home/daemon /usr/local/libexec/pod-agents
+# The volume mount points are owned by the pod's users and group 2000, with
+# setgid, as Kubernetes makes them with fsGroup. Docker and compose copy the
+# image's ownership into a new named volume, so without this a volume is
+# root's and the daemon cannot write to it. /tmp is not sticky, so each user
+# can empty what the other left. Build leftovers are removed.
+RUN rm -rf /tmp/* /tmp/.[!.]* \
+	&& chown 1001:2000 /work /home/daemon /tmp && chown 1000:2000 /home/agent \
+	&& chmod 2770 /work /home/agent /home/daemon /tmp
+
+# Both roles read their layout from the environment (see the entrypoint).
+# MULTICA_GC_ENABLED=false: only the supervisor cleans the pod. The workspaces
+# root is a subdirectory of the work root: the daemon drops a task-context
+# marker there, and a daemon whose own cwd sits at or below the marker refuses
+# to start, which would break every crash restart.
+ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
+	POD_WORK_ROOT=/work \
+	POD_HOME=/home/agent \
+	POD_TMPDIR=/tmp \
+	POD_HOME_TEMPLATE=/etc/multica-sandbox/home-template \
+	POD_DAEMON_UID=1001 \
+	POD_AGENT_SOCKET=multica-pod-agents \
+	POD_SHIM_DIR=/usr/local/libexec/pod-agents \
+	POD_DAEMON_HOME=/home/daemon \
+	POD_DAEMON_HOME_TEMPLATE=/etc/multica-sandbox/daemon-template \
+	MULTICA_WORKSPACES_ROOT=/work/workspaces \
+	MULTICA_GC_ENABLED=false \
+	MULTICA_DAEMON_AUTO_UPDATE=false
+
+# The daemon's local health endpoint (loopback only; the agent container has no
+# daemon). The cluster has no probe of its own for the pod: the supervisor
+# exits, and the kubelet restarts the container, when a reset keeps failing.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+	CMD [ "${POD_ROLE:-supervisor}" = runner ] || curl -fsS -o /dev/null http://127.0.0.1:19514/health
+VOLUME ["/work", "/home/agent", "/home/daemon", "/tmp"]
+# Nothing in the image needs root, and nothing runs as root: the daemon
+# container's user is the image's default, the agent container sets uid 1000.
+USER 1001:2000
+ENTRYPOINT ["/usr/local/bin/multica-pod-entrypoint"]
+
+# AGENT_COMMANDS lists the agent CLIs installed in a stage. Each gets a shim, a
+# hard link of the supervisor that is first on the daemon's PATH, so that the
+# daemon runs the CLI through the runner in the agent container. A name without
+# an installed CLI must not be listed: the daemon would offer a runtime for it.
+FROM base AS fake
+ARG AGENT_COMMANDS="claude"
+# Installing the CLIs and linking the shims takes root; the image still ends
+# as the unprivileged user.
+USER root
+COPY deploy/sandbox/fake/fake-claude /usr/local/bin/claude
+COPY deploy/sandbox/fake/skill/ /etc/multica-sandbox/home-template/
+RUN for c in $AGENT_COMMANDS; do ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done
+USER 1001:2000
+
+FROM base AS agents
+# Space-separated npm packages providing the agent CLIs to expose.
+ARG AGENT_PACKAGES="@anthropic-ai/claude-code opencode-ai@1.19.5"
+ARG AGENT_COMMANDS="claude opencode"
+# The base stage points npm at the internal package mirror; when that mirror
+# does not serve the agent CLIs (or the build runs outside the cluster
+# network), AGENT_NPM_REGISTRY names the registry to install them from. The
+# running image still uses the mirror.
+ARG AGENT_NPM_REGISTRY=
+USER root
+RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g ${AGENT_NPM_REGISTRY:+--registry="$AGENT_NPM_REGISTRY"} $AGENT_PACKAGES && npm cache clean --force; fi \
+	&& for c in $AGENT_COMMANDS; do command -v "$c" >/dev/null && ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done \
+	&& rm -rf /tmp/* /tmp/.[!.]*
+USER 1001:2000

@@ -1,0 +1,16 @@
+# The sandbox pods. Replicas and the image tag live here, under version control.
+# Apply it next to the sandbox manager's kustomization (../kustomization.yaml),
+# which creates the namespace, the manager, the git gateway and the network
+# policies the pods depend on. Replace every PLACEHOLDER in an overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: multica-sandbox
+resources:
+  - pool.yaml
+images:
+  - name: multica-sandbox-pool
+    newName: registry.example.com/multica/sandbox-pool # PLACEHOLDER
+    newTag: PLACEHOLDER
+replicas:
+  - name: sandbox-pool
+    count: 4 # expected pool size; keep in step with the manager's expected-size setting

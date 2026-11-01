@@ -1,0 +1,122 @@
+# The pod pool. Pods are interchangeable and keep no state across a reset, so a
+# Deployment is enough; replicas (and the image tag, via kustomization.yaml)
+# are the only sizing knobs. The pool has no autoscaler.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-pool
+  namespace: multica-sandbox
+  labels:
+    app.kubernetes.io/name: sandbox-pool
+    app.kubernetes.io/part-of: multica-sandbox
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-pool
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: daemon
+      labels:
+        app.kubernetes.io/name: sandbox-pool
+        multica.io/sandbox-role: pool-pod # the label the NetworkPolicies key on
+    spec:
+      hostNetwork: false # pod identity is the source IP; never share the node's
+      automountServiceAccountToken: false # no Kubernetes API access
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        # Both containers run as group 2000 (runAsGroup below), and every volume
+        # is group 2000 and setgid, so the daemon's files and the agent's can
+        # be shared by group while the two users stay different.
+        fsGroup: 2000
+        runAsNonRoot: true
+      containers:
+        # The daemon container: pod-supervisor as PID 1 runs the Multica daemon
+        # and resets the pod on the manager's command. The daemon's HOME is a
+        # volume only this container has.
+        - name: daemon
+          image: multica-sandbox-pool:0.7.0 # kustomization.yaml replaces name and tag
+          imagePullPolicy: IfNotPresent
+          env:
+            # Reset poll interval; the manager address is baked into the image
+            # (POD_CONTROL_URL, HOME template config).
+            - name: POD_POLL_INTERVAL
+              value: 2s
+            # Emptied by the supervisor on every reset (the shm volume below),
+            # so shared-memory files never outlive a task.
+            - name: POD_SHM_DIR
+              value: /dev/shm
+          securityContext:
+            # No root and no capability anywhere (deploy/sandbox/SANDBOX.md).
+            runAsUser: 1001
+            runAsGroup: 2000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false # no-new-privileges
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - {name: work, mountPath: /work}
+            - {name: tmp, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+            - {name: daemon-home, mountPath: /home/daemon}
+          # No liveness probe: the daemon health port listens on loopback
+          # only, and the image ships no probe client. The supervisor exits
+          # (so the kubelet restarts the container) when a reset keeps failing,
+          # the agent runner stays unreachable, or the manager stops knowing
+          # the pod.
+        # The agent container: the runner starts every agent CLI the daemon asks
+        # for, as uid 1000. It has its own process namespace and the agent's
+        # HOME; it cannot see the daemon's processes or its HOME.
+        - name: agent-runner
+          image: multica-sandbox-pool:0.7.0 # kustomization.yaml replaces name and tag
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POD_ROLE
+              value: runner
+            - name: POD_SHM_DIR
+              value: /dev/shm
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 2000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          volumeMounts:
+            - {name: work, mountPath: /work}
+            - {name: tmp, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+            - {name: agent-home, mountPath: /home/agent}
+      volumes:
+        # The only writable areas. Size limits keep one task from filling the node.
+        # Shared by both containers:
+        - name: work
+          emptyDir: {sizeLimit: 20Gi}
+        - name: tmp
+          emptyDir: {sizeLimit: 4Gi}
+        # Replaces the runtime's own /dev/shm so the reset can empty it. Counts
+        # against the containers' memory limits.
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 1Gi}
+        # One container each:
+        - name: daemon-home
+          emptyDir: {sizeLimit: 1Gi}
+        - name: agent-home
+          emptyDir: {sizeLimit: 2Gi}
