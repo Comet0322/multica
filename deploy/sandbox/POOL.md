@@ -11,6 +11,12 @@ Secrets accept `NAME` or `NAME_FILE` (a path; surrounding whitespace is
 trimmed). Setting both is refused. Secret values are never logged or echoed in
 errors. Prefer the `_FILE` form with a mounted secret.
 
+## Architecture
+
+![Sandbox pool architecture overview](docs/architecture-overview.svg)
+
+![Inside one sandbox pod](docs/architecture-pod.svg)
+
 ## Core
 
 | Variable | Default | Meaning |
