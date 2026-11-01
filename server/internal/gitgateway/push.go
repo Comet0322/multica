@@ -175,7 +175,7 @@ func (g *Gateway) denyPush(w http.ResponseWriter, rec AuditRecord, req *pushRequ
 	case rt.action == ActionPushInfoRefs && status == http.StatusForbidden:
 		w.Header().Set("Content-Type", "application/x-git-receive-pack-advertisement")
 		w.Header().Set("Cache-Control", "no-cache")
-		io.WriteString(w, pktLine("# service=git-receive-pack\n")+"0000"+pktLine("ERR "+reason+"\n"))
+		writeProtocol(w, pktLine("# service=git-receive-pack\n")+"0000"+pktLine("ERR "+reason+"\n"))
 	default:
 		http.Error(w, reason, status)
 	}
@@ -193,10 +193,17 @@ func writeRejectReport(w http.ResponseWriter, req *pushRequest, reason string) {
 	w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
 	w.Header().Set("Cache-Control", "no-cache")
 	if req.hasCap("side-band-64k") || req.hasCap("side-band") {
-		io.WriteString(w, pktLine("\x02"+reason+"\n")+pktLine("\x01"+report)+"0000")
+		writeProtocol(w, pktLine("\x02"+reason+"\n")+pktLine("\x01"+report)+"0000")
 		return
 	}
-	io.WriteString(w, report)
+	writeProtocol(w, report)
+}
+
+// writeProtocol writes a git pkt-line body, never HTML, to the client. The
+// content type was set to a git media type by the caller. A failed write
+// means the client has gone; there is nothing left to tell it.
+func writeProtocol(w http.ResponseWriter, body string) {
+	_, _ = io.Copy(w, strings.NewReader(body))
 }
 
 func pktLine(s string) string {

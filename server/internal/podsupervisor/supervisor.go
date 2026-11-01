@@ -56,7 +56,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -222,7 +221,10 @@ func New(cfg Config) (*Supervisor, error) {
 			s.agentOwner = &owner{uid: int(cfg.AgentUser.UID), gid: int(cfg.AgentUser.GID)}
 			cred = &syscall.Credential{Uid: cfg.AgentUser.UID, Gid: cfg.AgentUser.GID, Groups: []uint32{cfg.AgentUser.GID}}
 		}
-		daemonUID := uint32(os.Geteuid())
+		daemonUID, ok := ID32(os.Geteuid())
+		if !ok {
+			return nil, fmt.Errorf("effective user id %d is out of range", os.Geteuid())
+		}
 		if cfg.DaemonUser != nil && os.Geteuid() == 0 {
 			daemonUID = cfg.DaemonUser.UID
 		}
@@ -261,7 +263,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	go s.poll(ctx)
 
 	var (
-		cmd     *exec.Cmd
+		cmd     *child
 		exited  chan error
 		restart <-chan time.Time
 	)
@@ -347,7 +349,7 @@ func (s *Supervisor) prepareDirs() error {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		if err := s.dirOwner(dir).chown(dir); err != nil {
+		if err := s.dirOwner(dir).chownPath(dir); err != nil {
 			return err
 		}
 	}
@@ -412,7 +414,7 @@ func (s *Supervisor) prepareDaemonHome() error {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			return err
 		}
-		if err := s.owner.chown(dir); err != nil {
+		if err := s.owner.chownPath(dir); err != nil {
 			return err
 		}
 	}
@@ -452,16 +454,24 @@ func (s *Supervisor) resetEnvironment() error {
 	return nil
 }
 
-func (s *Supervisor) startDaemon() (*exec.Cmd, chan error, error) {
-	cmd := exec.Command(s.cfg.DaemonCmd[0], s.cfg.DaemonCmd[1:]...)
-	cmd.Dir = s.cfg.WorkRoot
-	cmd.Env = s.daemonEnv()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if s.cfg.DaemonUser != nil && os.Geteuid() == 0 {
-		cmd.SysProcAttr = credentialAttr(s.cfg.DaemonUser.UID, s.cfg.DaemonUser.GID)
+func (s *Supervisor) startDaemon() (*child, chan error, error) {
+	// A process started without a standard input gets none; the daemon reads
+	// nothing from it.
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		return nil, nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	defer null.Close()
+	attr := &os.ProcAttr{
+		Dir:   s.cfg.WorkRoot,
+		Env:   s.daemonEnv(),
+		Files: []*os.File{null, os.Stdout, os.Stderr},
+	}
+	if s.cfg.DaemonUser != nil && os.Geteuid() == 0 {
+		attr.Sys = credentialAttr(s.cfg.DaemonUser.UID, s.cfg.DaemonUser.GID)
+	}
+	cmd, err := startChild(&spec{program: s.cfg.DaemonCmd[0], argv0: s.cfg.DaemonCmd[0], args: s.cfg.DaemonCmd[1:], attr: attr})
+	if err != nil {
 		return nil, nil, err
 	}
 	exited := make(chan error, 1)

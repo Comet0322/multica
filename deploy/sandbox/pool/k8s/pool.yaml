@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sandbox-pool
+  namespace: multica-sandbox
   labels:
     app.kubernetes.io/name: sandbox-pool
     app.kubernetes.io/part-of: multica-sandbox
@@ -33,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: pod
-          image: multica-sandbox-pool # tag set in kustomization.yaml
+          image: multica-sandbox-pool:0.7.0 # kustomization.yaml replaces name and tag
           imagePullPolicy: IfNotPresent
           env:
             # Reset poll interval; the manager address is baked into the image
@@ -62,7 +63,7 @@ spec:
             - {name: home, mountPath: /home/agent}
             - {name: tmp, mountPath: /tmp}
             - {name: shm, mountPath: /dev/shm}
-          # No liveness probe: the daemon's health port listens on loopback
+          # No liveness probe: the daemon health port listens on loopback
           # only, and the image ships no probe client. The supervisor exits
           # (so the kubelet restarts the container) when a reset keeps failing
           # or the manager stops knowing the pod.

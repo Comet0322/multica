@@ -14,5 +14,8 @@ RUN apk add --no-cache ca-certificates \
 	&& adduser -D -u 65532 manager
 COPY --from=builder /out/sandbox-manager /usr/local/bin/sandbox-manager
 USER manager
-# Readiness is /readyz on the pod listener; the cluster probes it.
+# Readiness is /readyz on the pod listener; the cluster probes it. The image's
+# own check is liveness: /healthz on the pod listener.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+	CMD wget -q -O /dev/null "http://127.0.0.1${SANDBOX_MANAGER_LISTEN:-:8790}/healthz" || exit 1
 ENTRYPOINT ["/usr/local/bin/sandbox-manager"]

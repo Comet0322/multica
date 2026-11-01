@@ -14,6 +14,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sandbox-manager
+  namespace: multica-sandbox
   labels:
     app.kubernetes.io/name: sandbox-manager
     app.kubernetes.io/part-of: multica-sandbox
@@ -44,7 +45,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: multica-sandbox-manager # tag set in kustomization.yaml
+          image: multica-sandbox-manager:0.7.0 # kustomization.yaml replaces name and tag
           ports:
             - {name: pod, containerPort: 8080}
             - {name: gateway, containerPort: 8792}
@@ -81,6 +82,9 @@ spec:
           # `kubectl get pods`, never a cut of the pods' traffic. There is no
           # liveness probe on purpose: a manager restart fails every running
           # task (deploy/sandbox/POOL.md, known limits).
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
           readinessProbe:
             httpGet: {path: /readyz, port: pod}
             periodSeconds: 10
@@ -103,6 +107,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: sandbox-manager
+  namespace: multica-sandbox
 spec:
   type: ClusterIP
   # Readiness (/readyz) reports upstream trouble; the pods must keep reaching
@@ -119,6 +124,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: sandbox-manager-gateway
+  namespace: multica-sandbox
 spec:
   type: ClusterIP
   publishNotReadyAddresses: true # as above: readiness is a signal only

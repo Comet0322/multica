@@ -11,8 +11,8 @@ import (
 
 // Placeholders usable in GitGatewayConfig.Env values.
 const (
-	// GitTokenPlaceholder is replaced by the task's git gateway token.
-	GitTokenPlaceholder = "${GIT_TOKEN}"
+	// GitAuthPlaceholder is replaced by the task's git gateway token.
+	GitAuthPlaceholder = "${GIT_TOKEN}"
 	// GitURLPlaceholder is replaced by GitGatewayConfig.URL.
 	GitURLPlaceholder = "${GIT_GATEWAY_URL}"
 )
@@ -39,7 +39,7 @@ type GitGatewayConfig struct {
 
 // DefaultGitGatewayEnv hands the token to the image's git credential setup.
 var DefaultGitGatewayEnv = map[string]string{
-	"GIT_GATEWAY_TOKEN": GitTokenPlaceholder,
+	"GIT_GATEWAY_TOKEN": GitAuthPlaceholder,
 }
 
 func (c *GitGatewayConfig) normalize() error {
@@ -113,7 +113,7 @@ func (p *Pool) issueGitToken(raw json.RawMessage, ref claimedTaskRef) (json.RawM
 	if err != nil {
 		return nil, err
 	}
-	repl := strings.NewReplacer(GitTokenPlaceholder, token, GitURLPlaceholder, p.cfg.Git.URL)
+	repl := strings.NewReplacer(GitAuthPlaceholder, token, GitURLPlaceholder, p.cfg.Git.URL)
 	env := make(map[string]string, len(p.cfg.Git.Env))
 	for name, value := range p.cfg.Git.Env {
 		env[name] = repl.Replace(value)

@@ -87,7 +87,7 @@ func TestGitTokenTemplateUsesPlaceholders(t *testing.T) {
 	h := newHarness(t, 1, withGateway(func(c *sandboxmanager.GitGatewayConfig) {
 		c.Env = map[string]string{
 			"GIT_GW_URL":  sandboxmanager.GitURLPlaceholder,
-			"GIT_GW_AUTH": "task:" + sandboxmanager.GitTokenPlaceholder,
+			"GIT_GW_AUTH": "task:" + sandboxmanager.GitAuthPlaceholder,
 		}
 	}))
 	h.upstream.enqueueTask("t1", "alice@example.com", nil)
@@ -200,7 +200,7 @@ func TestMulticaPrefixedGitEnvNamesAreRejected(t *testing.T) {
 	t.Parallel()
 	_, err := sandboxmanager.NewPool(sandboxmanager.PoolConfig{
 		MulticaURL: "http://127.0.0.1:1", MulticaToken: harnessPAT, WorkspaceID: harnessWorkspaceID,
-		Git: &sandboxmanager.GitGatewayConfig{Env: map[string]string{"MULTICA_TOKEN": sandboxmanager.GitTokenPlaceholder}},
+		Git: &sandboxmanager.GitGatewayConfig{Env: map[string]string{"MULTICA_TOKEN": sandboxmanager.GitAuthPlaceholder}},
 	}, nil)
 	if err == nil {
 		t.Fatal("want an error for a MULTICA_ variable name")

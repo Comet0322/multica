@@ -132,7 +132,7 @@ func stdioDescriptors() ([]int, func()) {
 	}
 	return fds, func() {
 		for _, f := range opened {
-			f.Close()
+			_ = f.Close()
 		}
 	}
 }
@@ -157,13 +157,17 @@ func shareCheckouts(root string) {
 // them. Only the worktree's own directory is returned, never the cache itself.
 func worktreeGitDirs(root string) []string {
 	var dirs []string
-	rootDepth := strings.Count(filepath.Clean(root), string(filepath.Separator))
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+	_ = fs.WalkDir(r.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if strings.Count(path, string(filepath.Separator))-rootDepth >= 3 || (d.Name() == ".git" && path != root) {
+			if strings.Count(rel, "/") >= 2 || (d.Name() == ".git" && rel != ".") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -171,7 +175,7 @@ func worktreeGitDirs(root string) []string {
 		if d.Name() != ".git" || !d.Type().IsRegular() {
 			return nil
 		}
-		raw, err := os.ReadFile(path)
+		raw, err := r.ReadFile(rel)
 		if err != nil || len(raw) > 4096 {
 			return nil
 		}
@@ -189,14 +193,19 @@ func worktreeGitDirs(root string) []string {
 // content with the umask and they can be large.
 func shareWithGroup(root string) {
 	uid := os.Getuid()
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return
+	}
+	defer r.Close()
+	_ = fs.WalkDir(r.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
-		if d.IsDir() && d.Name() == ".git" && path != root {
+		if d.IsDir() && d.Name() == ".git" && rel != "." {
 			return filepath.SkipDir
 		}
 		info, err := d.Info()
@@ -211,7 +220,7 @@ func shareWithGroup(root string) {
 			want = 0o070
 		}
 		if info.Mode().Perm()&want != want {
-			_ = os.Chmod(path, info.Mode().Perm()|want)
+			_ = r.Chmod(rel, info.Mode().Perm()|want)
 		}
 		return nil
 	})

@@ -156,7 +156,7 @@ func (l *launcher) handle(conn *net.UnixConn) {
 	}
 	defer func() {
 		for _, f := range files {
-			f.Close()
+			_ = f.Close()
 		}
 	}()
 	dec, enc := json.NewDecoder(conn), json.NewEncoder(conn)
@@ -164,10 +164,11 @@ func (l *launcher) handle(conn *net.UnixConn) {
 	if err := dec.Decode(&req); err != nil {
 		return
 	}
-	cmd, cleanup, err := l.command(req, files)
+	sp, cleanup, err := l.command(req, files)
 	defer cleanup()
+	var cmd *child
 	if err == nil {
-		err = l.start(cmd)
+		cmd, err = l.start(sp)
 	}
 	if err != nil {
 		code := 126
@@ -221,7 +222,7 @@ func (l *launcher) handle(conn *net.UnixConn) {
 	_ = enc.Encode(reply)
 }
 
-func (l *launcher) command(req launchRequest, files []*os.File) (*exec.Cmd, func(), error) {
+func (l *launcher) command(req launchRequest, files []*os.File) (*spec, func(), error) {
 	noop := func() {}
 	name := req.Name
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\x00") {
@@ -235,13 +236,17 @@ func (l *launcher) command(req launchRequest, files []*os.File) (*exec.Cmd, func
 		return nil, noop, fmt.Errorf("working directory %q is not absolute", req.Dir)
 	}
 	args, cleanup := l.shareArgFiles(req.Args)
-	cmd := exec.Command(path, args...)
-	cmd.Args[0] = name
-	cmd.Dir = req.Dir
-	cmd.Env = l.agentEnv(req.Env)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = files[0], files[1], files[2]
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: l.Cred}
-	return cmd, cleanup, nil
+	return &spec{
+		program: path,
+		argv0:   name,
+		args:    args,
+		attr: &os.ProcAttr{
+			Dir:   req.Dir,
+			Env:   l.agentEnv(req.Env),
+			Files: []*os.File{files[0], files[1], files[2]},
+			Sys:   &syscall.SysProcAttr{Setpgid: true, Credential: l.Cred},
+		},
+	}, cleanup, nil
 }
 
 // maxArgFile bounds a file copied for the agent; these are small configuration
@@ -265,6 +270,11 @@ func (l *launcher) shareArgFiles(args []string) ([]string, func()) {
 			_ = os.RemoveAll(d)
 		}
 	}
+	src, err := os.OpenRoot(daemonTmp)
+	if err != nil {
+		return args, func() {}
+	}
+	defer src.Close()
 	out := make([]string, len(args))
 	for i, a := range args {
 		out[i] = a
@@ -277,11 +287,15 @@ func (l *launcher) shareArgFiles(args []string) ([]string, func()) {
 		if !filepath.IsAbs(val) || !within(daemonTmp, val) {
 			continue
 		}
-		fi, err := os.Lstat(val)
+		rel, err := filepath.Rel(daemonTmp, val)
+		if err != nil {
+			continue
+		}
+		fi, err := src.Lstat(rel)
 		if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxArgFile {
 			continue
 		}
-		data, err := os.ReadFile(val)
+		data, err := src.ReadFile(rel)
 		if err != nil {
 			continue
 		}
@@ -290,17 +304,32 @@ func (l *launcher) shareArgFiles(args []string) ([]string, func()) {
 			continue
 		}
 		dirs = append(dirs, dir)
-		copyPath := filepath.Join(dir, filepath.Base(val))
-		if err := os.WriteFile(copyPath, data, 0o600); err != nil {
+		copyPath, ok := l.writeAgentCopy(dir, filepath.Base(val), data)
+		if !ok {
 			continue
-		}
-		if l.Cred != nil {
-			_ = os.Chown(dir, int(l.Cred.Uid), int(l.Cred.Gid))
-			_ = os.Chown(copyPath, int(l.Cred.Uid), int(l.Cred.Gid))
 		}
 		out[i] = prefix + copyPath
 	}
 	return out, cleanup
+}
+
+// writeAgentCopy writes one argument file into dir, a fresh directory made for
+// it, and hands both to the agent user. The write goes through an os.Root on
+// dir, so the name cannot lead out of it.
+func (l *launcher) writeAgentCopy(dir, name string, data []byte) (string, bool) {
+	dst, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", false
+	}
+	defer dst.Close()
+	if err := dst.WriteFile(name, data, 0o600); err != nil {
+		return "", false
+	}
+	if l.Cred != nil {
+		_ = os.Chown(dir, int(l.Cred.Uid), int(l.Cred.Gid))
+		_ = dst.Chown(name, int(l.Cred.Uid), int(l.Cred.Gid))
+	}
+	return filepath.Join(dir, name), true
 }
 
 // lookup finds the real CLI on the PATH without the shim directory.
@@ -332,17 +361,18 @@ func (l *launcher) agentEnv(in []string) []string {
 	return append(env, "HOME="+l.Home, "TMPDIR="+l.TmpDir, "PATH="+path)
 }
 
-func (l *launcher) start(cmd *exec.Cmd) error {
+func (l *launcher) start(sp *spec) (*child, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.open {
-		return errors.New("the pod is not accepting agent launches (resetting)")
+		return nil, errors.New("the pod is not accepting agent launches (resetting)")
 	}
-	if err := cmd.Start(); err != nil {
-		return err
+	c, err := startChild(sp)
+	if err != nil {
+		return nil, err
 	}
-	l.pids[cmd.Process.Pid] = struct{}{}
-	return nil
+	l.pids[c.Process.Pid] = struct{}{}
+	return c, nil
 }
 
 func (l *launcher) signal(pid int, sig syscall.Signal) {
@@ -422,7 +452,7 @@ func receiveFiles(conn *net.UnixConn, n int) ([]*os.File, error) {
 	}
 	if len(files) != n {
 		for _, f := range files {
-			f.Close()
+			_ = f.Close()
 		}
 		return nil, fmt.Errorf("got %d descriptors, want %d", len(files), n)
 	}

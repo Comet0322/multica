@@ -118,6 +118,12 @@ ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
 	MULTICA_WORKSPACES_ROOT=/work/workspaces \
 	MULTICA_GC_ENABLED=false \
 	MULTICA_DAEMON_AUTO_UPDATE=false
+
+# The daemon's local health endpoint (loopback only). The cluster has no probe
+# of its own for the pod: the supervisor exits, and the kubelet restarts the
+# container, when a reset keeps failing.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+	CMD curl -fsS -o /dev/null http://127.0.0.1:19514/health || exit 1
 VOLUME ["/work", "/home/agent", "/tmp"]
 # PID 1 runs as root to supervise; it starts the daemon as uid 1001 and, through
 # the shims in POD_SHIM_DIR, every agent as uid 1000.

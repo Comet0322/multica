@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -43,7 +44,7 @@ func secretValue(getenv func(string) string, name string) (string, error) {
 	if path == "" {
 		return strings.TrimSpace(value), nil
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := readConfigFile(path)
 	if err != nil {
 		return "", fmt.Errorf("%s_FILE: cannot read %s", name, path)
 	}
@@ -304,7 +305,7 @@ func openAudit(path string) (io.Writer, func(), error) {
 	if path == "-" {
 		return os.Stdout, func() {}, nil
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := openAppendFile(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("SANDBOX_AUDIT_FILE: %w", err)
 	}
@@ -360,4 +361,41 @@ func servePool(ctx context.Context, log *slog.Logger, pool *sandboxmanager.Pool,
 			}
 		}
 	}
+}
+
+// configFile splits a file setting into the directory that holds it and the
+// file's name, opened as a root: every access then stays inside that
+// directory. Settings name mounted files (Secrets, volumes), so a relative path
+// is a mistake, not a convenience.
+func configFile(path string) (*os.Root, string, error) {
+	if !filepath.IsAbs(path) {
+		return nil, "", fmt.Errorf("%q is not an absolute path", path)
+	}
+	dir, name := filepath.Split(filepath.Clean(path))
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	return root, name, nil
+}
+
+// readConfigFile reads a file setting.
+func readConfigFile(path string) ([]byte, error) {
+	root, name, err := configFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.ReadFile(name)
+}
+
+// openAppendFile opens a file setting for appending, creating it private to the
+// user.
+func openAppendFile(path string) (*os.File, error) {
+	root, name, err := configFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 }

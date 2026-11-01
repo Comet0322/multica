@@ -64,19 +64,12 @@ func parse(args, environ []string) (podsupervisor.Config, error) {
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
-	if *uid >= 0 {
-		g := *gid
-		if g < 0 {
-			g = *uid
-		}
-		cfg.DaemonUser = &podsupervisor.User{UID: uint32(*uid), GID: uint32(g)}
+	var err error
+	if cfg.DaemonUser, err = userFromFlags("uid", *uid, *gid); err != nil {
+		return cfg, err
 	}
-	if *agentUID >= 0 {
-		g := *agentGID
-		if g < 0 {
-			g = *agentUID
-		}
-		cfg.AgentUser = &podsupervisor.User{UID: uint32(*agentUID), GID: uint32(g)}
+	if cfg.AgentUser, err = userFromFlags("agent-uid", *agentUID, *agentGID); err != nil {
+		return cfg, err
 	}
 	if fs.NArg() == 0 {
 		return cfg, fmt.Errorf("daemon command required after --")
@@ -84,4 +77,22 @@ func parse(args, environ []string) (podsupervisor.Config, error) {
 	cfg.DaemonCmd = fs.Args()
 	cfg.Env = environ
 	return cfg, nil
+}
+
+// userFromFlags turns a uid/gid flag pair into a user. A negative uid means the
+// flag was not given; a negative gid defaults to the uid. Ids outside the range
+// of a Linux uid_t are refused rather than wrapped.
+func userFromFlags(name string, uid, gid int) (*podsupervisor.User, error) {
+	if uid < 0 {
+		return nil, nil
+	}
+	if gid < 0 {
+		gid = uid
+	}
+	u, ok := podsupervisor.ID32(uid)
+	g, gok := podsupervisor.ID32(gid)
+	if !ok || !gok {
+		return nil, fmt.Errorf("-%s %d / group %d is out of range", name, uid, gid)
+	}
+	return &podsupervisor.User{UID: u, GID: g}, nil
 }

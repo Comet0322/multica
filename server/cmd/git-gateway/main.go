@@ -38,6 +38,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -144,11 +145,11 @@ func load(getenv func(string) string) (gitgateway.Config, string, error) {
 		Audit:         os.Stdout,
 	}
 	if path := getenv("GIT_GATEWAY_GITLAB_TOKEN_FILE"); path != "" && cfg.AdminToken == "" {
-		raw, err := os.ReadFile(path)
-		if err != nil {
+		if raw, err := readConfigFile(path); err != nil {
 			errs = append(errs, "GIT_GATEWAY_GITLAB_TOKEN_FILE is unreadable")
+		} else {
+			cfg.AdminToken = strings.TrimSpace(string(raw))
 		}
-		cfg.AdminToken = strings.TrimSpace(string(raw))
 	}
 	if cfg.AdminToken == "" {
 		errs = append(errs, "GIT_GATEWAY_GITLAB_TOKEN or GIT_GATEWAY_GITLAB_TOKEN_FILE is required")
@@ -198,7 +199,7 @@ func load(getenv func(string) string) (gitgateway.Config, string, error) {
 		cfg.PodResolver = gitgateway.HTTPPodResolver{URL: podVerify}
 	}
 	if path := getenv("GIT_GATEWAY_AUDIT_FILE"); path != "" {
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		f, err := openAppendFile(path)
 		if err != nil {
 			errs = append(errs, "GIT_GATEWAY_AUDIT_FILE cannot be opened")
 		} else {
@@ -213,4 +214,41 @@ func load(getenv func(string) string) (gitgateway.Config, string, error) {
 		return cfg, listen, fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return cfg, listen, nil
+}
+
+// configFile splits a file setting into the directory that holds it and the
+// file's name, opened as a root: every access then stays inside that
+// directory. Settings name mounted files (Secrets, volumes), so a relative path
+// is a mistake, not a convenience.
+func configFile(path string) (*os.Root, string, error) {
+	if !filepath.IsAbs(path) {
+		return nil, "", fmt.Errorf("%q is not an absolute path", path)
+	}
+	dir, name := filepath.Split(filepath.Clean(path))
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	return root, name, nil
+}
+
+// readConfigFile reads a file setting.
+func readConfigFile(path string) ([]byte, error) {
+	root, name, err := configFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.ReadFile(name)
+}
+
+// openAppendFile opens a file setting for appending, creating it private to the
+// user.
+func openAppendFile(path string) (*os.File, error) {
+	root, name, err := configFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 }
