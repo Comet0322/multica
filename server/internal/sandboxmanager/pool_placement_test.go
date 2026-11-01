@@ -10,12 +10,17 @@ import (
 
 // enqueueIn adds a task with the given issue and chat session IDs.
 func (f *fakeMultica) enqueueIn(id, issueID, chatID string) {
+	f.enqueueBy(id, issueID, chatID, "alice@example.com")
+}
+
+// enqueueBy adds a task started by the given person.
+func (f *fakeMultica) enqueueBy(id, issueID, chatID, initiator string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.queue = append(f.queue, map[string]any{
 		"id": id, "agent_id": "agent-1", "runtime_id": "runtime-a",
 		"workspace_id": harnessWorkspaceID, "issue_id": issueID, "chat_session_id": chatID,
-		"initiator_email": "alice@example.com",
+		"initiator_email": initiator,
 	})
 }
 
@@ -58,6 +63,38 @@ func TestSameIssueTasksRunInParallelOnTheBoundPod(t *testing.T) {
 	}
 	if inv := h.inventory(); inv.Idle != 1 || inv.Leased != 1 {
 		t.Fatalf("second pod should stay idle: %+v", inv)
+	}
+}
+
+func TestSameIssueTasksOfDifferentPeopleNeverShareAPod(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 3, sharedPods(5, 0))
+	h.upstream.enqueueBy("t1", "issue-1", "", "alice@example.com")
+	h.upstream.enqueueBy("t2", "issue-1", "", "Bob@example.com")
+	h.upstream.enqueueBy("t3", "issue-1", "", " ALICE@example.com ")
+	h.upstream.enqueueBy("t4", "issue-1", "", "")
+	h.upstream.enqueueBy("t5", "issue-1", "", "")
+	a, b, c := h.newPod("127.0.0.2", "pool-0"), h.newPod("127.0.0.3", "pool-1"), h.newPod("127.0.0.4", "pool-2")
+	a.start()
+	b.start()
+	c.start()
+
+	a.claimBatch()
+	if got := a.claimBatch(); len(got) != 0 {
+		t.Fatalf("alice's pod was handed bob's task: %v", got)
+	}
+	b.claimBatch()
+	a.claimBatch()
+	c.claimBatch()
+	got := leasePods(h)
+	if got["t1"] != "127.0.0.2" || got["t3"] != "127.0.0.2" {
+		t.Fatalf("one person's tasks should share a pod: %v", got)
+	}
+	if got["t2"] == got["t1"] {
+		t.Fatalf("two people's tasks share a pod: %v", got)
+	}
+	if got["t4"] != "" && got["t4"] == got["t5"] {
+		t.Fatalf("tasks with no initiator share a pod: %v", got)
 	}
 }
 

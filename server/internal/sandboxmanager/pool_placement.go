@@ -67,22 +67,28 @@ type parkedTask struct {
 }
 
 // placementKey names the unit a task belongs to. Tasks with the same key may
-// share a pod; tasks with different keys never do.
+// share a pod; tasks with different keys never do. A shared key also names the
+// person who started the task, so one pod never mixes two people's tasks; a
+// task with no known initiator is never shared.
 func (p *Pool) placementKey(ws *workspace, ref claimedTaskRef) string {
+	unit := ""
 	switch ws.cfg.Placement {
 	case PlacementIssue:
 		switch {
 		case ref.IssueID != "":
-			return "issue:" + ref.IssueID
+			unit = "issue:" + ref.IssueID
 		case ref.ChatSessionID != "":
-			return "chat:" + ref.ChatSessionID
+			unit = "chat:" + ref.ChatSessionID
 		}
 	case PlacementChat:
 		if ref.ChatSessionID != "" {
-			return "chat:" + ref.ChatSessionID
+			unit = "chat:" + ref.ChatSessionID
 		}
 	}
-	return "task:" + ref.ID
+	if unit == "" || ref.initiator() == "" {
+		return "task:" + ref.ID
+	}
+	return unit + "/by:" + ref.initiator()
 }
 
 // firstLease is the pod's longest-held lease, nil when it holds none.

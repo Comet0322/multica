@@ -176,7 +176,7 @@ and the pods in `/v1/inventory` name the initiators.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SANDBOX_PLACEMENT` | `task` | `task`, `issue` or `chat`: which tasks share a pod. |
+| `SANDBOX_PLACEMENT` | `task` | `task`, `issue` or `chat`: which tasks share a pod. Shared pods hold one person's tasks only. |
 | `SANDBOX_POD_CONCURRENCY` | 1 (`task`), 20 otherwise | Tasks a shared pod runs at once. |
 | `SANDBOX_PLACEMENT_WAIT` | `30s` | How long a claimed task waits for a pod. |
 | `SANDBOX_POOL_WAKE_INTERVAL` | `1s` | Active dispatch tick; `0` leaves dispatch to the pods' polling. |
@@ -428,11 +428,12 @@ and an empty, even read-only, HOME:
   found by workspace only. Two managers (two pools, or staging and production)
   against the same Multica or LiteLLM register the same runtimes or revoke each
   other's keys. Multi-pool deployments are not supported.
-- **Shared placement does not separate initiators.** In `issue` and `chat`
-  placement, tasks of one issue or conversation started by different people
-  share a pod and a user ID, so one agent can read another's environment (git
-  gateway token, LiteLLM key) and act with that person's GitLab rights and
-  budget. Use `task` placement (the default) where identities must stay apart.
+- **Shared placement separates people, not tasks.** In `issue` and `chat`
+  placement only tasks started by the same person share a pod (a task with no
+  known initiator gets its own pod). Tasks of one person in one pod still share
+  a user ID, a filesystem and an environment, so one agent can read another's
+  git gateway token and LiteLLM key. Use `task` placement (the default) where
+  tasks must stay apart.
 - **`issue` and `chat` placement are experimental.** A pod bound to a key may
   claim a task of another key; with no idle pod left the task waits in the
   manager and is failed after `SANDBOX_PLACEMENT_WAIT` (30s: "no sandbox pod
