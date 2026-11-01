@@ -41,6 +41,7 @@ wait_for() { # wait_for <seconds> <command...>
 	return 1
 }
 cleanup() {
+	[ -z "${VERIFY_KEEP:-}" ] || { echo "kept: $name $runner $vol (image $image, manager pid $mgr_pid)"; return; }
 	docker rm -f "$runner" "$name" >/dev/null 2>&1
 	# The volumes hold files of the container users; remove them as that user.
 	docker run --rm -v "$vol:/vol" --user 1001:2000 --entrypoint sh "$image" -c 'rm -rf /vol/* 2>/dev/null' >/dev/null 2>&1
@@ -60,7 +61,8 @@ mgr_pid=$!
 wait_for 10 curl -fsS "http://127.0.0.1:$port/_admin/state" || { fail "stand-in manager starts"; exit 1; }
 
 # The volumes the pod gets from the kubelet: work, tmp and shm shared, one home each.
-for d in work tmp shm dhome ahome; do mkdir "$vol/$d" && chmod 2777 "$vol/$d"; done
+# (Docker has no fsGroup: the containers share group 2000 as their primary group instead.)
+for d in work tmp shm dhome ahome; do mkdir "$vol/$d" && chmod 777 "$vol/$d"; done
 hardening=(--read-only --cap-drop ALL --security-opt no-new-privileges)
 shared=(-v "$vol/work:/work" -v "$vol/tmp:/tmp" -v "$vol/shm:/dev/shm" -e POD_SHM_DIR=/dev/shm)
 docker run -d --name "$name" --user 1001:2000 "${hardening[@]}" "${shared[@]}" \
@@ -177,7 +179,7 @@ done
 dx touch /work/leftover /tmp/leftover /home/daemon/leftover
 dr touch /home/agent/leftover
 curl -fsS -X POST "http://127.0.0.1:$port/_admin/reset?id=r-1" >/dev/null
-reset_done() { state | python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if any(r["id"]=="r-1" and r["status"]=="done" for r in s["reports"]) else 1)'; }
+reset_done() { state | python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if any(r.get("id")=="r-1" and r.get("status")=="done" for r in s["reports"]) else 1)'; }
 wait_for 30 reset_done && pass "reset reported done" || fail "reset reported done"
 wait_for 30 dx pgrep -x multica
 new_daemon="$(dx pgrep -x multica | head -1)"

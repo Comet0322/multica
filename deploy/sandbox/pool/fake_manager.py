@@ -44,7 +44,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, state)
         if path == "/pod/control":
             with lock:
-                done = {r["id"] for r in state["reports"]}
+                done = {r["id"] for r in state["reports"] if "id" in r}
                 pending = [c for c in state["commands"] if c["id"] not in done]
             return self._send(200, pending[0]) if pending else self._send(204)
         if path == "/api/workspaces":
