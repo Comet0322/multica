@@ -109,6 +109,14 @@ RUN mkdir -p /etc/multica-sandbox/daemon-template/.multica \
 	&& chmod 700 /etc/multica-sandbox/daemon-template /etc/multica-sandbox/daemon-template/.multica \
 	&& chmod 600 /etc/multica-sandbox/daemon-template/.multica/config.json \
 	&& mkdir -p /work /home/agent /home/daemon /usr/local/libexec/pod-agents
+# The volume mount points are owned by the pod's users and group 2000, with
+# setgid, as Kubernetes makes them with fsGroup. Docker and compose copy the
+# image's ownership into a new named volume, so without this a volume is
+# root's and the daemon cannot write to it. /tmp is not sticky, so each user
+# can empty what the other left. Build leftovers are removed.
+RUN rm -rf /tmp/* /tmp/.[!.]* \
+	&& chown 1001:2000 /work /home/daemon /tmp && chown 1000:2000 /home/agent \
+	&& chmod 2770 /work /home/agent /home/daemon /tmp
 
 # Both roles read their layout from the environment (see the entrypoint).
 # MULTICA_GC_ENABLED=false: only the supervisor cleans the pod. The workspaces
@@ -165,5 +173,6 @@ ARG AGENT_COMMANDS="claude opencode"
 ARG AGENT_NPM_REGISTRY=
 USER root
 RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g ${AGENT_NPM_REGISTRY:+--registry="$AGENT_NPM_REGISTRY"} $AGENT_PACKAGES && npm cache clean --force; fi \
-	&& for c in $AGENT_COMMANDS; do command -v "$c" >/dev/null && ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done
+	&& for c in $AGENT_COMMANDS; do command -v "$c" >/dev/null && ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done \
+	&& rm -rf /tmp/* /tmp/.[!.]*
 USER 1001:2000
