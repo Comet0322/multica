@@ -1,9 +1,8 @@
 # The pool manager and the git gateway for a plain Docker host (a VM without
 # Kubernetes), the counterpart of pool/k8s/manager.yaml and git-gateway.yaml.
-# The pods come from gen-pods.sh; run both files together (see README.md):
+# The pods come from pool.yaml; run both files together (see README.md):
 #
-#   ./gen-pods.sh 4 > pods.yaml
-#   docker compose --env-file sandbox.env -f stack.yaml -f pods.yaml up -d
+#   docker compose --env-file sandbox.env -f stack.yaml -f pool.yaml up -d --scale pod=4
 #
 # The network aliases are the in-cluster names the pool image has baked in
 # (Dockerfile.pool ARGs), so the same image runs here unchanged.

@@ -1,16 +1,12 @@
-# Pooled sandbox pod image. A pod runs two containers of this image, neither of
-# them as root: the daemon container (POD_ROLE unset) has pod-supervisor as
-# PID 1, supervising the stock Multica daemon as uid 1001; the agent container
-# (POD_ROLE=runner) has pod-supervisor as PID 1 too and runs the agent CLIs as
-# uid 1000. The root filesystem is meant to run read-only; the writable areas
-# are volumes (work root, TMPDIR and /dev/shm shared by both containers, the
-# daemon's HOME and the agent's HOME one container each), so a reset is a fresh
-# pod. Build from the repository root:
+# Pooled sandbox pod image. A pod is one container, not running as root: the
+# pod-supervisor is PID 1 (POD_ROLE=single) and supervises the stock Multica
+# daemon, which starts the agent CLIs itself, all as uid 1001. The root
+# filesystem is meant to run read-only; the writable areas are volumes (work
+# root, TMPDIR, /dev/shm and HOME), so a reset is a fresh pod. Build from the
+# repository root:
 #   docker build -f deploy/sandbox/Dockerfile.pool -t multica-sandbox-pool:<tag> .
-# POD_ROLE=single runs the whole pod as one container and one user (uid 1001):
-# see pool/k8s/pool-single.yaml and pool/compose/pool-single.yaml.
-# Run: see deploy/sandbox/pool/k8s/sandbox/pool.yaml, which sets the users, the
-# group 2000 the containers share, the volumes and the dropped capabilities.
+# Run: see pool/k8s/pool.yaml and pool/compose/pool.yaml, which set the user,
+# the group 2000, the volumes, the process limit and the dropped capabilities.
 # The default target installs real agent CLIs; --target fake uses a fake
 # Claude Code for credential-free testing.
 ARG GO_IMAGE=golang:1.27.3-alpine
@@ -36,11 +32,9 @@ ARG PACKAGE_MIRROR_URL=http://package-mirror.multica-sandbox.svc.cluster.local
 ARG GIT_GATEWAY_URL=http://git-gateway.multica-sandbox.svc.cluster.local:8081/
 ARG GITLAB_URL=https://gitlab.example.com/
 
-# The daemon and the agents run in different containers as different non-root
-# users that share group 2000 (the pod's fsGroup): the agent user is the
-# image's node (1000), the daemon's is sandboxd (1001). The containers set the
-# users themselves; the entries only give the ids names. See "Daemon and agent
-# containers" in deploy/sandbox/SANDBOX.md.
+# The daemon and the agents run as one non-root user (sandboxd, uid 1001, group
+# 2000, the pod's fsGroup). The container sets the user itself; the entries
+# only give the ids names. See "The pod" in deploy/sandbox/POOL.md.
 RUN groupadd --gid 2000 sandbox \
 	&& useradd --uid 1001 --gid 2000 --no-create-home --home-dir /nonexistent \
 		--shell /usr/sbin/nologin sandboxd
@@ -148,21 +142,17 @@ ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
 	MULTICA_GC_ENABLED=false \
 	MULTICA_DAEMON_AUTO_UPDATE=false
 
-# The daemon's local health endpoint (loopback only; the agent container has no
-# daemon). The cluster has no probe of its own for the pod: the supervisor
+# The daemon's local health endpoint (loopback only). The cluster has no probe of its own for the pod: the supervisor
 # exits, and the kubelet restarts the container, when a reset keeps failing.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 	CMD [ "${POD_ROLE:-supervisor}" = runner ] || curl -fsS -o /dev/null http://127.0.0.1:19514/health
 VOLUME ["/work", "/home/agent", "/home/daemon", "/home/pod", "/tmp"]
-# Nothing in the image needs root, and nothing runs as root: the daemon
-# container's user is the image's default, the agent container sets uid 1000.
+# Nothing in the image needs root, and nothing runs as root.
 USER 1001:2000
 ENTRYPOINT ["/usr/local/bin/multica-pod-entrypoint"]
 
-# AGENT_COMMANDS lists the agent CLIs installed in a stage. Each gets a shim, a
-# hard link of the supervisor that is first on the daemon's PATH, so that the
-# daemon runs the CLI through the runner in the agent container. A name without
-# an installed CLI must not be listed: the daemon would offer a runtime for it.
+# AGENT_COMMANDS lists the agent CLIs installed in a stage. A name without an
+# installed CLI must not be listed: the daemon would offer a runtime for it.
 FROM base AS fake
 ARG AGENT_COMMANDS="claude"
 # Installing the CLIs and linking the shims takes root; the image still ends

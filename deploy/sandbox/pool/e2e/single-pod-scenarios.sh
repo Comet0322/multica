@@ -1,4 +1,4 @@
-# Scenarios for the single-container pool pod (pool-single.yaml). Source this
+# Scenarios for the single-container pool pod (pool.yaml). Source this
 # after the helpers of the dev e2e.sh (K, call, mk_agent, mk_issue, wait_idle,
 # start_long_task, lease_pod_ip, pod_of_ip, ...) and run them by name.
 

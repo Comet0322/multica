@@ -12,7 +12,7 @@ same.
 |---|---|---|---|
 | Sandbox manager | `multica-sandbox-manager` | `deploy/sandbox/Dockerfile.manager` | `deploy/sandbox/pool/k8s/manager.yaml` |
 | Git gateway | `multica-git-gateway` | `deploy/sandbox/Dockerfile.gateway` | `deploy/sandbox/pool/k8s/git-gateway.yaml` |
-| Sandbox pods | `multica-sandbox-pool` | `deploy/sandbox/Dockerfile.pool` (sandbox branch) | `deploy/sandbox/pool/k8s/sandbox/pool.yaml` |
+| Sandbox pods | `multica-sandbox-pool` | `deploy/sandbox/Dockerfile.pool` | `deploy/sandbox/pool/k8s/pool.yaml` |
 
 `namespace.yaml` and `networkpolicy.yaml` sit next to the manager's manifests.
 The manager and gateway images come from the manager branch, the pod image from
@@ -34,8 +34,7 @@ Overlay (in the GitOps repository), one per environment:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/pool/k8s            # the manager, gateway, namespace, policies
-  - ../../base/pool/k8s/sandbox    # the pods
+  - ../../base/pool/k8s            # the manager, gateway, namespace, policies, pods
 images:
   - name: multica-sandbox-manager
     newName: <registry>/multica/sandbox-manager
@@ -158,7 +157,9 @@ pods being replaced are reported failed to Multica, which can retry them.
    address as in GitLab).
 3. The cluster's CNI enforces NetworkPolicy and does not rewrite pod source
    addresses (the manager identifies a pod by its source IP).
-4. The namespace allows Pod Security `restricted`, and the two uids in the pod
-   manifest (1000 and 1001, group 2000) are allowed by the cluster's policy.
+4. The namespace allows Pod Security `restricted`, and the uid in the pod
+   manifest (1001, group 2000) is allowed by the cluster's policy. The nodes' kubelet
+   sets `podPidsLimit` (for example 1024): the pod manifest has no process limit
+   of its own, and a task that forks without end would otherwise fill the node.
 5. Egress from the pods to the package mirror and LiteLLM is open in
    `networkpolicy.yaml` (replace the CIDR placeholders in the overlay).

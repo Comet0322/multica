@@ -1,8 +1,7 @@
-# The pod pool on a Docker host with one container per pod: the replacement
-# for gen-pods.sh. Run it together with stack.yaml and size the pool with
+# The pod pool on a Docker host, one container per pod. Run it together with stack.yaml and size the pool with
 # --scale (keep POOL_SIZE in sandbox.env the same):
 #
-#   docker compose --env-file sandbox.env -f stack.yaml -f pool-single.yaml \
+#   docker compose --env-file sandbox.env -f stack.yaml -f pool.yaml \
 #     up -d --scale pod=4
 #
 # Every replica has its own network namespace and IP (the manager identifies a

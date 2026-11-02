@@ -47,10 +47,9 @@ nothing from it to tell a reset has finished:
 1. A reset starts when a lease ends (and for idle timeout, maximum lifetime, or
    a waiting task). The pod is `resetting` and the supervisor, polling
    `/pod/control`, is told to reset.
-2. The supervisor has the agent runner close (kills the agents, empties the
-   agent's HOME), kills every process in its own container, empties the shared
-   writable areas and the daemon's HOME, rebuilds both HOMEs from their
-   templates, **starts the new daemon, then reports `done`**. The report
+2. The supervisor kills every process in the pod, empties the writable areas
+   and HOME, rebuilds HOME from its template, **starts the new daemon, then
+   reports `done`**. The report
    is the acknowledgement.
 3. The next registration from that IP after the acknowledgement is the new
    daemon's. It completes the reset and the pod is `idle`. A registration that
@@ -79,8 +78,7 @@ the heartbeat timeout as the same instance and inherit leases whose tasks died
 with the old process.
 
 The reset also empties `/dev/shm` when the supervisor is given it (`POD_SHM_DIR`;
-`pool/k8s/pool.yaml` mounts a memory-backed emptyDir there in both containers
-and sets it).
+`pool/k8s/pool.yaml` mounts a memory-backed emptyDir there and sets it).
 
 The manager answers a heartbeat from a pod it does not know (or has marked lost)
 with `404 runtime not found`, which is what makes the stock daemon register again;
@@ -282,123 +280,18 @@ memory, so run one replica; the record is dropped when the task ends only if
 the gateway shares the manager's token registry, and otherwise ages out
 (`PushLogTTL`, 24 hours) or is capped at 10000 tasks.
 
-## Daemon and agent containers
+## The pod
 
-A pool pod has two containers of one image. Nothing in the pod runs as root:
-no process, no capability (all dropped, `no-new-privileges`), no setuid
-binary used. The cluster needs no Kubernetes API for the pod and the image
-needs no root at run time.
-
-| | `daemon` container | `agent-runner` container |
-|---|---|---|
-| User | `sandboxd`, uid 1001 | `node`, uid 1000 |
-| PID 1 | `pod-supervisor` (polls the manager, runs the daemon) | `pod-supervisor -role runner` (starts agent CLIs) |
-| Own volume | `/home/daemon` (the daemon's `HOME`, with its `tmp`) | `/home/agent` (the agent's `HOME`) |
-| Shared volumes | `/work`, `/tmp`, `/dev/shm` | the same |
-| Processes visible | its own | its own |
-
-Both run as group 2000 and the pod's `fsGroup` is 2000, so files in the shared
-volumes are group 2000 and the group can use them (umask 007, set by both PID
-1s). The two users have no other file in common.
-
-The stock daemon starts each agent as its own user and cannot be told
-otherwise, so the split is done around it:
-
-- The daemon's `PATH` starts with `/usr/local/libexec/pod-agents`, which holds
-  a hard link of `pod-supervisor` named like each installed agent CLI
-  (`AGENT_COMMANDS` build argument, default `claude`). The daemon finds and
-  runs that "CLI". Run under an agent's name the binary is a shim: it sends its
-  arguments, working directory, environment and stdin/stdout/stderr
-  (`SCM_RIGHTS`) to the runner over an abstract unix socket (a pod has one
-  network namespace, so both containers see it), and the runner runs the real
-  CLI, found on the `PATH` without the shim directory, in the agent container in
-  its own process group. The shim relays signals and exits with the agent's
-  status. If the shim dies (the daemon kills its process group) the agent and
-  its process tree are killed.
-- A file that the daemon names in an agent's arguments and keeps in its private
-  `TMPDIR` (the task's MCP configuration) is read by the shim and written by the
-  runner as a copy in the shared `/tmp`, and the argument is rewritten to the
-  copy; the copy is removed when the agent ends.
-- The runner answers only a peer with uid 1001 (`SO_PEERCRED`), on both its
-  sockets: the launch socket and the control socket the supervisor uses
-  (`close`, `open`, `status`). The agent, uid 1000, is turned away. The names
-  are fixed in the image (`POD_AGENT_SOCKET`), so the check, not secrecy of the
-  name, is the protection.
-- A reset is the supervisor's: it stops the daemon, has the runner **close**
-  (refuse launches, kill every process in the agent container, empty its `HOME`
-  and what it can of the shared volumes, restore the `HOME` template), kills the
-  daemon's remaining processes, empties the shared volumes and the daemon's
-  `HOME`, restores the daemon's template, starts the daemon and has the runner
-  **open**. A runner that restarted on its own comes back closed and the
-  supervisor opens it again within five seconds while the daemon runs. If the
-  runner cannot be reached the reset fails and is retried like any failed
-  reset; at start the supervisor waits up to two minutes for the runner, then
-  exits so the kubelet restarts the container.
-- `git` trusts both users (`safe.directory *`, `core.sharedRepository group`).
-  Before launching, the shim opens the files the daemon created in the task
-  directory to the shared group.
-
-What the agent cannot do: see the daemon's processes (separate process
-namespaces: no `/proc/<daemon>`, no signals, no `ptrace`), read the daemon's
-`HOME` or config (a volume the agent container does not have), or use the
-runner (uid check). Checked against the cluster by the pool e2e scenarios.
-
-### Residual risks
-
-The split is not a full isolation of the daemon, because the daemon is unchanged:
-
-1. **The daemon runs code that the agent can influence.** The daemon and the
-   agent share the task files and the bare repository cache (`.repos`), which
-   the agent must be able to write for commits to work. The daemon runs `git`
-   there as uid 1001. An agent can plant a repository config (`core.fsmonitor`,
-   a filter driver, an alias, `core.sshCommand`) or a hook there and have it
-   executed as the daemon the next time the daemon runs git in that repository,
-   for example in `multica repo checkout`. That gives the agent uid 1001 inside
-   the daemon container: the daemon's `HOME` and process, the supervisor
-   (same user), and with it the runner's control socket, so it can close the
-   runner and kill its own pod's agents. What it reaches is the placeholder
-   token and the manager address, neither of which is a secret (anything in the
-   pod can already call the manager from the pod's IP). It has no root and no
-   capability, and does not reach any credential of the manager, LiteLLM or
-   GitLab. A fix needs the daemon to run git as the agent user or to keep the
-   cache out of the agent's reach, i.e. a daemon change.
-2. **Daemon network surface.** The containers share the pod's network
-   namespace, so the agent can reach the daemon's local HTTP listener (the
-   `multica repo checkout` endpoint, authorised by the task token) and the
-   manager. The manager already treats the pod's IP, not a secret, as the
-   identity. Any process in the pod can also open an abstract socket, but the
-   runner's two are bound first and uid-checked.
-3. **Files created later by the daemon.** Files that the daemon creates itself
-   (not through `git`) in a task directory after the agent was started follow
-   umask 007, so they are group 2000 and usable by the agent; ones whose mode
-   the daemon sets explicitly (0755, 0644) are not writable by the agent.
-   Directories and files created before launch are opened to the group by the
-   shim.
-4. **Workspace-level boundary.** All task directories in a shared pod are
-   readable by both users (decision B in the spec); the split does not
-   separate tasks from each other.
-5. **Agent CLIs not shimmed.** Only the names in `AGENT_COMMANDS` run in the
-   agent container. Anything else the daemon starts by itself (its own `git`,
-   helper processes) runs in the daemon container as uid 1001, and an agent CLI
-   that is missing from `AGENT_COMMANDS` but installed would run there. Keep
-   the list equal to the installed CLIs.
-6. **Same-user processes.** Processes of one task can still signal and ptrace
-   each other and those of other tasks in a shared pod, as before.
-7. **Shared volumes are group-writable.** Both users can delete each other's
-   files in `/work`, `/tmp` and `/dev/shm` (no sticky bit: the volumes belong
-   to the kubelet). The daemon's private files are in `/home/daemon`, not there.
-
-## Single container (prototype)
-
-`pool/k8s/pool-single.yaml` and `pool/compose/pool-single.yaml` run a pod as
-**one container, one user** (uid 1001, group 2000): `pod-supervisor --single`
-is PID 1 and runs the daemon, which starts the agent CLIs itself. There is no
-runner, no shim directory, no abstract sockets, no second volume set, and on
-Docker no pause container and no generator: the Compose pool is one service
-sized with `--scale pod=N`. The image is the same; `POD_ROLE=single` selects
-this mode (`POD_ROLE` unset or `runner` is the two-container pod). A pod
+`pool/k8s/pool.yaml` and `pool/compose/pool.yaml` run a pod as **one
+container, one user** (uid 1001, group 2000): `pod-supervisor --single` is
+PID 1 and runs the daemon, which starts the agent CLIs itself. Nothing in the
+pod runs as root: no process, no capability (all dropped, `no-new-privileges`),
+no setuid binary used, and no Kubernetes API is needed. The Compose pool is one
+service sized with `--scale pod=N`. `POD_ROLE=single` selects this mode. A pod
 cannot get two users without `CAP_SETUID` and `CAP_KILL`, which the pod must
-not have, so this is the layout without the split.
+not have, so the daemon and the agents are not split. The image still holds the
+code of the former two-container layout (the runner role, the shim links in
+`/usr/local/libexec/pod-agents`); nothing starts it and it is not supported.
 
 The one requirement it is built for is **nothing leaks from one task to the
 next**. It holds because:
@@ -431,17 +324,14 @@ next**. It holds because:
    long-lived secrets (PAT, LiteLLM master key, GitLab token) live in the
    manager and the gateway, not in a pod (checked by `s_no_secrets`).
 
-**What is weaker than the two-container pod, stated plainly:**
+**What this layout gives up, stated plainly:**
 
 - The agent runs as the daemon's user and sees the daemon: it can read its
   process (`/proc/<daemon>/environ`, memory, arguments), its `HOME` and the
   config in it, and, on a host with `kernel.yama.ptrace_scope=0`, trace and
   inject into it. With Yama at 1 or higher (the default on many distributions,
   and the dev host of the end-to-end run) a non-descendant cannot be traced,
-  but this is host configuration, not something the pod enforces. In the
-  two-container pod the daemon is behind a user and a process-namespace
-  boundary (although residual risk 1 above already hands the agent that
-  user through the daemon's `git`). What the agent gets is the current task's
+  but this is host configuration, not something the pod enforces. What the agent gets is the current task's
   own material, the placeholder token and the manager address; the daemon can
   also be made to misbehave **for the task it serves**, which cannot affect
   the next one because the reset kills it.
@@ -453,16 +343,21 @@ next**. It holds because:
   supervisor, the container restarts and empties the same areas at start (an
   availability cost for the running task, not a leak; the end-to-end run checks
   that nothing survives). A forged `POST` to the manager's control URL from the
-  pod's address could report a reset "done" that did not run; this is
-  unchanged from the two-container pod, which shares the network namespace.
+  pod's address could report a reset "done" that did not run: the manager
+  takes the pod's address as its identity, and the agent shares it.
 - A kernel or runtime escape is as in any container; nothing here defends
   against it.
 
-Sizing: one container takes the agent container's resources (the daemon's
-share is small). The pod's memory limit also covers `/dev/shm` and any tmpfs.
+Sizing: the pod's memory limit also covers `/dev/shm` and any tmpfs.
+
+Process limit: a task that forks without end must not fill the host's process
+table. Kubernetes needs the kubelet's `podPidsLimit` (the pod manifest has no
+field for it); `pool/compose/pool.yaml` sets `pids: 1024`. When the limit is
+reached the supervisor could not start a thread, and the Go runtime would abort
+it, so it starts 32 threads at launch and keeps them (`reserveThreads`).
 
 Checked by `pool/e2e/single-pod-scenarios.sh` (hostile task: ptrace and signals
-at PID 1, `kill(-1)`, `SIGTERM`, planted files and processes, and a follow-up
+at PID 1, `kill(-1)`, `SIGTERM`, a fork bomb, planted files and processes, and a follow-up
 task on the same pool) and the Go tests in `server/internal/podsupervisor`
 (`single_test.go`). See `pool/e2e/README.md` for what ran.
 
@@ -544,11 +439,12 @@ and an empty, even read-only, HOME:
   pod port. Use a CNI that enforces them (Calico in the reference setup) and
   check that node-local traffic (hostNetwork pods, the node itself) cannot
   reach port 8080 of the manager.
+
 ## Agent CLIs in the image
 
 The image carries Claude Code and opencode (1.19.5, the last 1.x release). Both
-are listed in `AGENT_PACKAGES` and `AGENT_COMMANDS` of `Dockerfile.pool`; each
-command gets a shim, so the daemon starts it in the agent container.
+are listed in `AGENT_PACKAGES` and `AGENT_COMMANDS` of `Dockerfile.pool`; the
+daemon starts them itself.
 
 opencode reaches LiteLLM through the provider in
 `deploy/sandbox/home/.config/opencode/opencode.json`, which reads

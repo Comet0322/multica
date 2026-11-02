@@ -9,7 +9,7 @@ case "${1:-}" in
 	;;
 esac
 if [ -n "${FAKE_CLAUDE_REPORT:-}" ]; then
-	# For deploy/sandbox/pool/verify.sh: who this agent runs as and what it can touch.
+	# For credential-free runs: who this agent runs as and what it can touch.
 	{
 		echo "uid=$(id -u)"
 		echo "home=$HOME"
