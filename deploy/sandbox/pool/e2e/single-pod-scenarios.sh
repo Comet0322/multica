@@ -33,6 +33,7 @@ followup_issues() {
 # tasks must complete on it.
 s_hostile_task() {
 	local ip pod start0 start1 rs rs0 out left procs n agent issues=()
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime (the pool re-registers one after a runtime was deleted)"; return; }
 	start_long_task || { fail "task never reached running"; return; }
 	ip=$(lease_pod_ip "$TASK"); pod=$(pod_of_ip "$ip"); [ -n "$pod" ] || { fail "no pod for lease ip '$ip'"; return; }
 	start0=$(pod_start "$pod"); rs0=$(pod_restarts "$pod")
@@ -74,6 +75,7 @@ s_hostile_task() {
 # pod resets, and the pool carries on.
 s_hostile_killall() {
 	local ip pod start0 start1 rs rs0 agent n issues=()
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime (the pool re-registers one after a runtime was deleted)"; return; }
 	start_long_task || { fail "task never reached running"; return; }
 	ip=$(lease_pod_ip "$TASK"); pod=$(pod_of_ip "$ip"); [ -n "$pod" ] || { fail "no pod for lease ip '$ip'"; return; }
 	start0=$(pod_start "$pod"); rs0=$(pod_restarts "$pod")
@@ -95,6 +97,7 @@ s_hostile_killall() {
 # is back, and the pool carries on.
 s_hostile_sigterm() {
 	local ip pod rs rs0 agent n issues=()
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime (the pool re-registers one after a runtime was deleted)"; return; }
 	start_long_task || { fail "task never reached running"; return; }
 	ip=$(lease_pod_ip "$TASK"); pod=$(pod_of_ip "$ip"); [ -n "$pod" ] || { fail "no pod for lease ip '$ip'"; return; }
 	rs0=$(pod_restarts "$pod")
@@ -116,6 +119,7 @@ s_hostile_sigterm() {
 # it must come back clean, with PID 1 intact, and the next tasks must complete.
 s_hostile_forkbomb() {
 	local ip pod start0 start1 rs rs0 issues=() n
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime (the pool re-registers one after a runtime was deleted)"; return; }
 	start_long_task || { fail "task never reached running"; return; }
 	ip=$(lease_pod_ip "$TASK"); pod=$(pod_of_ip "$ip"); [ -n "$pod" ] || { fail "no pod for lease ip '$ip'"; return; }
 	start0=$(pod_start "$pod"); rs0=$(pod_restarts "$pod")

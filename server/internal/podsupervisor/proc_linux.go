@@ -5,8 +5,10 @@ package podsupervisor
 import (
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -127,4 +129,26 @@ func ignoreStraySignals() {
 	signal.Ignore(syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGABRT, syscall.SIGUSR1,
 		syscall.SIGUSR2, syscall.SIGPIPE, syscall.SIGALRM, syscall.SIGVTALRM, syscall.SIGPROF,
 		syscall.SIGXCPU, syscall.SIGXFSZ, syscall.SIGIO, syscall.SIGPWR)
+}
+
+// reserveThreads starts n OS threads now and keeps them. A task that fills the
+// container's process limit (a fork bomb) leaves the supervisor unable to start
+// a thread, and the Go runtime then aborts the whole program; with idle threads
+// already in hand the supervisor never needs a new one.
+func reserveThreads(n int) {
+	var started, release sync.WaitGroup
+	release.Add(1)
+	started.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			// Locked goroutines each hold a thread of their own; unlocking
+			// before exit returns the thread to the runtime's idle pool.
+			runtime.LockOSThread()
+			started.Done()
+			release.Wait()
+			runtime.UnlockOSThread()
+		}()
+	}
+	started.Wait()
+	release.Done()
 }

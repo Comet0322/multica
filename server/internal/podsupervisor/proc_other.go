@@ -26,3 +26,5 @@ func setPrivateUmask() {}
 func denyPeerAccess() error { return nil }
 
 func ignoreStraySignals() {}
+
+func reserveThreads(int) {}

@@ -32,4 +32,5 @@ services:
     tmpfs:
       - /tmp:size=4g,uid=1001,gid=2000,mode=0770
       - /dev/shm:size=1g,uid=1001,gid=2000,mode=0770
-    deploy: {resources: {limits: {cpus: "4", memory: 8G}}}
+    # Without a limit a fork bomb in a task fills the host's process table.
+    deploy: {resources: {limits: {cpus: "4", memory: 8G, pids: 1024}}}

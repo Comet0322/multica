@@ -250,6 +250,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		}
 		setPrivateUmask()
 		ignoreStraySignals()
+		reserveThreads(32)
 	} else {
 		// The daemon and the agents share the task files through their common group.
 		setSharedUmask()
