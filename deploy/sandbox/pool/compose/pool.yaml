@@ -18,7 +18,6 @@ services:
     security_opt: ["no-new-privileges:true"]
     restart: always
     environment:
-      POD_ROLE: single
       POD_POLL_INTERVAL: 2s
       POD_SHM_DIR: /dev/shm
     networks: [pods]

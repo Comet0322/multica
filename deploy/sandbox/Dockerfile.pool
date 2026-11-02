@@ -1,5 +1,5 @@
 # Pooled sandbox pod image. A pod is one container, not running as root: the
-# pod-supervisor is PID 1 (POD_ROLE=single) and supervises the stock Multica
+# pod-supervisor is PID 1 and supervises the stock Multica
 # daemon, which starts the agent CLIs itself, all as uid 1001. The root
 # filesystem is meant to run read-only; the writable areas are volumes (work
 # root, TMPDIR, /dev/shm and HOME), so a reset is a fresh pod. Build from the
@@ -91,12 +91,9 @@ COPY --from=builder /out/multica /usr/local/bin/multica
 COPY --from=builder /out/pod-supervisor /usr/local/bin/pod-supervisor
 COPY deploy/sandbox/pool/entrypoint.sh /usr/local/bin/multica-pod-entrypoint
 
-# Templates rebuilt on every reset. The agent's HOME (runner) gets the
-# runtime-private skills. The daemon's own HOME, a volume the agent container
-# does not have, gets the daemon's CLI settings (manager address and a
-# placeholder token the manager ignores); the template is the daemon user's
-# alone, so the agent container's copy of the image cannot read it either.
-# Nothing here is a real secret.
+# HOME is rebuilt from a template on every reset: the runtime-private skills
+# plus the daemon's CLI settings (manager address and a placeholder token the
+# manager ignores). Nothing here is a real secret.
 COPY deploy/sandbox/home/ /etc/multica-sandbox/home-template/
 RUN mkdir -p /etc/multica-sandbox/daemon-template/.multica \
 	&& printf '{"server_url":"%s","token":"pool-placeholder"}\n' "${MANAGER_URL}" \
@@ -104,10 +101,8 @@ RUN mkdir -p /etc/multica-sandbox/daemon-template/.multica \
 	&& chown -R 1001:2000 /etc/multica-sandbox/daemon-template \
 	&& chmod 700 /etc/multica-sandbox/daemon-template /etc/multica-sandbox/daemon-template/.multica \
 	&& chmod 600 /etc/multica-sandbox/daemon-template/.multica/config.json \
-	&& mkdir -p /work /home/pod /usr/local/libexec/pod-agents
-# POD_ROLE=single: one container, one user. The home template is the agent's
-# plus the daemon's CLI config (placeholder token), built here because the
-# supervisor restores one template. See "Single container" in POOL.md.
+	&& mkdir -p /work /home/pod
+# The supervisor restores one template: the skills plus the daemon's CLI config.
 RUN cp -a /etc/multica-sandbox/home-template /etc/multica-sandbox/single-template \
 	&& cp -a /etc/multica-sandbox/daemon-template/.multica /etc/multica-sandbox/single-template/.multica \
 	&& chown -R root:root /etc/multica-sandbox/single-template \
@@ -123,21 +118,14 @@ RUN rm -rf /tmp/* /tmp/.[!.]* \
 	&& chown 1001:2000 /work /home/pod /tmp \
 	&& chmod 2770 /work /home/pod /tmp
 
-# Both roles read their layout from the environment (see the entrypoint).
+# The layout comes from the environment (see the entrypoint).
 # MULTICA_GC_ENABLED=false: only the supervisor cleans the pod. The workspaces
 # root is a subdirectory of the work root: the daemon drops a task-context
 # marker there, and a daemon whose own cwd sits at or below the marker refuses
 # to start, which would break every crash restart.
 ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
 	POD_WORK_ROOT=/work \
-	POD_HOME=/home/agent \
 	POD_TMPDIR=/tmp \
-	POD_HOME_TEMPLATE=/etc/multica-sandbox/home-template \
-	POD_DAEMON_UID=1001 \
-	POD_AGENT_SOCKET=multica-pod-agents \
-	POD_SHIM_DIR=/usr/local/libexec/pod-agents \
-	POD_DAEMON_HOME=/home/daemon \
-	POD_DAEMON_HOME_TEMPLATE=/etc/multica-sandbox/daemon-template \
 	POD_SINGLE_HOME=/home/pod \
 	POD_SINGLE_HOME_TEMPLATE=/etc/multica-sandbox/single-template \
 	MULTICA_WORKSPACES_ROOT=/work/workspaces \
@@ -147,7 +135,7 @@ ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
 # The daemon's local health endpoint (loopback only). The cluster has no probe of its own for the pod: the supervisor
 # exits, and the kubelet restarts the container, when a reset keeps failing.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-	CMD [ "${POD_ROLE:-supervisor}" = runner ] || curl -fsS -o /dev/null http://127.0.0.1:19514/health
+	CMD curl -fsS -o /dev/null http://127.0.0.1:19514/health
 VOLUME ["/work", "/home/pod", "/tmp"]
 # Nothing in the image needs root, and nothing runs as root.
 USER 1001:2000
@@ -156,13 +144,11 @@ ENTRYPOINT ["/usr/local/bin/multica-pod-entrypoint"]
 # AGENT_COMMANDS lists the agent CLIs installed in a stage. A name without an
 # installed CLI must not be listed: the daemon would offer a runtime for it.
 FROM base AS fake
-ARG AGENT_COMMANDS="claude"
-# Installing the CLIs and linking the shims takes root; the image still ends
+# Installing the CLIs takes root; the image still ends
 # as the unprivileged user.
 USER root
 COPY deploy/sandbox/fake/fake-claude /usr/local/bin/claude
 COPY deploy/sandbox/fake/skill/ /etc/multica-sandbox/home-template/
-RUN for c in $AGENT_COMMANDS; do ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done
 USER 1001:2000
 
 FROM base AS agents
@@ -176,6 +162,6 @@ ARG AGENT_COMMANDS="claude opencode"
 ARG AGENT_NPM_REGISTRY=
 USER root
 RUN if [ -n "$AGENT_PACKAGES" ]; then npm install -g ${AGENT_NPM_REGISTRY:+--registry="$AGENT_NPM_REGISTRY"} $AGENT_PACKAGES && npm cache clean --force; fi \
-	&& for c in $AGENT_COMMANDS; do command -v "$c" >/dev/null && ln /usr/local/bin/pod-supervisor "/usr/local/libexec/pod-agents/$c"; done \
+	&& for c in $AGENT_COMMANDS; do command -v "$c" >/dev/null || exit 1; done \
 	&& rm -rf /tmp/* /tmp/.[!.]*
 USER 1001:2000

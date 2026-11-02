@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -64,29 +63,6 @@ type controlServer struct {
 	eventRejects int
 	// onPost sees every post as it arrives.
 	onPost func(rep podsupervisor.Report)
-}
-
-// serveRunner answers the control socket like a runner that does nothing, for
-// tests that run the supervisor in-process.
-func serveRunner(t *testing.T, socket string) func() {
-	t.Helper()
-	ln, err := net.Listen("unix", "@"+socket+"-ctl")
-	must(t, err)
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func() {
-				defer c.Close()
-				var req map[string]string
-				_ = json.NewDecoder(c).Decode(&req)
-				_ = json.NewEncoder(c).Encode(map[string]any{"open": req["op"] != "close"})
-			}()
-		}
-	}()
-	return func() { _ = ln.Close() }
 }
 
 func newControlServer(t *testing.T) *controlServer {
@@ -164,25 +140,19 @@ func eventually(t *testing.T, d time.Duration, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// pod is one pod: the supervisor and the runner as two processes of the test
-// user, each with the flags the two containers get.
+// pod is one pod: the supervisor as a process of the test user, with the flags
+// the container gets.
 type pod struct {
 	t          *testing.T
 	ctl        *controlServer
 	out        string // test-owned directory, never touched by resets
 	work       string
-	home       string // the agent's HOME, the runner's
 	tmp        string
-	template   string // the agent's HOME template
-	daemonHome string // the daemon's HOME, the supervisor's
+	daemonHome string // HOME of the daemon and the agents
 	daemonTpl  string
-	shimDir    string
-	socket     string
 	args       []string // extra supervisor flags, set by the setup function
-	runnerArgs []string // extra runner flags
-	env        []string // extra environment of both
+	env        []string // extra environment
 	cmd        *exec.Cmd
-	runner     *exec.Cmd
 }
 
 const daemonScript = `#!/bin/sh
@@ -208,15 +178,11 @@ func startPod(t *testing.T, mark string, setup func(p *pod)) *pod {
 		ctl:        newControlServer(t),
 		out:        filepath.Join(root, "out"),
 		work:       filepath.Join(root, "work"),
-		home:       filepath.Join(root, "home"),
 		tmp:        filepath.Join(root, "tmp"),
-		template:   filepath.Join(root, "template"),
 		daemonHome: filepath.Join(root, "daemon-home"),
 		daemonTpl:  filepath.Join(root, "daemon-template"),
-		shimDir:    filepath.Join(root, "shims"),
-		socket:     fmt.Sprintf("podsupervisor-test-%d-%d", os.Getpid(), time.Now().UnixNano()),
 	}
-	for _, d := range []string{p.out, p.work, p.home, p.tmp, p.template, p.daemonHome, p.daemonTpl, p.shimDir} {
+	for _, d := range []string{p.out, p.work, p.tmp, p.daemonHome, p.daemonTpl} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -230,21 +196,9 @@ func startPod(t *testing.T, mark string, setup func(p *pod)) *pod {
 	}
 	env := append([]string{"PATH=" + os.Getenv("PATH"), "OUT=" + p.out, "MARK=" + mark, "SPAWN=" + map[bool]string{true: "1"}[mark != ""]}, p.env...)
 
-	runnerArgs := append([]string{
-		"-role", "runner", "-agent-socket", p.socket, "-daemon-uid", strconv.Itoa(os.Getuid()),
-		"-work-root", p.work, "-tmpdir", p.tmp, "-shim-dir", p.shimDir,
-		"-home", p.home, "-home-template", p.template,
-	}, p.runnerArgs...)
-	p.runner = exec.Command(supervisorBin, runnerArgs...)
-	p.runner.Env = env
-	p.runner.Stderr = io.Discard
-	if err := p.runner.Start(); err != nil {
-		t.Fatal(err)
-	}
-
 	args := append([]string{
-		"-control-url", p.ctl.srv.URL, "-agent-socket", p.socket,
-		"-work-root", p.work, "-tmpdir", p.tmp, "-shim-dir", p.shimDir,
+		"-control-url", p.ctl.srv.URL,
+		"-work-root", p.work, "-tmpdir", p.tmp,
 		"-daemon-home", p.daemonHome, "-daemon-home-template", p.daemonTpl,
 		"-poll-interval", "50ms",
 	}, p.args...)
@@ -270,7 +224,6 @@ func startPod(t *testing.T, mark string, setup func(p *pod)) *pod {
 	}
 	t.Cleanup(func() {
 		stopProc(p.cmd)
-		stopProc(p.runner)
 		// Make read-only trees removable for t.TempDir cleanup.
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if d != nil && d.IsDir() {
@@ -363,7 +316,7 @@ func TestResetEmptiesWorkRootHomeAndTmpdir(t *testing.T) {
 	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, root := range []string{p.work, p.home, p.tmp} {
+	for _, root := range []string{p.work, p.daemonHome, p.tmp} {
 		must(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("h"), 0o600))
 		must(t, os.WriteFile(filepath.Join(root, "file"), []byte("f"), 0o644))
 		must(t, os.Symlink(outside, filepath.Join(root, "link-to-dir")))
@@ -379,7 +332,7 @@ func TestResetEmptiesWorkRootHomeAndTmpdir(t *testing.T) {
 	if rep := p.ctl.reset(t, "r1"); rep.Status != "done" {
 		t.Fatalf("reset report = %+v", rep)
 	}
-	for _, root := range []string{p.work, p.home, p.tmp} {
+	for _, root := range []string{p.work, p.daemonHome, p.tmp} {
 		entries, err := os.ReadDir(root)
 		must(t, err)
 		if len(entries) != 0 {
@@ -393,7 +346,7 @@ func TestResetEmptiesWorkRootHomeAndTmpdir(t *testing.T) {
 
 func TestResetRebuildsHomeFromTemplate(t *testing.T) {
 	p := startPod(t, "", func(p *pod) {
-		tpl := p.template
+		tpl := p.daemonTpl
 		must(t, os.MkdirAll(filepath.Join(tpl, ".config", "multica"), 0o755))
 		must(t, os.WriteFile(filepath.Join(tpl, ".config", "multica", "config.json"), []byte(`{"token":"placeholder"}`), 0o600))
 		must(t, os.WriteFile(filepath.Join(tpl, ".bashrc"), []byte("export A=1\n"), 0o644))
@@ -413,18 +366,18 @@ func TestResetRebuildsHomeFromTemplate(t *testing.T) {
 		})
 	})
 	p.waitDaemonStarts(1)
-	assertSameTree(t, p.template, p.home)
+	assertSameTree(t, p.daemonTpl, p.daemonHome)
 
 	// Agent damage: edit, delete and add.
-	must(t, os.Chmod(filepath.Join(p.home, ".config", "multica"), 0o700))
-	must(t, os.WriteFile(filepath.Join(p.home, ".config", "multica", "config.json"), []byte("tampered"), 0o600))
-	must(t, os.Remove(filepath.Join(p.home, ".bashrc")))
-	must(t, os.WriteFile(filepath.Join(p.home, "extra"), []byte("e"), 0o644))
+	must(t, os.Chmod(filepath.Join(p.daemonHome, ".config", "multica"), 0o700))
+	must(t, os.WriteFile(filepath.Join(p.daemonHome, ".config", "multica", "config.json"), []byte("tampered"), 0o600))
+	must(t, os.Remove(filepath.Join(p.daemonHome, ".bashrc")))
+	must(t, os.WriteFile(filepath.Join(p.daemonHome, "extra"), []byte("e"), 0o644))
 
 	if rep := p.ctl.reset(t, "r1"); rep.Status != "done" {
 		t.Fatalf("reset report = %+v", rep)
 	}
-	assertSameTree(t, p.template, p.home)
+	assertSameTree(t, p.daemonTpl, p.daemonHome)
 }
 
 type entry struct {
@@ -500,7 +453,7 @@ func TestRestartedDaemonGetsFreshEnvironment(t *testing.T) {
 	if strings.Contains(second, "AGENT_SET") {
 		t.Errorf("agent-set variable survived the reset:\n%s", second)
 	}
-	for _, want := range []string{"HOME=" + p.daemonHome, "TMPDIR=" + filepath.Join(p.daemonHome, "tmp")} {
+	for _, want := range []string{"HOME=" + p.daemonHome, "TMPDIR=" + p.tmp} {
 		if !strings.Contains(second, want+"\n") {
 			t.Errorf("environment lacks %s:\n%s", want, second)
 		}
@@ -797,19 +750,14 @@ func TestUnknownPodTimeoutEndsTheSupervisor(t *testing.T) {
 		}))
 		defer srv.Close()
 		root := t.TempDir()
-		for _, d := range []string{"work", "daemon-home", "tmp", "shims"} {
+		for _, d := range []string{"work", "daemon-home", "tmp"} {
 			must(t, os.Mkdir(filepath.Join(root, d), 0o755))
 		}
-		// A runner that answers every call, which is all this test needs.
-		socket := fmt.Sprintf("podsupervisor-unknown-%d-%d", os.Getpid(), time.Now().UnixNano())
-		stopRunner := serveRunner(t, socket)
-		defer stopRunner()
 		script := filepath.Join(root, "daemon.sh")
 		must(t, os.WriteFile(script, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755))
 		s, err := podsupervisor.New(podsupervisor.Config{
 			DaemonCmd: []string{script}, Env: []string{"PATH=" + os.Getenv("PATH")},
 			WorkRoot: filepath.Join(root, "work"), TmpDir: filepath.Join(root, "tmp"), DaemonHome: filepath.Join(root, "daemon-home"),
-			ShimDir: filepath.Join(root, "shims"), AgentSocket: socket,
 			ControlURL: srv.URL, PollInterval: 20 * time.Millisecond, UnknownTimeout: 300 * time.Millisecond,
 		})
 		must(t, err)

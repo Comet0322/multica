@@ -45,8 +45,6 @@ spec:
           image: multica-sandbox-pool:0.7.0 # kustomization.yaml replaces name and tag
           imagePullPolicy: IfNotPresent
           env:
-            - name: POD_ROLE
-              value: single
             # Reset poll interval; the manager address is baked into the image.
             - name: POD_POLL_INTERVAL
               value: 2s

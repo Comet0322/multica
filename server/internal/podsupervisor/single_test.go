@@ -19,7 +19,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/podsupervisor"
 )
 
-// singlePod is one single-container pod: one supervisor, no runner, no shims.
+// singlePod is one pod: one supervisor and its daemon.
 type singlePod struct {
 	t    *testing.T
 	ctl  *controlServer
@@ -59,7 +59,7 @@ func startSinglePod(t *testing.T, mark string) *singlePod {
 	must(t, os.WriteFile(filepath.Join(p.tpl, "config"), []byte("template"), 0o600))
 	script := filepath.Join(p.out, "daemon.sh")
 	must(t, os.WriteFile(script, []byte(singleDaemonScript), 0o755))
-	p.cmd = exec.Command(supervisorBin, "-single",
+	p.cmd = exec.Command(supervisorBin,
 		"-control-url", p.ctl.srv.URL, "-work-root", p.work, "-tmpdir", p.tmp,
 		"-daemon-home", p.home, "-daemon-home-template", p.tpl, "-poll-interval", "50ms", "--", script)
 	p.cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "OUT=" + p.out, "MARK=" + mark, "POD_WORK=" + p.work,
@@ -144,9 +144,6 @@ func TestSingleDaemonSharesHomeAndTmpdirWithTheAgents(t *testing.T) {
 			t.Errorf("daemon environment lacks %s:\n%s", want, env)
 		}
 	}
-	if strings.Contains(env, "POD_AGENT_SOCKET") {
-		t.Errorf("single pod sets a runner socket:\n%s", env)
-	}
 }
 
 // A hostile task runs as the supervisor's own user, so the supervisor must not
@@ -210,14 +207,14 @@ func TestSingleSupervisorStillResetsAfterHostileSignals(t *testing.T) {
 	}
 }
 
-func TestSingleConfigNeedsNoRunnerSettings(t *testing.T) {
-	cfg := podsupervisor.Config{Single: true, DaemonCmd: []string{"/bin/true"}, WorkRoot: "/w", TmpDir: "/t",
+func TestConfigNeedsOnlyTheDaemonSettings(t *testing.T) {
+	cfg := podsupervisor.Config{DaemonCmd: []string{"/bin/true"}, WorkRoot: "/w", TmpDir: "/t",
 		ControlURL: "http://x", DaemonHome: "/home/pod"}
 	if _, err := podsupervisor.New(cfg); err != nil {
-		t.Errorf("single config rejected: %v", err)
+		t.Errorf("config rejected: %v", err)
 	}
-	cfg.Single = false
+	cfg.DaemonHome = ""
 	if _, err := podsupervisor.New(cfg); err == nil {
-		t.Errorf("a pod config without a runner and shims is accepted unless Single is set")
+		t.Errorf("a config without a HOME is accepted")
 	}
 }

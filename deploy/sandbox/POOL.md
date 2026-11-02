@@ -294,15 +294,13 @@ the gateway shares the manager's token registry, and otherwise ages out
 ## The pod
 
 `pool/k8s/pool.yaml` and `pool/compose/pool.yaml` run a pod as **one
-container, one user** (uid 1001, group 2000): `pod-supervisor --single` is
+container, one user** (uid 1001, group 2000): `pod-supervisor` is
 PID 1 and runs the daemon, which starts the agent CLIs itself. Nothing in the
 pod runs as root: no process, no capability (all dropped, `no-new-privileges`),
 no setuid binary used, and no Kubernetes API is needed. The Compose pool is one
-service sized with `--scale pod=N`. `POD_ROLE=single` selects this mode. A pod
-cannot get two users without `CAP_SETUID` and `CAP_KILL`, which the pod must
-not have, so the daemon and the agents are not split. The image still holds the
-code of the former two-container layout (the runner role, the shim links in
-`/usr/local/libexec/pod-agents`); nothing starts it and it is not supported.
+service sized with `--scale pod=N`. A pod cannot get two users without
+`CAP_SETUID` and `CAP_KILL`, which the pod must not have, so the daemon and the
+agents are not split.
 
 The one requirement it is built for is **nothing leaks from one task to the
 next**. It holds because:

@@ -99,11 +99,6 @@ func reapProc(pid int) {
 	_, _ = syscall.Wait4(pid, &ws, syscall.WNOHANG, nil)
 }
 
-// setSharedUmask makes the processes started from here create files that the
-// pod's shared group can read and write, and nobody else can touch: the daemon
-// and the agents run as different users that share only that group.
-func setSharedUmask() { syscall.Umask(0o007) }
-
 // setPrivateUmask keeps the files of a single-user pod to that user.
 func setPrivateUmask() { syscall.Umask(0o077) }
 

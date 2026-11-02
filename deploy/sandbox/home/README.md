@@ -1,4 +1,4 @@
-Files here are copied into the agent's home directory (`/home/agent`) every
+Files here are copied into the pod's home directory (`/home/pod`) every
 time a pod is reset, replacing earlier copies.
 Put runtime-private agent configuration here, for example:
 
