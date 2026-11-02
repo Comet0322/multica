@@ -28,3 +28,5 @@ func denyPeerAccess() error { return nil }
 func ignoreStraySignals() {}
 
 func reserveThreads(int) {}
+
+func cleanIPC() error { return nil }

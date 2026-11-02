@@ -104,7 +104,7 @@ RUN mkdir -p /etc/multica-sandbox/daemon-template/.multica \
 	&& chown -R 1001:2000 /etc/multica-sandbox/daemon-template \
 	&& chmod 700 /etc/multica-sandbox/daemon-template /etc/multica-sandbox/daemon-template/.multica \
 	&& chmod 600 /etc/multica-sandbox/daemon-template/.multica/config.json \
-	&& mkdir -p /work /home/agent /home/daemon /home/pod /usr/local/libexec/pod-agents
+	&& mkdir -p /work /home/pod /usr/local/libexec/pod-agents
 # POD_ROLE=single: one container, one user. The home template is the agent's
 # plus the daemon's CLI config (placeholder token), built here because the
 # supervisor restores one template. See "Single container" in POOL.md.
@@ -116,10 +116,12 @@ RUN cp -a /etc/multica-sandbox/home-template /etc/multica-sandbox/single-templat
 # setgid, as Kubernetes makes them with fsGroup. Docker and compose copy the
 # image's ownership into a new named volume, so without this a volume is
 # root's and the daemon cannot write to it. /tmp is not sticky, so each user
-# can empty what the other left. Build leftovers are removed.
+# can empty what the other left. Build leftovers are removed. These three are
+# the only writable paths, and the supervisor empties every one of them on a
+# reset: a directory outside them would be a volume nothing cleans.
 RUN rm -rf /tmp/* /tmp/.[!.]* \
-	&& chown 1001:2000 /work /home/daemon /home/pod /tmp && chown 1000:2000 /home/agent \
-	&& chmod 2770 /work /home/agent /home/daemon /home/pod /tmp
+	&& chown 1001:2000 /work /home/pod /tmp \
+	&& chmod 2770 /work /home/pod /tmp
 
 # Both roles read their layout from the environment (see the entrypoint).
 # MULTICA_GC_ENABLED=false: only the supervisor cleans the pod. The workspaces
@@ -146,7 +148,7 @@ ENV POD_CONTROL_URL=${MANAGER_URL}/pod/control \
 # exits, and the kubelet restarts the container, when a reset keeps failing.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 	CMD [ "${POD_ROLE:-supervisor}" = runner ] || curl -fsS -o /dev/null http://127.0.0.1:19514/health
-VOLUME ["/work", "/home/agent", "/home/daemon", "/home/pod", "/tmp"]
+VOLUME ["/work", "/home/pod", "/tmp"]
 # Nothing in the image needs root, and nothing runs as root.
 USER 1001:2000
 ENTRYPOINT ["/usr/local/bin/multica-pod-entrypoint"]

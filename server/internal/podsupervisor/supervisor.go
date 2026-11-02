@@ -135,6 +135,11 @@ type Config struct {
 	// files a task leaves in shared memory survive into the next workspace's
 	// task. Empty takes POD_SHM_DIR from Env.
 	ShmDir string
+	// CleanIPC makes every reset remove the System V shared memory, message
+	// queues and semaphores and the POSIX message queues of the IPC namespace,
+	// which no directory cleaning reaches. Set it only in a container with its
+	// own IPC namespace (a pod without hostIPC): it removes everything there.
+	CleanIPC bool
 
 	// DaemonHome is HOME of the daemon, mounted in this container only; the
 	// daemon's TMPDIR is its tmp subdirectory. Both are emptied on every reset
@@ -417,6 +422,11 @@ func (s *Supervisor) cleanDirs() error {
 	if s.cfg.ShmDir != "" {
 		if err := emptyDir(s.cfg.ShmDir); err != nil {
 			return fmt.Errorf("empty shared memory: %w", err)
+		}
+	}
+	if s.cfg.CleanIPC {
+		if err := cleanIPC(); err != nil {
+			return fmt.Errorf("clean IPC objects: %w", err)
 		}
 	}
 	return s.prepareDaemonHome()

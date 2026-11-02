@@ -80,6 +80,17 @@ with the old process.
 The reset also empties `/dev/shm` when the supervisor is given it (`POD_SHM_DIR`;
 `pool/k8s/pool.yaml` mounts a memory-backed emptyDir there and sets it).
 
+It also removes the System V shared memory, message queues and semaphores and the
+POSIX message queues (`--clean-ipc`, which the image's entrypoint sets for the
+single container). They belong to the pod's IPC namespace, not to a process, so
+killing the agent's processes and emptying directories leaves them in place, and
+the next task could read what the last one wrote. Do not set `hostIPC` on the
+pod: the reset removes everything in the namespace. The only writable paths are
+`/work`, `/tmp`, `/dev/shm` and `HOME`; the image declares no other volume, so a
+directory outside these stays on the read-only root. The scenario
+`s_no_leftovers` plants a marker in every directory the pod's user can write to,
+and an object of each IPC kind, and checks that a reset removes all of them.
+
 The manager answers a heartbeat from a pod it does not know (or has marked lost)
 with `404 runtime not found`, which is what makes the stock daemon register again;
 this is how the pool rebuilds itself after a manager restart. The same answer

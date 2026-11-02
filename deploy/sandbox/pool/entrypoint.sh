@@ -22,7 +22,7 @@ single)
 	# One container, one user (uid 1001): the supervisor runs the daemon, and the
 	# daemon starts the agent CLIs itself. No runner, shims or sockets.
 	: "${POD_CONTROL_URL:?set by the image}"
-	exec /usr/local/bin/pod-supervisor --single \
+	exec /usr/local/bin/pod-supervisor --single --clean-ipc \
 		--control-url "$POD_CONTROL_URL" \
 		--work-root "$POD_WORK_ROOT" \
 		--tmpdir "$POD_TMPDIR" \

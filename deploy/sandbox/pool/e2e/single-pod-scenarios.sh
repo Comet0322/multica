@@ -137,3 +137,35 @@ s_hostile_forkbomb() {
 	wait_idle 120 || { fail "pool not idle after the follow-up tasks"; return; }
 	echo "PASS $SCENARIO (pod $pod kept PID 1 (restarts $rs0 -> $rs), no fork-bomb process left, 6 follow-up tasks completed)"
 }
+
+# s_no_leftovers: whatever the agent's user can write is emptied by a reset.
+# The scenario plants a marker in every directory the pod's user can write to
+# (found by asking the filesystem, not from a list, so a new writable path or a
+# volume nothing cleans shows up here) and creates System V and POSIX IPC
+# objects, runs tasks through every pod, and then
+# looks for the markers. A pod whose /work marker is still there was not reset
+# and counts as a failure of the scenario, not as a pass.
+s_no_leftovers() {
+	local pods p dirs n left bad=0 issues=()
+	pods=$("${K[@]}" get pods -l app.kubernetes.io/name=sandbox-pool -o name)
+	for p in $pods; do
+		dirs=$("${K[@]}" exec "$p" -- sh -c 'find / \( -path /proc -o -path /sys -o -path /dev/pts -o -path /dev/mqueue \) -prune -o -type d -writable -print 2>/dev/null')
+		n=$(echo "$dirs" | grep -c .)
+		[ "$n" -ge 3 ] || { fail "$p: found only $n writable directories"; return; }
+		echo "$dirs" | "${K[@]}" exec -i "$p" -- sh -c 'while read -r d; do echo planted >"$d/.leftover-probe" 2>/dev/null; done'
+		# System V and POSIX IPC objects live in the pod's IPC namespace, outside any directory.
+		"${K[@]}" exec "$p" -- sh -c 'ipcmk -M 4096 >/dev/null && ipcmk -Q >/dev/null && ipcmk -S 1 >/dev/null && touch /dev/mqueue/leftover-probe' || { fail "$p: could not create IPC objects"; return; }
+		echo "$p: marker planted in $n writable directories: $(echo "$dirs" | tr '\n' ' ' | cut -c1-200)"
+	done
+	followup_issues || return
+	sleep 5; wait_idle 180 || { fail "pods did not return to idle"; return; }
+	for p in $pods; do
+		"${K[@]}" exec "$p" -- sh -c 'test ! -e /work/.leftover-probe' || { echo "  $p was never leased, so it was never reset"; bad=$((bad + 1)); continue; }
+		left=$("${K[@]}" exec "$p" -- sh -c 'find / \( -path /proc -o -path /sys \) -prune -o -name .leftover-probe -print 2>/dev/null')
+		[ -z "$left" ] || { echo "  $p kept: $(echo "$left" | tr '\n' ' ')"; bad=$((bad + 1)); }
+		left=$("${K[@]}" exec "$p" -- sh -c 'ipcs | grep -c "^0x"; ls /dev/mqueue | wc -l' | tr '\n' ' ')
+		[ "$left" = "0 0 " ] || { echo "  $p kept IPC objects (sysv, mqueue): $left"; bad=$((bad + 1)); }
+	done
+	[ $bad = 0 ] || { fail "$bad pod(s) kept a marker or were not reset"; return; }
+	echo "PASS $SCENARIO"
+}
