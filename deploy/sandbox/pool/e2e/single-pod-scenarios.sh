@@ -169,3 +169,91 @@ s_no_leftovers() {
 	[ $bad = 0 ] || { fail "$bad pod(s) kept a marker or were not reset"; return; }
 	echo "PASS $SCENARIO"
 }
+
+# finish_followups: six short tasks must complete on the pool as it is now, and
+# the pool must return to idle. Prints nothing; returns 1 after calling fail.
+finish_followups() {
+	local n issues=()
+	followup_issues || return 1
+	for n in "${issues[@]}"; do
+		wait_status "$JWT_BOB" "$WS_A" "$n" 240 completed failed cancelled
+		[ "$(task_status "$JWT_BOB" "$WS_A" "$n")" = completed ] || { fail "a follow-up task did not complete: $(call "$JWT_BOB" "$WS_A" GET "/api/issues/$n/task-runs" | jq -c '.[0]|{status,error}')"; return 1; }
+	done
+	wait_idle 120 || { fail "pool not idle after the follow-up tasks"; return 1; }
+}
+
+# s_pod_crash: a pod is killed hard while it runs a task (the node loses it, the
+# OOM killer takes it). The task must end, not hang, the pod must come back and
+# register again, and the pool must carry on with nothing of the dead task left.
+s_pod_crash() {
+	local ip pod
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime"; return; }
+	start_long_task || { fail "task never reached running"; return; }
+	ip=$(lease_pod_ip "$TASK"); pod=$(pod_of_ip "$ip"); [ -n "$pod" ] || { fail "no pod for lease ip '$ip'"; return; }
+	"${K[@]}" delete pod "$pod" --grace-period=0 --force >/dev/null 2>&1 || { fail "could not kill $pod"; return; }
+	wait_status "$JWT_BOB" "$WS_A" "$ISSUE" 180 failed cancelled completed \
+		|| { fail "task still '$(task_status "$JWT_BOB" "$WS_A" "$ISSUE")' 180s after its pod was killed"; return; }
+	wait_idle 180 || { fail "pool did not return to idle after the crash (idle $(idle_count))"; return; }
+	finish_followups || return
+	echo "PASS $SCENARIO (task ended $(task_status "$JWT_BOB" "$WS_A" "$ISSUE"); pool whole again, 6 follow-up tasks completed)"
+}
+
+# s_manager_outage: the manager is down for a while with a task queued. The pods
+# keep retrying, and when the manager returns they register again and the queued
+# task runs.
+s_manager_outage() {
+	local agent issue
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime"; return; }
+	agent=$(mk_agent "$JWT_BOB" "$WS_A" 1); [ -n "$agent" ] || { fail "could not create an agent"; return; }
+	"${K[@]}" scale deploy/sandbox-manager --replicas=0 >/dev/null
+	issue=$(mk_issue "$JWT_BOB" "$WS_A" "$agent" "$SHORT_PROMPT")
+	[ -n "$issue" ] || { "${K[@]}" scale deploy/sandbox-manager --replicas=1 >/dev/null; fail "could not create an issue"; return; }
+	sleep 40
+	[ "$(task_status "$JWT_BOB" "$WS_A" "$issue")" != completed ] || { "${K[@]}" scale deploy/sandbox-manager --replicas=1 >/dev/null; fail "the task completed with the manager down"; return; }
+	"${K[@]}" scale deploy/sandbox-manager --replicas=1 >/dev/null
+	wait_manager || { fail "manager or pods did not come back"; return; }
+	wait_status "$JWT_BOB" "$WS_A" "$issue" 240 completed failed cancelled
+	[ "$(task_status "$JWT_BOB" "$WS_A" "$issue")" = completed ] || { fail "the queued task is '$(task_status "$JWT_BOB" "$WS_A" "$issue")' after the manager came back"; return; }
+	wait_idle 120 || { fail "pool not idle afterwards"; return; }
+	echo "PASS $SCENARIO (queued task ran after the manager returned)"
+}
+
+# s_scale: a batch of short tasks, many more than the pool has pods, on a pool
+# of eight pods or more. Every task completes, the pool is busy in parallel (the
+# peak lease count is close to the pool size), no pod is lost, and the inventory
+# adds up afterwards. SCALE_TASKS (default 30) sets the batch size; with
+# SCALE_RESTART=1 the manager is restarted ten seconds into the batch.
+s_scale() {
+	local size agent n id i issues=() total=${SCALE_TASKS:-30} peak=0 cur inv t0 done_n st
+	inv() { "${K[@]}" exec deploy/sandbox-manager -- wget -qO- http://127.0.0.1:8791/v1/inventory; }
+	size=$(inv | jq -r '.expected_size // 0')
+	[ "$size" -ge 8 ] || { fail "pool size is $size: run this scenario with at least 8 pods"; return; }
+	for ((i = 0; i < size * 3; i++)); do [ "$(idle_count)" -ge "$size" ] && break; sleep 2; done
+	[ "$(idle_count)" -ge "$size" ] || { fail "only $(idle_count) of $size pods idle before the run"; return; }
+	wait_runtime "$WS_A" 90 || { fail "no pool runtime"; return; }
+	agent=$(mk_agent "$JWT_BOB" "$WS_A" "$total"); [ -n "$agent" ] || { fail "could not create the agent"; return; }
+	t0=$SECONDS
+	for ((n = 1; n <= total; n++)); do
+		id=$(call "$JWT_BOB" "$WS_A" POST /api/issues "$(jq -nc --arg t "scale $(date +%s%N)" --arg d "$SHORT_PROMPT" --arg a "$agent" '{title:$t,description:$d,assignee_type:"agent",assignee_id:$a,allow_duplicate:true}')" | jq -r '.id // empty')
+		[ -n "$id" ] || { fail "could not create issue $n of $total"; return; }
+		issues+=("$id")
+	done
+	for ((i = 0; i < 200; i++)); do
+		[ "${SCALE_RESTART:-0}" = 1 ] && [ $i = 3 ] && "${K[@]}" rollout restart deploy/sandbox-manager >/dev/null
+		cur=$(inv 2>/dev/null | jq -r '.leased // 0'); [ "${cur:-0}" -gt "$peak" ] && peak=$cur
+		done_n=0
+		for id in "${issues[@]}"; do
+			st=$(task_status "$JWT_BOB" "$WS_A" "$id"); case "$st" in completed | failed | cancelled) done_n=$((done_n + 1)) ;; esac
+		done
+		[ "$done_n" = "$total" ] && break
+		sleep 3
+	done
+	[ "$done_n" = "$total" ] || { fail "only $done_n of $total tasks ended in 600s (peak $peak leases of $size pods)"; return; }
+	n=0; for id in "${issues[@]}"; do [ "$(task_status "$JWT_BOB" "$WS_A" "$id")" = completed ] && n=$((n + 1)); done
+	[ "$n" = "$total" ] || { fail "$n of $total tasks completed (the rest failed or were cancelled)"; return; }
+	[ "$peak" -ge $((size - 1)) ] || { fail "the pool was not used in parallel: peak $peak leases of $size pods"; return; }
+	for ((i = 0; i < 60; i++)); do [ "$(idle_count)" -ge "$size" ] && break; sleep 3; done
+	cur=$(inv | jq -c '{expected_size,idle,leased,resetting,lost}')
+	[ "$(echo "$cur" | jq '.idle + .leased + .resetting + .lost == .expected_size and .idle == .expected_size')" = true ] || { fail "inventory does not add up after the batch: $cur"; return; }
+	echo "PASS $SCENARIO ($total tasks on $size pods in $((SECONDS - t0))s, peak $peak leases, $cur)"
+}
