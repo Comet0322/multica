@@ -11,4 +11,5 @@ Nothing here holds a secret: `lib.sh` reads `$P21/{env,state,gitlab.token,anthro
 ## Hostile-task scenarios
 
 - `single-pod-scenarios.sh`: scenarios `s_hostile_task`, `s_hostile_killall`, `s_hostile_sigterm` for the dev e2e harness (source it from `e2e.sh` after its helpers). A hostile task tries to ptrace and signal PID 1, trace the daemon, overwrite the supervisor, and leaves files, locked and read-only trees, links and respawning processes everywhere; the next tasks on the pool must complete and the pod must be clean.
+- The same file also holds `s_no_leftovers` (a marker in every directory the pod's user can write to, plus one System V and one POSIX IPC object, must be gone after a reset), `s_pod_crash` (a pod killed during a task), `s_manager_outage` (a task queued while the manager is down) and `s_scale` (a batch of tasks on a pool of eight pods or more; `SCALE_TASKS`, `SCALE_RESTART=1`).
 - `single-evil.py`: the hostile script the scenarios run inside the pod as the agent's user.

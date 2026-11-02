@@ -222,7 +222,8 @@ s_manager_outage() {
 # of eight pods or more. Every task completes, the pool is busy in parallel (the
 # peak lease count is close to the pool size), no pod is lost, and the inventory
 # adds up afterwards. SCALE_TASKS (default 30) sets the batch size; with
-# SCALE_RESTART=1 the manager is restarted ten seconds into the batch.
+# SCALE_RESTART=1 the manager is restarted ten seconds into the batch. Multica
+# caps one agent at 50 concurrent tasks, which is more than any pool here.
 s_scale() {
 	local size agent n id i issues=() total=${SCALE_TASKS:-30} peak=0 cur inv t0 done_n st
 	inv() { "${K[@]}" exec deploy/sandbox-manager -- wget -qO- http://127.0.0.1:8791/v1/inventory; }
@@ -231,7 +232,7 @@ s_scale() {
 	for ((i = 0; i < size * 3; i++)); do [ "$(idle_count)" -ge "$size" ] && break; sleep 2; done
 	[ "$(idle_count)" -ge "$size" ] || { fail "only $(idle_count) of $size pods idle before the run"; return; }
 	wait_runtime "$WS_A" 90 || { fail "no pool runtime"; return; }
-	agent=$(mk_agent "$JWT_BOB" "$WS_A" "$total"); [ -n "$agent" ] || { fail "could not create the agent"; return; }
+	agent=$(mk_agent "$JWT_BOB" "$WS_A" $((total > 50 ? 50 : total))); [ -n "$agent" ] || { fail "could not create the agent"; return; }
 	t0=$SECONDS
 	for ((n = 1; n <= total; n++)); do
 		id=$(call "$JWT_BOB" "$WS_A" POST /api/issues "$(jq -nc --arg t "scale $(date +%s%N)" --arg d "$SHORT_PROMPT" --arg a "$agent" '{title:$t,description:$d,assignee_type:"agent",assignee_id:$a,allow_duplicate:true}')" | jq -r '.id // empty')
