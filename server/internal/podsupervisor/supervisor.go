@@ -214,13 +214,18 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	}
 	// The daemon and the agents share the task files through their common group.
 	setSharedUmask()
-	if err := s.prepareDirs(); err != nil {
+	if err := s.makeDirs(); err != nil {
 		return fmt.Errorf("prepare directories: %w", err)
 	}
 	// A runner that outlived a restart of this container may still hold agents
-	// of the old daemon; close it before the new daemon starts.
+	// of the old daemon; close it before the new daemon starts. It also removes
+	// what the agents left behind in their own name, which this side cannot
+	// open, so the shared areas are cleaned only afterwards.
 	if err := s.closeRunner(ctx, s.cfg.RunnerTimeout); err != nil {
 		return err
+	}
+	if err := s.cleanDirs(); err != nil {
+		return fmt.Errorf("clean directories: %w", err)
 	}
 	// The server learns of the restart (and of this address) before the
 	// daemon calls it.
@@ -346,15 +351,14 @@ func (s *Supervisor) keepRunnerOpen(ctx context.Context) {
 	}
 }
 
-// prepareDirs makes sure the shared writable areas exist and are clean, and
-// rebuilds the daemon's home.
-func (s *Supervisor) prepareDirs() error {
+// makeDirs makes sure the shared writable areas exist.
+func (s *Supervisor) makeDirs() error {
 	for _, dir := range []string{s.cfg.WorkRoot, s.cfg.TmpDir, s.cfg.DaemonHome} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return err
 		}
 	}
-	return s.cleanDirs()
+	return nil
 }
 
 func (s *Supervisor) cleanDirs() error {

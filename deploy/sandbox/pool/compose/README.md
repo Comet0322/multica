@@ -58,11 +58,20 @@ container ... is restarting`).
 
 ## Checked
 
-The pod part was run on Docker 28 with the fake agent image and a stand-in
-manager: both pods register; a reset empties `/work`, `/tmp` and `/dev/shm` of
-files the agent user wrote; restarting a pod's daemon container keeps the pod's
-address and the agent socket; an agent started through the shim runs as uid
-1000 with the agent home. The manager and gateway part was run against an empty
-Multica stub: both start healthy, the pod listener answers on the pods network,
-the gateway listener answers on the control network only. Not run here: real
-tasks through a real Multica, LiteLLM and GitLab.
+Run on Docker 28 / Compose 2.39 with three pods, against a real Multica, LiteLLM
+and GitLab (the same dev stack the Kubernetes version is tested on). Of the 24
+end-to-end scenarios, 19 apply to Compose and all 19 pass: tasks from a
+non-owner, queueing, cancel, deleted task, daemon killed, repository access
+control, `/dev/shm` clearing, orphan processes after a reset, no root and no
+capabilities, no secrets in a pod, model list, opencode, a real clone, push and
+merge request through the gateway with the initiator's identity, task keys
+removed from LiteLLM, and budget exhaustion. Not run, because they need cluster
+features (rolling a Deployment, revoking the bot PAT, a second Multica
+workspace): bad PAT at startup, manager restart in the middle of a task, drain
+with a running task, PAT revoked while running, two workspaces.
+
+The run found one defect, in the pod supervisor and not in Compose: after the
+daemon container restarted, a file the agent had left in `/tmp` (mode 0700,
+agent uid) made the supervisor exit while preparing directories, and the
+container restarted forever. The supervisor now closes the agent runner, which
+removes what the agents own, before it cleans the shared areas.
