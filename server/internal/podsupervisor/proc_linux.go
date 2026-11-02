@@ -4,6 +4,7 @@ package podsupervisor
 
 import (
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
@@ -100,3 +101,30 @@ func reapProc(pid int) {
 // pod's shared group can read and write, and nobody else can touch: the daemon
 // and the agents run as different users that share only that group.
 func setSharedUmask() { syscall.Umask(0o007) }
+
+// setPrivateUmask keeps the files of a single-user pod to that user.
+func setPrivateUmask() { syscall.Umask(0o077) }
+
+const prSetDumpable = 4
+
+// denyPeerAccess clears the dumpable flag of this process. Processes of the
+// same user then cannot ptrace it or read its /proc entries (they become
+// root's). The flag is reset by execve, so the daemon and agents started from
+// here are ordinary processes.
+func denyPeerAccess() error {
+	_, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prSetDumpable, 0, 0)
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+// ignoreStraySignals makes the signals that would end a Go program, other than
+// the SIGINT and SIGTERM the container runtime sends, do nothing, so a task
+// cannot stop its pod's supervisor by signalling PID 1. (SIGKILL and SIGSTOP
+// from inside a pid namespace are dropped by the kernel for its init.)
+func ignoreStraySignals() {
+	signal.Ignore(syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGABRT, syscall.SIGUSR1,
+		syscall.SIGUSR2, syscall.SIGPIPE, syscall.SIGALRM, syscall.SIGVTALRM, syscall.SIGPROF,
+		syscall.SIGXCPU, syscall.SIGXFSZ, syscall.SIGIO, syscall.SIGPWR)
+}

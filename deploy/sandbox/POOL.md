@@ -388,6 +388,84 @@ The split is not a full isolation of the daemon, because the daemon is unchanged
    files in `/work`, `/tmp` and `/dev/shm` (no sticky bit: the volumes belong
    to the kubelet). The daemon's private files are in `/home/daemon`, not there.
 
+## Single container (prototype)
+
+`pool/k8s/pool-single.yaml` and `pool/compose/pool-single.yaml` run a pod as
+**one container, one user** (uid 1001, group 2000): `pod-supervisor --single`
+is PID 1 and runs the daemon, which starts the agent CLIs itself. There is no
+runner, no shim directory, no abstract sockets, no second volume set, and on
+Docker no pause container and no generator: the Compose pool is one service
+sized with `--scale pod=N`. The image is the same; `POD_ROLE=single` selects
+this mode (`POD_ROLE` unset or `runner` is the two-container pod). A pod
+cannot get two users without `CAP_SETUID` and `CAP_KILL`, which the pod must
+not have, so this is the layout without the split.
+
+The one requirement it is built for is **nothing leaks from one task to the
+next**. It holds because:
+
+1. **A reset leaves nothing.** The supervisor stops the daemon, SIGKILLs every
+   process of the pod (everything descends from PID 1; it repeats until none is
+   left, so a fork storm or a respawning shell cannot win the race), and only
+   then empties `/work`, `/tmp`, `/dev/shm` and `HOME` (read-only and
+   mode-000 directories, links, FIFOs and trees deeper than `PATH_MAX`
+   included, all through `os.Root`) and restores `HOME` from the template. A
+   reset that keeps failing exits the supervisor, so the kubelet restarts the
+   container, whose start empties the same areas.
+2. **The agent cannot disable the reset.** The agent has the supervisor's
+   user, so the supervisor protects itself: it sets `PR_SET_DUMPABLE` to 0
+   (the same user can neither `ptrace` it nor read `/proc/1/mem`, `environ`,
+   `maps` or `fd`; the flag does not survive `execve`, so the daemon and the
+   agents are ordinary processes); as PID 1 it is immune to `SIGKILL` and
+   `SIGSTOP` sent from inside the pod (the kernel drops them), and it ignores
+   `SIGHUP`, `SIGQUIT`, `SIGABRT`, `SIGUSR1/2` and the other signals that would
+   end a Go program. The root filesystem is read-only and the supervisor binary
+   is not writable. `kill(-1, SIGKILL)` by the agent kills the daemon and every
+   agent but not PID 1; the pod is reset like after a daemon crash.
+3. **The daemon holds no credential that outlives a task.** Its `HOME` config
+   (`.multica/config.json`) carries the manager address and the placeholder
+   token `pool-placeholder`: the manager identifies a pod by its source IP and
+   ignores the bearer token (`Pool.PodHandler`), and relays an agent's
+   `multica` CLI traffic only with a task token (`mat_`, `serveAgentAPI`).
+   The LiteLLM key and the git gateway token are minted per task, injected
+   into that task's environment, and revoked when the lease ends. The
+   long-lived secrets (PAT, LiteLLM master key, GitLab token) live in the
+   manager and the gateway, not in a pod (checked by `s_no_secrets`).
+
+**What is weaker than the two-container pod, stated plainly:**
+
+- The agent runs as the daemon's user and sees the daemon: it can read its
+  process (`/proc/<daemon>/environ`, memory, arguments), its `HOME` and the
+  config in it, and, on a host with `kernel.yama.ptrace_scope=0`, trace and
+  inject into it. With Yama at 1 or higher (the default on many distributions,
+  and the dev host of the end-to-end run) a non-descendant cannot be traced,
+  but this is host configuration, not something the pod enforces. In the
+  two-container pod the daemon is behind a user and a process-namespace
+  boundary (although residual risk 1 above already hands the agent that
+  user through the daemon's `git`). What the agent gets is the current task's
+  own material, the placeholder token and the manager address; the daemon can
+  also be made to misbehave **for the task it serves**, which cannot affect
+  the next one because the reset kills it.
+- The daemon's and the agent's files are not separated (`TMPDIR`, `HOME` and the
+  task directories are one user's). The shared-pod placement limits above
+  (`issue`, `chat`) still do not separate tasks inside one pod; use `task`
+  placement.
+- An agent can still end its own pod: `SIGTERM` or `SIGINT` to PID 1 stops the
+  supervisor, the container restarts and empties the same areas at start (an
+  availability cost for the running task, not a leak; the end-to-end run checks
+  that nothing survives). A forged `POST` to the manager's control URL from the
+  pod's address could report a reset "done" that did not run; this is
+  unchanged from the two-container pod, which shares the network namespace.
+- A kernel or runtime escape is as in any container; nothing here defends
+  against it.
+
+Sizing: one container takes the agent container's resources (the daemon's
+share is small). The pod's memory limit also covers `/dev/shm` and any tmpfs.
+
+Checked by `pool/e2e/single-pod-scenarios.sh` (hostile task: ptrace and signals
+at PID 1, `kill(-1)`, `SIGTERM`, planted files and processes, and a follow-up
+task on the same pool) and the Go tests in `server/internal/podsupervisor`
+(`single_test.go`). See `pool/e2e/README.md` for what ran.
+
 ## Claude Code in the pod
 
 Checked against Claude Code 2.1.314 with a fake Anthropic-style endpoint, the

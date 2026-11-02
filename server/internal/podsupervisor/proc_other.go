@@ -20,3 +20,9 @@ func killProc(int) {}
 func reapProc(int) {}
 
 func setSharedUmask() {}
+
+func setPrivateUmask() {}
+
+func denyPeerAccess() error { return nil }
+
+func ignoreStraySignals() {}

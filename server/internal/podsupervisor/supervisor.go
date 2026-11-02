@@ -57,6 +57,24 @@
 // A control URL that keeps answering 404 (the server does not know the pod:
 // its daemon never registered, or the server dropped it) for
 // Config.UnknownTimeout makes the supervisor exit too.
+//
+// # Single container
+//
+// With Config.Single the pod is one container and one user: the
+// daemon starts the agent CLIs itself, and HOME (Config.DaemonHome, rebuilt
+// from Config.DaemonHomeTemplate), TMPDIR, the work root and shared memory are
+// all one area that every reset empties. There is no runner, so the agents
+// are not isolated from the daemon (same user: they can see and trace it, and
+// read its HOME). What keeps tasks apart is that nothing outlives a reset and
+// that the supervisor cannot be reached from the agents:
+//
+//   - the supervisor sets PR_SET_DUMPABLE to 0, so processes of the same user
+//     can neither ptrace it nor read /proc/<pid>/{mem,environ,fd,...};
+//   - as PID 1 it ignores SIGKILL and SIGSTOP from inside the pod (the
+//     kernel drops them) and ignores the other signals that would end it
+//     except SIGINT and SIGTERM, which only restart the container (it empties
+//     the same areas at start);
+//   - a reset kills every process of the pod before it touches a file.
 package podsupervisor
 
 import (
@@ -95,8 +113,12 @@ const (
 	runnerRetryDelay = 500 * time.Millisecond
 )
 
-// Config describes the daemon container of one pod.
+// Config describes the daemon container of one pod, or with Single the only
+// container of one (see the package comment).
 type Config struct {
+	// Single makes the pod one container: no runner, no shims, AgentSocket and
+	// ShimDir are not used.
+	Single bool
 	// DaemonCmd is the command (argv) that starts the daemon.
 	DaemonCmd []string
 	// Env is the complete base environment of the daemon. The supervisor adds
@@ -148,6 +170,9 @@ type Supervisor struct {
 	cfg    Config
 	log    *slog.Logger
 	runner runnerClient
+	// single is a pod of one container: no runner, no shims, and the daemon and
+	// the agents share one user, HOME and TMPDIR.
+	single bool
 	// realPath is where the real agent CLIs are: the PATH without the shims.
 	realPath []string
 	resets   chan resetRequest
@@ -166,8 +191,12 @@ func New(cfg Config) (*Supervisor, error) {
 	if len(cfg.DaemonCmd) == 0 {
 		errs = append(errs, "daemon command is required")
 	}
-	for name, v := range map[string]string{"work root": cfg.WorkRoot, "tmpdir": cfg.TmpDir, "control url": cfg.ControlURL,
-		"shim dir": cfg.ShimDir, "daemon home": cfg.DaemonHome, "agent socket": cfg.AgentSocket} {
+	required := map[string]string{"work root": cfg.WorkRoot, "tmpdir": cfg.TmpDir, "control url": cfg.ControlURL,
+		"daemon home": cfg.DaemonHome}
+	if !cfg.Single {
+		required["shim dir"], required["agent socket"] = cfg.ShimDir, cfg.AgentSocket
+	}
+	for name, v := range required {
 		if v == "" {
 			errs = append(errs, name+" is required")
 		}
@@ -201,6 +230,7 @@ func New(cfg Config) (*Supervisor, error) {
 	}
 	return &Supervisor{
 		cfg: cfg, log: cfg.Logger, runner: runnerClient{socket: cfg.AgentSocket},
+		single:   cfg.Single,
 		realPath: realPath(pathOf(cfg.Env), cfg.ShimDir),
 		resets:   make(chan resetRequest), giveUp: make(chan error, 1),
 	}, nil
@@ -212,8 +242,18 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if err := becomeSubreaper(); err != nil {
 		return fmt.Errorf("become subreaper: %w", err)
 	}
-	// The daemon and the agents share the task files through their common group.
-	setSharedUmask()
+	if s.single {
+		// The agents run as this user and could otherwise read this process's
+		// memory and environment or trace it; it must outlive every task.
+		if err := denyPeerAccess(); err != nil {
+			return fmt.Errorf("make the supervisor undumpable: %w", err)
+		}
+		setPrivateUmask()
+		ignoreStraySignals()
+	} else {
+		// The daemon and the agents share the task files through their common group.
+		setSharedUmask()
+	}
 	if err := s.makeDirs(); err != nil {
 		return fmt.Errorf("prepare directories: %w", err)
 	}
@@ -314,6 +354,9 @@ func (s *Supervisor) Run(ctx context.Context) error {
 
 // closeRunner closes the runner, waiting up to wait for it to be reachable.
 func (s *Supervisor) closeRunner(ctx context.Context, wait time.Duration) error {
+	if s.single {
+		return nil
+	}
 	deadline := time.Now().Add(wait)
 	for {
 		callCtx, cancel := context.WithTimeout(ctx, runnerCallTimeout)
@@ -336,6 +379,9 @@ func (s *Supervisor) closeRunner(ctx context.Context, wait time.Duration) error 
 // keepRunnerOpen reopens a runner that restarted (it starts closed) while the
 // daemon is running.
 func (s *Supervisor) keepRunnerOpen(ctx context.Context) {
+	if s.single {
+		return
+	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultControlClient)
 	defer cancel()
 	reply, err := s.runner.call(callCtx, opStatus)
@@ -380,8 +426,10 @@ func (s *Supervisor) prepareDaemonHome() error {
 	if err := emptyDir(s.cfg.DaemonHome); err != nil {
 		return err
 	}
-	if err := os.Mkdir(s.daemonTmp(), 0o700); err != nil {
-		return err
+	if !s.single {
+		if err := os.Mkdir(s.daemonTmp(), 0o700); err != nil {
+			return err
+		}
 	}
 	return restoreTemplate(s.cfg.DaemonHomeTemplate, s.cfg.DaemonHome)
 }
@@ -425,12 +473,14 @@ func (s *Supervisor) resetEnvironment(ctx context.Context) error {
 }
 
 func (s *Supervisor) startDaemon(ctx context.Context) (*child, chan error, error) {
-	// Agents may start only once the daemon runs.
-	callCtx, cancel := context.WithTimeout(ctx, defaultControlClient)
-	_, err := s.runner.call(callCtx, opOpen)
-	cancel()
-	if err != nil {
-		return nil, nil, err
+	if !s.single {
+		// Agents may start only once the daemon runs.
+		callCtx, cancel := context.WithTimeout(ctx, defaultControlClient)
+		_, err := s.runner.call(callCtx, opOpen)
+		cancel()
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	// A process started without a standard input gets none; the daemon reads
 	// nothing from it.
@@ -454,6 +504,16 @@ func (s *Supervisor) startDaemon(ctx context.Context) (*child, chan error, error
 }
 
 func (s *Supervisor) daemonEnv() []string {
+	if s.single {
+		skip := []string{"HOME=", "TMPDIR="}
+		env := make([]string, 0, len(s.cfg.Env)+2)
+		for _, kv := range s.cfg.Env {
+			if !hasAnyPrefix(kv, skip) {
+				env = append(env, kv)
+			}
+		}
+		return append(env, "HOME="+s.cfg.DaemonHome, "TMPDIR="+s.cfg.TmpDir)
+	}
 	skip := []string{"HOME=", "TMPDIR=", "PATH=", socketEnv + "=", daemonTmpEnv + "="}
 	env := make([]string, 0, len(s.cfg.Env)+5)
 	for _, kv := range s.cfg.Env {

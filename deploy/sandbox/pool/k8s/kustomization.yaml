@@ -6,7 +6,7 @@ kind: Kustomization
 namespace: multica-sandbox
 resources:
   - namespace.yaml
-  - pool.yaml
+  - pool.yaml # or pool-single.yaml (one container per pod); use one of the two
   - manager.yaml
   - git-gateway.yaml
   - networkpolicy.yaml

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Becomes pod-supervisor (PID 1) with the pod layout taken from the image's
-# environment. POD_ROLE=runner starts the agent container's runner; otherwise
+# environment. POD_ROLE=single is the one-container pod (supervisor and daemon
+# only). POD_ROLE=runner starts the agent container's runner; otherwise
 # this is the daemon container, and everything after "--" is the daemon command.
 # The supervisor passes the environment on to the daemon, so the daemon sees the
 # image's MULTICA_* settings.
@@ -16,6 +17,19 @@ runner)
 		--shim-dir "$POD_SHIM_DIR" \
 		--home "$POD_HOME" \
 		--home-template "$POD_HOME_TEMPLATE"
+	;;
+single)
+	# One container, one user (uid 1001): the supervisor runs the daemon, and the
+	# daemon starts the agent CLIs itself. No runner, shims or sockets.
+	: "${POD_CONTROL_URL:?set by the image}"
+	exec /usr/local/bin/pod-supervisor --single \
+		--control-url "$POD_CONTROL_URL" \
+		--work-root "$POD_WORK_ROOT" \
+		--tmpdir "$POD_TMPDIR" \
+		--daemon-home "$POD_SINGLE_HOME" \
+		--daemon-home-template "$POD_SINGLE_HOME_TEMPLATE" \
+		${POD_POLL_INTERVAL:+--poll-interval "$POD_POLL_INTERVAL"} \
+		-- /usr/local/bin/multica daemon start --foreground
 	;;
 supervisor)
 	: "${POD_CONTROL_URL:?set by the image}"

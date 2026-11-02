@@ -6,6 +6,7 @@ Plain YAML for the sandbox pod pool (kustomize-friendly, no secrets).
 |---|---|
 | `kustomization.yaml` | Pool size (`replicas`) and image tags, version-controlled. Every `PLACEHOLDER` is replaced in an overlay |
 | `namespace.yaml` | `multica-sandbox` namespace (Pod Security `restricted`: no pod runs as root or with a capability) |
+| `pool-single.yaml` | The same pool with one container per pod (uid 1001, `POD_ROLE=single`), an alternative to `pool.yaml`: list it in `kustomization.yaml` instead of `pool.yaml`, not next to it. See "Single container" in `../../POOL.md` for what that gives up |
 | `pool.yaml` | Pod pool Deployment, two containers (`daemon`, uid 1001, and `agent-runner`, uid 1000): no `hostNetwork`, read-only root, `emptyDir` volumes (`/work`, `/tmp`, `/dev/shm` shared; `/home/daemon` and `/home/agent` one container each), all capabilities dropped, no privilege escalation, no root, no service account token |
 | `manager.yaml` | Manager Deployment (1 replica) with its environment (Multica URL, LiteLLM, git gateway, audit to stdout), a ClusterIP Service exposing the pod listener (`8080`) only, and a second Service (`sandbox-manager-gateway`, `8792`) for the gateway listener that serves only the git verify endpoints. The admin listener (`8791`) is in neither Service |
 | `git-gateway.yaml` | Git/MCP gateway Deployment (1 replica: it keeps the pushed-branch record in memory) and its ClusterIP Service (`8081`). It reaches the manager through `sandbox-manager-gateway` |

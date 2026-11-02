@@ -59,6 +59,7 @@ func parse(args, environ []string, log *slog.Logger) (string, func(context.Conte
 	)
 	fs := flag.NewFlagSet("pod-supervisor", flag.ContinueOnError)
 	fs.StringVar(&role, "role", roleSupervisor, "supervisor (daemon container) or runner (agent container)")
+	fs.BoolVar(&sup.Single, "single", false, "supervisor: the pod is this one container (no runner, no shims)")
 	fs.StringVar(&sup.AgentSocket, "agent-socket", "", "abstract socket name of the agent runner, shared by both roles")
 	fs.StringVar(&sup.WorkRoot, "work-root", "", "working root shared by both containers, emptied on reset")
 	fs.StringVar(&sup.TmpDir, "tmpdir", "", "TMPDIR shared by both containers, emptied on reset")

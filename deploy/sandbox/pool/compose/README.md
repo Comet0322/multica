@@ -13,6 +13,22 @@ docker compose --env-file sandbox.env -f stack.yaml -f pods.yaml up -d
 docker compose exec manager wget -qO- http://127.0.0.1:8791/v1/inventory
 ```
 
+## One container per pod (no `gen-pods.sh`)
+
+`pool-single.yaml` replaces `gen-pods.sh` and the three containers per pod with
+one service whose replicas are the pods:
+
+```bash
+docker compose --env-file sandbox.env -f stack.yaml -f pool-single.yaml up -d --scale pod=4
+```
+
+Keep `POOL_SIZE` in `sandbox.env` at the same number. Each replica has its own
+network namespace, address, anonymous `/work` and `/home/pod` volumes and
+tmpfs `/tmp` and `/dev/shm`, so nothing is shared between replicas or needs a
+pause container. Change the size with the same command and a new `--scale`.
+What the single user costs is in `../../POOL.md` ("Single container"). The rest
+of this page describes the two-container pods from `gen-pods.sh`.
+
 ## What Kubernetes does for a pod that Docker does not
 
 The manager and the pod programs need no Kubernetes API. What a straight port
