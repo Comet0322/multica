@@ -1,11 +1,11 @@
 package daemonbridge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,10 +43,16 @@ type SchemaFlag struct {
 func LoadSchema(ctx context.Context, binary string) ([]SchemaCommand, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, binary, "tools-schema").Output()
+	cmd, err := command(binary, []string{"tools-schema"})
 	if err != nil {
+		return nil, err
+	}
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := runCommand(ctx, cmd); err != nil {
 		return nil, fmt.Errorf("%s tools-schema: %w", binary, err)
 	}
+	out := stdout.Bytes()
 	var s struct {
 		Commands []SchemaCommand `json:"commands"`
 	}

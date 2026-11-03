@@ -100,7 +100,7 @@ func briefTaskContext(task Task, provider string) execenv.TaskContextForEnv {
 // as the local daemon injects it into a spawned agent. configRoot must be an
 // empty private directory so the CLI never reads a user's own profile.
 func CLIEnv(task Task, serverURL, configRoot, tempDir string) (map[string]string, error) {
-	token, err := taskScopedAuthToken(task)
+	scoped, err := taskScopedAuthToken(task)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func CLIEnv(task Task, serverURL, configRoot, tempDir string) (map[string]string
 	if task.Agent != nil {
 		agentName = task.Agent.Name
 	}
-	env := taskMulticaEnvironment(task, "", agentName, token, configRoot, "", serverURL, 0, 0, tempDir)
+	env := taskMulticaEnvironment(task, "", agentName, scoped, configRoot, "", serverURL, 0, 0, tempDir)
 	if task.AutopilotRunID != "" {
 		env["MULTICA_AUTOPILOT_RUN_ID"] = task.AutopilotRunID
 	}

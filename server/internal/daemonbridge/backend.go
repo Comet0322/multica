@@ -108,8 +108,6 @@ type Job struct {
 	// MCP, when set, serves Tools over MCP for this task only. An engine that
 	// speaks MCP should connect here instead of delivering EventToolRequest.
 	MCP *MCPEndpoint
-	// Task is the claimed task with every credential removed.
-	Task json.RawMessage
 }
 
 // AgentSpec is the agent configuration the claim carried.

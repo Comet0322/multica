@@ -97,7 +97,10 @@ func (t *CLITool) Run(ctx context.Context, task daemon.Task, req ToolRequest) To
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, t.Binary, in.Args...)
+	cmd, err := command(t.Binary, in.Args)
+	if err != nil {
+		return errResult("%v", err)
+	}
 	cmd.Dir = work
 	cmd.Env = append(baseEnv(work), flatten(taskEnv)...)
 	if in.Stdin != "" {
@@ -105,7 +108,7 @@ func (t *CLITool) Run(ctx context.Context, task daemon.Task, req ToolRequest) To
 	}
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	runErr := cmd.Run()
+	runErr := runCommand(ctx, cmd)
 
 	text := t.clip(out.String())
 	switch {
@@ -165,4 +168,36 @@ func flatten(m map[string]string) []string {
 
 func errResult(format string, args ...any) ToolResult {
 	return ToolResult{IsError: true, Output: fmt.Sprintf(format, args...)}
+}
+
+// command prepares a run of the multica CLI. The binary is the operator's
+// configured path, resolved to an absolute path here; the arguments are checked
+// against the deny lists before this is called.
+func command(binary string, args []string) (*exec.Cmd, error) {
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return nil, fmt.Errorf("multica CLI not found: %w", err)
+	}
+	return &exec.Cmd{Path: path, Args: append([]string{path}, args...)}, nil
+}
+
+// runCommand runs cmd and kills it when ctx ends.
+func runCommand(ctx context.Context, cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = cmd.Process.Kill()
+		case <-done:
+		}
+	}()
+	err := cmd.Wait()
+	close(done)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }

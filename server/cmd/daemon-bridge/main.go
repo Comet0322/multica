@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/multica-ai/multica/server/internal/daemonbridge"
 	"github.com/multica-ai/multica/server/internal/daemonbridge/oma"
@@ -84,7 +86,7 @@ func run() error {
 		tools.Secret = secret
 		mux := http.NewServeMux()
 		mux.Handle("/mcp", tools)
-		toolSrv = &http.Server{Addr: *mcpAddr, Handler: mux}
+		toolSrv = &http.Server{Addr: *mcpAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 		cfg.Tools = tools
 	}
 	if *wsList != "" {
@@ -99,7 +101,7 @@ func run() error {
 	if *health != "" {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
-		srv := &http.Server{Addr: *health, Handler: mux}
+		srv := &http.Server{Addr: *health, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = srv.ListenAndServe() }()
 		go func() { <-ctx.Done(); _ = srv.Close() }()
 	}
@@ -144,13 +146,29 @@ func stateSecret(dir string) ([]byte, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, "tool-secret")
-	if b, err := os.ReadFile(path); err == nil && len(b) >= 32 {
-		return b, nil
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	const file = "tool-secret"
+	if f, err := root.Open(file); err == nil {
+		defer f.Close()
+		if b, err := io.ReadAll(f); err == nil && len(b) >= 32 {
+			return b, nil
+		}
 	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return b, os.WriteFile(path, b, 0o600)
+	f, err := root.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if _, err := f.Write(b); err != nil {
+		return nil, err
+	}
+	return b, nil
 }

@@ -2,7 +2,6 @@ package daemonbridge
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/multica-ai/multica/server/internal/daemon"
@@ -61,11 +60,6 @@ func BuildJob(ctx context.Context, task daemon.Task, caps Capabilities, resolve 
 		return Job{}, Rejected(taskfailure.ReasonEnvironmentPrepareFailed, "render brief: %v", err)
 	}
 
-	raw, err := publicTask(task)
-	if err != nil {
-		return Job{}, err
-	}
-
 	job := Job{
 		TaskID:      task.ID,
 		WorkspaceID: task.WorkspaceID,
@@ -80,7 +74,6 @@ func BuildJob(ctx context.Context, task daemon.Task, caps Capabilities, resolve 
 			CustomEnv: a.CustomEnv, CustomArgs: a.CustomArgs,
 			MCPConfig: a.McpConfig, RuntimeConfig: a.RuntimeConfig,
 		},
-		Task: raw,
 	}
 	for _, s := range skills {
 		sk := Skill{ID: s.ID, Name: s.Name, Description: s.Description, Content: s.Content}
@@ -140,20 +133,4 @@ func checkSupport(t daemon.Task, c Capabilities) error {
 		}
 	}
 	return nil
-}
-
-// publicTask is the claimed task as JSON with its credentials removed.
-func publicTask(task daemon.Task) (json.RawMessage, error) {
-	raw, err := json.Marshal(task)
-	if err != nil {
-		return nil, err
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return nil, err
-	}
-	for _, name := range []string{"auth_token", "remote_mcp_daemon_token"} {
-		delete(fields, name)
-	}
-	return json.Marshal(fields)
 }
