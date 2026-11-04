@@ -1,0 +1,32 @@
+diff --git a/server/internal/daemon/client.go b/server/internal/daemon/client.go
+index 46959da1a..8144c4691 100644
+--- a/server/internal/daemon/client.go
++++ b/server/internal/daemon/client.go
+@@ -110,6 +110,9 @@ type Client struct {
+ 	platform string
+ 	version  string
+ 	os       string
++	// capabilities overrides the advertised X-Client-Capabilities when a host
++	// other than the local daemon (the bridge) supports only part of the set.
++	capabilities []string
+ 
+ 	workspaceMu                    sync.Mutex
+ 	workspaceETag                  string
+@@ -180,7 +183,16 @@ func (c *Client) setIdentityHeaders(req *http.Request) {
+ 	if c.os != "" {
+ 		req.Header.Set("X-Client-OS", c.os)
+ 	}
+-	req.Header.Set("X-Client-Capabilities", daemonHTTPClientCapabilities())
++	caps := daemonHTTPClientCapabilities()
++	if c.capabilities != nil {
++		caps = strings.Join(c.capabilities, ",")
++	}
++	req.Header.Set("X-Client-Capabilities", caps)
++}
++
++// SetCapabilities replaces the capability set sent on every request.
++func (c *Client) SetCapabilities(caps []string) {
++	c.capabilities = append([]string{}, caps...)
+ }
+ 
+ // daemonClientCapabilities is the X-Client-Capabilities value the daemon
