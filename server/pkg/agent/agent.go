@@ -455,6 +455,8 @@ func New(agentType string, cfg Config) (Backend, error) {
 	cfg.LaunchPrefix = filterLaunchPrefix(cfg.LaunchPrefix, agentType, cfg.Logger)
 
 	switch agentType {
+	case "harness":
+		return &harnessBackend{cfg: cfg}, nil
 	case "claude":
 		return &claudeBackend{cfg: cfg}, nil
 	case "codebuddy":
