@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/multica-ai/multica/server/pkg/harness"
+	"github.com/multica-ai/multica/server/pkg/harness/gittools"
 	"github.com/multica-ai/multica/server/pkg/harness/model"
 	"github.com/multica-ai/multica/server/pkg/harness/multicatools"
 	"github.com/multica-ai/multica/server/pkg/harness/sandbox"
@@ -27,8 +28,13 @@ import (
 //
 //	HARNESS_SANDBOX         "docker" (default) or "local" (tests; isolates nothing)
 //	HARNESS_SANDBOX_IMAGE   image for the docker sandbox
-//	HARNESS_MODEL           "mock" is the only model implemented so far
-//	HARNESS_MOCK_SCRIPT     path to the mock's script (see loadMockScript)
+//	HARNESS_MODEL           "anthropic" or "mock"
+//	HARNESS_MODEL_ID        anthropic: model id when the task names none (default claude-haiku-5-5)
+//	HARNESS_ANTHROPIC_API_KEY, HARNESS_ANTHROPIC_BASE_URL
+//	                        anthropic: key, and a base URL to route through a gateway such as LiteLLM
+//	HARNESS_MOCK_SCRIPT     mock: path to the script (see loadMockScript)
+//	HARNESS_GIT_ALLOWED_REPOS  comma-separated repository URLs; enables git_clone and deliver
+//	HARNESS_GIT_TOKEN, HARNESS_GIT_USER  https credential, used on the host only
 //
 // and the MULTICA_* values the daemon already computes for an agent's task.
 type harnessBackend struct {
@@ -45,7 +51,7 @@ var harnessIssueRE = regexp.MustCompile(`assigned issue ID is: ([0-9a-fA-F-]{36}
 
 func (b *harnessBackend) Execute(ctx context.Context, prompt string, opts ExecOptions) (*Session, error) {
 	env := b.cfg.Env
-	mdl, err := harnessModel(env)
+	mdl, err := harnessModel(env, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +76,22 @@ func (b *harnessBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 			reg.Add(t)
 		}
 	}
+	gitHostDir := ""
+	hasGit := false
+	if repos := splitList(env["HARNESS_GIT_ALLOWED_REPOS"]); len(repos) > 0 {
+		dir, err := os.MkdirTemp("", "harness-git-")
+		if err != nil {
+			_ = sb.Close(context.WithoutCancel(ctx))
+			return nil, fmt.Errorf("harness: %w", err)
+		}
+		gitHostDir, hasGit = dir, true
+		for _, t := range gittools.Tools(gittools.Config{
+			SB: sb, Workdir: workdir, HostDir: dir, Allowed: repos, TaskID: env["MULTICA_TASK_ID"],
+			User: env["HARNESS_GIT_USER"], Token: env["HARNESS_GIT_TOKEN"],
+		}) {
+			reg.Add(t)
+		}
+	}
 
 	runCtx, cancel := runContext(ctx, opts.Timeout)
 	msgCh := make(chan Message, 256)
@@ -79,7 +101,7 @@ func (b *harnessBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	go func() {
 		defer cancel()
 		out := harness.Run(runCtx, harness.Config{
-			Model: mdl, Tools: reg, System: harnessSystemPrompt(opts), MaxTurns: opts.MaxTurns,
+			Model: mdl, Tools: reg, System: harnessSystemPrompt(opts, hasGit), MaxTurns: opts.MaxTurns,
 			Emit: func(e harness.Event) { trySend(msgCh, harnessMessage(e)) },
 		}, prompt)
 		close(msgCh)
@@ -87,6 +109,9 @@ func (b *harnessBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 		// completion must not leave a container behind for a daemon that then exits.
 		if err := sb.Close(context.WithoutCancel(ctx)); err != nil {
 			b.cfg.Logger.Warn("harness: closing the sandbox failed", "error", err)
+		}
+		if gitHostDir != "" {
+			_ = os.RemoveAll(gitHostDir)
 		}
 
 		res := Result{Status: out.Status, Output: out.Output, Error: out.Error, DurationMs: time.Since(start).Milliseconds(), Usage: map[string]TokenUsage{}}
@@ -119,7 +144,7 @@ func harnessMessage(e harness.Event) Message {
 // harnessSystemPrompt is the Multica runtime brief. The daemon writes it into
 // the workdir as CLAUDE.md or AGENTS.md for CLI agents; here it is read back and
 // given to the model directly, because there is no CLI to discover the file.
-func harnessSystemPrompt(opts ExecOptions) string {
+func harnessSystemPrompt(opts ExecOptions, hasGit bool) string {
 	parts := []string{}
 	if opts.SystemPrompt != "" {
 		parts = append(parts, opts.SystemPrompt)
@@ -133,7 +158,27 @@ func harnessSystemPrompt(opts ExecOptions) string {
 			break
 		}
 	}
+	// Last, so it wins over the brief above, which describes the multica CLI and
+	// a networked machine; neither exists here.
+	env := "## Environment\n\n" +
+		"You work in a sandbox with no network. The `multica` CLI and any other command that needs the network are not available. " +
+		"Use the issue_* and comment_* tools to read and update your issue, create sub-issues and post comments."
+	if hasGit {
+		env += " Code comes in with git_clone and goes out with deliver: clone, edit and commit with git in bash, " +
+			"then call deliver with a branch under agent/<task id>/. Never try to push from the sandbox."
+	}
+	parts = append(parts, env)
 	return strings.Join(parts, "\n\n")
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func harnessSandbox(ctx context.Context, env map[string]string, opts ExecOptions) (sandbox.Sandbox, string, error) {
@@ -183,14 +228,22 @@ func seedSandbox(ctx context.Context, sb sandbox.Sandbox, src, dst string) error
 	})
 }
 
-func harnessModel(env map[string]string) (model.Model, error) {
+func harnessModel(env map[string]string, opts ExecOptions) (model.Model, error) {
 	switch name := env["HARNESS_MODEL"]; name {
 	case "mock":
 		return loadMockScript(env["HARNESS_MOCK_SCRIPT"])
+	case "anthropic":
+		id := opts.Model
+		if id == "" {
+			id = env["HARNESS_MODEL_ID"]
+		}
+		return model.NewAnthropic(model.AnthropicConfig{
+			APIKey: env["HARNESS_ANTHROPIC_API_KEY"], BaseURL: env["HARNESS_ANTHROPIC_BASE_URL"], Model: id,
+		})
 	case "":
 		return nil, fmt.Errorf("harness: HARNESS_MODEL is not set")
 	default:
-		return nil, fmt.Errorf("harness: model %q is not implemented (only \"mock\")", name)
+		return nil, fmt.Errorf("harness: model %q is not implemented (use \"anthropic\" or \"mock\")", name)
 	}
 }
 
