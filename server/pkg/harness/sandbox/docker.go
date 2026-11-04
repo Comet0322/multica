@@ -18,6 +18,7 @@ import (
 // Sandbox against such an API does not change anything above this file.
 type Docker struct {
 	name string
+	idle string // pid of the container's own `sleep infinity`, which must survive a timeout
 }
 
 // DockerOptions configures the container.
@@ -30,6 +31,28 @@ type DockerOptions struct {
 	// MemoryMB and Pids bound the container; zero leaves them unbounded.
 	MemoryMB int
 	Pids     int
+	// Labels are put on the container so a later process can find the ones a
+	// crashed owner left behind (see SweepDocker).
+	Labels map[string]string
+}
+
+// SweepDocker removes every container carrying the label key=value and returns
+// how many it removed. A service that owns such containers calls it at start-up:
+// anything still labelled then belongs to an owner that died without cleaning up.
+func SweepDocker(ctx context.Context, key, value string) (int, error) {
+	filter := "label=" + key + "=" + value
+	out, err := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", filter).Output()
+	if err != nil {
+		return 0, fmt.Errorf("docker sweep: list: %w", err)
+	}
+	ids := strings.Fields(string(out))
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	if b, err := exec.CommandContext(ctx, "docker", append([]string{"rm", "-f"}, ids...)...).CombinedOutput(); err != nil {
+		return 0, fmt.Errorf("docker sweep: remove: %w: %s", err, strings.TrimSpace(string(b)))
+	}
+	return len(ids), nil
 }
 
 // NewDocker starts a container from the image with `--network none` and keeps
@@ -51,12 +74,24 @@ func NewDocker(ctx context.Context, opts DockerOptions) (*Docker, error) {
 	if opts.Pids > 0 {
 		args = append(args, "--pids-limit", strconv.Itoa(opts.Pids))
 	}
+	for k, v := range opts.Labels {
+		args = append(args, "--label", k+"="+v)
+	}
 	args = append(args, "--entrypoint", "sleep", opts.Image, "infinity")
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("docker sandbox: start: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	return &Docker{name: strings.TrimSpace(string(out))}, nil
+	d := &Docker{name: strings.TrimSpace(string(out))}
+	// Only the idle process exists now; remember it so a timeout can kill everything else.
+	pid, err := exec.CommandContext(ctx, "docker", "exec", d.name, "sh", "-c",
+		`for p in /proc/[0-9]*; do [ "$(tr '\0' ' ' < $p/cmdline 2>/dev/null)" = "sleep infinity " ] && { echo ${p#/proc/}; break; }; done`).Output()
+	d.idle = strings.TrimSpace(string(pid))
+	if err != nil || d.idle == "" {
+		_ = d.Close(context.Background())
+		return nil, fmt.Errorf("docker sandbox: cannot find the idle process: %v", err)
+	}
+	return d, nil
 }
 
 // Name is the container id, for logs and for tests that need to look inside.
@@ -86,6 +121,11 @@ func (d *Docker) Exec(ctx context.Context, req ExecRequest) (ExecResult, error) 
 	case runErr == nil:
 	case errors.As(runErr, &exit):
 		res.ExitCode = exit.ExitCode()
+		// A container that is gone makes the docker client fail with exit 1, which
+		// would read as a command that failed; the daemon's own message tells them apart.
+		if strings.HasPrefix(res.Stderr, "Error response from daemon:") && ctx.Err() == nil {
+			return ExecResult{}, fmt.Errorf("docker sandbox: %s", strings.TrimSpace(res.Stderr))
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			// Killing the docker client does not stop the command in the container.
 			res.TimedOut = true
@@ -97,12 +137,13 @@ func (d *Docker) Exec(ctx context.Context, req ExecRequest) (ExecResult, error) 
 	return res, nil
 }
 
-// killAll stops everything but the container's own idle process after a timeout.
+// killAll stops everything but init and the container's own idle process after
+// a timeout. Killing the idle process too would stop the container.
 func (d *Docker) killAll() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = exec.CommandContext(ctx, "docker", "exec", d.name, "sh", "-c",
-		"for p in /proc/[0-9]*; do n=${p#/proc/}; [ \"$n\" -gt 1 ] && [ \"$n\" != \"$$\" ] && kill -9 \"$n\" 2>/dev/null; done; true").Run()
+		`for p in /proc/[0-9]*; do n=${p#/proc/}; [ "$n" -gt 1 ] && [ "$n" != "$$" ] && [ "$n" != "$1" ] && kill -9 "$n" 2>/dev/null; done; true`, "sh", d.idle).Run()
 }
 
 func (d *Docker) Put(ctx context.Context, path string, data []byte, mode fs.FileMode) error {

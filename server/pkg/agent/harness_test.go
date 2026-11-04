@@ -14,6 +14,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/multica-ai/multica/server/pkg/harness/agentsvc"
+	"github.com/multica-ai/multica/server/pkg/harness/model"
+	"github.com/multica-ai/multica/server/pkg/harness/sandbox"
+	"github.com/multica-ai/multica/server/pkg/harness/sandboxapi"
 )
 
 const harnessTestIssue = "11111111-1111-1111-1111-111111111111"
@@ -69,9 +74,121 @@ var harnessScript = []map[string]any{
 	{"say": "all done"},
 }
 
+// startService runs the agent service the way a deployment would and returns
+// the environment a daemon would hold for it. The service-side settings
+// (HARNESS_*) are read from env; the daemon gets only the service's address,
+// its token and the task's identity.
+func startService(t *testing.T, env map[string]string) map[string]string {
+	t.Helper()
+	get := func(k string) string { return env[k] }
+	newModel, err := agentsvc.ModelFactory(get)
+	if err != nil {
+		msg := err
+		newModel = func(string) (model.Model, error) { return nil, msg }
+	}
+	cfg := agentsvc.Config{
+		Token: "svc-token", NewModel: newModel, GitRepos: splitList(env["HARNESS_GIT_ALLOWED_REPOS"]),
+		NewSandbox: func(ctx context.Context) (sandbox.Sandbox, string, error) {
+			if env["HARNESS_SANDBOX"] == "local" {
+				sb, err := sandbox.NewLocal(env["HARNESS_SANDBOX_ROOT"])
+				return sb, "/", err
+			}
+			sb, err := sandbox.NewDocker(ctx, sandbox.DockerOptions{Image: env["HARNESS_SANDBOX_IMAGE"], MemoryMB: 2048, Pids: 1024, Labels: testLabels(env["HARNESS_TEST_LABEL"])})
+			return sb, "/work", err
+		},
+	}
+	svc, err := agentsvc.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(svc)
+	t.Cleanup(ts.Close)
+	daemon := map[string]string{"HARNESS_AGENT_URL": ts.URL, "HARNESS_AGENT_TOKEN": "svc-token"}
+	for k, v := range env {
+		if strings.HasPrefix(k, "MULTICA_") {
+			daemon[k] = v
+		}
+	}
+	return daemon
+}
+
+// TestHarnessBackendThroughBothServices is the deployed shape, every hop over
+// HTTP: backend -> agent service -> sandbox API -> network-less container.
+func TestHarnessBackendThroughBothServices(t *testing.T) {
+	image := os.Getenv("HARNESS_DOCKER_IMAGE")
+	if image == "" {
+		t.Skip("HARNESS_DOCKER_IMAGE not set")
+	}
+	label := t.Name()
+
+	sbapi, err := sandboxapi.New(sandboxapi.Config{
+		Token: "sb-token",
+		New: func(ctx context.Context, o sandbox.CreateOptions) (sandbox.Sandbox, error) {
+			return sandbox.NewDocker(ctx, sandbox.DockerOptions{Image: image, MemoryMB: o.MemoryMB, Pids: o.Pids, Labels: testLabels(label)})
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbts := httptest.NewServer(sbapi)
+	t.Cleanup(sbts.Close)
+
+	srv := newHarnessServer(t)
+	env := harnessEnv(srv, writeScript(t, harnessScript))
+	newModel, err := agentsvc.ModelFactory(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := agentsvc.New(agentsvc.Config{
+		Token: "svc-token", NewModel: newModel,
+		NewSandbox: func(ctx context.Context) (sandbox.Sandbox, string, error) {
+			sb, err := sandbox.NewRemote(ctx, sandbox.RemoteConfig{BaseURL: sbts.URL, Token: "sb-token", Options: sandbox.CreateOptions{MemoryMB: 512, Pids: 256}})
+			return sb, "/work", err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svcts := httptest.NewServer(svc)
+	t.Cleanup(svcts.Close)
+
+	env["HARNESS_AGENT_URL"], env["HARNESS_AGENT_TOKEN"] = svcts.URL, "svc-token"
+	cwd := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwd, "CLAUDE.md"), []byte("# brief"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b, err := New("harness", Config{Env: env, Logger: slog.Default()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := b.Execute(context.Background(), "Your assigned issue ID is: "+harnessTestIssue+"\nDo the work.", ExecOptions{Cwd: cwd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msgs []Message
+	for m := range sess.Messages {
+		msgs = append(msgs, m)
+	}
+	checkHarnessRun(t, <-sess.Result, msgs, srv)
+
+	if sbapi.Count() != 0 || containerCount(t, label) != 0 {
+		t.Errorf("sandboxes left: api %d, containers %d", sbapi.Count(), containerCount(t, label))
+	}
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func runHarness(t *testing.T, env map[string]string, cwd string) (Result, []Message) {
 	t.Helper()
-	b, err := New("harness", Config{Env: env, Logger: slog.Default()})
+	b, err := New("harness", Config{Env: startService(t, env), Logger: slog.Default()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +251,13 @@ func TestHarnessBackendRunsATaskThroughTheBackendInterface(t *testing.T) {
 	cwd := t.TempDir()
 	env := harnessEnv(srv, writeScript(t, harnessScript))
 	env["HARNESS_SANDBOX"] = "local"
+	root := t.TempDir()
+	env["HARNESS_SANDBOX_ROOT"] = root
 
 	res, msgs := runHarness(t, env, cwd)
 	checkHarnessRun(t, res, msgs, srv)
 
-	if b, err := os.ReadFile(filepath.Join(cwd, "hello.txt")); err != nil || string(b) != "from the sandbox\n" {
+	if b, err := os.ReadFile(filepath.Join(root, "hello.txt")); err != nil || string(b) != "from the sandbox\n" {
 		t.Errorf("file in the sandbox directory: %q, %v", b, err)
 	}
 }
@@ -152,8 +271,6 @@ func TestHarnessBackendInANetworkLessContainer(t *testing.T) {
 	if image == "" {
 		t.Skip("HARNESS_DOCKER_IMAGE not set")
 	}
-	before := containerCount(t, image)
-
 	srv := newHarnessServer(t)
 	cwd := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cwd, "CLAUDE.md"), []byte("# brief\nuse the tools"), 0o644); err != nil {
@@ -162,6 +279,7 @@ func TestHarnessBackendInANetworkLessContainer(t *testing.T) {
 	script := append([]map[string]any{{"tool": "bash", "input": map[string]any{"command": "cat CLAUDE.md > /dev/null && test -f /work/CLAUDE.md"}}}, harnessScript...)
 	env := harnessEnv(srv, writeScript(t, script))
 	env["HARNESS_SANDBOX_IMAGE"] = image
+	env["HARNESS_TEST_LABEL"] = t.Name()
 
 	res, msgs := runHarness(t, env, cwd)
 	checkHarnessRun(t, res, msgs, srv)
@@ -174,14 +292,23 @@ func TestHarnessBackendInANetworkLessContainer(t *testing.T) {
 			t.Errorf("the task token leaked into the conversation: %+v", m)
 		}
 	}
-	if after := containerCount(t, image); after != before {
-		t.Errorf("sandbox container was not removed: %d running before, %d after", before, after)
+	if n := containerCount(t, t.Name()); n != 0 {
+		t.Errorf("sandbox container was not removed: %d still running", n)
 	}
 }
 
-func containerCount(t *testing.T, image string) int {
+func testLabels(label string) map[string]string {
+	if label == "" {
+		return nil
+	}
+	return map[string]string{"harness.test": label}
+}
+
+// containerCount counts the containers a test started, by its own label, so
+// other tests using the same image at the same time do not matter.
+func containerCount(t *testing.T, label string) int {
 	t.Helper()
-	out, err := exec.Command("docker", "ps", "-q", "--filter", "ancestor="+image).Output()
+	out, err := exec.Command("docker", "ps", "-q", "--filter", "label=harness.test="+label).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +514,7 @@ func TestHarnessBackendWithARealModel(t *testing.T) {
 		"MULTICA_TOKEN": "mat_task_token", "MULTICA_SERVER_URL": srv.URL, "MULTICA_WORKSPACE_ID": "ws-1",
 		"MULTICA_AGENT_ID": "agent-1", "MULTICA_TASK_ID": "task-live",
 	}
-	b, err := New("harness", Config{Env: env, Logger: slog.Default()})
+	b, err := New("harness", Config{Env: startService(t, env), Logger: slog.Default()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,9 +570,22 @@ func firstLine(s string, n int) string {
 	return s
 }
 
-func TestHarnessBackendRefusesAnUnimplementedModel(t *testing.T) {
-	b, _ := New("harness", Config{Env: map[string]string{"HARNESS_MODEL": "claude"}, Logger: slog.Default()})
-	if _, err := b.Execute(context.Background(), "x", ExecOptions{}); err == nil || !strings.Contains(err.Error(), "not implemented") {
+func TestHarnessBackendReportsAnUnimplementedModelAsAFailedTask(t *testing.T) {
+	b, _ := New("harness", Config{Env: startService(t, map[string]string{"HARNESS_MODEL": "claude"}), Logger: slog.Default()})
+	sess, err := b.Execute(context.Background(), "x", ExecOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range sess.Messages {
+	}
+	if res := <-sess.Result; res.Status != "failed" || !strings.Contains(res.Error, "not implemented") {
+		t.Errorf("result = %+v", res)
+	}
+}
+
+func TestHarnessBackendNeedsTheServiceAddress(t *testing.T) {
+	b, _ := New("harness", Config{Env: map[string]string{}, Logger: slog.Default()})
+	if _, err := b.Execute(context.Background(), "x", ExecOptions{}); err == nil || !strings.Contains(err.Error(), "HARNESS_AGENT_URL") {
 		t.Errorf("err = %v", err)
 	}
 }
