@@ -2,11 +2,14 @@
 import { describe, expect, it } from "vitest";
 import { buildSurfaceFrameDocument } from "./surface-document";
 
+const FIXTURE_VALUE_1 = "one-use-proof";
+const FIXTURE_VALUE_2 = `proof</script><script>alert(1)</script>`;
+
 describe("plugin surface frame document", () => {
   it("allows the nested frame to navigate only to the hosted content origin", () => {
     const document = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/opaque-token",
-      bridgeToken: "one-use-proof",
+      bridgeToken: FIXTURE_VALUE_1,
     });
 
     expect(document).toContain("frame-src https://plugin-content.example.test");
@@ -17,7 +20,7 @@ describe("plugin surface frame document", () => {
   it("keeps the untrusted inner frame opaque", () => {
     const document = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/opaque-token",
-      bridgeToken: "one-use-proof",
+      bridgeToken: FIXTURE_VALUE_1,
     });
 
     expect(document).toContain('child.setAttribute("sandbox", "allow-scripts")');
@@ -27,7 +30,7 @@ describe("plugin surface frame document", () => {
   it("checks source, protocol, challenge and one-time use before relaying a guest port", () => {
     const document = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/opaque-token",
-      bridgeToken: "one-use-proof",
+      bridgeToken: FIXTURE_VALUE_1,
     });
 
     expect(document).toContain("event.source !== child.contentWindow");
@@ -40,7 +43,7 @@ describe("plugin surface frame document", () => {
   it("uses terminal state instead of guessing when CSP reports navigation", () => {
     const document = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/opaque-token",
-      bridgeToken: "one-use-proof",
+      bridgeToken: FIXTURE_VALUE_1,
     });
 
     expect(document).toContain("securitypolicyviolation");
@@ -52,7 +55,7 @@ describe("plugin surface frame document", () => {
   it("never interpolates the launch URL or proof into executable source", () => {
     const document = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/%3C/script%3E",
-      bridgeToken: `proof</script><script>alert(1)</script>`,
+      bridgeToken: FIXTURE_VALUE_2,
     });
 
     expect(document).not.toContain("alert(1)");

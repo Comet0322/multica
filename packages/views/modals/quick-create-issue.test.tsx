@@ -41,6 +41,10 @@ const mockSetAgent = vi.hoisted(() => vi.fn());
 const mockSetActiveMode = vi.hoisted(() => vi.fn());
 const mockClearDraft = vi.hoisted(() => vi.fn());
 
+const FIXTURE = vi.hoisted(() => ({
+  FIXTURE_VALUE_1: "sha256:preview-token",
+}));
+
 const sourceContextPanelData = {
   anchor_comment_id: "comment-source",
   source_context_preview: {
@@ -67,7 +71,7 @@ const sourceContextPanelData = {
       attachments: [],
     }],
     anchor_comment_id: "comment-source",
-    capture_token: "sha256:preview-token",
+    capture_token: FIXTURE.FIXTURE_VALUE_1,
     limits: { comment_count: 1, text_bytes: 100, attachment_count: 0, attachment_bytes: 0 },
   },
 };
@@ -1187,7 +1191,7 @@ describe("AgentCreatePanel", () => {
       "comment-source",
       {
         mode: "agent",
-        capture_token: "sha256:preview-token",
+        capture_token: FIXTURE.FIXTURE_VALUE_1,
         quick_create: expect.objectContaining({
           agent_id: "agent-1",
           prompt: "Investigate with captured context",

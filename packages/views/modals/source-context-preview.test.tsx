@@ -5,6 +5,8 @@ import { ApiError } from "@multica/core/api";
 import enIssues from "../locales/en/issues.json";
 import { SourceContextPreviewCard } from "./source-context-preview";
 
+const FIXTURE_VALUE_1 = "sha256:token";
+
 describe("SourceContextPreviewCard", () => {
 
   it("pluralizes the preview comment count", () => {
@@ -23,7 +25,7 @@ describe("SourceContextPreviewCard", () => {
             created_at: "now", updated_at: "now", revision: 1, attachments: [],
           })),
           anchor_comment_id: "comment-2",
-          capture_token: "sha256:token",
+          capture_token: FIXTURE_VALUE_1,
           limits: { comment_count: 2, text_bytes: 32, attachment_count: 0, attachment_bytes: 0 },
         }} />
       </I18nProvider>,
@@ -58,7 +60,7 @@ describe("SourceContextPreviewCard", () => {
             }],
           }],
           anchor_comment_id: "comment-1",
-          capture_token: "sha256:token",
+          capture_token: FIXTURE_VALUE_1,
           limits: { comment_count: 1, text_bytes: 14, attachment_count: 2, attachment_bytes: 24 },
         }} />
       </I18nProvider>,
