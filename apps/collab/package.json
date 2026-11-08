@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@hocuspocus/server": "^4.9.0",
+    "@hocuspocus/server": "^4.8.0",
     "@multica/views": "workspace:*",
     "happy-dom": "^21.0.4",
     "node-diff3": "^4.0.0",
