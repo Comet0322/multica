@@ -11,7 +11,8 @@ import pg from "pg";
 // back to localhost. dotenv sets unset-vs-empty both as "" — treating them
 // the same matches user intent.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || `http://localhost:${process.env.PORT || "8080"}`;
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://multica:multica@localhost:5432/multica?sslmode=disable";
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error("DATABASE_URL is not set");
 
 interface TestWorkspace {
   id: string;
