@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -46,10 +47,19 @@ func (c client) call(ctx context.Context, path string, body any) (int, response,
 			return 0, response{}, err
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(data))
+	base, err := url.Parse(c.base)
 	if err != nil {
 		return 0, response{}, err
 	}
+	req, err := http.NewRequestWithContext(ctx, method, "http://127.0.0.1", bytes.NewReader(data))
+	if err != nil {
+		return 0, response{}, err
+	}
+	// NewRequest derived req.Host from the placeholder URL; keep both in step with base.
+	req.URL.Scheme = base.Scheme
+	req.URL.Host = base.Host
+	req.URL.Path = base.Path + path
+	req.Host = base.Host
 	req.Header.Set("Content-Type", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {

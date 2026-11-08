@@ -1023,8 +1023,13 @@ func parseClawHubSlug(raw string) (string, error) {
 }
 
 func searchClawHubSkills(httpClient *http.Client, query string) ([]SkillSearchCandidateResponse, error) {
-	searchURL := clawHubAPIBase + "/search?q=" + url.QueryEscape(query)
-	resp, err := httpClient.Get(searchURL)
+	searchReq, err := http.NewRequest(http.MethodGet, clawHubAPIBase, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build ClawHub request: %w", err)
+	}
+	searchReq.URL.Path += "/search"
+	searchReq.URL.RawQuery = url.Values{"q": {query}}.Encode()
+	resp, err := httpClient.Do(searchReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach ClawHub: %w", err)
 	}

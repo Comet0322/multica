@@ -27,7 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	mathrand "math/rand/v2"
+	"github.com/multica-ai/multica/server/internal/util"
 	"sort"
 	"sync"
 	"time"
@@ -256,7 +256,7 @@ func (s *wsSender) retryDelay() time.Duration {
 	if base <= 0 {
 		return 0
 	}
-	return base/2 + time.Duration(mathrand.Int64N(int64(base)))
+	return base/2 + time.Duration(util.RandInt63n(int64(base)))
 }
 
 // retryUnaffordable reports why the one retry should not be attempted, or ""

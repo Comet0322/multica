@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"io"
 	"log/slog"
 	"net/http"
@@ -383,8 +384,8 @@ func (h *Handler) GetSearchIndexSnapshot(w http.ResponseWriter, r *http.Request)
 		var err error
 		issues, err = q.ListSearchIndexIssuesPage(ctx, db.ListSearchIndexIssuesPageParams{
 			WorkspaceID: wsUUID,
-			AfterNumber: int32(afterNumber),
-			PageLimit:   int32(limit),
+			AfterNumber: util.SatInt32(afterNumber),
+			PageLimit:   util.SatInt32(limit),
 		})
 		if err != nil {
 			return err
@@ -504,7 +505,7 @@ func (h *Handler) ListSearchIndexChanges(w http.ResponseWriter, r *http.Request)
 			AfterXid:       "0",
 			AfterType:      "",
 			AfterID:        pgtype.UUID{Valid: true},
-			PageLimit:      int32(limit + 1),
+			PageLimit:      util.SatInt32(limit + 1),
 		}
 		if cur.Target != "" {
 			params.AfterXid = cur.AfterXid

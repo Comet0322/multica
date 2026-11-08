@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -276,7 +277,7 @@ func writeRuntimeConfigFile(path, brief string) error {
 		// The managed separator (if any) lives in existingStr[:start] and
 		// is preserved untouched.
 		newContent := existingStr[:start] + block + existingStr[end:]
-		return os.WriteFile(path, []byte(newContent), 0o644)
+		return util.WriteFile(path, []byte(newContent), 0o644)
 	}
 
 	// No marker block present. Append the fixed managed separator followed
@@ -295,7 +296,7 @@ func writeRuntimeConfigFile(path, brief string) error {
 		boundary: existingStr[len(trimmed):],
 		blank:    trimmed == "",
 	})
-	return os.WriteFile(path, []byte(existingStr+runtimeManagedSeparator+block), 0o644)
+	return util.WriteFile(path, []byte(existingStr+runtimeManagedSeparator+block), 0o644)
 }
 
 // runtimeBoundaryPrefix opens the metadata line written as the first line
@@ -528,7 +529,7 @@ func CleanupRuntimeConfig(workDir, provider string) error {
 	// without any normalisation. An empty `remainder` here means the
 	// user's original file was empty; we still write it (zero-byte file)
 	// so the file's existence is preserved.
-	return os.WriteFile(path, []byte(remainder), 0o644)
+	return util.WriteFile(path, []byte(remainder), 0o644)
 }
 
 // buildMetaSkillContent generates the meta skill markdown that teaches the

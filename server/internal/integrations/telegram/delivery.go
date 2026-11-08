@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"strconv"
 	"time"
 
@@ -299,7 +300,7 @@ func (o *Outbound) recordSend(ctx context.Context, lease *deliveryLease, placeho
 				TurnID:     lease.turnID,
 				OwnerToken: lease.token,
 				MessageID:  strconv.FormatInt(messageID, 10),
-				ChunksSent: int32(chunksSent),
+				ChunksSent: util.SatInt32(chunksSent),
 			})
 		}
 	case deliveryRefused:
