@@ -28,8 +28,8 @@ func TestRemoteMCPProxyFiltersToolsAndInjectsCredential(t *testing.T) {
 	endpoint, _ := url.Parse(fixture.URL)
 	proxy := &remoteMCPProxy{
 		taskID: "task", endpoint: endpoint, client: fixture.Client(), path: "/capability",
-		credentialHeaders: http.Header{"Authorization": []string{"Bearer " + remotemcptest.Credential}},
-		semaphore:         make(chan struct{}, remoteMCPMaxConcurrency), logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		badgeHeaders: http.Header{"Authorization": []string{"Bearer " + remotemcptest.Badge}},
+		semaphore:    make(chan struct{}, remoteMCPMaxConcurrency), logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		connection: remotemcp.Connection{
 			InstallationID: "installation", ContributionKey: "fixture",
 			ApprovedTools: []remotemcp.Tool{{
@@ -125,7 +125,7 @@ func TestRemoteMCPProxyRechecksCredentialBeforeUpstreamCall(t *testing.T) {
 		endpoint: endpoint, client: upstream.Client(), path: "/capability",
 		semaphore: make(chan struct{}, remoteMCPMaxConcurrency),
 		connection: remotemcp.Connection{
-			ContributionID: "contribution", CredentialHeader: "Authorization",
+			ContributionID: "contribution", BadgeHeader: "Authorization",
 			ApprovedTools: []remotemcp.Tool{{Name: "allowed"}},
 		},
 		resolveCredential: func(context.Context, string) (http.Header, error) {

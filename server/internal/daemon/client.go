@@ -96,7 +96,7 @@ func isRuntimeNotFoundError(err error) bool {
 // Client handles HTTP communication with the Multica server daemon API.
 type Client struct {
 	baseURL string
-	token   string
+	ticket  string
 	client  *http.Client
 
 	// bundleClient downloads skill bundles. Unlike client it carries no fixed
@@ -216,13 +216,13 @@ func daemonCommonCapabilities() []string {
 }
 
 // SetToken sets the auth token for authenticated requests.
-func (c *Client) SetToken(token string) {
-	c.token = token
+func (c *Client) SetToken(ticket string) {
+	c.ticket = ticket
 }
 
 // Token returns the current auth token.
 func (c *Client) Token() string {
-	return c.token
+	return c.ticket
 }
 
 func (c *Client) ClaimTask(ctx context.Context, runtimeID string) (*Task, error) {
@@ -235,10 +235,10 @@ func (c *Client) ClaimTask(ctx context.Context, runtimeID string) (*Task, error)
 	return resp.Task, nil
 }
 
-func (c *Client) ResolveRemoteMCPCredential(ctx context.Context, daemonToken, taskID, contributionID string) (http.Header, error) {
+func (c *Client) ResolveRemoteMCPCredential(ctx context.Context, daemonTicket, taskID, contributionID string) (http.Header, error) {
 	var response struct {
-		CredentialHeader string `json:"credential_header"`
-		Credential       string `json:"credential"`
+		BadgeHeader string `json:"credential_header"`
+		Badge       string `json:"credential"`
 	}
 	// A Plugin-contributed connection keeps its credential in the Plugin's own
 	// secret storage, which a different route serves. The marker travels on the
@@ -249,12 +249,12 @@ func (c *Client) ResolveRemoteMCPCredential(ctx context.Context, daemonToken, ta
 	}
 	path := fmt.Sprintf("/api/daemon/tasks/%s/%s/%s/credential",
 		url.PathEscape(taskID), route, url.PathEscape(contributionID))
-	if err := c.getJSONWithToken(ctx, path, daemonToken, &response); err != nil {
+	if err := c.getJSONWithToken(ctx, path, daemonTicket, &response); err != nil {
 		return nil, err
 	}
 	headers := make(http.Header)
-	if response.CredentialHeader != "" {
-		headers.Set(response.CredentialHeader, response.Credential)
+	if response.BadgeHeader != "" {
+		headers.Set(response.BadgeHeader, response.Badge)
 	}
 	return headers, nil
 }
@@ -837,8 +837,8 @@ func (c *Client) ListWorkspaces(ctx context.Context) ([]WorkspaceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+c.ticket)
 	}
 	c.setIdentityHeaders(req)
 	if c.workspaceETag != "" {
@@ -1322,8 +1322,8 @@ func (c *Client) postJSONViaObserved(ctx context.Context, httpClient *http.Clien
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+c.ticket)
 	}
 	c.setIdentityHeaders(req)
 
@@ -1349,19 +1349,19 @@ func (c *Client) postJSONViaObserved(ctx context.Context, httpClient *http.Clien
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, respBody any) error {
-	return c.getJSONWithToken(ctx, path, c.token, respBody)
+	return c.getJSONWithToken(ctx, path, c.ticket, respBody)
 }
 
 // getJSONWithToken performs one GET with an explicit credential. It is used by
 // the Remote MCP broker so its short-lived daemon token cannot replace or race
 // the client's long-lived PAT used by concurrent control-plane requests.
-func (c *Client) getJSONWithToken(ctx context.Context, path, token string, respBody any) error {
+func (c *Client) getJSONWithToken(ctx context.Context, path, ticket string, respBody any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return err
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	c.setIdentityHeaders(req)
 
@@ -1384,7 +1384,7 @@ func (c *Client) getJSONWithToken(ctx context.Context, path, token string, respB
 
 // postJSONWithToken is getJSONWithToken's write counterpart, for the daemon's
 // task-scoped calls that carry a body.
-func (c *Client) postJSONWithToken(ctx context.Context, path, token string, reqBody, respBody any) error {
+func (c *Client) postJSONWithToken(ctx context.Context, path, ticket string, reqBody, respBody any) error {
 	encoded, err := json.Marshal(reqBody)
 	if err != nil {
 		return err
@@ -1394,8 +1394,8 @@ func (c *Client) postJSONWithToken(ctx context.Context, path, token string, reqB
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	c.setIdentityHeaders(req)
 
@@ -1422,7 +1422,7 @@ func (c *Client) postJSONWithToken(ctx context.Context, path, token string, reqB
 // is derived from the deployment key and stays on the server, and routing
 // through it keeps the rate limit, circuit breaker, `net:` destination check
 // and invocation record on one code path for every trigger.
-func (c *Client) InvokeAgentPluginHook(ctx context.Context, daemonToken, taskID, installationID, hookKey string, input json.RawMessage) (json.RawMessage, error) {
+func (c *Client) InvokeAgentPluginHook(ctx context.Context, daemonTicket, taskID, installationID, hookKey string, input json.RawMessage) (json.RawMessage, error) {
 	var response struct {
 		Status string          `json:"status"`
 		Output json.RawMessage `json:"output,omitempty"`
@@ -1433,7 +1433,7 @@ func (c *Client) InvokeAgentPluginHook(ctx context.Context, daemonToken, taskID,
 	if len(input) > 0 {
 		body["input"] = input
 	}
-	if err := c.postJSONWithToken(ctx, path, daemonToken, body, &response); err != nil {
+	if err := c.postJSONWithToken(ctx, path, daemonTicket, body, &response); err != nil {
 		return nil, err
 	}
 	// A refused or failed hook comes back as a 200 with a status, so that the

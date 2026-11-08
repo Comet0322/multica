@@ -85,8 +85,8 @@ func (h *Handler) ListSlackInstallations(w http.ResponseWriter, r *http.Request)
 // RegisterSlackBYORequest is the body for a bring-your-own-app install: the two
 // tokens the user pasted from their own Slack app.
 type RegisterSlackBYORequest struct {
-	BotToken string `json:"bot_token"`
-	AppToken string `json:"app_token"`
+	BotTicket string `json:"bot_token"`
+	AppTicket string `json:"app_token"`
 }
 
 // RegisterSlackBYO (POST /api/workspaces/{id}/slack/install/byo?agent_id=…)
@@ -138,8 +138,8 @@ func (h *Handler) RegisterSlackBYO(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: wsUUID,
 		AgentID:     agentUUID,
 		InitiatorID: initiatorUUID,
-		BotToken:    body.BotToken,
-		AppToken:    body.AppToken,
+		BotTicket:   body.BotTicket,
+		AppTicket:   body.AppTicket,
 	})
 	if err != nil {
 		switch {
@@ -219,7 +219,7 @@ func (h *Handler) RevokeSlackInstallation(w http.ResponseWriter, r *http.Request
 // RedeemSlackBindingTokenRequest carries the raw token the user clicked through
 // from the bot's "link your account" prompt.
 type RedeemSlackBindingTokenRequest struct {
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 // RedeemSlackBindingTokenResponse echoes the bound workspace/installation/user
@@ -251,7 +251,7 @@ func (h *Handler) RedeemSlackBindingToken(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Token == "" {
+	if req.Ticket == "" {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
 	}
@@ -260,7 +260,7 @@ func (h *Handler) RedeemSlackBindingToken(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	redeemed, err := h.SlackBindingTokens.RedeemAndBind(r.Context(), req.Token, userUUID)
+	redeemed, err := h.SlackBindingTokens.RedeemAndBind(r.Context(), req.Ticket, userUUID)
 	if err != nil {
 		switch {
 		case errors.Is(err, slack.ErrBindingTokenInvalid):

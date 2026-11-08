@@ -100,7 +100,7 @@ func TestSubscribeClassifiesAnAckLikeTheCredentialProbe(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			conn := &ackingConn{errCode: tc.errCode, errMsg: tc.errMsg}
-			c := &wecomChannel{botID: "bot-1", secret: "s"}
+			c := &wecomChannel{botID: "bot-1", sealed: "s"}
 
 			err := c.subscribe(context.Background(), conn, newWSSender(conn, quietLogger()), quietLogger())
 			if err == nil {
@@ -141,7 +141,7 @@ func TestSubscribeTransportFailuresAreNotRejections(t *testing.T) {
 		{name: "the frame never goes out", conn: &failingConn{writeErr: writeFailed}, want: writeFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &wecomChannel{botID: "bot-1", secret: "s"}
+			c := &wecomChannel{botID: "bot-1", sealed: "s"}
 
 			err := c.subscribe(context.Background(), tc.conn, newWSSender(tc.conn, quietLogger()), quietLogger())
 			if err == nil {
@@ -160,7 +160,7 @@ func TestSubscribeTransportFailuresAreNotRejections(t *testing.T) {
 // The third case: an accepted handshake must not be reported as either.
 func TestSubscribeSucceedsOnZeroErrcode(t *testing.T) {
 	conn := &ackingConn{errCode: 0}
-	c := &wecomChannel{botID: "bot-1", secret: "s"}
+	c := &wecomChannel{botID: "bot-1", sealed: "s"}
 	if err := c.subscribe(context.Background(), conn, newWSSender(conn, quietLogger()), quietLogger()); err != nil {
 		t.Fatalf("an accepted subscribe failed: %v", err)
 	}

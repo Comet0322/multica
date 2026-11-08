@@ -1977,11 +1977,11 @@ const noteCommentPrefix = "/note"
 // "/ note", and "see foo/note" do not.
 func isNoteComment(content string) bool {
 	trimmed := strings.TrimLeft(content, " \t\r\n")
-	firstToken := trimmed
+	firstTicket := trimmed
 	if i := strings.IndexFunc(trimmed, unicode.IsSpace); i >= 0 {
-		firstToken = trimmed[:i]
+		firstTicket = trimmed[:i]
 	}
-	return strings.EqualFold(firstToken, noteCommentPrefix)
+	return strings.EqualFold(firstTicket, noteCommentPrefix)
 }
 
 // triggerTasksForComment resolves and enqueues the comment's agent triggers and

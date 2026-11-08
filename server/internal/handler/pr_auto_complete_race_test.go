@@ -29,20 +29,20 @@ func TestPRAutoComplete_PRLinkedDuringCompletionKeepsIssueOpen(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("handler test fixture not initialized (no DB?)")
 	}
-	secret := "pr-linked-during-completion"
-	t.Setenv("GITHUB_WEBHOOK_SECRET", secret)
+	sealed := "pr-linked-during-completion"
+	t.Setenv("GITHUB_WEBHOOK_SECRET", sealed)
 	const inst int64 = 8758002
 	issue := prAutoCompleteTestIssue(t, "PR linked during completion", inst)
-	firePRWebhook(t, secret, inst, 1, "Closes "+issue.Identifier, "", "fix/a", "opened")
+	firePRWebhook(t, sealed, inst, 1, "Closes "+issue.Identifier, "", "fix/a", "opened")
 	original := testHandler.TxStarter
 	t.Cleanup(func() { testHandler.TxStarter = original })
 	// Schedule the second webhook after the first decision but before its write.
 	testHandler.TxStarter = hookedTxStarter{base: original, hook: func() error {
 		testHandler.TxStarter = original
-		firePRWebhook(t, secret, inst, 2, issue.Identifier, "", "fix/b", "opened")
+		firePRWebhook(t, sealed, inst, 2, issue.Identifier, "", "fix/b", "opened")
 		return nil
 	}}
-	firePRWebhook(t, secret, inst, 1, "Closes "+issue.Identifier, "", "fix/a", "merged")
+	firePRWebhook(t, sealed, inst, 1, "Closes "+issue.Identifier, "", "fix/a", "merged")
 	if n := linkedPRCountForTest(t, issue.ID); n != 2 {
 		t.Fatalf("want 2 linked PRs, got %d", n)
 	}

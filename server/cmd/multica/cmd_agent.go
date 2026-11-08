@@ -257,8 +257,8 @@ func resolveProfile(cmd *cobra.Command) string {
 
 func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 	taskContext := inDaemonManagedExecutionContext()
-	token := resolveToken(cmd)
-	if taskContext && !strings.HasPrefix(token, "mat_") {
+	ticket := resolveToken(cmd)
+	if taskContext && !strings.HasPrefix(ticket, "mat_") {
 		// When the ONLY daemon signal is a workdir marker (no MULTICA_AGENT_ID /
 		// MULTICA_TASK_ID / MULTICA_DAEMON_PORT), the likeliest cause outside a
 		// real task is a leftover marker from a crashed daemon task in a
@@ -277,7 +277,7 @@ func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 		return nil, fmt.Errorf("server URL not set: use --server-url flag, MULTICA_SERVER_URL env, or 'multica config set server_url <url>'")
 	}
 
-	client := cli.NewAPIClient(serverURL, workspaceID, token)
+	client := cli.NewAPIClient(serverURL, workspaceID, ticket)
 	// When running inside a daemon task, attribute actions to the agent.
 	if agentID := os.Getenv("MULTICA_AGENT_ID"); agentID != "" {
 		client.AgentID = agentID

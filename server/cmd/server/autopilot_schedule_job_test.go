@@ -233,7 +233,7 @@ func TestAutopilotScheduleJobCrashRecovery(t *testing.T) {
 	if err := mgr.RunOnce(ctx); err != nil {
 		t.Fatalf("tick 1: %v", err)
 	}
-	var execID, leaseToken string
+	var execID, leaseTicket string
 	var planTime time.Time
 	var attempt int
 	if err := testPool.QueryRow(ctx, `
@@ -241,7 +241,7 @@ func TestAutopilotScheduleJobCrashRecovery(t *testing.T) {
 		  FROM sys_cron_executions
 		 WHERE job_name = $1 AND scope_kind = $2 AND scope_id = $3
 	`, scheduler.JobNameAutopilotScheduleDispatch, scheduler.ScopeKindAutopilotTrigger,
-		util.UUIDToString(trigger.ID)).Scan(&execID, &leaseToken, &planTime, &attempt); err != nil {
+		util.UUIDToString(trigger.ID)).Scan(&execID, &leaseTicket, &planTime, &attempt); err != nil {
 		t.Fatalf("read first exec row: %v", err)
 	}
 	if attempt != 1 {

@@ -32,7 +32,7 @@ type replyFiles struct {
 	Skipped  []replyFileSkip `json:"skipped,omitempty"`
 	// The task credential is never persisted; after a restart the remaining
 	// files are not attached and the run completes without them.
-	token string
+	ticket string
 }
 
 type replyFileSkip struct {
@@ -99,7 +99,7 @@ func (b *Bridge) attachReplyFile(ctx context.Context, r *run) (bool, error) {
 // transferReplyFile retries only reads. Once an upload is attempted, an
 // ambiguous result must not replay a write without an idempotency key.
 func (b *Bridge) transferReplyFile(ctx context.Context, r *run, d deliveredFile) (string, error) {
-	if r.Reply.token == "" {
+	if r.Reply.ticket == "" {
 		return "not attached because the bridge restarted during the run", nil
 	}
 	if d.Size > maxReplyFileBytes {
@@ -147,7 +147,7 @@ func (b *Bridge) transferReplyFile(ctx context.Context, r *run, d deliveredFile)
 		name = d.FileID
 	}
 	taskAPI := *b.multica
-	taskAPI.token = r.Reply.token
+	taskAPI.ticket = r.Reply.ticket
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

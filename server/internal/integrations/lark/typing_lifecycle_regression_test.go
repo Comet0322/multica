@@ -45,7 +45,7 @@ func TestPatcherTerminalEventDuringTypingAdd(t *testing.T) {
 			taskID := uuidFromString(t, "ee777777-ee77-ee77-ee77-eeeeeeeeeeee")
 			q.task = db.AgentTaskQueue{ChatInputTaskID: taskID}
 			api := &blockedTypingAdd{fakeTypingAPIClient: &fakeTypingAPIClient{addReturn: "next-reaction"}, started: make(chan struct{}), release: make(chan struct{})}
-			mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{installation: q.installation}, newDiscardLogger())
+			mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{installation: q.installation}, newDiscardLogger())
 			p.SetTypingIndicatorManager(mgr)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -111,7 +111,7 @@ func TestPatcherSlowSweepCannotConsumeReplyBudget(t *testing.T) {
 	q.taskChannelIngested = true
 	q.binding.LastMessageID = pgtype.Text{String: "trigger", Valid: true}
 	api := &deadlineTypingLister{fakeTypingAPIClient: &fakeTypingAPIClient{}, replies: replies, t: t}
-	p.SetTypingIndicatorManager(NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{installation: q.installation}, newDiscardLogger()))
+	p.SetTypingIndicatorManager(NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{installation: q.installation}, newDiscardLogger()))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := p.processEvent(ctx, events.Event{Type: protocol.EventChatDone, TaskID: uuidString(taskID), ChatSessionID: uuidString(q.binding.ChatSessionID), Payload: protocol.ChatDonePayload{Content: "answer"}}); err != nil {
@@ -137,7 +137,7 @@ func TestPatcherClearsTypingBeforeTerminalGates(t *testing.T) {
 				q.task = db.AgentTaskQueue{ChatInputTaskID: taskID}
 				q.taskChannelIngested = true
 				api := &fakeTypingAPIClient{addReturn: "held-reaction"}
-				mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{installation: q.installation}, newDiscardLogger())
+				mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{installation: q.installation}, newDiscardLogger())
 				p.SetTypingIndicatorManager(mgr)
 				mgr.Add(context.Background(), q.installation, q.binding.ChatSessionID, "trigger", "", q.binding.ChatSessionID)
 				if gate == "inactive installation" {
@@ -164,7 +164,7 @@ func TestPatcherSessionDeleteSweepsCapturedTargetWithoutLocalState(t *testing.T)
 	p, q, replies := newTestPatcher(t)
 	q.deliveryErr = pgx.ErrNoRows // Both binding and delivery disappeared at commit.
 	api := &fakeTypingAPIClient{listReturn: []MessageReaction{{ReactionID: "remote-reaction", OperatorType: "app", OperatorID: "cli_test_app", EmojiType: typingEmoji}}}
-	p.SetTypingIndicatorManager(NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger()))
+	p.SetTypingIndicatorManager(NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger()))
 	p.handleEvent(events.Event{Type: protocol.EventTaskCancelled, TaskID: "ee777777-ee77-ee77-ee77-eeeeeeeeeeee", ChatSessionID: uuidString(q.binding.ChatSessionID), ChannelReactionTarget: &events.ChannelReactionTarget{ChannelType: channelTypeFeishu, InstallationID: uuidString(q.installation.ID), MessageID: "deleted-session-trigger"}})
 	if len(api.deleteCalled) != 1 || api.deleteCalled[0].messageID != "deleted-session-trigger" {
 		t.Fatalf("cross-process session delete stranded reaction: %+v", api.deleteCalled)

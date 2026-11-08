@@ -392,9 +392,9 @@ func TestFailTaskFinalDelegatedFailureWakesCoordinatorOnce(t *testing.T) {
 	f, svc := seedDelegatedFailureFixture(t)
 	ctx := context.Background()
 	failedID := f.insertWorkerTask(t, "running", "comment", 1, 2)
-	secret := "sk-" + strings.Repeat("a", 24)
+	sealed := "sk-" + strings.Repeat("a", 24)
 
-	failed, err := svc.FailTask(ctx, failedID, "upstream capacity exhausted "+secret, "", "", "", "agent_error.process_failure", false, "", "")
+	failed, err := svc.FailTask(ctx, failedID, "upstream capacity exhausted "+sealed, "", "", "", "agent_error.process_failure", false, "", "")
 	if err != nil {
 		t.Fatalf("FailTask: %v", err)
 	}
@@ -440,7 +440,7 @@ func TestFailTaskFinalDelegatedFailureWakesCoordinatorOnce(t *testing.T) {
 	if parentID != f.sourceTrigger {
 		t.Fatalf("recovery comment parent_id = %q, want source trigger %s", parentID, f.sourceTrigger)
 	}
-	if strings.Contains(content, secret) || !strings.Contains(content, "[REDACTED API KEY]") {
+	if strings.Contains(content, sealed) || !strings.Contains(content, "[REDACTED API KEY]") {
 		t.Fatalf("recovery comment did not redact error: %q", content)
 	}
 	var failedIssueComments int

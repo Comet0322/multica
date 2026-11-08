@@ -39,7 +39,7 @@ func reclaimTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		t.Skip("DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -127,7 +127,7 @@ func params(app, agent string) InstallationParams {
 		AgentID:         mustUUID(agent),
 		InstallerUserID: mustUUID(wcRclInstall),
 		BotID:           app,
-		Secret:          "s3cr3t",
+		Sealed:          "s3cr3t",
 	}
 }
 

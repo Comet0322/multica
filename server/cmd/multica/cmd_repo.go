@@ -351,8 +351,8 @@ func runRepoCheckout(cmd *cobra.Command, args []string) error {
 	workspaceID := os.Getenv("MULTICA_WORKSPACE_ID")
 	agentName := os.Getenv("MULTICA_AGENT_NAME")
 	taskID := os.Getenv("MULTICA_TASK_ID")
-	taskToken := os.Getenv("MULTICA_TOKEN")
-	if taskToken == "" {
+	taskTicket := os.Getenv("MULTICA_TOKEN")
+	if taskTicket == "" {
 		return fmt.Errorf("MULTICA_TOKEN not set (repo checkout requires the active task credential)")
 	}
 
@@ -394,7 +394,7 @@ func runRepoCheckout(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("create daemon checkout request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+taskToken)
+		req.Header.Set("Authorization", "Bearer "+taskTicket)
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("connect to daemon: %w", err)

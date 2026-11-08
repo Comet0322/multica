@@ -16,7 +16,7 @@ import (
 //
 // v2 (MUL-8154) added OwnerID; entries written before it are never read, so a
 // pre-upgrade entry cannot authorize a token without its owner binding.
-const daemonTokenCachePrefix = "mul:auth:daemon:v2:"
+const daemonTicketCachePrefix = "mul:auth:daemon:v2:"
 
 // DaemonTokenIdentity is what DaemonAuth needs from the cached lookup —
 // the workspace_id and daemon_id that the middleware injects into the
@@ -48,7 +48,7 @@ func NewDaemonTokenCache(rdb redis.UniversalClient) *DaemonTokenCache {
 	return &DaemonTokenCache{rdb: rdb}
 }
 
-func daemonTokenCacheKey(hash string) string { return daemonTokenCachePrefix + hash }
+func daemonTokenCacheKey(hash string) string { return daemonTicketCachePrefix + hash }
 
 // Get returns the cached identity for a token hash. ok=false on cache
 // miss or any Redis / decode error — a dead Redis must not take down

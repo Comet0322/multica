@@ -235,10 +235,10 @@ func TestPreparationHelperAcceptsFieldsFromAnOlderParent(t *testing.T) {
 func TestPreparationRequestPreservesOpenclawGatewayForHelper(t *testing.T) {
 	t.Parallel()
 	want := OpenclawGatewayPin{
-		Host:  "gw.internal",
-		Port:  18789,
-		Token: "real-secret",
-		TLS:   true,
+		Host:   "gw.internal",
+		Port:   18789,
+		Ticket: "real-secret",
+		TLS:    true,
 	}
 	tests := []struct {
 		name    string
@@ -273,7 +273,7 @@ func TestPreparationRequestPreservesOpenclawGatewayForHelper(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal redacted request: %v", err)
 			}
-			if bytes.Contains(redacted, []byte(want.Token)) {
+			if bytes.Contains(redacted, []byte(want.Ticket)) {
 				t.Fatalf("ordinary JSON leaked gateway token: %s", redacted)
 			}
 

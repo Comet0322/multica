@@ -21,9 +21,9 @@ import (
 // returns, with the few fields these tests assert on.
 type batchClaimResponse struct {
 	Tasks []struct {
-		ID        string `json:"id"`
-		RuntimeID string `json:"runtime_id"`
-		AuthToken string `json:"auth_token"`
+		ID         string `json:"id"`
+		RuntimeID  string `json:"runtime_id"`
+		AuthTicket string `json:"auth_token"`
 	} `json:"tasks"`
 	ClaimPollHintSupported      bool  `json:"claim_poll_hint_supported"`
 	NextDeferredTaskAfterMillis int64 `json:"next_deferred_task_after_ms"`
@@ -216,8 +216,8 @@ func TestClaimTasksByRuntime_RoutesAcrossRuntimesAndMintsTokens(t *testing.T) {
 	seen := map[string]int{}
 	for _, task := range resp.Tasks {
 		seen[task.RuntimeID]++
-		if !strings.HasPrefix(task.AuthToken, "mat_") {
-			t.Fatalf("task %s missing mat_ task token, got %q", task.ID, task.AuthToken)
+		if !strings.HasPrefix(task.AuthTicket, "mat_") {
+			t.Fatalf("task %s missing mat_ task token, got %q", task.ID, task.AuthTicket)
 		}
 	}
 	if seen[rt1] != 1 || seen[rt2] != 1 {

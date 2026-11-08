@@ -25,7 +25,7 @@ type fleetServerOpts struct {
 	recordReqs *int32
 	// expectToken, if non-empty, fails the test if the request body
 	// does not contain this exact token plaintext.
-	expectToken string
+	expectTicket string
 }
 
 func newFleetServer(t *testing.T, opts fleetServerOpts) *httptest.Server {
@@ -40,9 +40,9 @@ func newFleetServer(t *testing.T, opts fleetServerOpts) *httptest.Server {
 		if r.URL.Path != "/api/v1/pat/verify" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		if opts.expectToken != "" {
+		if opts.expectTicket != "" {
 			body, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(body), opts.expectToken) {
+			if !strings.Contains(string(body), opts.expectTicket) {
 				t.Errorf("request body missing expected token; got: %s", string(body))
 			}
 		}
@@ -99,7 +99,7 @@ func TestCloudPATVerifier_EmptyURLReturnsNil(t *testing.T) {
 // instance_record_id verbatim. We don't run a Redis here, so the cache
 // path is exercised separately in TestCloudPATVerifier_CacheHitSkipsHTTP.
 func TestCloudPATVerifier_VerifySuccess(t *testing.T) {
-	srv := newFleetServer(t, fleetServerOpts{expectToken: "mcn_test_token"})
+	srv := newFleetServer(t, fleetServerOpts{expectTicket: "mcn_test_token"})
 	defer srv.Close()
 
 	v := NewCloudPATVerifier(CloudPATVerifierConfig{FleetBaseURL: srv.URL})
@@ -344,7 +344,6 @@ func TestCloudPATVerifier_NegativesNotCached(t *testing.T) {
 		t.Fatalf("negative result must not be cached; expected 2 fleet calls, got %d", got)
 	}
 }
-
 
 // TestCloudPATVerifier_LookupRejectsUnknownOwner pins the new
 // owner-existence guard. Cloud says the token is valid, but the

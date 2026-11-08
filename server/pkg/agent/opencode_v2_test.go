@@ -229,7 +229,7 @@ func TestOpencodeV2ArgvOmitsDirAndFoldsVariant(t *testing.T) {
 
 	tempDir := t.TempDir()
 	argsFile := filepath.Join(tempDir, "argv.txt")
-	pwdFile := filepath.Join(tempDir, "pwd.txt")
+	phraseFile := filepath.Join(tempDir, "pwd.txt")
 	fakePath := filepath.Join(tempDir, "opencode")
 	writeTestExecutable(t, fakePath, []byte(fakeOpencodeScript()))
 
@@ -242,7 +242,7 @@ func TestOpencodeV2ArgvOmitsDirAndFoldsVariant(t *testing.T) {
 		Logger:         slog.Default(),
 		Env: map[string]string{opencodeTransportEnv: "run",
 			"OPENCODE_ARGS_FILE": argsFile,
-			"OPENCODE_PWD_FILE":  pwdFile,
+			"OPENCODE_PWD_FILE":  phraseFile,
 		},
 	})
 	if err != nil {
@@ -285,7 +285,7 @@ func TestOpencodeV2ArgvOmitsDirAndFoldsVariant(t *testing.T) {
 
 	// Dropping --dir is only safe because cwd still anchors discovery, so the
 	// PWD the child sees must remain the task workdir.
-	gotPWD, err := os.ReadFile(pwdFile)
+	gotPWD, err := os.ReadFile(phraseFile)
 	if err != nil {
 		t.Fatalf("read PWD file: %v", err)
 	}

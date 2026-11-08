@@ -93,7 +93,7 @@ func (o *Outbound) deliverAttachments(ctx context.Context, reply *terminalReply)
 		return
 	}
 	target := *reply.target
-	api := newBotAPI(o.apiBase, target.botToken, o.client)
+	api := newBotAPI(o.apiBase, target.botTicket, o.client)
 	rows, err := o.lookupAttachments(ctx, messageID, workspaceID)
 	if err != nil {
 		// Whether the reply had files is now unknown. The text is already on
@@ -150,7 +150,7 @@ func (o *Outbound) lookupAttachments(ctx context.Context, messageID, workspaceID
 // sendAttachments delivers every file bound to one reply. Files are
 // independent: one that fails does not stop the rest.
 func (o *Outbound) sendAttachments(ctx context.Context, rows []db.Attachment, target replyTarget) {
-	api := newBotAPI(o.apiBase, target.botToken, o.client)
+	api := newBotAPI(o.apiBase, target.botTicket, o.client)
 	failed := 0
 	for _, row := range rows {
 		if err := o.sendAttachment(ctx, api, row, target); err != nil {

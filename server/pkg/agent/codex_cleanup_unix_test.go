@@ -35,7 +35,7 @@ import (
 func TestCodexInitializeParentDeadlineDoesNotPersistOpaqueEnv(t *testing.T) {
 	t.Parallel()
 
-	const secret = "opaque-init-parent-deadline-sentinel-8842"
+	const sealed = "opaque-init-parent-deadline-sentinel-8842"
 	readyFile := filepath.Join(t.TempDir(), "stderr-written")
 	fakePath := writeFakeCodexAppServer(t, ""+
 		`echo "$OPAQUE_AUTH_VALUE" >&2`+"\n"+
@@ -46,7 +46,7 @@ func TestCodexInitializeParentDeadlineDoesNotPersistOpaqueEnv(t *testing.T) {
 	var logs strings.Builder
 	backend, err := New("codex", Config{
 		ExecutablePath: fakePath,
-		Env:            map[string]string{"OPAQUE_AUTH_VALUE": secret},
+		Env:            map[string]string{"OPAQUE_AUTH_VALUE": sealed},
 		Logger:         slog.New(slog.NewJSONHandler(&logs, nil)),
 	})
 	if err != nil {
@@ -68,7 +68,7 @@ func TestCodexInitializeParentDeadlineDoesNotPersistOpaqueEnv(t *testing.T) {
 		t.Fatalf("fake app-server never wrote the secret to stderr, so the redaction check would pass vacuously: %v", err)
 	}
 	persisted := fmt.Sprintf("%+v\n%s", result, logs.String())
-	if strings.Contains(persisted, secret) {
+	if strings.Contains(persisted, sealed) {
 		t.Fatalf("opaque env persisted after the parent deadline: %s", persisted)
 	}
 	if result.Status != "failed" || result.codexInitializeRetrySafe {
@@ -79,7 +79,7 @@ func TestCodexInitializeParentDeadlineDoesNotPersistOpaqueEnv(t *testing.T) {
 func TestCodexInitializeParentCancellationDoesNotPersistOpaqueEnv(t *testing.T) {
 	t.Parallel()
 
-	const secret = "opaque-init-parent-context-sentinel-8841"
+	const sealed = "opaque-init-parent-context-sentinel-8841"
 	readyFile := filepath.Join(t.TempDir(), "stderr-written")
 	fakePath := writeFakeCodexAppServer(t, ""+
 		`read line`+"\n"+
@@ -90,7 +90,7 @@ func TestCodexInitializeParentCancellationDoesNotPersistOpaqueEnv(t *testing.T) 
 	var logs strings.Builder
 	backend, err := New("codex", Config{
 		ExecutablePath: fakePath,
-		Env:            map[string]string{"OPAQUE_AUTH_VALUE": secret},
+		Env:            map[string]string{"OPAQUE_AUTH_VALUE": sealed},
 		Logger:         slog.New(slog.NewJSONHandler(&logs, nil)),
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func TestCodexInitializeParentCancellationDoesNotPersistOpaqueEnv(t *testing.T) 
 		t.Fatalf("fake app-server never wrote the secret to stderr, so the redaction check would pass vacuously: %v", err)
 	}
 	persisted := fmt.Sprintf("%+v\n%s", result, logs.String())
-	if strings.Contains(persisted, secret) {
+	if strings.Contains(persisted, sealed) {
 		t.Fatalf("opaque env persisted after parent context ended: %s", persisted)
 	}
 	if result.Status != "failed" || result.codexInitializeRetrySafe {

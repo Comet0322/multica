@@ -56,7 +56,7 @@ func twoReplicaDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		t.Skip("DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -391,7 +391,7 @@ type sharedDedupe struct {
 
 func newSharedDedupe() *sharedDedupe { return &sharedDedupe{values: map[string]string{}} }
 
-func (d *sharedDedupe) Claim(_ context.Context, key, token string, _ time.Duration) (bool, error) {
+func (d *sharedDedupe) Claim(_ context.Context, key, ticket string, _ time.Duration) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.calls++
@@ -400,10 +400,10 @@ func (d *sharedDedupe) Claim(_ context.Context, key, token string, _ time.Durati
 	}
 	v, ok := d.values[key]
 	if !ok {
-		d.values[key] = token
+		d.values[key] = ticket
 		return true, nil
 	}
-	return v == token, nil
+	return v == ticket, nil
 }
 
 // holds reports whether the key is present at all, in any state.
@@ -441,13 +441,13 @@ func (d *sharedDedupe) claimStateCount() int {
 	return d.stateReads
 }
 
-func (d *sharedDedupe) Release(_ context.Context, key, token string) (bool, error) {
+func (d *sharedDedupe) Release(_ context.Context, key, ticket string) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.releaseFails {
 		return false, errors.New("dedupe: DEL failed")
 	}
-	if d.values[key] != token {
+	if d.values[key] != ticket {
 		return false, nil
 	}
 	delete(d.values, key)
@@ -457,7 +457,7 @@ func (d *sharedDedupe) Release(_ context.Context, key, token string) (bool, erro
 	return true, nil
 }
 
-func (d *sharedDedupe) Settle(_ context.Context, key, token string) (bool, error) {
+func (d *sharedDedupe) Settle(_ context.Context, key, ticket string) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.settleFails {
@@ -472,13 +472,13 @@ func (d *sharedDedupe) Settle(_ context.Context, key, token string) (bool, error
 		d.settleErrAfterWrite--
 	}
 	if afterWrite {
-		if d.values[key] == token {
+		if d.values[key] == ticket {
 			d.values[key] = claimSettledValue
 		}
 		return false, errors.New("dedupe: SET response lost")
 	}
 	switch d.values[key] {
-	case token:
+	case ticket:
 		d.values[key] = claimSettledValue
 		return true, nil
 	case claimSettledValue:

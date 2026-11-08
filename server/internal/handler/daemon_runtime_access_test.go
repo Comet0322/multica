@@ -298,18 +298,18 @@ func (h *Handler) finalizeClaimDeliveryForTestWithRuntime(
 		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount,
 			&claimBuildFailure{outcome: "error_token", status: http.StatusInternalServerError, message: "runtime owner required"}, nil
 	}
-	tokenStr, terr := auth.GenerateAgentTaskToken()
+	ticketStr, terr := auth.GenerateAgentTaskToken()
 	if terr != nil {
 		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, fmt.Errorf("generate token: %w", terr)
 	}
-	remoteMCPToken, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, runtime)
+	remoteMCPTicket, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, runtime)
 	if derr != nil {
 		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, fmt.Errorf("remote mcp token: %w", derr)
 	}
 	commentBackedTask := task.TriggerCommentID.Valid || len(task.CoalescedCommentIds) > 0
 	receipt, deliveryFailure, ferr := h.finalizeClaimDelivery(r.Context(), task, runtime, runtimeID, runtimeWorkspaceID, &resp, db.CreateTaskTokenParams{
 		ID:          dbid.NewV7(),
-		TokenHash:   auth.HashToken(tokenStr),
+		TicketHash:  auth.HashToken(ticketStr),
 		TaskID:      task.ID,
 		AgentID:     task.AgentID,
 		WorkspaceID: parseUUID(resp.WorkspaceID),
@@ -322,8 +322,8 @@ func (h *Handler) finalizeClaimDeliveryForTestWithRuntime(
 	if deliveryFailure != nil {
 		return AgentTaskResponse{}, deliveredCommentIDs, agentSkillCount, builtinSkillCount, deliveryFailure, nil
 	}
-	resp.AuthToken = tokenStr
-	resp.RemoteMCPDaemonToken = remoteMCPToken
+	resp.AuthTicket = ticketStr
+	resp.RemoteMCPDaemonTicket = remoteMCPTicket
 	resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
 	return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, nil
 }
@@ -376,8 +376,8 @@ func TestClaimTaskByRuntime_RuntimeOwnerChangedAfterClaimNeverDelivered(t *testi
 	if len(deliveredCommentIDs) != 0 {
 		t.Fatalf("delivered comment ids = %v, want none", deliveredCommentIDs)
 	}
-	if resp.AuthToken != "" || resp.RemoteMCPDaemonToken != "" {
-		t.Fatalf("resp carries credentials %+v/%+v, want none — nothing may be delivered", resp.AuthToken, resp.RemoteMCPDaemonToken)
+	if resp.AuthTicket != "" || resp.RemoteMCPDaemonTicket != "" {
+		t.Fatalf("resp carries credentials %+v/%+v, want none — nothing may be delivered", resp.AuthTicket, resp.RemoteMCPDaemonTicket)
 	}
 
 	// No task token was minted and the task settled terminal.
@@ -462,14 +462,14 @@ func TestFinalizeClaimDelivery_UsesCurrentRuntimeOwnerForTaskToken(t *testing.T)
 	if failure != nil {
 		t.Fatalf("delivery failure = %+v, want successful public delivery", failure)
 	}
-	if resp.AuthToken == "" {
+	if resp.AuthTicket == "" {
 		t.Fatal("successful delivery did not return a task token")
 	}
 
-	var tokenOwnerID string
-	dbfx.QueryRow(t, `SELECT user_id::text FROM task_token WHERE task_id = $1`, taskID).Scan(&tokenOwnerID)
-	if tokenOwnerID != newOwnerID {
-		t.Fatalf("task token user_id = %q, want current runtime owner %q", tokenOwnerID, newOwnerID)
+	var ticketOwnerID string
+	dbfx.QueryRow(t, `SELECT user_id::text FROM task_token WHERE task_id = $1`, taskID).Scan(&ticketOwnerID)
+	if ticketOwnerID != newOwnerID {
+		t.Fatalf("task token user_id = %q, want current runtime owner %q", ticketOwnerID, newOwnerID)
 	}
 	currentOwner, err := testHandler.Queries.GetUser(ctx, parseUUID(newOwnerID))
 	if err != nil {
@@ -520,8 +520,8 @@ func TestFinalizeClaimDelivery_CurrentRuntimeOwnerMissingNeverMintsToken(t *test
 	if failure == nil || !failure.settled {
 		t.Fatalf("delivery failure = %+v, want settled ownerless-runtime failure", failure)
 	}
-	if resp.AuthToken != "" || resp.RemoteMCPDaemonToken != "" {
-		t.Fatalf("ownerless delivery returned credentials %q/%q", resp.AuthToken, resp.RemoteMCPDaemonToken)
+	if resp.AuthTicket != "" || resp.RemoteMCPDaemonTicket != "" {
+		t.Fatalf("ownerless delivery returned credentials %q/%q", resp.AuthTicket, resp.RemoteMCPDaemonTicket)
 	}
 	var tokenCount int
 	dbfx.QueryRow(t, `SELECT count(*) FROM task_token WHERE task_id = $1`, taskID).Scan(&tokenCount)

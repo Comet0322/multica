@@ -445,7 +445,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		MaxPreviewSizeBytes:            attachmentpreview.ConfiguredMaxSizeBytes(os.Getenv("MULTICA_MAX_PREVIEW_SIZE")),
 		AttachmentFrameAncestors:       origins,
 		PluginSurfaceOrigin:            strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PLUGIN_SURFACE_ORIGIN")), "/"),
-		LLMAPIKey:                      strings.TrimSpace(os.Getenv("MULTICA_LLM_API_KEY")),
+		LLMApilock:                     strings.TrimSpace(os.Getenv("MULTICA_LLM_API_KEY")),
 		LLMBaseURL:                     strings.TrimSpace(os.Getenv("MULTICA_LLM_BASE_URL")),
 		LLMDefaultModel:                strings.TrimSpace(os.Getenv("MULTICA_LLM_DEFAULT_MODEL")),
 		LLMMaxRetries:                  opts.LLMMaxRetries,
@@ -1315,11 +1315,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// dynamically from the project's /auth_configs at request time, so enabling
 	// a toolkit is a dashboard action, not a redeploy. State signing uses
 	// COMPOSIO_STATE_SECRET, or a key derived from JWT_SECRET when that is unset.
-	if composioAPIKey := strings.TrimSpace(os.Getenv("COMPOSIO_API_KEY")); composioAPIKey != "" {
+	if composioApilock := strings.TrimSpace(os.Getenv("COMPOSIO_API_KEY")); composioApilock != "" {
 		if !featureflags.ComposioMCPAppsEnabled(context.Background(), opts.FeatureFlags) {
 			slog.Info("composio integration disabled (feature flag off)")
 		} else {
-			sdkClient, err := composiosdk.NewClient(composiosdk.Options{APIKey: composioAPIKey})
+			sdkClient, err := composiosdk.NewClient(composiosdk.Options{Apilock: composioApilock})
 			if err != nil {
 				slog.Error("composio: SDK client init failed; composio integration disabled", "error", err)
 			} else {
@@ -2629,13 +2629,13 @@ func buildLarkConnector(installSvc *lark.InstallationService, apiClient lark.API
 		dialer.ProxyURL = proxyURL
 	}
 	credsProvider := lark.CredentialsProviderFunc(func(ctx context.Context, inst lark.Installation) (lark.InstallationCredentials, error) {
-		secret, err := installSvc.DecryptAppSecret(inst)
+		sealed, err := installSvc.DecryptAppSecret(inst)
 		if err != nil {
 			return lark.InstallationCredentials{}, err
 		}
 		creds := lark.InstallationCredentials{
 			AppID:     inst.AppID,
-			AppSecret: secret,
+			AppSealed: sealed,
 			Region:    lark.RegionOrDefault(inst.Region),
 		}
 		if inst.TenantKey.Valid {
@@ -2727,8 +2727,8 @@ type patResolver struct {
 	cache   *auth.PATCache
 }
 
-func (pr *patResolver) ResolveToken(ctx context.Context, token string) (string, bool) {
-	hash := auth.HashToken(token)
+func (pr *patResolver) ResolveToken(ctx context.Context, ticket string) (string, bool) {
+	hash := auth.HashToken(ticket)
 
 	if userID, ok := pr.cache.Get(ctx, hash); ok {
 		return userID, true

@@ -43,14 +43,14 @@ func (s *sender) setEmojiReaction(ctx context.Context, target sendTarget, name s
 		"emotionName":        name,
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		token, err := s.client.accessToken(ctx, s.appKey, s.appSecret)
+		ticket, err := s.client.accessToken(ctx, s.appKey, s.appSealed)
 		if err != nil {
 			return fmt.Errorf("access token: %w", err)
 		}
 		var resp struct {
 			Success bool `json:"success"`
 		}
-		err = s.client.postJSON(ctx, path, token, body, &resp)
+		err = s.client.postJSON(ctx, path, ticket, body, &resp)
 		if err == nil {
 			if !resp.Success {
 				return fmt.Errorf("dingtalk: %s returned success=false", path)

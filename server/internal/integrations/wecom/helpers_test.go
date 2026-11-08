@@ -80,7 +80,7 @@ func TestValidateInstallationParams(t *testing.T) {
 		AgentID:         mustTestUUID(t),
 		InstallerUserID: mustTestUUID(t),
 		BotID:           "bot-1",
-		Secret:          "s3cr3t",
+		Sealed:          "s3cr3t",
 	}
 	if err := validateInstallationParams(valid); err != nil {
 		t.Fatalf("valid params rejected: %v", err)
@@ -91,7 +91,7 @@ func TestValidateInstallationParams(t *testing.T) {
 		"agent_id":     func(p *InstallationParams) { p.AgentID = pgtype.UUID{} },
 		"installer":    func(p *InstallationParams) { p.InstallerUserID = pgtype.UUID{} },
 		"bot_id":       func(p *InstallationParams) { p.BotID = "" },
-		"secret":       func(p *InstallationParams) { p.Secret = "" },
+		"secret":       func(p *InstallationParams) { p.Sealed = "" },
 	}
 	for name, clear := range clearers {
 		p := valid

@@ -61,7 +61,7 @@ const TypeDingTalk channel.Type = "dingtalk"
 type installConfig struct {
 	AppID              string `json:"app_id"`
 	RobotCode          string `json:"robot_code,omitempty"`
-	AppSecretEncrypted string `json:"app_secret_encrypted"`
+	AppSealedEncrypted string `json:"app_secret_encrypted"`
 }
 
 // robotCodeOrAppID returns the explicit robot_code, falling back to app_id for
@@ -81,7 +81,7 @@ func (c installConfig) robotCodeOrAppID() string {
 type credentials struct {
 	AppKey    string
 	RobotCode string
-	AppSecret string
+	AppSealed string
 }
 
 // Decrypter turns stored ciphertext into plaintext. The wiring injects a
@@ -100,14 +100,14 @@ func decodeCredentials(raw json.RawMessage, decrypt Decrypter) (credentials, err
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return credentials{}, fmt.Errorf("decode dingtalk installation config: %w", err)
 	}
-	appSecret, err := decryptToken(cfg.AppSecretEncrypted, decrypt)
+	appSealed, err := decryptToken(cfg.AppSealedEncrypted, decrypt)
 	if err != nil {
 		return credentials{}, fmt.Errorf("decrypt app secret: %w", err)
 	}
 	return credentials{
 		AppKey:    cfg.AppID,
 		RobotCode: cfg.robotCodeOrAppID(),
-		AppSecret: appSecret,
+		AppSealed: appSealed,
 	}, nil
 }
 

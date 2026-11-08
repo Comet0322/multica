@@ -112,8 +112,8 @@ func (h *Handler) userToResponse(u db.User) UserResponse {
 }
 
 type LoginResponse struct {
-	Token string       `json:"token"`
-	User  UserResponse `json:"user"`
+	Ticket string       `json:"token"`
+	User   UserResponse `json:"user"`
 }
 
 type SendCodeRequest struct {
@@ -456,7 +456,7 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.Signup(uuidToString(user.ID), user.Email, signupSourceFromRequest(r)))
 	}
 
-	tokenString, err := h.issueJWT(user)
+	ticketString, err := h.issueJWT(user)
 	if err != nil {
 		if errors.Is(err, auth.ErrTemporarilyDisabledUser) {
 			writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
@@ -468,7 +468,7 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set HttpOnly auth cookie (browser clients) + CSRF cookie.
-	if err := auth.SetAuthCookies(w, tokenString); err != nil {
+	if err := auth.SetAuthCookies(w, ticketString); err != nil {
 		slog.Warn("failed to set auth cookies", "error", err)
 	}
 
@@ -481,8 +481,8 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("user logged in", append(logger.RequestAttrs(r), "user_id", uuidToString(user.ID), "email", user.Email)...)
 	writeJSON(w, http.StatusOK, LoginResponse{
-		Token: tokenString,
-		User:  h.userToResponse(user),
+		Ticket: ticketString,
+		User:   h.userToResponse(user),
 	})
 }
 
@@ -522,9 +522,9 @@ type GoogleLoginRequest struct {
 }
 
 type googleTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	IDToken     string `json:"id_token"`
-	TokenType   string `json:"token_type"`
+	AccessTicket string `json:"access_token"`
+	IDTicket     string `json:"id_token"`
+	TicketType   string `json:"token_type"`
 }
 
 type googleUserInfo struct {
@@ -572,8 +572,8 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientID := os.Getenv("GOOGLE_CLIENT_ID")
-	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
-	if clientID == "" || clientSecret == "" {
+	clientSealed := os.Getenv("GOOGLE_CLIENT_SECRET")
+	if clientID == "" || clientSealed == "" {
 		writeFeatureDisabled(w, "google_login_not_configured", "Google login is not configured")
 		return
 	}
@@ -587,7 +587,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	tokenResp, err := h.googleHTTPClient().PostForm("https://oauth2.googleapis.com/token", url.Values{
 		"code":          {req.Code},
 		"client_id":     {clientID},
-		"client_secret": {clientSecret},
+		"client_secret": {clientSealed},
 		"redirect_uri":  {redirectURI},
 		"grant_type":    {"authorization_code"},
 	})
@@ -625,7 +625,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "failed to parse Google token response")
 		return
 	}
-	if strings.TrimSpace(gToken.AccessToken) == "" {
+	if strings.TrimSpace(gToken.AccessTicket) == "" {
 		slog.Error("google oauth token response has no access token")
 		writeError(w, http.StatusBadGateway, "invalid Google token response")
 		return
@@ -638,7 +638,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	userInfoReq.Header.Set("Authorization", "Bearer "+gToken.AccessToken)
+	userInfoReq.Header.Set("Authorization", "Bearer "+gToken.AccessTicket)
 
 	userInfoResp, err := h.googleHTTPClient().Do(userInfoReq)
 	if err != nil {
@@ -721,7 +721,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tokenString, err := h.issueJWT(user)
+	ticketString, err := h.issueJWT(user)
 	if err != nil {
 		if writeGoogleLoginActionableError(w, err) {
 			return
@@ -731,7 +731,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := auth.SetAuthCookies(w, tokenString); err != nil {
+	if err := auth.SetAuthCookies(w, ticketString); err != nil {
 		slog.Warn("failed to set auth cookies", "error", err)
 	}
 
@@ -743,8 +743,8 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("user logged in via google", append(logger.RequestAttrs(r), "user_id", uuidToString(user.ID), "email", user.Email)...)
 	writeJSON(w, http.StatusOK, LoginResponse{
-		Token: tokenString,
-		User:  h.userToResponse(user),
+		Ticket: ticketString,
+		User:   h.userToResponse(user),
 	})
 }
 
@@ -771,7 +771,7 @@ func (h *Handler) IssueCliToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString, err := h.issueJWT(user)
+	ticketString, err := h.issueJWT(user)
 	if err != nil {
 		if errors.Is(err, auth.ErrTemporarilyDisabledUser) {
 			writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
@@ -782,7 +782,7 @@ func (h *Handler) IssueCliToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"token": tokenString})
+	writeJSON(w, http.StatusOK, map[string]string{"token": ticketString})
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {

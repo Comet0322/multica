@@ -62,15 +62,15 @@ func makeTestTokenForUser(t *testing.T, userID, email string) string {
 
 type staticPATResolver map[string]string
 
-func (s staticPATResolver) ResolveToken(_ context.Context, token string) (string, bool) {
-	userID, ok := s[token]
+func (s staticPATResolver) ResolveToken(_ context.Context, ticket string) (string, bool) {
+	userID, ok := s[ticket]
 	return userID, ok
 }
 
 func TestAuthenticateTokenRejectsTemporarilyDisabledJWTUser(t *testing.T) {
-	token := makeTestTokenForUser(t, "514492f7-b30f-4147-bd33-c0e8ce5d6d4f", "")
+	ticket := makeTestTokenForUser(t, "514492f7-b30f-4147-bd33-c0e8ce5d6d4f", "")
 
-	uid, errMsg := authenticateToken(token, nil, context.Background())
+	uid, errMsg := authenticateToken(ticket, nil, context.Background())
 	if uid != "" {
 		t.Fatalf("expected no user ID, got %q", uid)
 	}
@@ -108,7 +108,7 @@ func newTestHub(t *testing.T) (*Hub, *httptest.Server) {
 
 func connectWS(t *testing.T, server *httptest.Server) *websocket.Conn {
 	t.Helper()
-	token := makeTestToken(t)
+	ticket := makeTestToken(t)
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?workspace_id=" + testWorkspaceID
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
@@ -116,7 +116,7 @@ func connectWS(t *testing.T, server *httptest.Server) *websocket.Conn {
 	}
 	authMsg, _ := json.Marshal(map[string]any{
 		"type":    "auth",
-		"payload": map[string]string{"token": token},
+		"payload": map[string]string{"token": ticket},
 	})
 	if err := conn.WriteMessage(websocket.TextMessage, authMsg); err != nil {
 		t.Fatalf("failed to send auth message: %v", err)
@@ -373,7 +373,7 @@ func TestHandleWebSocket_ClientIdentityFromQuery(t *testing.T) {
 	_, server := newTestHub(t)
 	defer server.Close()
 
-	token := makeTestToken(t)
+	ticket := makeTestToken(t)
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") +
 		"/ws?workspace_id=" + testWorkspaceID +
 		"&client_platform=desktop&client_version=1.2.3&client_os=macos"
@@ -385,7 +385,7 @@ func TestHandleWebSocket_ClientIdentityFromQuery(t *testing.T) {
 
 	authMsg, _ := json.Marshal(map[string]any{
 		"type":    "auth",
-		"payload": map[string]string{"token": token},
+		"payload": map[string]string{"token": ticket},
 	})
 	if err := conn.WriteMessage(websocket.TextMessage, authMsg); err != nil {
 		t.Fatalf("write auth: %v", err)

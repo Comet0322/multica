@@ -40,8 +40,8 @@ func TestCLIConfig_BackwardCompat_OldFileLoadsWithNilBackends(t *testing.T) {
 	if cfg.ServerURL != "https://api.multica.ai" {
 		t.Errorf("ServerURL: got %q, want historical value", cfg.ServerURL)
 	}
-	if cfg.Token != "mul_abcdef" {
-		t.Errorf("Token: got %q, want historical value", cfg.Token)
+	if cfg.Ticket != "mul_abcdef" {
+		t.Errorf("Token: got %q, want historical value", cfg.Ticket)
 	}
 	if cfg.Backends != nil {
 		t.Errorf("Backends should be nil for historical config, got %+v", cfg.Backends)
@@ -59,7 +59,7 @@ func TestCLIConfig_BackwardCompat_NilBackendsOmittedFromJSON(t *testing.T) {
 
 	cfg := CLIConfig{
 		ServerURL: "https://api.multica.ai",
-		Token:     "mul_xyz",
+		Ticket:    "mul_xyz",
 	}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func TestCLIConfig_OpenClawOverride_RoundTrip(t *testing.T) {
 
 	original := CLIConfig{
 		ServerURL: "https://api.multica.ai",
-		Token:     "mul_xyz",
+		Ticket:    "mul_xyz",
 		Backends: &BackendOverrides{
 			OpenClaw: &OpenClawOverride{
 				BinaryPath: "/opt/openclaw-prod/bin/openclaw",
@@ -132,7 +132,7 @@ func TestCLIConfig_OpenClawOverride_PartialFieldsOmitted(t *testing.T) {
 
 	cfg := CLIConfig{
 		ServerURL: "https://api.multica.ai",
-		Token:     "mul_xyz",
+		Ticket:    "mul_xyz",
 		Backends: &BackendOverrides{
 			OpenClaw: &OpenClawOverride{
 				StateDir: "/var/lib/openclaw-prod",
@@ -179,7 +179,7 @@ func TestCLIConfig_ProfileCommandOverrides_RoundTrip(t *testing.T) {
 		ServerURL:   "https://api.multica.ai",
 		AppURL:      "https://multica.ai",
 		WorkspaceID: "ws-123",
-		Token:       "mul_xyz",
+		Ticket:      "mul_xyz",
 		Backends: &BackendOverrides{
 			OpenClaw: &OpenClawOverride{StateDir: "/var/lib/openclaw-prod"},
 		},
@@ -218,8 +218,8 @@ func TestCLIConfig_ProfileCommandOverrides_RoundTrip(t *testing.T) {
 	if loaded.WorkspaceID != original.WorkspaceID {
 		t.Errorf("WorkspaceID = %q, want %q", loaded.WorkspaceID, original.WorkspaceID)
 	}
-	if loaded.Token != original.Token {
-		t.Errorf("Token = %q, want %q", loaded.Token, original.Token)
+	if loaded.Ticket != original.Ticket {
+		t.Errorf("Token = %q, want %q", loaded.Ticket, original.Ticket)
 	}
 	if loaded.Backends == nil || loaded.Backends.OpenClaw == nil ||
 		loaded.Backends.OpenClaw.StateDir != "/var/lib/openclaw-prod" {
@@ -234,7 +234,7 @@ func TestCLIConfig_ProfileCommandOverrides_OmittedWhenEmpty(t *testing.T) {
 	tmp := t.TempDir()
 	redirectTestHome(t, tmp)
 
-	cfg := CLIConfig{ServerURL: "https://api.multica.ai", Token: "mul_xyz"}
+	cfg := CLIConfig{ServerURL: "https://api.multica.ai", Ticket: "mul_xyz"}
 	if err := SaveCLIConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestCLIConfig_TaskRootOverridesOwnerHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCLIConfigForProfile: %v", err)
 	}
-	if loaded.ServerURL != "https://task.invalid" || loaded.Token != "" {
+	if loaded.ServerURL != "https://task.invalid" || loaded.Ticket != "" {
 		t.Fatalf("loaded task config = %#v, want task-only settings", loaded)
 	}
 	after, err := os.ReadFile(ownerPath)
@@ -445,7 +445,7 @@ func TestCLIConfig_OpenClawCLITimeout_RoundTrip(t *testing.T) {
 
 	original := CLIConfig{
 		ServerURL: "https://api.multica.ai",
-		Token:     "mul_xyz",
+		Ticket:    "mul_xyz",
 		Backends: &BackendOverrides{
 			OpenClaw: &OpenClawOverride{CLITimeout: "45s"},
 		},

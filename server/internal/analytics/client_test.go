@@ -24,8 +24,8 @@ func TestPostHogClient_Batching(t *testing.T) {
 		if err := json.Unmarshal(body, &payload); err != nil {
 			t.Errorf("decode payload: %v", err)
 		}
-		if payload.APIKey != "test-key" {
-			t.Errorf("api_key = %q, want test-key", payload.APIKey)
+		if payload.Apilock != "test-key" {
+			t.Errorf("api_key = %q, want test-key", payload.Apilock)
 		}
 		mu.Lock()
 		received = append(received, payload.Batch)
@@ -35,7 +35,7 @@ func TestPostHogClient_Batching(t *testing.T) {
 	defer srv.Close()
 
 	c := NewPostHogClient(PostHogConfig{
-		APIKey:     "test-key",
+		Apilock:    "test-key",
 		Host:       srv.URL,
 		BatchSize:  2,
 		FlushEvery: time.Hour, // irrelevant, we hit the size trigger
@@ -79,7 +79,7 @@ func TestPostHogClient_DropsWhenFull(t *testing.T) {
 	defer srv.Close()
 
 	c := NewPostHogClient(PostHogConfig{
-		APIKey:     "test-key",
+		Apilock:    "test-key",
 		Host:       srv.URL,
 		QueueSize:  2,
 		BatchSize:  1,

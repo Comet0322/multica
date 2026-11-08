@@ -89,7 +89,7 @@ func TestContextMediaCollisionPreservesBindingDB(t *testing.T) {
 					downloadErrByKey: map[string]error{"bad": errors.New("denied")}}
 				inst := engine.ResolvedInstallation{ID: installationID, WorkspaceID: workspaceID,
 					Platform: Installation{AppID: "cli_test", Region: "feishu"}}
-				resolver := NewFeishuMediaResolver(api, fakeCreds{secret: "plain"}, &fakeMediaStorage{}, engine.NewDBMediaIntentLedger(q), newDiscardLogger())
+				resolver := NewFeishuMediaResolver(api, fakeCreds{sealed: "plain"}, &fakeMediaStorage{}, engine.NewDBMediaIntentLedger(q), newDiscardLogger())
 				resolved := resolver.ResolveMedia(t.Context(), inst, engine.ResolvedIdentity{}, sessionID, appended.MessageID, channelMessageFromLark(out))
 				if len(resolved.MediaRefs) != 1 {
 					t.Fatalf("expected one deduplicated successful attachment: %+v", resolved.MediaRefs)

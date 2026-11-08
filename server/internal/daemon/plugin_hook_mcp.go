@@ -95,7 +95,7 @@ func startTaskPluginHookMCP(lifetimeCtx context.Context, taskID string, tools []
 	if err != nil {
 		return nil, nil, fmt.Errorf("listen for plugin hook MCP server: %w", err)
 	}
-	pathToken, err := randomBrokerToken()
+	pathTicket, err := randomBrokerToken()
 	if err != nil {
 		_ = listener.Close()
 		return nil, nil, err
@@ -103,7 +103,7 @@ func startTaskPluginHookMCP(lifetimeCtx context.Context, taskID string, tools []
 
 	handler := &pluginHookMCPServer{
 		taskID: taskID, tools: acceptedTools, byName: byName,
-		invoke: invoke, path: "/" + pathToken, logger: logger,
+		invoke: invoke, path: "/" + pathTicket, logger: logger,
 	}
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	set := &pluginHookMCPSet{server: server, listener: listener}

@@ -21,7 +21,7 @@ func validParams() InstallationParams {
 		AgentID:         id,
 		InstallerUserID: id,
 		BotID:           "bot-1",
-		Secret:          "s3cret",
+		Sealed:          "s3cret",
 	}
 }
 
@@ -31,7 +31,7 @@ func TestEveryMissingFieldIsTheCallersToFix(t *testing.T) {
 		"agent_id":          func(p *InstallationParams) { p.AgentID = pgtype.UUID{} },
 		"installer_user_id": func(p *InstallationParams) { p.InstallerUserID = pgtype.UUID{} },
 		"bot_id":            func(p *InstallationParams) { p.BotID = "" },
-		"secret":            func(p *InstallationParams) { p.Secret = "" },
+		"secret":            func(p *InstallationParams) { p.Sealed = "" },
 	}
 	for field, blank := range cases {
 		p := validParams()

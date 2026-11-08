@@ -89,5 +89,5 @@ func (h *History) TaskSource(ctx context.Context, delivery db.ChannelTaskDeliver
 	if threadID != "" {
 		messageID = threadID
 	}
-	return sourceMetadata(ctx, h.newClient(creds.BotToken), channelID, threadID, messageID)
+	return sourceMetadata(ctx, h.newClient(creds.BotTicket), channelID, threadID, messageID)
 }

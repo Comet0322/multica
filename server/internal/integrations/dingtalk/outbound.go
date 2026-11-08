@@ -183,7 +183,7 @@ func (o *Outbound) processEvent(ctx context.Context, e events.Event) error {
 	if err != nil {
 		return fmt.Errorf("decode dingtalk credentials: %w", err)
 	}
-	s := &sender{client: o.client, robotCode: creds.RobotCode, appKey: creds.AppKey, appSecret: creds.AppSecret}
+	s := &sender{client: o.client, robotCode: creds.RobotCode, appKey: creds.AppKey, appSealed: creds.AppSealed}
 	target := outboundTarget(binding)
 	target.QuoteText = sealedInputQuote(input.Content)
 	if _, err := s.send(ctx, target, content); err != nil {

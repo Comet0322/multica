@@ -136,18 +136,18 @@ type activeRepoCheckoutTask struct {
 // task's identity or workdir. It is not an OS-user isolation boundary: another
 // process that can steal the child's environment token can authenticate as
 // that task and already holds its API credential.
-func (d *Daemon) registerActiveRepoCheckoutTask(token string, task activeRepoCheckoutTask) {
+func (d *Daemon) registerActiveRepoCheckoutTask(ticket string, task activeRepoCheckoutTask) {
 	d.repoCheckoutTasksMu.Lock()
 	defer d.repoCheckoutTasksMu.Unlock()
 	if d.repoCheckoutTasks == nil {
 		d.repoCheckoutTasks = make(map[string]activeRepoCheckoutTask)
 	}
-	d.repoCheckoutTasks[token] = task
+	d.repoCheckoutTasks[ticket] = task
 }
 
-func (d *Daemon) clearActiveRepoCheckoutTask(token string) {
+func (d *Daemon) clearActiveRepoCheckoutTask(ticket string) {
 	d.repoCheckoutTasksMu.Lock()
-	delete(d.repoCheckoutTasks, token)
+	delete(d.repoCheckoutTasks, ticket)
 	d.repoCheckoutTasksMu.Unlock()
 }
 
@@ -176,17 +176,17 @@ const (
 const repoCheckoutMinCLIVersion = "v0.4.30"
 
 func (d *Daemon) activeRepoCheckoutTask(r *http.Request) (activeRepoCheckoutTask, repoCheckoutAuthResult) {
-	const bearer = "Bearer "
+	const carrier = "Bearer "
 	header := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(header, bearer) {
+	if !strings.HasPrefix(header, carrier) {
 		return activeRepoCheckoutTask{}, repoCheckoutAuthNoCredential
 	}
-	token := strings.TrimSpace(strings.TrimPrefix(header, bearer))
-	if token == "" {
+	ticket := strings.TrimSpace(strings.TrimPrefix(header, carrier))
+	if ticket == "" {
 		return activeRepoCheckoutTask{}, repoCheckoutAuthNoCredential
 	}
 	d.repoCheckoutTasksMu.RLock()
-	task, ok := d.repoCheckoutTasks[token]
+	task, ok := d.repoCheckoutTasks[ticket]
 	d.repoCheckoutTasksMu.RUnlock()
 	if !ok {
 		return activeRepoCheckoutTask{}, repoCheckoutAuthUnknownCredential

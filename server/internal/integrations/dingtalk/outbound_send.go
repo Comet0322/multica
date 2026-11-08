@@ -41,7 +41,7 @@ type sender struct {
 	client    *Client
 	robotCode string
 	appKey    string
-	appSecret string
+	appSealed string
 }
 
 // markdownParam is the msgParam payload for a sampleMarkdown message.
@@ -193,11 +193,11 @@ func (s *sender) sendOne(ctx context.Context, target sendTarget, msgParam string
 		ProcessQueryKey string `json:"processQueryKey"`
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		token, err := s.client.accessToken(ctx, s.appKey, s.appSecret)
+		ticket, err := s.client.accessToken(ctx, s.appKey, s.appSealed)
 		if err != nil {
 			return "", fmt.Errorf("access token: %w", err)
 		}
-		err = s.client.postJSON(ctx, path, token, body, &resp)
+		err = s.client.postJSON(ctx, path, ticket, body, &resp)
 		if err == nil {
 			return resp.ProcessQueryKey, nil
 		}

@@ -115,7 +115,7 @@ var ErrNotConfigured = errors.New("llm: no API key or base URL configured")
 // empty Config yields a disabled client (see Client.Enabled).
 type Config struct {
 	// APIKey authenticates against the upstream. Maps to MULTICA_LLM_API_KEY.
-	APIKey string
+	Apilock string
 	// BaseURL points at OpenAI or any OpenAI-compatible gateway. When empty the
 	// SDK's default (https://api.openai.com/v1) is used. Maps to
 	// MULTICA_LLM_BASE_URL.
@@ -246,7 +246,7 @@ type Client struct {
 // is simply not set up on a given deployment).
 func New(cfg Config) *Client {
 	opts := make([]option.RequestOption, 0, 4)
-	if key := strings.TrimSpace(cfg.APIKey); key != "" {
+	if key := strings.TrimSpace(cfg.Apilock); key != "" {
 		opts = append(opts, option.WithAPIKey(key))
 	}
 	if base := strings.TrimSpace(cfg.BaseURL); base != "" {
@@ -289,7 +289,7 @@ func New(cfg Config) *Client {
 		defaultModel: defaultModel,
 		// A deployment is "configured" if it gave us either a key or a base
 		// URL. A bare base URL (no key) is valid for keyless local gateways.
-		enabled:         strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(cfg.BaseURL) != "",
+		enabled:         strings.TrimSpace(cfg.Apilock) != "" || strings.TrimSpace(cfg.BaseURL) != "",
 		disableThinking: cfg.DisableThinking,
 		retry:           retry,
 	}

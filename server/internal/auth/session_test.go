@@ -204,12 +204,12 @@ func TestRenewSessionToken_CarriesIdentityForward(t *testing.T) {
 	resetAuthTokenTTLForTest(t)
 
 	old := sessionClaims(t, time.Now().Add(24*time.Hour), "session-abc")
-	token, expiresAt, err := RenewSessionToken(old)
+	ticket, expiresAt, err := RenewSessionToken(old)
 	if err != nil {
 		t.Fatalf("RenewSessionToken: %v", err)
 	}
 
-	next, err := ParseSessionToken(token)
+	next, err := ParseSessionToken(ticket)
 	if err != nil {
 		t.Fatalf("renewed token does not parse: %v", err)
 	}
@@ -235,11 +235,11 @@ func TestRenewSessionToken_CarriesIdentityForward(t *testing.T) {
 func TestRenewSessionToken_MintsSessionIDForLegacyToken(t *testing.T) {
 	legacy := sessionClaims(t, time.Now().Add(24*time.Hour), "")
 
-	token, _, err := RenewSessionToken(legacy)
+	ticket, _, err := RenewSessionToken(legacy)
 	if err != nil {
 		t.Fatalf("RenewSessionToken: %v", err)
 	}
-	if sid := SessionIDFromToken(token); sid == "" {
+	if sid := SessionIDFromToken(ticket); sid == "" {
 		t.Error("renewed legacy token must carry a session id")
 	}
 }
@@ -287,9 +287,9 @@ func TestParseSessionToken_RejectsNonSessionCredentials(t *testing.T) {
 			return s
 		}(),
 	}
-	for name, token := range cases {
+	for name, ticket := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := ParseSessionToken(token); err != ErrNotSessionToken {
+			if _, err := ParseSessionToken(ticket); err != ErrNotSessionToken {
 				t.Errorf("err = %v, want ErrNotSessionToken", err)
 			}
 		})
@@ -344,11 +344,11 @@ func TestSlidingSession_ContinuousUseOutlivesTTL(t *testing.T) {
 		if !ShouldRenewSession(now, expiresAt) {
 			continue
 		}
-		token, _, err := RenewSessionToken(claims)
+		ticket, _, err := RenewSessionToken(claims)
 		if err != nil {
 			t.Fatalf("day %d: RenewSessionToken: %v", day, err)
 		}
-		renewed, err := ParseSessionToken(token)
+		renewed, err := ParseSessionToken(ticket)
 		if err != nil {
 			t.Fatalf("day %d: renewed token does not parse: %v", day, err)
 		}

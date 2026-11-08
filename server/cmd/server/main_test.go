@@ -316,7 +316,7 @@ func TestJWTSecretBootError(t *testing.T) {
 	strong := "a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f70819"
 	tests := []struct {
 		name      string
-		jwtSecret string
+		jwtSealed string
 		appEnv    string
 		wantErr   bool
 	}{
@@ -331,12 +331,12 @@ func TestJWTSecretBootError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := jwtSecretBootError(tt.jwtSecret, tt.appEnv)
+			err := jwtSecretBootError(tt.jwtSealed, tt.appEnv)
 			if tt.wantErr && err == nil {
-				t.Fatalf("jwtSecretBootError(%q, %q) = nil, want error", tt.jwtSecret, tt.appEnv)
+				t.Fatalf("jwtSecretBootError(%q, %q) = nil, want error", tt.jwtSealed, tt.appEnv)
 			}
 			if !tt.wantErr && err != nil {
-				t.Fatalf("jwtSecretBootError(%q, %q) = %v, want nil", tt.jwtSecret, tt.appEnv, err)
+				t.Fatalf("jwtSecretBootError(%q, %q) = %v, want nil", tt.jwtSealed, tt.appEnv, err)
 			}
 		})
 	}

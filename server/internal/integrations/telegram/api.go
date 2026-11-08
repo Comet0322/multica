@@ -77,18 +77,18 @@ func retryAfter(err error) (time.Duration, bool) {
 // botAPI is one bot's API client.
 type botAPI struct {
 	base   string // API host, no trailing slash
-	token  string
+	ticket string
 	client *http.Client
 }
 
-func newBotAPI(base, token string, client *http.Client) *botAPI {
+func newBotAPI(base, ticket string, client *http.Client) *botAPI {
 	if base == "" {
 		base = defaultAPIBase
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 65 * time.Second}
 	}
-	return &botAPI{base: base, token: token, client: client}
+	return &botAPI{base: base, ticket: ticket, client: client}
 }
 
 // envelope is the Bot API response wrapper.
@@ -114,7 +114,7 @@ func (a *botAPI) call(ctx context.Context, method string, params any, out any) e
 		}
 		body = bytes.NewReader(buf)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.base+"/bot"+a.token+"/"+method, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.base+"/bot"+a.ticket+"/"+method, body)
 	if err != nil {
 		return fmt.Errorf("telegram: build %s request: %w", method, err)
 	}
@@ -234,7 +234,7 @@ func (a *botAPI) GetFile(ctx context.Context, fileID string) (File, error) {
 // DownloadFile fetches a file the getFile call located. The download host
 // puts the bot token in the URL, so failures are reported without it.
 func (a *botAPI) DownloadFile(ctx context.Context, filePath string, maxBytes int64) ([]byte, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.base+"/file/bot"+a.token+"/"+strings.TrimPrefix(filePath, "/"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.base+"/file/bot"+a.ticket+"/"+strings.TrimPrefix(filePath, "/"), nil)
 	if err != nil {
 		return nil, "", errors.New("telegram: build file download request failed")
 	}
@@ -297,7 +297,7 @@ func (a *botAPI) SendMedia(ctx context.Context, p sendMediaParams) (Message, err
 		return Message{}, fmt.Errorf("telegram: encode media upload: %w", err)
 	}
 	method := "send" + strings.ToUpper(p.Field[:1]) + p.Field[1:]
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.base+"/bot"+a.token+"/"+method, &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.base+"/bot"+a.ticket+"/"+method, &body)
 	if err != nil {
 		return Message{}, fmt.Errorf("telegram: build %s request: %w", method, err)
 	}

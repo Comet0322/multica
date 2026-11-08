@@ -434,7 +434,7 @@ func (f *fakeBotFiles) serve(w http.ResponseWriter, r *http.Request) {
 
 func mediaResolverFixture(t *testing.T, media ...inboundMedia) (engine.ResolvedInstallation, pgtype.UUID, channel.InboundMessage) {
 	t.Helper()
-	cfg, _ := json.Marshal(installConfig{AppID: "999", BotTokenEncrypted: base64.StdEncoding.EncodeToString([]byte("123:secret"))})
+	cfg, _ := json.Marshal(installConfig{AppID: "999", BotTicketEncrypted: base64.StdEncoding.EncodeToString([]byte("123:secret"))})
 	var ws, instID, chatMessageID pgtype.UUID
 	ws.Bytes[0], instID.Bytes[0], chatMessageID.Bytes[0] = 0xAB, 0xCD, 0xEF
 	ws.Valid, instID.Valid, chatMessageID.Valid = true, true, true
@@ -731,7 +731,7 @@ func newAttachmentOutbound(t *testing.T, bot *fakeBotUploads, q outboundQueries,
 	o.EnableFileDelivery(newFakeObjectStore(objects))
 	o.spawn = func(f func()) { f() }
 	o.wait = func(context.Context, time.Duration) error { return nil }
-	return o, replyTarget{chatID: 42, threadID: 8, botToken: "123:secret"}
+	return o, replyTarget{chatID: 42, threadID: 8, botTicket: "123:secret"}
 }
 
 // The lookup is a side-effect-free read: a failure is retried, and only one

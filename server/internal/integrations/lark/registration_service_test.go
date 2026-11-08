@@ -444,7 +444,7 @@ func TestFinishSuccess_DropsCachedTokenBeforeMintingWithRotatedCreds(t *testing.
 
 	svc.finishSuccess(context.Background(), sess, &PollResult{
 		ClientID:     "cli_rotated",
-		ClientSecret: "secret_new",
+		ClientSealed: "secret_new",
 	}, RegionFeishu)
 
 	api.mu.Lock()
@@ -453,8 +453,8 @@ func TestFinishSuccess_DropsCachedTokenBeforeMintingWithRotatedCreds(t *testing.
 	if len(api.calls) != len(want) || api.calls[0] != want[0] || api.calls[1] != want[1] {
 		t.Fatalf("call order = %v, want %v", api.calls, want)
 	}
-	if api.creds.AppSecret != "secret_new" {
-		t.Errorf("bot info credentials carried app_secret %q, want the rotated one", api.creds.AppSecret)
+	if api.creds.AppSealed != "secret_new" {
+		t.Errorf("bot info credentials carried app_secret %q, want the rotated one", api.creds.AppSealed)
 	}
 }
 

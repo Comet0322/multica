@@ -401,7 +401,7 @@ func (q *Queries) DeletePluginPackageVersionsByPackage(ctx context.Context, pack
 	return err
 }
 
-const deletePluginSecret = `-- name: DeletePluginSecret :execrows
+const deletePluginSealed = `-- name: DeletePluginSecret :execrows
 DELETE FROM plugin_secret WHERE installation_id = $1 AND key = $2
 `
 
@@ -411,19 +411,19 @@ type DeletePluginSecretParams struct {
 }
 
 func (q *Queries) DeletePluginSecret(ctx context.Context, arg DeletePluginSecretParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deletePluginSecret, arg.InstallationID, arg.Key)
+	result, err := q.db.Exec(ctx, deletePluginSealed, arg.InstallationID, arg.Key)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const deletePluginSecretsByInstallation = `-- name: DeletePluginSecretsByInstallation :exec
+const deletePluginSealedsByInstallation = `-- name: DeletePluginSecretsByInstallation :exec
 DELETE FROM plugin_secret WHERE installation_id = $1
 `
 
 func (q *Queries) DeletePluginSecretsByInstallation(ctx context.Context, installationID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deletePluginSecretsByInstallation, installationID)
+	_, err := q.db.Exec(ctx, deletePluginSealedsByInstallation, installationID)
 	return err
 }
 
@@ -549,13 +549,13 @@ func (q *Queries) GetPluginInstallation(ctx context.Context, id pgtype.UUID) (Pl
 	return i, err
 }
 
-const getPluginInstallationByTokenHash = `-- name: GetPluginInstallationByTokenHash :one
+const getPluginInstallationByTicketHash = `-- name: GetPluginInstallationByTokenHash :one
 SELECT id, workspace_id, plugin_key, version, manifest, granted_scopes, config, enabled, installed_by, created_at, updated_at, token_hash, token_rotated_at, mcp_approvals, package_version_id FROM plugin_installation WHERE token_hash = $1
 `
 
 // Looked up by hash, so the plaintext token exists only in the caller's request.
 func (q *Queries) GetPluginInstallationByTokenHash(ctx context.Context, tokenHash pgtype.Text) (PluginInstallation, error) {
-	row := q.db.QueryRow(ctx, getPluginInstallationByTokenHash, tokenHash)
+	row := q.db.QueryRow(ctx, getPluginInstallationByTicketHash, tokenHash)
 	var i PluginInstallation
 	err := row.Scan(
 		&i.ID,
@@ -602,7 +602,7 @@ func (q *Queries) GetPluginPackageFile(ctx context.Context, arg GetPluginPackage
 	return i, err
 }
 
-const getPluginSecret = `-- name: GetPluginSecret :one
+const getPluginSealed = `-- name: GetPluginSecret :one
 SELECT id, installation_id, key, ciphertext, created_at, updated_at FROM plugin_secret
 WHERE installation_id = $1 AND key = $2
 `
@@ -613,7 +613,7 @@ type GetPluginSecretParams struct {
 }
 
 func (q *Queries) GetPluginSecret(ctx context.Context, arg GetPluginSecretParams) (PluginSecret, error) {
-	row := q.db.QueryRow(ctx, getPluginSecret, arg.InstallationID, arg.Key)
+	row := q.db.QueryRow(ctx, getPluginSealed, arg.InstallationID, arg.Key)
 	var i PluginSecret
 	err := row.Scan(
 		&i.ID,
@@ -1032,7 +1032,7 @@ func (q *Queries) ListPluginPackageVersions(ctx context.Context, packageID pgtyp
 	return items, nil
 }
 
-const listPluginSecretKeys = `-- name: ListPluginSecretKeys :many
+const listPluginSealedKeys = `-- name: ListPluginSecretKeys :many
 SELECT key, updated_at FROM plugin_secret
 WHERE installation_id = $1
 ORDER BY key ASC
@@ -1046,7 +1046,7 @@ type ListPluginSecretKeysRow struct {
 // Deliberately never selects ciphertext: the presence of a secret is readable,
 // its value is not.
 func (q *Queries) ListPluginSecretKeys(ctx context.Context, installationID pgtype.UUID) ([]ListPluginSecretKeysRow, error) {
-	rows, err := q.db.Query(ctx, listPluginSecretKeys, installationID)
+	rows, err := q.db.Query(ctx, listPluginSealedKeys, installationID)
 	if err != nil {
 		return nil, err
 	}
@@ -1310,7 +1310,7 @@ func (q *Queries) SetPluginInstallationEnabled(ctx context.Context, arg SetPlugi
 	return i, err
 }
 
-const setPluginInstallationToken = `-- name: SetPluginInstallationToken :exec
+const setPluginInstallationTicket = `-- name: SetPluginInstallationToken :exec
 UPDATE plugin_installation
 SET token_hash = $2, token_rotated_at = now(), updated_at = now()
 WHERE id = $1
@@ -1322,7 +1322,7 @@ type SetPluginInstallationTokenParams struct {
 }
 
 func (q *Queries) SetPluginInstallationToken(ctx context.Context, arg SetPluginInstallationTokenParams) error {
-	_, err := q.db.Exec(ctx, setPluginInstallationToken, arg.ID, arg.TokenHash)
+	_, err := q.db.Exec(ctx, setPluginInstallationTicket, arg.ID, arg.TokenHash)
 	return err
 }
 
@@ -1551,7 +1551,7 @@ func (q *Queries) UpdatePluginPackageName(ctx context.Context, arg UpdatePluginP
 	return i, err
 }
 
-const upsertPluginSecret = `-- name: UpsertPluginSecret :exec
+const upsertPluginSealed = `-- name: UpsertPluginSecret :exec
 INSERT INTO plugin_secret (installation_id, key, ciphertext)
 VALUES ($1, $2, $3)
 ON CONFLICT (installation_id, key)
@@ -1565,7 +1565,7 @@ type UpsertPluginSecretParams struct {
 }
 
 func (q *Queries) UpsertPluginSecret(ctx context.Context, arg UpsertPluginSecretParams) error {
-	_, err := q.db.Exec(ctx, upsertPluginSecret, arg.InstallationID, arg.Key, arg.Ciphertext)
+	_, err := q.db.Exec(ctx, upsertPluginSealed, arg.InstallationID, arg.Key, arg.Ciphertext)
 	return err
 }
 

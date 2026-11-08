@@ -26,10 +26,10 @@ const (
 
 // Daemon auth path labels exposed via context for slow-log attribution.
 const (
-	DaemonAuthPathDaemonToken = "daemon_token"
-	DaemonAuthPathPAT         = "pat"
-	DaemonAuthPathCloudPAT    = "cloud_pat"
-	DaemonAuthPathJWT         = "jwt"
+	DaemonAuthPathDaemonTicket = "daemon_token"
+	DaemonAuthPathPAT          = "pat"
+	DaemonAuthPathCloudPAT     = "cloud_pat"
+	DaemonAuthPathJWT          = "jwt"
 )
 
 // DaemonWorkspaceIDFromContext returns the workspace ID set by DaemonAuth middleware.
@@ -84,17 +84,17 @@ func WithDaemonTokenOwnerID(ctx context.Context, ownerID string) context.Context
 // WithDaemonTokenHash attaches the authenticating mdt_ token hash. The WS
 // RPC bridge uses it to carry the connection's credential into the
 // synthetic request it hands to the HTTP handler.
-func WithDaemonTokenHash(ctx context.Context, tokenHash string) context.Context {
-	if tokenHash == "" {
+func WithDaemonTokenHash(ctx context.Context, ticketHash string) context.Context {
+	if ticketHash == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, ctxKeyDaemonTokenHash, tokenHash)
+	return context.WithValue(ctx, ctxKeyDaemonTokenHash, ticketHash)
 }
 
 func WithDaemonContext(ctx context.Context, workspaceID, daemonID string) context.Context {
 	ctx = context.WithValue(ctx, ctxKeyDaemonWorkspaceID, workspaceID)
 	ctx = context.WithValue(ctx, ctxKeyDaemonID, daemonID)
-	ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonToken)
+	ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonTicket)
 	return ctx
 }
 
@@ -143,21 +143,21 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 				return
 			}
 
-			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			if tokenString == authHeader {
+			ticketString := strings.TrimPrefix(authHeader, "Bearer ")
+			if ticketString == authHeader {
 				slog.Debug("daemon_auth: invalid format", "path", r.URL.Path)
 				writeError(w, http.StatusUnauthorized, "invalid authorization format")
 				return
 			}
 
 			// Daemon token: "mdt_" prefix.
-			if strings.HasPrefix(tokenString, "mdt_") {
-				hash := auth.HashToken(tokenString)
+			if strings.HasPrefix(ticketString, "mdt_") {
+				hash := auth.HashToken(ticketString)
 
 				if id, ok := daemonCache.Get(r.Context(), hash); ok {
 					ctx := context.WithValue(r.Context(), ctxKeyDaemonWorkspaceID, id.WorkspaceID)
 					ctx = context.WithValue(ctx, ctxKeyDaemonID, id.DaemonID)
-					ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonToken)
+					ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonTicket)
 					ctx = context.WithValue(ctx, ctxKeyDaemonTokenHash, hash)
 					ctx = WithDaemonTokenOwnerID(ctx, id.OwnerID)
 					next.ServeHTTP(w, r.WithContext(ctx))
@@ -208,7 +208,7 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 
 				ctx := context.WithValue(r.Context(), ctxKeyDaemonWorkspaceID, identity.WorkspaceID)
 				ctx = context.WithValue(ctx, ctxKeyDaemonID, identity.DaemonID)
-				ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonToken)
+				ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonTicket)
 				ctx = context.WithValue(ctx, ctxKeyDaemonTokenHash, hash)
 				ctx = WithDaemonTokenOwnerID(ctx, identity.OwnerID)
 				next.ServeHTTP(w, r.WithContext(ctx))
@@ -223,13 +223,13 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 			// no Fleet URL configured → 401, Fleet unreachable → 503.
 			// We additionally require the owner_id to map to a real
 			// local user — see the Auth comment for the rationale.
-			if strings.HasPrefix(tokenString, auth.CloudPATPrefix) {
+			if strings.HasPrefix(ticketString, auth.CloudPATPrefix) {
 				if cloudPAT == nil {
 					slog.Warn("daemon_auth: mcn_ token presented but cloud verifier not configured", "path", r.URL.Path)
 					writeError(w, http.StatusUnauthorized, "invalid token")
 					return
 				}
-				identity, err := cloudPAT.Verify(r.Context(), tokenString, ownerLookupFor(queries))
+				identity, err := cloudPAT.Verify(r.Context(), ticketString, ownerLookupFor(queries))
 				if err != nil {
 					if errors.Is(err, auth.ErrCloudPATInvalid) {
 						slog.Warn("daemon_auth: cloud rejected mcn_ token", "path", r.URL.Path, "error", err)
@@ -260,8 +260,8 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 			}
 
 			// Fallback: PAT tokens ("mul_" prefix).
-			if strings.HasPrefix(tokenString, "mul_") {
-				hash := auth.HashToken(tokenString)
+			if strings.HasPrefix(ticketString, "mul_") {
+				hash := auth.HashToken(ticketString)
 
 				if userID, ok := patCache.Get(r.Context(), hash); ok {
 					if rejectTemporarilyDisabledUser(w, r, userID, "", DaemonAuthPathPAT) {
@@ -306,7 +306,7 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 			}
 
 			// Fallback: JWT tokens.
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+			token, err := jwt.Parse(ticketString, func(token *jwt.Token) (any, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, jwt.ErrSignatureInvalid
 				}

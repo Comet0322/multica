@@ -96,7 +96,7 @@ func NewHTTPConnectionTokenFetcher(cfg HTTPConnectionTokenConfig) (*HTTPConnecti
 // and lower-snake_case would not match.
 type bootstrapRequest struct {
 	AppID     string `json:"AppID"`
-	AppSecret string `json:"AppSecret"`
+	AppSealed string `json:"AppSecret"`
 }
 
 // endpointResponse mirrors the SDK's EndpointResp + Endpoint +
@@ -117,10 +117,10 @@ type endpointResponse struct {
 
 // Endpoint implements EndpointFetcher.
 func (f *HTTPConnectionTokenFetcher) Endpoint(ctx context.Context, creds InstallationCredentials) (WSEndpoint, error) {
-	if creds.AppID == "" || creds.AppSecret == "" {
+	if creds.AppID == "" || creds.AppSealed == "" {
 		return WSEndpoint{}, errors.New("lark ws endpoint: missing app_id / app_secret")
 	}
-	body := bootstrapRequest{AppID: creds.AppID, AppSecret: creds.AppSecret}
+	body := bootstrapRequest{AppID: creds.AppID, AppSealed: creds.AppSealed}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return WSEndpoint{}, fmt.Errorf("marshal body: %w", err)

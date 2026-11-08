@@ -106,9 +106,9 @@ func TestStreamProtocolObservationDoesNotLogContent(t *testing.T) {
 	t.Parallel()
 
 	const (
-		assistantSecret = "FIRST-TURN PRIVATE NARRATION"
-		resultSecret    = "FINAL PRIVATE RESULT"
-		baseURLSecret   = "https://provider.example/private"
+		assistantSealed = "FIRST-TURN PRIVATE NARRATION"
+		resultSealed    = "FINAL PRIVATE RESULT"
+		baseURLSealed   = "https://provider.example/private"
 	)
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
@@ -122,8 +122,8 @@ func TestStreamProtocolObservationDoesNotLogContent(t *testing.T) {
 		assistantEventCount:        2,
 		toolUseCount:               1,
 		sawResult:                  true,
-		resultBytes:                len(resultSecret),
-		lastAssistantBytes:         len(assistantSecret),
+		resultBytes:                len(resultSealed),
+		lastAssistantBytes:         len(assistantSealed),
 		lastEventType:              "result",
 		anthropicBaseURLConfigured: true,
 	})
@@ -144,7 +144,7 @@ func TestStreamProtocolObservationDoesNotLogContent(t *testing.T) {
 			t.Errorf("observation log %q does not contain %q", got, required)
 		}
 	}
-	for _, forbidden := range []string{assistantSecret, resultSecret, baseURLSecret} {
+	for _, forbidden := range []string{assistantSealed, resultSealed, baseURLSealed} {
 		if strings.Contains(got, forbidden) {
 			t.Errorf("observation log leaked %q: %q", forbidden, got)
 		}

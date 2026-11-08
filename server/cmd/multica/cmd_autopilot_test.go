@@ -115,10 +115,10 @@ func TestRunAutopilotListTableShowsLastRunStatus(t *testing.T) {
 
 func TestRunAutopilotGetRedactsWebhookCredentialsByDefault(t *testing.T) {
 	const (
-		autopilotID  = "11111111-1111-1111-1111-111111111111"
-		webhookToken = "awt_super-secret-7890"
-		webhookPath  = "/api/webhooks/autopilots/" + webhookToken
-		webhookURL   = "https://hooks.example.com" + webhookPath
+		autopilotID   = "11111111-1111-1111-1111-111111111111"
+		webhookTicket = "awt_super-secret-7890"
+		webhookPath   = "/api/webhooks/autopilots/" + webhookTicket
+		webhookURL    = "https://hooks.example.com" + webhookPath
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +132,7 @@ func TestRunAutopilotGetRedactsWebhookCredentialsByDefault(t *testing.T) {
 				{
 					"id":                  "trigger-1",
 					"kind":                "webhook",
-					"webhook_token":       webhookToken,
+					"webhook_token":       webhookTicket,
 					"webhook_path":        webhookPath,
 					"webhook_url":         webhookURL,
 					"has_signing_secret":  true,
@@ -153,9 +153,9 @@ func TestRunAutopilotGetRedactsWebhookCredentialsByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runAutopilotGet: %v", err)
 	}
-	for _, secret := range []string{webhookToken, webhookPath, webhookURL} {
-		if strings.Contains(out, secret) {
-			t.Fatalf("default output leaked webhook credential %q:\n%s", secret, out)
+	for _, sealed := range []string{webhookTicket, webhookPath, webhookURL} {
+		if strings.Contains(out, sealed) {
+			t.Fatalf("default output leaked webhook credential %q:\n%s", sealed, out)
 		}
 	}
 
@@ -189,10 +189,10 @@ func TestRunAutopilotGetRedactsWebhookCredentialsByDefault(t *testing.T) {
 
 func TestRunAutopilotGetShowSecretsIsExplicitAndWarns(t *testing.T) {
 	const (
-		autopilotID  = "11111111-1111-1111-1111-111111111111"
-		webhookToken = "awt_super-secret-7890"
-		webhookPath  = "/api/webhooks/autopilots/" + webhookToken
-		webhookURL   = "https://hooks.example.com" + webhookPath
+		autopilotID   = "11111111-1111-1111-1111-111111111111"
+		webhookTicket = "awt_super-secret-7890"
+		webhookPath   = "/api/webhooks/autopilots/" + webhookTicket
+		webhookURL    = "https://hooks.example.com" + webhookPath
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +206,7 @@ func TestRunAutopilotGetShowSecretsIsExplicitAndWarns(t *testing.T) {
 				{
 					"id":            "trigger-1",
 					"kind":          "webhook",
-					"webhook_token": webhookToken,
+					"webhook_token": webhookTicket,
 					"webhook_path":  webhookPath,
 					"webhook_url":   webhookURL,
 				},
@@ -229,9 +229,9 @@ func TestRunAutopilotGetShowSecretsIsExplicitAndWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runAutopilotGet: %v", err)
 	}
-	for _, secret := range []string{webhookToken, webhookPath, webhookURL} {
-		if !strings.Contains(out, secret) {
-			t.Errorf("--show-secrets output missing %q:\n%s", secret, out)
+	for _, sealed := range []string{webhookTicket, webhookPath, webhookURL} {
+		if !strings.Contains(out, sealed) {
+			t.Errorf("--show-secrets output missing %q:\n%s", sealed, out)
 		}
 	}
 	if !strings.Contains(strings.ToLower(errOut), "warning") ||
@@ -239,15 +239,15 @@ func TestRunAutopilotGetShowSecretsIsExplicitAndWarns(t *testing.T) {
 		!strings.Contains(strings.ToLower(errOut), "logs") {
 		t.Fatalf("stderr = %q, want credential exposure warning", errOut)
 	}
-	if strings.Contains(errOut, webhookToken) {
+	if strings.Contains(errOut, webhookTicket) {
 		t.Fatalf("warning itself leaked webhook token: %q", errOut)
 	}
 }
 
 func TestRunAutopilotGetTableOutputDoesNotExposeWebhookCredentials(t *testing.T) {
 	const (
-		autopilotID  = "11111111-1111-1111-1111-111111111111"
-		webhookToken = "awt_super-secret-7890"
+		autopilotID   = "11111111-1111-1111-1111-111111111111"
+		webhookTicket = "awt_super-secret-7890"
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -266,9 +266,9 @@ func TestRunAutopilotGetTableOutputDoesNotExposeWebhookCredentials(t *testing.T)
 				{
 					"id":            "trigger-1",
 					"kind":          "webhook",
-					"webhook_token": webhookToken,
-					"webhook_path":  "/api/webhooks/autopilots/" + webhookToken,
-					"webhook_url":   "https://hooks.example.com/api/webhooks/autopilots/" + webhookToken,
+					"webhook_token": webhookTicket,
+					"webhook_path":  "/api/webhooks/autopilots/" + webhookTicket,
+					"webhook_url":   "https://hooks.example.com/api/webhooks/autopilots/" + webhookTicket,
 				},
 			},
 		})
@@ -287,7 +287,7 @@ func TestRunAutopilotGetTableOutputDoesNotExposeWebhookCredentials(t *testing.T)
 	if err != nil {
 		t.Fatalf("runAutopilotGet: %v", err)
 	}
-	if strings.Contains(out, webhookToken) {
+	if strings.Contains(out, webhookTicket) {
 		t.Fatalf("table output leaked webhook token:\n%s", out)
 	}
 	if !strings.Contains(out, "Deploy") || !strings.Contains(out, "run_only") {
@@ -296,12 +296,12 @@ func TestRunAutopilotGetTableOutputDoesNotExposeWebhookCredentials(t *testing.T)
 }
 
 func TestRedactAutopilotWebhookCredentialsDoesNotDependOnTriggerKind(t *testing.T) {
-	const webhookToken = "awt_schema-drift-secret-1234"
+	const webhookTicket = "awt_schema-drift-secret-1234"
 	trigger := map[string]any{
 		"id":            "trigger-1",
-		"webhook_token": webhookToken,
-		"webhook_path":  "/api/webhooks/autopilots/" + webhookToken,
-		"webhook_url":   "https://hooks.example.com/api/webhooks/autopilots/" + webhookToken,
+		"webhook_token": webhookTicket,
+		"webhook_path":  "/api/webhooks/autopilots/" + webhookTicket,
+		"webhook_url":   "https://hooks.example.com/api/webhooks/autopilots/" + webhookTicket,
 	}
 	resp := map[string]any{"triggers": []any{trigger}}
 
@@ -338,9 +338,9 @@ func TestRedactAutopilotWebhookCredentialsReportsServerRedactedToken(t *testing.
 }
 
 func TestWebhookTokenHintDoesNotExposeShortToken(t *testing.T) {
-	const shortToken = "abc"
-	if hint := webhookTokenHint(shortToken); hint != "" {
-		t.Fatalf("webhookTokenHint(%q) = %q, want empty hint", shortToken, hint)
+	const shortTicket = "abc"
+	if hint := webhookTokenHint(shortTicket); hint != "" {
+		t.Fatalf("webhookTokenHint(%q) = %q, want empty hint", shortTicket, hint)
 	}
 }
 
@@ -875,8 +875,8 @@ func TestRunAutopilotTriggerListSurfacesIDs(t *testing.T) {
 // so trigger-list must redact it the same way `get` does.
 func TestRunAutopilotTriggerListRedactsWebhookCredentials(t *testing.T) {
 	const (
-		autopilotID  = "11111111-1111-1111-1111-111111111111"
-		webhookToken = "awt_super-secret-7890"
+		autopilotID   = "11111111-1111-1111-1111-111111111111"
+		webhookTicket = "awt_super-secret-7890"
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -891,9 +891,9 @@ func TestRunAutopilotTriggerListRedactsWebhookCredentials(t *testing.T) {
 					"id":            "22222222-2222-2222-2222-222222222222",
 					"kind":          "webhook",
 					"enabled":       true,
-					"webhook_token": webhookToken,
-					"webhook_path":  "/api/webhooks/autopilots/" + webhookToken,
-					"webhook_url":   "https://hooks.example.com/api/webhooks/autopilots/" + webhookToken,
+					"webhook_token": webhookTicket,
+					"webhook_path":  "/api/webhooks/autopilots/" + webhookTicket,
+					"webhook_url":   "https://hooks.example.com/api/webhooks/autopilots/" + webhookTicket,
 				},
 			},
 		})
@@ -912,7 +912,7 @@ func TestRunAutopilotTriggerListRedactsWebhookCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runAutopilotTriggerList: %v", err)
 	}
-	if strings.Contains(out, webhookToken) {
+	if strings.Contains(out, webhookTicket) {
 		t.Fatalf("trigger-list leaked webhook credential:\n%s", out)
 	}
 }

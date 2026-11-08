@@ -60,7 +60,7 @@ func TestPostDOCXResolution(t *testing.T) {
 				sender.downloadErr = errors.New("unavailable")
 			}
 			storage := &fakeMediaStorage{}
-			resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, &fakeMediaLedger{}, newDiscardLogger())
+			resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, &fakeMediaLedger{}, newDiscardLogger())
 			lm := InboundMessage{MessageID: "om_docx", MessageType: "post", Content: postDOCX, Body: flattenPostContent(postDOCX)}
 			got := resolver.ResolveMedia(context.Background(), testMediaInstallation(t), engine.ResolvedIdentity{},
 				uuidFromString(t, "22222222-2222-2222-2222-222222222222"), uuidFromString(t, "33333333-3333-4333-8333-333333333333"), channelMessageFromLark(lm))

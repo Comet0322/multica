@@ -15,7 +15,7 @@ func TestTypingSettledBeforeAddRegistrationDB(t *testing.T) {
 	f.Exec(t, "UPDATE chat_message SET task_id=NULL WHERE id=$1", f.messageID)
 	f.Exec(t, "DELETE FROM agent_task_queue WHERE id=$1", f.taskID)
 	api := &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: make(map[string][]MessageReaction)}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	notifier := &feishuTypingNotifier{mgr: mgr}
 	next := f.Insert(t, "chat_message", dbfx.Cols{"chat_session_id": f.sessionID, "role": "user", "content": "next", "channel_ingested": true})
 	cancelled, cancel := context.WithCancel(context.Background())

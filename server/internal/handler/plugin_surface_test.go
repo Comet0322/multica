@@ -34,14 +34,14 @@ func validSurfaceClaims() pluginSurfaceLaunchClaims {
 func TestPluginSurfaceTokenIsOpaqueAuthenticatedAndExpiring(t *testing.T) {
 	h := pluginSurfaceTokenHandler(t)
 	claims := validSurfaceClaims()
-	token, err := h.mintPluginSurfaceToken(claims)
+	ticket, err := h.mintPluginSurfaceToken(claims)
 	if err != nil {
 		t.Fatalf("mintPluginSurfaceToken: %v", err)
 	}
-	if strings.Contains(token, claims.Challenge) || strings.Contains(token, claims.InstallationID) {
-		t.Fatalf("launch token exposed plaintext claims: %q", token)
+	if strings.Contains(ticket, claims.Challenge) || strings.Contains(ticket, claims.InstallationID) {
+		t.Fatalf("launch token exposed plaintext claims: %q", ticket)
 	}
-	opened, err := h.openPluginSurfaceToken(token)
+	opened, err := h.openPluginSurfaceToken(ticket)
 	if err != nil {
 		t.Fatalf("openPluginSurfaceToken: %v", err)
 	}
@@ -50,10 +50,10 @@ func TestPluginSurfaceTokenIsOpaqueAuthenticatedAndExpiring(t *testing.T) {
 	}
 
 	replacement := byte('A')
-	if token[10] == replacement {
+	if ticket[10] == replacement {
 		replacement = 'B'
 	}
-	tampered := token[:10] + string(replacement) + token[11:]
+	tampered := ticket[:10] + string(replacement) + ticket[11:]
 	if _, err := h.openPluginSurfaceToken(tampered); err == nil {
 		t.Fatal("tampered launch token was accepted")
 	}
@@ -167,12 +167,12 @@ func TestServePluginSurfaceRejectsConfiguredAppOriginBeforeOpeningToken(t *testi
 	h := pluginSurfaceTokenHandler(t)
 	h.cfg.AppURL = "https://app.example.test"
 	h.cfg.PluginSurfaceOrigin = "https://app.example.test"
-	token, err := h.mintPluginSurfaceToken(validSurfaceClaims())
+	ticket, err := h.mintPluginSurfaceToken(validSurfaceClaims())
 	if err != nil {
 		t.Fatalf("mintPluginSurfaceToken: %v", err)
 	}
 
-	request := pluginHandlerRequest(http.MethodGet, "/plugin-surfaces/"+token, nil, map[string]string{"token": token})
+	request := pluginHandlerRequest(http.MethodGet, "/plugin-surfaces/"+ticket, nil, map[string]string{"token": ticket})
 	request.Host = "app.example.test"
 	recorder := httptest.NewRecorder()
 	h.ServePluginSurface(recorder, request)

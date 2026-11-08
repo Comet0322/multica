@@ -71,8 +71,8 @@ func qaRunTrueCheckThenTerminal(t *testing.T, actualTrigger bool, removal string
 		api.remote[platformMessage] = []MessageReaction{{ReactionID: "human-typing", OperatorType: "user", EmojiType: typingEmoji}}
 	}
 	barrier := &qaCoalescedCheckBarrier{TypingIndicatorQueries: f.store, checked: make(chan bool, 1), release: make(chan struct{})}
-	managerA := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, barrier, newDiscardLogger())
-	managerB := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, f.store, newDiscardLogger())
+	managerA := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, barrier, newDiscardLogger())
+	managerB := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, f.store, newDiscardLogger())
 	p.SetTypingIndicatorManager(managerB)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -118,16 +118,16 @@ func (f *fakeTypingQueries) GetLarkInstallation(context.Context, pgtype.UUID) (I
 	return f.installation, f.installErr
 }
 
-type fakeTypingCreds struct{ secret string }
+type fakeTypingCreds struct{ sealed string }
 
 func (f fakeTypingCreds) DecryptAppSecret(inst Installation) (string, error) {
-	return f.secret, nil
+	return f.sealed, nil
 }
 
 func TestTypingIndicatorAddRecordsState(t *testing.T) {
 	api := &fakeTypingAPIClient{addReturn: "reaction-123"}
 	queries := &fakeTypingQueries{}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true}
@@ -152,7 +152,7 @@ func TestTypingIndicatorAddRecordsState(t *testing.T) {
 
 func TestTypingIndicatorAddSkipsOnEmptyMessageID(t *testing.T) {
 	api := &fakeTypingAPIClient{addReturn: "reaction-123"}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
@@ -166,7 +166,7 @@ func TestTypingIndicatorAddSkipsOnEmptyMessageID(t *testing.T) {
 
 func TestTypingIndicatorAddSkipsOldMessages(t *testing.T) {
 	api := &fakeTypingAPIClient{addReturn: "reaction-123"}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
@@ -181,7 +181,7 @@ func TestTypingIndicatorAddSkipsOldMessages(t *testing.T) {
 
 func TestTypingIndicatorAddLogsOnAPIError(t *testing.T) {
 	api := &fakeTypingAPIClient{addErr: errors.New("lark down")}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
@@ -213,7 +213,7 @@ func TestTypingIndicatorReconcileDeletesReactions(t *testing.T) {
 			Region: "feishu",
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4}, Valid: true}
@@ -253,7 +253,7 @@ func TestTypingIndicatorReconcileNoOpWhenEmpty(t *testing.T) {
 			Region: "feishu",
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	session := pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4}, Valid: true}
 	mgr.Reconcile(context.Background(), session)
@@ -275,7 +275,7 @@ func TestTypingIndicatorReconcileLogsOnDeleteError(t *testing.T) {
 			Region: "feishu",
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4}, Valid: true}
@@ -300,7 +300,7 @@ func TestTypingIndicatorMultipleMessagesPerSession(t *testing.T) {
 			Region: "feishu",
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4}, Valid: true}
@@ -331,7 +331,7 @@ func TestTypingIndicatorConcurrentAddAndClear(t *testing.T) {
 			Region: "feishu",
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{AppID: "cli_test", Region: "feishu"}
 	session := pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4}, Valid: true}
@@ -360,7 +360,7 @@ func TestTypingIndicatorConcurrentAddAndClear(t *testing.T) {
 func TestTypingIndicatorReconcilesAfterTheInstallationIsDeleted(t *testing.T) {
 	api := &fakeTypingAPIClient{addReturn: "reaction-123"}
 	queries := &fakeTypingQueries{}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{
 		ID:     pgtype.UUID{Bytes: [16]byte{9}, Valid: true},
@@ -392,7 +392,7 @@ func TestTypingIndicatorReconcilesAfterTheInstallationIsDeleted(t *testing.T) {
 func TestTypingIndicatorDoesNotFallBackOnATransientLookupFailure(t *testing.T) {
 	api := &fakeTypingAPIClient{addReturn: "reaction-123"}
 	queries := &fakeTypingQueries{}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 
 	inst := Installation{
 		ID:     pgtype.UUID{Bytes: [16]byte{9}, Valid: true},
@@ -426,7 +426,7 @@ func TestTypingIndicatorSweepDeletesOnlyTheBotTypingReactions(t *testing.T) {
 			{ReactionID: "r-bot-smile", OperatorType: "app", OperatorID: "cli_test", EmojiType: "SMILE"},
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	mgr.SweepMessage(context.Background(), InstallationCredentials{AppID: "cli_test"}, "om_trigger")
 
@@ -459,7 +459,7 @@ func TestTypingIndicatorSweepClearsWithoutAnyRecordedState(t *testing.T) {
 			{ReactionID: "r-from-another-process", OperatorType: "app", OperatorID: "cli_test", EmojiType: typingEmoji},
 		},
 	}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	// No Add ever ran in this process: the map is empty by construction.
 	mgr.SweepMessage(context.Background(), InstallationCredentials{AppID: "cli_test"}, "om_left_behind")
@@ -474,7 +474,7 @@ func TestTypingIndicatorSweepClearsWithoutAnyRecordedState(t *testing.T) {
 func TestTypingIndicatorSweepSkipsWhenClientCannotList(t *testing.T) {
 	inner := &fakeTypingAPIClient{}
 	api := &noListerClient{APIClient: inner}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	mgr.SweepMessage(context.Background(), InstallationCredentials{AppID: "cli_test"}, "om_trigger")
 
@@ -487,7 +487,7 @@ func TestTypingIndicatorSweepSkipsWhenClientCannotList(t *testing.T) {
 // A failed list must not turn into deletes of a stale picture of the message.
 func TestTypingIndicatorSweepDoesNotDeleteWhenTheListFails(t *testing.T) {
 	api := &fakeTypingAPIClient{listErr: errors.New("lark 5xx")}
-	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
+	mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, &fakeTypingQueries{}, newDiscardLogger())
 
 	mgr.SweepMessage(context.Background(), InstallationCredentials{AppID: "cli_test"}, "om_trigger")
 
@@ -504,7 +504,7 @@ func TestTypingAddRetractsUnverifiedInputWithIndependentContext(t *testing.T) {
 		}
 		return false, errors.New("database unavailable")
 	}}
-	manager := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, queries, newDiscardLogger())
+	manager := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, queries, newDiscardLogger())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Model a successful response delivered after the caller cancelled.
 	session := uuidFromString(t, "ee777777-ee77-ee77-ee77-eeeeeeeeeeee")

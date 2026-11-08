@@ -40,7 +40,7 @@ type sourceContextPreviewResponse struct {
 	SourceIssue     service.SourceContextIssueSnapshot     `json:"source_issue"`
 	CommentThread   []service.SourceContextCommentSnapshot `json:"comment_thread"`
 	AnchorCommentID string                                 `json:"anchor_comment_id"`
-	CaptureToken    string                                 `json:"capture_token"`
+	CaptureTicket   string                                 `json:"capture_token"`
 	Limits          service.SourceContextLimitUsage        `json:"limits"`
 }
 
@@ -423,15 +423,15 @@ func (h *Handler) PreviewCommentSubIssue(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, sourceContextPreviewResponse{
 		SourceIssue: build.Snapshot.SourceIssue, CommentThread: build.Snapshot.CommentThread,
-		AnchorCommentID: build.Snapshot.AnchorCommentID, CaptureToken: build.Token, Limits: build.Limits,
+		AnchorCommentID: build.Snapshot.AnchorCommentID, CaptureTicket: build.Ticket, Limits: build.Limits,
 	})
 }
 
 type createCommentSubIssueRequest struct {
-	Mode         string                   `json:"mode"`
-	CaptureToken string                   `json:"capture_token"`
-	Issue        *CreateIssueRequest      `json:"issue,omitempty"`
-	QuickCreate  *QuickCreateIssueRequest `json:"quick_create,omitempty"`
+	Mode          string                   `json:"mode"`
+	CaptureTicket string                   `json:"capture_token"`
+	Issue         *CreateIssueRequest      `json:"issue,omitempty"`
+	QuickCreate   *QuickCreateIssueRequest `json:"quick_create,omitempty"`
 }
 
 func (h *Handler) CreateCommentSubIssue(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +460,7 @@ func (h *Handler) CreateCommentSubIssue(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	wantDigest, tokenIssueID, validToken := service.ParseSourceContextToken(strings.TrimSpace(req.CaptureToken))
+	wantDigest, tokenIssueID, validToken := service.ParseSourceContextToken(strings.TrimSpace(req.CaptureTicket))
 	if !validToken {
 		writeJSON(w, http.StatusConflict, map[string]any{"code": "source_context_changed", "error": "source context preview is invalid; refresh and try again"})
 		return

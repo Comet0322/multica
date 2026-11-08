@@ -61,7 +61,7 @@ type History struct {
 	q         historyQueries
 	decrypt   Decrypter
 	logger    *slog.Logger
-	newClient func(botToken string) historyClient
+	newClient func(botTicket string) historyClient
 }
 
 // NewHistory builds the reader over the generated queries and the bot-token
@@ -71,10 +71,10 @@ func NewHistory(q historyQueries, decrypt Decrypter, logger *slog.Logger) *Histo
 		logger = slog.Default()
 	}
 	h := &History{q: q, decrypt: decrypt, logger: logger}
-	h.newClient = func(botToken string) historyClient {
+	h.newClient = func(botTicket string) historyClient {
 		// Only the bot token is needed to read; the app-level token is for the
 		// inbound Socket Mode connection (slack_channel.go).
-		return slack.New(botToken)
+		return slack.New(botTicket)
 	}
 	return h
 }
@@ -124,7 +124,7 @@ func (h *History) resolve(ctx context.Context, chatSessionID pgtype.UUID) (slack
 	}
 	channelID, threadRoot := historyTarget(binding)
 	return slackTarget{
-		client:          h.newClient(creds.BotToken),
+		client:          h.newClient(creds.BotTicket),
 		installationID:  binding.InstallationID,
 		bindingID:       binding.ID,
 		channelID:       channelID,

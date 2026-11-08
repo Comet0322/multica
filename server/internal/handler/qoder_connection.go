@@ -27,9 +27,9 @@ type qoderSettings struct {
 	Name              string            `json:"name"`
 	BaseURL           string            `json:"base_url"`
 	EnvironmentID     string            `json:"environment_id"`
-	QoderToken        string            `json:"qoder_token,omitempty"`
-	GitHubTokens      map[string]string `json:"github_tokens,omitempty"`
-	MulticaToken      string            `json:"multica_token,omitempty"`
+	QoderTicket       string            `json:"qoder_token,omitempty"`
+	GitHubTickets     map[string]string `json:"github_tokens,omitempty"`
+	MulticaTicket     string            `json:"multica_token,omitempty"`
 	MaxConcurrency    int               `json:"max_concurrency,omitempty"`
 	RunTimeoutMinutes int               `json:"run_timeout_minutes,omitempty"`
 }
@@ -112,14 +112,14 @@ func (h *Handler) GetQoderConnection(w http.ResponseWriter, r *http.Request) {
 	view.Name = cfg.Name
 	view.BaseURL = cfg.BaseURL
 	view.EnvironmentID = cfg.EnvironmentID
-	view.HasToken = cfg.QoderToken != ""
+	view.HasToken = cfg.QoderTicket != ""
 	view.Enabled = enabled
 	view.Status = status
 	view.LastError = lastError
 	view.MaxConcurrency = cfg.MaxConcurrency
 	view.RunTimeoutMinutes = cfg.RunTimeoutMinutes
 	_ = h.DB.QueryRow(r.Context(), `SELECT count(*) FILTER (WHERE t.status IN ('dispatched','running')), count(*) FILTER (WHERE t.status='queued') FROM agent_task_queue t JOIN agent_runtime rt ON rt.id=t.runtime_id WHERE rt.workspace_id=$1 AND rt.provider='qoder_cloud' AND t.status IN ('queued','dispatched','running')`, ws).Scan(&view.ActiveRuns, &view.QueuedRuns)
-	for repo := range cfg.GitHubTokens {
+	for repo := range cfg.GitHubTickets {
 		view.Repositories = append(view.Repositories, repo)
 	}
 	sort.Strings(view.Repositories)
@@ -136,8 +136,8 @@ func (h *Handler) qoderInput(w http.ResponseWriter, r *http.Request, ws string) 
 		Name              string            `json:"name"`
 		BaseURL           string            `json:"base_url"`
 		EnvironmentID     string            `json:"environment_id"`
-		QoderToken        string            `json:"qoder_token"`
-		GitHubTokens      map[string]string `json:"github_tokens"`
+		QoderTicket       string            `json:"qoder_token"`
+		GitHubTickets     map[string]string `json:"github_tokens"`
 		MaxConcurrency    int               `json:"max_concurrency"`
 		RunTimeoutMinutes int               `json:"run_timeout_minutes"`
 	}
@@ -179,16 +179,16 @@ func (h *Handler) qoderInput(w http.ResponseWriter, r *http.Request, ws string) 
 		writeError(w, 400, fmt.Sprintf("run timeout must be between 5 and %d minutes", maxQoderRunTimeout))
 		return cfg, false
 	}
-	if req.QoderToken != "" {
-		cfg.QoderToken = strings.TrimSpace(req.QoderToken)
+	if req.QoderTicket != "" {
+		cfg.QoderTicket = strings.TrimSpace(req.QoderTicket)
 	}
-	if cfg.QoderToken == "" || strings.ContainsAny(cfg.QoderToken, "\r\n\t ") {
+	if cfg.QoderTicket == "" || strings.ContainsAny(cfg.QoderTicket, "\r\n\t ") {
 		writeError(w, 400, "Qoder PAT is required")
 		return cfg, false
 	}
-	if req.GitHubTokens != nil {
+	if req.GitHubTickets != nil {
 		next := map[string]string{}
-		for raw, token := range req.GitHubTokens {
+		for raw, ticket := range req.GitHubTickets {
 			key, err := qoderruntime.RepositoryKey(raw)
 			if err != nil {
 				writeError(w, 400, "invalid GitHub repository URL")
@@ -198,16 +198,16 @@ func (h *Handler) qoderInput(w http.ResponseWriter, r *http.Request, ws string) 
 				writeError(w, 400, "duplicate repository binding")
 				return cfg, false
 			}
-			if token == "" {
-				token = cfg.GitHubTokens[key]
+			if ticket == "" {
+				ticket = cfg.GitHubTickets[key]
 			}
-			if strings.TrimSpace(token) == "" || strings.ContainsAny(strings.TrimSpace(token), "\r\n\t ") {
+			if strings.TrimSpace(ticket) == "" || strings.ContainsAny(strings.TrimSpace(ticket), "\r\n\t ") {
 				writeError(w, 400, "GitHub token is required for each repository")
 				return cfg, false
 			}
-			next[key] = strings.TrimSpace(token)
+			next[key] = strings.TrimSpace(ticket)
 		}
-		cfg.GitHubTokens = next
+		cfg.GitHubTickets = next
 	}
 	return cfg, true
 }
@@ -228,7 +228,7 @@ func (h *Handler) CheckQoderConnection(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "invalid Qoder Cloud Agents resource")
 			return
 		}
-		req.Header.Set("Authorization", "Bearer "+cfg.QoderToken)
+		req.Header.Set("Authorization", "Bearer "+cfg.QoderTicket)
 		res, err := client.Do(req)
 		if err != nil {
 			writeError(w, 502, "Qoder Cloud Agents connection failed")
@@ -333,18 +333,18 @@ func (h *Handler) saveQoderConnection(w http.ResponseWriter, r *http.Request, re
 		writeError(w, 409, "wait for active Qoder Cloud Agents tasks to finish before changing configuration")
 		return
 	}
-	rawToken, err := auth.GenerateDaemonToken()
+	rawTicket, err := auth.GenerateDaemonToken()
 	if err != nil {
 		writeError(w, 500, "cannot generate service credential")
 		return
 	}
 	q := h.Queries.WithTx(tx)
-	pat, err := q.CreateDaemonToken(r.Context(), db.CreateDaemonTokenParams{WorkspaceID: ws, DaemonID: "qoder-managed-" + uuidToString(ws), TokenHash: auth.HashToken(rawToken), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}})
+	pat, err := q.CreateDaemonToken(r.Context(), db.CreateDaemonTokenParams{WorkspaceID: ws, DaemonID: "qoder-managed-" + uuidToString(ws), TicketHash: auth.HashToken(rawTicket), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}})
 	if err != nil {
 		writeError(w, 500, "cannot create service credential")
 		return
 	}
-	cfg.MulticaToken = rawToken
+	cfg.MulticaTicket = rawTicket
 	raw, _ := json.Marshal(cfg)
 	encrypted, err := h.sealVCSSecret(string(raw))
 	if err != nil {
@@ -485,7 +485,7 @@ func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, se
 			if err != nil {
 				continue
 			}
-			bridge, err := qoderruntime.New(qoderruntime.Config{DaemonID: "qoder-managed-" + ws, MulticaURL: serverURL, MulticaToken: cfg.MulticaToken, WorkspaceID: ws, QoderURL: cfg.BaseURL, QoderToken: cfg.QoderToken, EnvironmentID: cfg.EnvironmentID, Name: cfg.Name, MaxConcurrency: cfg.MaxConcurrency, RunTimeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute, GitHubTokens: cfg.GitHubTokens,
+			bridge, err := qoderruntime.New(qoderruntime.Config{DaemonID: "qoder-managed-" + ws, MulticaURL: serverURL, MulticaTicket: cfg.MulticaTicket, WorkspaceID: ws, QoderURL: cfg.BaseURL, QoderTicket: cfg.QoderTicket, EnvironmentID: cfg.EnvironmentID, Name: cfg.Name, MaxConcurrency: cfg.MaxConcurrency, RunTimeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute, GitHubTickets: cfg.GitHubTickets,
 				LoadState: func(loadCtx context.Context) ([]byte, error) {
 					var encrypted string
 					if err := h.DB.QueryRow(loadCtx, `SELECT journal_encrypted FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, ws).Scan(&encrypted); err != nil {
@@ -594,16 +594,16 @@ func (h *Handler) qoderCredentialAllowed(r *http.Request, ws, daemonID string) (
 	// Prefer the hash DaemonAuth recorded for the authenticating token: a WS
 	// RPC replays the request in-process without an Authorization header
 	// (MUL-8154). Fall back to the header for callers outside DaemonAuth.
-	tokenHash := middleware.DaemonTokenHashFromContext(r.Context())
-	if tokenHash == "" {
+	ticketHash := middleware.DaemonTokenHashFromContext(r.Context())
+	if ticketHash == "" {
 		raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if raw == "" {
 			return false, nil
 		}
-		tokenHash = auth.HashToken(raw)
+		ticketHash = auth.HashToken(raw)
 	}
 	var allowed bool
-	err := h.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM cloud_agent_connection c JOIN daemon_token d ON d.id=c.token_id JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.provider='qoder_cloud' AND c.workspace_id=$1 AND c.enabled AND d.daemon_id=$2 AND d.token_hash=$3 AND d.expires_at>now() AND m.role IN ('owner','admin'))`, ws, daemonID, tokenHash).Scan(&allowed)
+	err := h.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM cloud_agent_connection c JOIN daemon_token d ON d.id=c.token_id JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.provider='qoder_cloud' AND c.workspace_id=$1 AND c.enabled AND d.daemon_id=$2 AND d.token_hash=$3 AND d.expires_at>now() AND m.role IN ('owner','admin'))`, ws, daemonID, ticketHash).Scan(&allowed)
 	return allowed, err
 }
 

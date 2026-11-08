@@ -490,14 +490,14 @@ func (d *memberDirectory) load(ctx context.Context, client *cli.APIClient) ([]ma
 // the id parses); anything else is matched the way `--assignee` matches
 // members, so names, emails, UUIDs and short ids all work.
 func resolveActorPropertyRef(ctx context.Context, client *cli.APIClient, directory *memberDirectory, raw string) (string, error) {
-	token := strings.TrimSpace(raw)
-	if token == "" {
+	ticket := strings.TrimSpace(raw)
+	if ticket == "" {
 		return "", fmt.Errorf("actor value cannot be empty")
 	}
-	if kind, id, found := strings.Cut(token, ":"); found && kind == "member" {
+	if kind, id, found := strings.Cut(ticket, ":"); found && kind == "member" {
 		parsed, err := uuid.Parse(strings.TrimSpace(id))
 		if err != nil {
-			return "", fmt.Errorf("actor id in %q must be a UUID", token)
+			return "", fmt.Errorf("actor id in %q must be a UUID", ticket)
 		}
 		// Return the canonical lowercase-hyphenated spelling. Stored actor
 		// values are normalized on write, and the issue list filter matches
@@ -509,7 +509,7 @@ func resolveActorPropertyRef(ctx context.Context, client *cli.APIClient, directo
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve assignee: %w", err)
 	}
-	actorType, actorID, err := matchAssignee(token, memberOnlyKinds, memberCandidates(members))
+	actorType, actorID, err := matchAssignee(ticket, memberOnlyKinds, memberCandidates(members))
 	if err != nil {
 		return "", err
 	}

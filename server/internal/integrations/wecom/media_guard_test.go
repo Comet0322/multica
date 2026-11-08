@@ -398,7 +398,7 @@ func TestTheMediaClientIgnoresProxyEnvironment(t *testing.T) {
 // a timeout used to put a live link in the application log, and from there
 // into whatever ships those logs onward.
 func TestATransportFailureNeverCarriesTheSignedURL(t *testing.T) {
-	const secret = "sig=AKIDSUPERSECRETSIGNATURE&t=1"
+	const sealed = "sig=AKIDSUPERSECRETSIGNATURE&t=1"
 
 	// A server that accepts the connection and drops it mid-response, so the
 	// failure is a genuine transport error rather than a status code.
@@ -417,14 +417,14 @@ func TestATransportFailureNeverCarriesTheSignedURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	target := srv.URL + "/object?" + secret
+	target := srv.URL + "/object?" + sealed
 
 	t.Run("buffered", func(t *testing.T) {
 		_, err := downloadMedia(context.Background(), testMediaClient(), target)
 		if err == nil {
 			t.Fatal("download succeeded, want a transport failure")
 		}
-		assertNoSignedURL(t, err, secret, srv.URL)
+		assertNoSignedURL(t, err, sealed, srv.URL)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -432,7 +432,7 @@ func TestATransportFailureNeverCarriesTheSignedURL(t *testing.T) {
 		if err == nil {
 			t.Fatal("open succeeded, want a transport failure")
 		}
-		assertNoSignedURL(t, err, secret, srv.URL)
+		assertNoSignedURL(t, err, sealed, srv.URL)
 	})
 }
 
@@ -447,10 +447,10 @@ func TestAnUnparseableURLIsNotEchoedBack(t *testing.T) {
 	}
 }
 
-func assertNoSignedURL(t *testing.T, err error, secret, host string) {
+func assertNoSignedURL(t *testing.T, err error, sealed, host string) {
 	t.Helper()
 	msg := err.Error()
-	if strings.Contains(msg, secret) {
+	if strings.Contains(msg, sealed) {
 		t.Fatalf("the error carries the signature: %v", err)
 	}
 	if strings.Contains(msg, host) {

@@ -78,15 +78,15 @@ func (s *RedisLeaseStore) Ready(ctx context.Context) error {
 		}
 	}
 	readyKey := redisLeaseKeyPrefix + s.namespace + ":__ready__:" + newNodeID()
-	const readyToken = "readiness-check"
+	const readyTicket = "readiness-check"
 	for _, item := range []struct {
 		name   string
 		script *redis.Script
 		args   []any
 	}{
-		{name: "try_acquire", script: redisTryAcquireLease, args: []any{readyToken, int64(5000)}},
-		{name: "renew", script: redisRenewLease, args: []any{readyToken, int64(5000)}},
-		{name: "release", script: redisReleaseLease, args: []any{readyToken}},
+		{name: "try_acquire", script: redisTryAcquireLease, args: []any{readyTicket, int64(5000)}},
+		{name: "renew", script: redisRenewLease, args: []any{readyTicket, int64(5000)}},
+		{name: "release", script: redisReleaseLease, args: []any{readyTicket}},
 	} {
 		result, err := item.script.Run(ctx, s.client, []string{readyKey}, item.args...).Int64()
 		if err != nil {
@@ -137,7 +137,7 @@ func (s *RedisLeaseStore) RenewWSLease(ctx context.Context, arg AcquireLeasePara
 }
 
 func (s *RedisLeaseStore) ReleaseWSLease(ctx context.Context, arg ReleaseLeaseParams) error {
-	_, err := redisReleaseLease.Run(ctx, s.client, []string{s.key(arg.ID)}, arg.Token).Int64()
+	_, err := redisReleaseLease.Run(ctx, s.client, []string{s.key(arg.ID)}, arg.Ticket).Int64()
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func (s *RedisLeaseStore) runLeaseScript(ctx context.Context, script *redis.Scri
 	if ttlMillis <= 0 {
 		return errors.New("channel lease TTL must be at least 1ms")
 	}
-	result, err := script.Run(ctx, s.client, []string{s.key(arg.ID)}, arg.Token, ttlMillis).Int64()
+	result, err := script.Run(ctx, s.client, []string{s.key(arg.ID)}, arg.Ticket, ttlMillis).Int64()
 	if err != nil {
 		return err
 	}

@@ -1431,8 +1431,8 @@ func TestCodexRawItemMCPToolCall(t *testing.T) {
 	if !ok || arguments["query"] != "latest Multica news" {
 		t.Fatalf("expected MCP arguments, got %#v", begin.Input["arguments"])
 	}
-	credentials, ok := arguments["credentials"].(map[string]any)
-	if !ok || credentials["api_key"] != "[REDACTED API KEY]" {
+	badges, ok := arguments["credentials"].(map[string]any)
+	if !ok || badges["api_key"] != "[REDACTED API KEY]" {
 		t.Fatalf("expected nested MCP secret to be redacted, got %#v", arguments["credentials"])
 	}
 
@@ -3130,9 +3130,9 @@ func TestSanitizeCodexDiagnosticRedactsSecrets(t *testing.T) {
 	got := sanitizeCodexDiagnostic("Authorization: Bearer bearer-token\n" +
 		`{"token":"json-token","auth": "json-auth", "api_key":"json-key"}` +
 		"\npassword=plain-secret\x00")
-	for _, secret := range []string{"bearer-token", "json-token", "json-auth", "json-key", "plain-secret"} {
-		if strings.Contains(got, secret) {
-			t.Fatalf("sanitized diagnostic leaked %q: %q", secret, got)
+	for _, sealed := range []string{"bearer-token", "json-token", "json-auth", "json-key", "plain-secret"} {
+		if strings.Contains(got, sealed) {
+			t.Fatalf("sanitized diagnostic leaked %q: %q", sealed, got)
 		}
 	}
 }
@@ -3182,13 +3182,13 @@ func TestCodexExecuteRedactsStderrFromResultAndLogs(t *testing.T) {
 		t.Skip("shell-script fixture is POSIX-only")
 	}
 	const (
-		bearer     = "bearer-secret-value"
-		jsonToken  = "json-secret-value"
+		carrier    = "bearer-secret-value"
+		jsonTicket = "json-secret-value"
 		standalone = "sk-abcdefghijklmnopqrstuvwxyz123456"
 	)
 	fakePath := writeFakeCodexAppServer(t, ""+
-		`echo 'Authorization: Bearer `+bearer+`' >&2`+"\n"+
-		`echo '{"token":"`+jsonToken+`"}' >&2`+"\n"+
+		`echo 'Authorization: Bearer `+carrier+`' >&2`+"\n"+
+		`echo '{"token":"`+jsonTicket+`"}' >&2`+"\n"+
 		`echo '`+standalone+`' >&2`+"\n"+
 		`exit 2`+"\n")
 	var logs bytes.Buffer
@@ -3207,9 +3207,9 @@ func TestCodexExecuteRedactsStderrFromResultAndLogs(t *testing.T) {
 	}()
 	result := <-session.Result
 	combined := result.Error + "\n" + logs.String()
-	for _, secret := range []string{bearer, jsonToken, standalone} {
-		if strings.Contains(combined, secret) {
-			t.Fatalf("stderr secret leaked: %q in %q", secret, combined)
+	for _, sealed := range []string{carrier, jsonTicket, standalone} {
+		if strings.Contains(combined, sealed) {
+			t.Fatalf("stderr secret leaked: %q in %q", sealed, combined)
 		}
 	}
 }

@@ -33,8 +33,8 @@ import (
 //	                        Action API without being given standing access.
 
 const (
-	installTokenPrefix   = "mpi_"
-	callbackTokenPrefix  = "mpc_"
+	installTicketPrefix  = "mpi_"
+	callbackTicketPrefix = "mpc_"
 	callbackTokenTTL     = 5 * time.Minute
 	callbackTokenEntropy = 32
 )
@@ -49,22 +49,22 @@ func (s *PluginService) IssueInstallToken(ctx context.Context, installationID pg
 	if _, err := rand.Read(raw); err != nil {
 		return "", &PluginError{Kind: PluginErrorUnavailable, Message: "generate install token", Err: err}
 	}
-	token := installTokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	ticket := installTicketPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	if err := s.Queries.SetPluginInstallationToken(ctx, db.SetPluginInstallationTokenParams{
 		ID:        installationID,
-		TokenHash: pgtype.Text{String: hashToken(token), Valid: true},
+		TokenHash: pgtype.Text{String: hashToken(ticket), Valid: true},
 	}); err != nil {
 		return "", &PluginError{Kind: PluginErrorUnavailable, Message: "store install token", Err: err}
 	}
-	return token, nil
+	return ticket, nil
 }
 
 // InstallCredentials is returned exactly once when an admin rotates a Plugin's
 // standing credential. SigningSecret is empty when hook signing is disabled;
 // the install token remains usable for the Public API in that deployment.
 type InstallCredentials struct {
-	Token         string
-	SigningSecret string
+	Ticket        string
+	SigningSealed string
 }
 
 // RotateInstallCredentials prepares every response value before replacing the
@@ -72,19 +72,19 @@ type InstallCredentials struct {
 // from invalidating the previous token after the response has already become
 // impossible to complete.
 func (s *PluginService) RotateInstallCredentials(ctx context.Context, installationID pgtype.UUID) (InstallCredentials, error) {
-	var signingSecret string
+	var signingSealed string
 	if len(s.DeploymentKey) > 0 {
-		secret, err := s.HookSigningSecret(installationID)
+		sealed, err := s.HookSigningSecret(installationID)
 		if err != nil {
 			return InstallCredentials{}, err
 		}
-		signingSecret = secret
+		signingSealed = sealed
 	}
-	token, err := s.IssueInstallToken(ctx, installationID)
+	ticket, err := s.IssueInstallToken(ctx, installationID)
 	if err != nil {
 		return InstallCredentials{}, err
 	}
-	return InstallCredentials{Token: token, SigningSecret: signingSecret}, nil
+	return InstallCredentials{Ticket: ticket, SigningSealed: signingSealed}, nil
 }
 
 // RevokeInstallToken drops the stored hash, so nothing presented afterwards
@@ -100,12 +100,12 @@ func (s *PluginService) RevokeInstallToken(ctx context.Context, installationID p
 }
 
 // AuthenticateInstallToken resolves a presented token to its installation.
-func (s *PluginService) AuthenticateInstallToken(ctx context.Context, token string) (db.PluginInstallation, error) {
-	token = strings.TrimSpace(token)
-	if !strings.HasPrefix(token, installTokenPrefix) {
+func (s *PluginService) AuthenticateInstallToken(ctx context.Context, ticket string) (db.PluginInstallation, error) {
+	ticket = strings.TrimSpace(ticket)
+	if !strings.HasPrefix(ticket, installTicketPrefix) {
 		return db.PluginInstallation{}, pluginErrf(PluginErrorForbidden, "invalid plugin token")
 	}
-	installation, err := s.Queries.GetPluginInstallationByTokenHash(ctx, pgtype.Text{String: hashToken(token), Valid: true})
+	installation, err := s.Queries.GetPluginInstallationByTokenHash(ctx, pgtype.Text{String: hashToken(ticket), Valid: true})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return db.PluginInstallation{}, pluginErrf(PluginErrorForbidden, "invalid plugin token")
 	}
@@ -118,8 +118,8 @@ func (s *PluginService) AuthenticateInstallToken(ctx context.Context, token stri
 	return installation, nil
 }
 
-func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
+func hashToken(ticket string) string {
+	sum := sha256.Sum256([]byte(ticket))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -178,7 +178,7 @@ func (c *CallbackTokens) Issue(ctx context.Context, invocation HookInvocation) (
 	if _, err := rand.Read(raw); err != nil {
 		return "", &PluginError{Kind: PluginErrorUnavailable, Message: "generate callback token", Err: err}
 	}
-	token := callbackTokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	ticket := callbackTicketPrefix + base64.RawURLEncoding.EncodeToString(raw)
 
 	grant := CallbackGrant{
 		InstallationID: invocation.Installation.ID,
@@ -193,19 +193,19 @@ func (c *CallbackTokens) Issue(ctx context.Context, invocation HookInvocation) (
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sweepLocked()
-	c.issued[hashToken(token)] = grant
+	c.issued[hashToken(ticket)] = grant
 	_ = ctx
-	return token, nil
+	return ticket, nil
 }
 
 // Resolve looks a token up. Valid for as many calls as the handler needs until
 // it expires; see the type comment for why that is the right bound.
-func (c *CallbackTokens) Resolve(token string) (CallbackGrant, error) {
-	token = strings.TrimSpace(token)
-	if !strings.HasPrefix(token, callbackTokenPrefix) {
+func (c *CallbackTokens) Resolve(ticket string) (CallbackGrant, error) {
+	ticket = strings.TrimSpace(ticket)
+	if !strings.HasPrefix(ticket, callbackTicketPrefix) {
 		return CallbackGrant{}, pluginErrf(PluginErrorForbidden, "invalid callback token")
 	}
-	key := hashToken(token)
+	key := hashToken(ticket)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -224,13 +224,13 @@ func (c *CallbackTokens) Resolve(token string) (CallbackGrant, error) {
 // Revoke drops a grant before its expiry. Called when a hook invocation has
 // finished, so a token stops working the moment the work it was issued for is
 // over rather than lingering for the rest of its window.
-func (c *CallbackTokens) Revoke(token string) {
-	if token == "" {
+func (c *CallbackTokens) Revoke(ticket string) {
+	if ticket == "" {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.issued, hashToken(strings.TrimSpace(token)))
+	delete(c.issued, hashToken(strings.TrimSpace(ticket)))
 }
 
 // sweepLocked drops expired grants so the map cannot grow without bound on a

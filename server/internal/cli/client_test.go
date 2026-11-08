@@ -579,7 +579,7 @@ func TestHTTPErrorTaskScopedFollowsTheRequestNotTheClient(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	taskClient := NewAPIClient(srv.URL, "ws-1", TaskTokenPrefix+"0123456789abcdef")
+	taskClient := NewAPIClient(srv.URL, "ws-1", TaskTicketPrefix+"0123456789abcdef")
 
 	t.Run("api call sends the task token", func(t *testing.T) {
 		err := taskClient.GetJSON(context.Background(), "/api/me", &struct{}{})

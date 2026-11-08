@@ -68,9 +68,9 @@ func TestCommentInvocationDeniedNoticePersistsWithoutDisclosure(t *testing.T) {
 	if strings.Count(notice.Content, "Target not found or permission not granted") != 4 {
 		t.Errorf("denied targets do not share the generic reason: %s", notice.Content)
 	}
-	for _, secret := range []string{"private-access-test-agent", "Other workspace secret", "private-agent-owner@multica.test", "Allowed alias"} {
-		if strings.Contains(notice.Content, secret) {
-			t.Errorf("notice exposed an unrelated or private value %q", secret)
+	for _, sealed := range []string{"private-access-test-agent", "Other workspace secret", "private-agent-owner@multica.test", "Allowed alias"} {
+		if strings.Contains(notice.Content, sealed) {
+			t.Errorf("notice exposed an unrelated or private value %q", sealed)
 		}
 	}
 	if len(util.ParseMentions(notice.Content)) != 0 {

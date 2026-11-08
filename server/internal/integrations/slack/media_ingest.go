@@ -165,7 +165,7 @@ func (r *slackMediaResolver) ResolveMedia(ctx context.Context, inst engine.Resol
 			break
 		}
 		fileCtx, cancel := context.WithTimeout(ctx, fileFetchBudget(ctx, len(files)-i))
-		ref, err := r.ingestOne(fileCtx, inst, chatMessageID, i, f, creds.BotToken)
+		ref, err := r.ingestOne(fileCtx, inst, chatMessageID, i, f, creds.BotTicket)
 		cancel()
 		if err != nil {
 			r.logger.Warn("slack media ingest failed",
@@ -203,7 +203,7 @@ func fileFetchBudget(ctx context.Context, remainingFiles int) time.Duration {
 // ingestOne carries a single file from URL to MediaRef. The ledger row goes
 // first: from that point on every failure — download, upload, a crash — leaves
 // an intent the reconciler settles, and nothing here deletes anything.
-func (r *slackMediaResolver) ingestOne(ctx context.Context, inst engine.ResolvedInstallation, chatMessageID pgtype.UUID, index int, f slackRawFile, botToken string) (channel.MediaRef, error) {
+func (r *slackMediaResolver) ingestOne(ctx context.Context, inst engine.ResolvedInstallation, chatMessageID pgtype.UUID, index int, f slackRawFile, botTicket string) (channel.MediaRef, error) {
 	// Slack states the size up front, so an oversized file is refused before it
 	// costs an intent row and a full transfer. A file that under-reports still
 	// hits the byte cap in download.
@@ -227,7 +227,7 @@ func (r *slackMediaResolver) ingestOne(ctx context.Context, inst engine.Resolved
 		// The reconciler owns this key; never resurrect it.
 		return channel.MediaRef{}, errors.New("media key owned by reconciler")
 	}
-	data, responseType, err := r.download(ctx, f.DownloadURL, botToken)
+	data, responseType, err := r.download(ctx, f.DownloadURL, botTicket)
 	if err != nil {
 		return channel.MediaRef{}, err
 	}
@@ -251,7 +251,7 @@ func (r *slackMediaResolver) ingestOne(ctx context.Context, inst engine.Resolved
 	}, nil
 }
 
-func (r *slackMediaResolver) download(ctx context.Context, rawURL, botToken string) ([]byte, string, error) {
+func (r *slackMediaResolver) download(ctx context.Context, rawURL, botTicket string) ([]byte, string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, "", errors.New("invalid file download URL")
@@ -265,7 +265,7 @@ func (r *slackMediaResolver) download(ctx context.Context, rawURL, botToken stri
 	if err != nil {
 		return nil, "", errors.New("build file download request failed")
 	}
-	req.Header.Set("Authorization", "Bearer "+botToken)
+	req.Header.Set("Authorization", "Bearer "+botTicket)
 	resp, err := r.fetch.Do(req)
 	if err != nil {
 		// net/http's *url.Error echoes the full request URL; keep private

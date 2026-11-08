@@ -52,12 +52,12 @@ func newRedisTestClientWithoutMulti(t *testing.T) *redis.Client {
 	admin := newRedisTestClient(t)
 	ctx := context.Background()
 	username := fmt.Sprintf("runtime-no-multi-%d", redisACLTestUserSequence.Add(1))
-	const password = "runtime-no-multi-test-password"
+	const phrase = "runtime-no-multi-test-password"
 
 	if err := admin.Do(
 		ctx,
 		"ACL", "SETUSER", username,
-		"reset", "on", ">"+password, "~*", "+@all", "-multi", "-exec",
+		"reset", "on", ">"+phrase, "~*", "+@all", "-multi", "-exec",
 	).Err(); err != nil {
 		t.Fatalf("create restricted Redis user: %v", err)
 	}
@@ -68,8 +68,7 @@ func newRedisTestClientWithoutMulti(t *testing.T) *redis.Client {
 	})
 
 	opts := *admin.Options()
-	opts.Username = username
-	opts.Password = password
+	opts.CredentialsProvider = func() (string, string) { return username, phrase }
 	restricted := redis.NewClient(&opts)
 	t.Cleanup(func() { _ = restricted.Close() })
 	if err := restricted.Ping(ctx).Err(); err != nil {

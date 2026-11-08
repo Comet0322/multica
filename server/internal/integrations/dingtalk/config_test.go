@@ -15,14 +15,14 @@ func TestDecodeCredentials_RoundTrip(t *testing.T) {
 	raw, _ := json.Marshal(installConfig{
 		AppID:              "appkey-1",
 		RobotCode:          "appkey-1",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString(sealed),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString(sealed),
 	})
 
 	creds, err := decodeCredentials(raw, box.Open)
 	if err != nil {
 		t.Fatalf("decodeCredentials: %v", err)
 	}
-	if creds.AppKey != "appkey-1" || creds.RobotCode != "appkey-1" || creds.AppSecret != "the-app-secret" {
+	if creds.AppKey != "appkey-1" || creds.RobotCode != "appkey-1" || creds.AppSealed != "the-app-secret" {
 		t.Errorf("creds = %+v, want appkey-1 / the-app-secret", creds)
 	}
 }
@@ -32,7 +32,7 @@ func TestDecodeCredentials_RobotCodeDefaultsToAppID(t *testing.T) {
 	sealed, _ := box.Seal([]byte("s"))
 	raw, _ := json.Marshal(installConfig{
 		AppID:              "appkey-2",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString(sealed),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString(sealed),
 	})
 	creds, err := decodeCredentials(raw, box.Open)
 	if err != nil {

@@ -371,7 +371,7 @@ func TestFetchWorkspacesExplainsPortOnlyFailClosedContext(t *testing.T) {
 	t.Setenv("MULTICA_DAEMON_PORT", "20032")
 	t.Setenv("MULTICA_SERVER_URL", "https://api.example.test")
 	t.Setenv("MULTICA_TOKEN", "")
-	if err := cli.SaveCLIConfig(cli.CLIConfig{Token: "mul_owner_pat"}); err != nil {
+	if err := cli.SaveCLIConfig(cli.CLIConfig{Ticket: "mul_owner_pat"}); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 

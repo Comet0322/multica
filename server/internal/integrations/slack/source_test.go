@@ -137,9 +137,9 @@ func TestThreadSourceOptionalFailuresPreserveHistory(t *testing.T) {
 				t.Errorf("unexpected calls: link=%d info=%d", linkCalls.Load(), infoCalls.Load())
 			}
 			encoded, _ := json.Marshal(page)
-			for _, secret := range []string{"synthetic-bot-token", "synthetic-raw-secret", "missing_scope", "access_denied", "message_not_found", "ratelimited", "unknown_synthetic_error"} {
-				if strings.Contains(string(encoded)+logs.String(), secret) {
-					t.Errorf("metadata leaked %q", secret)
+			for _, sealed := range []string{"synthetic-bot-token", "synthetic-raw-secret", "missing_scope", "access_denied", "message_not_found", "ratelimited", "unknown_synthetic_error"} {
+				if strings.Contains(string(encoded)+logs.String(), sealed) {
+					t.Errorf("metadata leaked %q", sealed)
 				}
 			}
 		})

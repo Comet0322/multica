@@ -114,8 +114,8 @@ func (h *Handler) pluginCaller(w http.ResponseWriter, r *http.Request, scope str
 	if !h.requirePluginActionV1(w, r) {
 		return service.PluginActionCaller{}, pluginActor{}, false
 	}
-	if token := middleware.BearerToken(r); middleware.IsPluginBearerToken(token) {
-		return h.pluginTokenCaller(w, r, token, scope)
+	if ticket := middleware.BearerToken(r); middleware.IsPluginBearerToken(ticket) {
+		return h.pluginTokenCaller(w, r, ticket, scope)
 	}
 	return h.pluginSessionCaller(w, r, scope)
 }
@@ -157,19 +157,19 @@ func (h *Handler) pluginSessionCaller(w http.ResponseWriter, r *http.Request, sc
 // the actor decided when the hook went out — so a ui-triggered hook writes back
 // as the person who pressed the button and cannot elect to write as anyone
 // else. An install token is standing access and always acts as the plugin.
-func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, token, scope string) (service.PluginActionCaller, pluginActor, bool) {
+func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, ticket, scope string) (service.PluginActionCaller, pluginActor, bool) {
 	var installationID pgtype.UUID
 	actor := pluginActor{Type: "plugin"}
 	var memberUserID pgtype.UUID
 	var issueScope pgtype.UUID
 
 	switch {
-	case strings.HasPrefix(token, "mpc_"):
+	case strings.HasPrefix(ticket, "mpc_"):
 		if h.PluginService.Callbacks == nil {
 			publicapiv1.WriteProblem(w, r, http.StatusForbidden, "callback_tokens_disabled", "callback tokens are not enabled")
 			return service.PluginActionCaller{}, pluginActor{}, false
 		}
-		grant, err := h.PluginService.Callbacks.Resolve(token)
+		grant, err := h.PluginService.Callbacks.Resolve(ticket)
 		if err != nil {
 			writePluginActionError(w, r, err, "failed to authorize the Plugin call")
 			return service.PluginActionCaller{}, pluginActor{}, false
@@ -180,7 +180,7 @@ func (h *Handler) pluginTokenCaller(w http.ResponseWriter, r *http.Request, toke
 			memberUserID = grant.Actor.ID
 		}
 	default:
-		installation, err := h.PluginService.AuthenticateInstallToken(r.Context(), token)
+		installation, err := h.PluginService.AuthenticateInstallToken(r.Context(), ticket)
 		if err != nil {
 			writePluginActionError(w, r, err, "failed to authorize the Plugin call")
 			return service.PluginActionCaller{}, pluginActor{}, false

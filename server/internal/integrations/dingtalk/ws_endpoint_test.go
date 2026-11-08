@@ -30,7 +30,7 @@ func TestOpenConnection_ReturnsDialURL(t *testing.T) {
 	if got != "wss://stream.example/ws?ticket=tkt-123" {
 		t.Errorf("dial url = %q", got)
 	}
-	if gotBody.ClientID != "key-1" || gotBody.ClientSecret != "secret-1" {
+	if gotBody.ClientID != "key-1" || gotBody.ClientSealed != "secret-1" {
 		t.Errorf("credentials not sent: %+v", gotBody)
 	}
 	if len(gotBody.Subscriptions) != 3 {

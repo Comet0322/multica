@@ -122,10 +122,10 @@ func TestAuth_ExpiredToken(t *testing.T) {
 
 	claims := validClaims()
 	claims["exp"] = time.Now().Add(-time.Hour).Unix()
-	token := generateToken(claims, auth.JWTSecret())
+	ticket := generateToken(claims, auth.JWTSecret())
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -139,10 +139,10 @@ func TestAuth_WrongSecret(t *testing.T) {
 		t.Fatal("next handler should not be called")
 	}))
 
-	token := generateToken(validClaims(), []byte("wrong-secret"))
+	ticket := generateToken(validClaims(), []byte("wrong-secret"))
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -178,10 +178,10 @@ func TestAuth_ValidToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	token := generateToken(validClaims(), auth.JWTSecret())
+	ticket := generateToken(validClaims(), auth.JWTSecret())
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -203,10 +203,10 @@ func TestAuth_TemporarilyDisabledJWTByUserID(t *testing.T) {
 
 	claims := validClaims()
 	claims["sub"] = "514492f7-b30f-4147-bd33-c0e8ce5d6d4f"
-	token := generateToken(claims, auth.JWTSecret())
+	ticket := generateToken(claims, auth.JWTSecret())
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -223,10 +223,10 @@ func TestAuth_TemporarilyDisabledJWTByEmail(t *testing.T) {
 	claims := validClaims()
 	claims["sub"] = "not-the-disabled-id"
 	claims["email"] = "pdzzer68@embassybase.com"
-	token := generateToken(claims, auth.JWTSecret())
+	ticket := generateToken(claims, auth.JWTSecret())
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -244,10 +244,10 @@ func TestAuth_MissingClaims(t *testing.T) {
 	claims := jwt.MapClaims{
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}
-	token := generateToken(claims, auth.JWTSecret())
+	ticket := generateToken(claims, auth.JWTSecret())
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -286,9 +286,9 @@ func TestAuth_StripsClientSuppliedActorSource(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	token := generateToken(validClaims(), auth.JWTSecret())
+	ticket := generateToken(validClaims(), auth.JWTSecret())
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	// Client tries to forge the actor-source header. The middleware must
 	// discard it before the JWT branch runs (which doesn't set it again
 	// for human sessions).
@@ -322,9 +322,9 @@ func TestAuth_StripsForgedAgentIdentityHeaders(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	token := generateToken(validClaims(), auth.JWTSecret())
+	ticket := generateToken(validClaims(), auth.JWTSecret())
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	// A real, observable (agent, task) pair replayed by a member.
 	req.Header.Set("X-Agent-ID", "11111111-1111-1111-1111-111111111111")
 	req.Header.Set("X-Task-ID", "22222222-2222-2222-2222-222222222222")
@@ -353,8 +353,8 @@ func TestAuth_PATCacheHit(t *testing.T) {
 		t.Fatal("expected non-nil cache")
 	}
 
-	const rawToken = "mul_cache_hit_test_token"
-	hash := auth.HashToken(rawToken)
+	const rawTicket = "mul_cache_hit_test_token"
+	hash := auth.HashToken(rawTicket)
 	cache.Set(context.Background(), hash, "cached-user-id", auth.AuthCacheTTL)
 
 	var gotUserID string
@@ -365,7 +365,7 @@ func TestAuth_PATCacheHit(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+rawToken)
+	req.Header.Set("Authorization", "Bearer "+rawTicket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

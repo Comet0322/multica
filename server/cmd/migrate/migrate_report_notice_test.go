@@ -19,7 +19,7 @@ func TestMigrationReportForwardsOnlyMarkedNotices(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cfg, err := pgx.ParseConfig(testDatabaseURL())
+	cfg, err := pgx.ParseConfig(testDatabaseURL(t))
 	if err != nil {
 		t.Fatalf("parse database url: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestMigrationReportForwardsOnlyMarkedNotices(t *testing.T) {
 	}
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		t.Skipf("could not connect to %s: %v", testDatabaseURL(), err)
+		t.Skipf("could not connect to %s: %v", testDatabaseURL(t), err)
 	}
 	defer conn.Close(context.Background())
 

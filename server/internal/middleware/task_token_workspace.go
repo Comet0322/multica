@@ -15,7 +15,7 @@ import (
 // request explicitly targets a workspace other than the one bound into the
 // token. It matches the message buildMiddleware already uses for URL-param
 // conflicts so clients see one error for one condition.
-const errTaskTokenWorkspaceMismatch = "task token is bound to a different workspace"
+const errTaskTicketWorkspaceMismatch = "task token is bound to a different workspace"
 
 // checkTaskTokenWorkspaceTarget rejects a task-token request whose explicit
 // workspace selectors disagree with the token's bound workspace (GitHub
@@ -91,7 +91,7 @@ func checkTaskTokenWorkspaceTarget(w http.ResponseWriter, r *http.Request, queri
 				return reject(http.StatusBadRequest, "invalid workspace_id", sel.name, v)
 			}
 			if util.UUIDToString(parsed) != boundWorkspaceID {
-				return reject(http.StatusForbidden, errTaskTokenWorkspaceMismatch, sel.name, v)
+				return reject(http.StatusForbidden, errTaskTicketWorkspaceMismatch, sel.name, v)
 			}
 		}
 	}
@@ -126,7 +126,7 @@ func checkTaskTokenWorkspaceTarget(w http.ResponseWriter, r *http.Request, queri
 				resolved[slug] = id
 			}
 			if id != boundWorkspaceID {
-				return reject(http.StatusForbidden, errTaskTokenWorkspaceMismatch, sel.name, slug)
+				return reject(http.StatusForbidden, errTaskTicketWorkspaceMismatch, sel.name, slug)
 			}
 		}
 	}

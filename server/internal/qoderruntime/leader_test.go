@@ -51,7 +51,7 @@ func TestSquadLeaderLostCommentResponseDoesNotRepost(t *testing.T) {
 		resp, err := base.RoundTrip(r)
 		if err == nil && !lost && r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/comments") {
 			j, journalErr := readJournal(h.b.path, "test")
-			if journalErr != nil || len(j.Runs) != 1 || !j.Runs[0].Leader.CommentSubmitted || j.Runs[0].Leader.token != "" {
+			if journalErr != nil || len(j.Runs) != 1 || !j.Runs[0].Leader.CommentSubmitted || j.Runs[0].Leader.ticket != "" {
 				t.Fatalf("write intent must be durable and credentials excluded before POST: journal=%+v error=%v", j, journalErr)
 			}
 			lost = true

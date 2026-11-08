@@ -88,7 +88,7 @@ type blipOnce struct {
 	done bool
 }
 
-func (b *blipOnce) Claim(ctx context.Context, key, token string, ttl time.Duration) (bool, error) {
+func (b *blipOnce) Claim(ctx context.Context, key, ticket string, ttl time.Duration) (bool, error) {
 	b.mu.Lock()
 	first := !b.done
 	b.done = true
@@ -96,7 +96,7 @@ func (b *blipOnce) Claim(ctx context.Context, key, token string, ttl time.Durati
 	if first {
 		return false, errors.New("wecom test: redis blip")
 	}
-	return b.DedupeStore.Claim(ctx, key, token, ttl)
+	return b.DedupeStore.Claim(ctx, key, ticket, ttl)
 }
 
 // sentTexts is what actually reached the chat, in order.

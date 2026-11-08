@@ -166,19 +166,19 @@ func validateTaskIdentity(task Task) error {
 }
 
 func taskScopedAuthToken(task Task) (string, error) {
-	token := strings.TrimSpace(task.AuthToken)
-	if token == "" {
+	ticket := strings.TrimSpace(task.AuthTicket)
+	if ticket == "" {
 		return "", errors.New("server did not provide task-scoped auth token")
 	}
-	if !strings.HasPrefix(token, "mat_") {
+	if !strings.HasPrefix(ticket, "mat_") {
 		return "", errors.New("server provided non-task-scoped auth token")
 	}
-	return token, nil
+	return ticket, nil
 }
 
-func taskMulticaEnvironment(task Task, provider, agentName, token, configRoot, workspacesRoot, serverURL string, healthPort, slot int, tempDir string) map[string]string {
+func taskMulticaEnvironment(task Task, provider, agentName, ticket, configRoot, workspacesRoot, serverURL string, healthPort, slot int, tempDir string) map[string]string {
 	env := map[string]string{
-		"MULTICA_TOKEN":        token,
+		"MULTICA_TOKEN":        ticket,
 		cli.TaskConfigRootEnv:  configRoot,
 		TaskWorkspacesRootEnv:  workspacesRoot,
 		"MULTICA_SERVER_URL":   serverURL,
@@ -2225,7 +2225,7 @@ func (d *Daemon) resolveAuth() error {
 	if err != nil {
 		return fmt.Errorf("load CLI config: %w", err)
 	}
-	if cfg.Token == "" {
+	if cfg.Ticket == "" {
 		loginHint := "'multica login'"
 		if d.cfg.Profile != "" {
 			loginHint = fmt.Sprintf("'multica login --profile %s'", d.cfg.Profile)
@@ -2233,9 +2233,9 @@ func (d *Daemon) resolveAuth() error {
 		d.logger.Warn("not authenticated — run " + loginHint + " to authenticate, then restart the daemon")
 		return fmt.Errorf("not authenticated: run %s first", loginHint)
 	}
-	d.client.SetToken(cfg.Token)
+	d.client.SetToken(cfg.Ticket)
 	d.logger.Info("authenticated")
-	d.logger.Debug("auth token loaded", "profile", d.cfg.Profile, "token_len", len(cfg.Token))
+	d.logger.Debug("auth token loaded", "profile", d.cfg.Profile, "token_len", len(cfg.Ticket))
 	return nil
 }
 
@@ -8092,7 +8092,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	remoteMCPConfig, remoteMCPDiagnostics, remoteMCPBrokers, remoteMCPErr := startTaskRemoteMCPBrokers(
 		prepareCtx, ctx, task.ID, provider, task.RemoteMCPConnections,
 		func(resolveCtx context.Context, contributionID string) (http.Header, error) {
-			return d.client.ResolveRemoteMCPCredential(resolveCtx, task.RemoteMCPDaemonToken, task.ID, contributionID)
+			return d.client.ResolveRemoteMCPCredential(resolveCtx, task.RemoteMCPDaemonTicket, task.ID, contributionID)
 		},
 		taskLog,
 	)
@@ -8114,7 +8114,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	pluginHookConfig, pluginHookServer, pluginHookErr := startTaskPluginHookMCP(
 		ctx, task.ID, task.PluginHookTools,
 		func(callCtx context.Context, taskID, installationID, hookKey string, input json.RawMessage) (json.RawMessage, error) {
-			return d.client.InvokeAgentPluginHook(callCtx, task.RemoteMCPDaemonToken, taskID, installationID, hookKey, input)
+			return d.client.InvokeAgentPluginHook(callCtx, task.RemoteMCPDaemonTicket, taskID, installationID, hookKey, input)
 		},
 		taskLog,
 	)
@@ -8701,12 +8701,12 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// MULTICA_TOKEN is bound to (agent, task) by the server. Never fall back
 	// to the daemon's own credential here: doing so lets agent CLI writes land
 	// as the runtime owner's member actor and can retrigger the same agent.
-	agentToken, err := taskScopedAuthToken(task)
+	agentTicket, err := taskScopedAuthToken(task)
 	if err != nil {
 		taskLog.Error("task auth token invalid; refusing to start agent", "error", err)
 		return TaskResult{}, err
 	}
-	agentEnv := taskMulticaEnvironment(task, provider, agentName, agentToken, env.MulticaConfigRoot, d.cfg.WorkspacesRoot, d.cfg.ServerBaseURL, d.cfg.HealthPort, slot, taskTempDir)
+	agentEnv := taskMulticaEnvironment(task, provider, agentName, agentTicket, env.MulticaConfigRoot, d.cfg.WorkspacesRoot, d.cfg.ServerBaseURL, d.cfg.HealthPort, slot, taskTempDir)
 	if checkoutMode := repoCheckoutModeFor(provider, runtime.GOOS); checkoutMode != "" {
 		agentEnv[repoCheckoutModeEnv] = checkoutMode
 	}
@@ -9014,14 +9014,14 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// branch ownership from this in-memory record instead of trusting request
 	// fields or ambient process environment. Register only for the provider
 	// execution window and always remove the credential afterwards.
-	d.registerActiveRepoCheckoutTask(agentToken, activeRepoCheckoutTask{
+	d.registerActiveRepoCheckoutTask(agentTicket, activeRepoCheckoutTask{
 		WorkspaceID: task.WorkspaceID,
 		TaskID:      task.ID,
 		AgentID:     task.AgentID,
 		AgentName:   task.Agent.Name,
 		WorkDir:     env.WorkDir,
 	})
-	defer d.clearActiveRepoCheckoutTask(agentToken)
+	defer d.clearActiveRepoCheckoutTask(agentTicket)
 
 	taskLog.Debug("invoking backend",
 		"provider", provider,

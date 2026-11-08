@@ -153,7 +153,7 @@ func TestInboundReceiptDatabaseGenerationAndScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := InstallationParams{WorkspaceID: util.MustParseUUID(fx.WorkspaceID), AgentID: util.MustParseUUID(agent), InstallerUserID: util.MustParseUUID(fx.UserID), AppID: "cli_receipt_" + suffix, AppSecret: "test", BotOpenID: "ou_bot"}
+	p := InstallationParams{WorkspaceID: util.MustParseUUID(fx.WorkspaceID), AgentID: util.MustParseUUID(agent), InstallerUserID: util.MustParseUUID(fx.UserID), AppID: "cli_receipt_" + suffix, AppSealed: "test", BotOpenID: "ou_bot"}
 	ctx := context.Background()
 	inst, err := svc.Upsert(ctx, p)
 	if err != nil {

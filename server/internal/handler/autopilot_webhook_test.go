@@ -10,26 +10,26 @@ import (
 // ── Token generation ────────────────────────────────────────────────────────
 
 func TestGenerateWebhookToken_PrefixAndLength(t *testing.T) {
-	token, err := generateWebhookToken()
+	ticket, err := generateWebhookToken()
 	if err != nil {
 		t.Fatalf("generateWebhookToken: %v", err)
 	}
-	if !strings.HasPrefix(token, "awt_") {
-		t.Fatalf("expected awt_ prefix, got %q", token)
+	if !strings.HasPrefix(ticket, "awt_") {
+		t.Fatalf("expected awt_ prefix, got %q", ticket)
 	}
 	// 32 random bytes -> 43 base64-url chars (no padding).
-	if len(token) != len("awt_")+43 {
-		t.Fatalf("unexpected token length: %d (token=%q)", len(token), token)
+	if len(ticket) != len("awt_")+43 {
+		t.Fatalf("unexpected token length: %d (token=%q)", len(ticket), ticket)
 	}
 }
 
 func TestGenerateWebhookToken_NoUnsafeURLChars(t *testing.T) {
-	token, err := generateWebhookToken()
+	ticket, err := generateWebhookToken()
 	if err != nil {
 		t.Fatalf("generateWebhookToken: %v", err)
 	}
-	if strings.ContainsAny(token, "+/= ") {
-		t.Fatalf("token has unsafe characters: %q", token)
+	if strings.ContainsAny(ticket, "+/= ") {
+		t.Fatalf("token has unsafe characters: %q", ticket)
 	}
 }
 

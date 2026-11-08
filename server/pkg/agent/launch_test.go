@@ -299,7 +299,7 @@ func TestLogAgentCommandRedactsTextAndJSON(t *testing.T) {
 		"--future-secret", "future-value-secret",
 		"prompt-secret",
 	}
-	secrets := []string{
+	sealeds := []string{
 		"api-key-secret",
 		"-sTk9xQZ-secretvalue",
 		"token-secret",
@@ -325,9 +325,9 @@ func TestLogAgentCommandRedactsTextAndJSON(t *testing.T) {
 			cfg.logAgentCommandWithPrompt(cmd, newAgentCommandLogArgs(args), 123)
 
 			output := buf.String()
-			for _, secret := range secrets {
-				if strings.Contains(output, secret) {
-					t.Errorf("%s log exposed %q: %s", tc.name, secret, output)
+			for _, sealed := range sealeds {
+				if strings.Contains(output, sealed) {
+					t.Errorf("%s log exposed %q: %s", tc.name, sealed, output)
 				}
 			}
 			for _, diagnostic := range []string{
@@ -670,15 +670,15 @@ func TestHermesCLIArgsPlaceFlagsAroundSubcommand(t *testing.T) {
 func TestIsHermesACPSubcommandFlag(t *testing.T) {
 	t.Parallel()
 
-	for token, want := range map[string]bool{
+	for ticket, want := range map[string]bool{
 		"--yes": true, "--y": true, "--ye": true, "-y": true, "-yh": true,
 		"--accept-hooks": true, "--acc": true, "--setup-browser": true,
 		"--se": true, "--yes=1": true, "--help": true,
 		"--yolo": false, "--provider": false, "--prov": false, "-p": false,
 		"--": false, "zai": false, "": false,
 	} {
-		if got := isHermesACPSubcommandFlag(token); got != want {
-			t.Errorf("isHermesACPSubcommandFlag(%q) = %v, want %v", token, got, want)
+		if got := isHermesACPSubcommandFlag(ticket); got != want {
+			t.Errorf("isHermesACPSubcommandFlag(%q) = %v, want %v", ticket, got, want)
 		}
 	}
 }

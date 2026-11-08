@@ -1036,8 +1036,8 @@ func channelMsgType(wecomType string) channel.MsgType {
 
 // subscribeBody builds an aibot_subscribe body. The server responds with an
 // echoed req_id and errcode 0 on success.
-func subscribeBody(botID, secret string) map[string]any {
-	return map[string]any{"bot_id": botID, "secret": secret}
+func subscribeBody(botID, sealed string) map[string]any {
+	return map[string]any{"bot_id": botID, "secret": sealed}
 }
 
 // sendMsgTextBody builds an aibot_send_msg body carrying plain-text

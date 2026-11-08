@@ -80,7 +80,7 @@ exit 1
 			if failLaunch {
 				fail = "true"
 			}
-			task := Task{ID: "task-clock", WorkspaceID: "ws-clock", RuntimeID: "rt-clock", IssueID: "issue-clock", AgentID: "agent-clock", AuthToken: "mat_clock", PriorSessionID: "ses-old", Agent: &AgentData{ID: "agent-clock", Name: "clock-agent", CustomEnv: map[string]string{"CLOCK_FAIL_LAUNCH": fail, "CLOCK_ARGS": argsPath, "CLOCK_PROMPT": promptPath}}}
+			task := Task{ID: "task-clock", WorkspaceID: "ws-clock", RuntimeID: "rt-clock", IssueID: "issue-clock", AgentID: "agent-clock", AuthTicket: "mat_clock", PriorSessionID: "ses-old", Agent: &AgentData{ID: "agent-clock", Name: "clock-agent", CustomEnv: map[string]string{"CLOCK_FAIL_LAUNCH": fail, "CLOCK_ARGS": argsPath, "CLOCK_PROMPT": promptPath}}}
 			seed := task
 			seed.ID, seed.PriorSessionID = "seed-clock", ""
 			prepared, err := d.runTask(context.Background(), seed, "opencode", 0, logger)

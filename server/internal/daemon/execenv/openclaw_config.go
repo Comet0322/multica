@@ -215,10 +215,10 @@ type OpenclawConfigPrep struct {
 // only, token left to inherit from the user's config) does the right
 // thing under OpenClaw's deep-merge $include semantics.
 type OpenclawGatewayPin struct {
-	Host  string `json:"host,omitempty"`
-	Port  int    `json:"port,omitempty"`
-	Token string `json:"token,omitempty"`
-	TLS   bool   `json:"tls,omitempty"`
+	Host   string `json:"host,omitempty"`
+	Port   int    `json:"port,omitempty"`
+	Ticket string `json:"token,omitempty"`
+	TLS    bool   `json:"tls,omitempty"`
 }
 
 // IsZero reports whether every field is zero, i.e. there is nothing to pin.
@@ -233,7 +233,7 @@ func (p OpenclawGatewayPin) IsZero() bool {
 // summary at a level a non-admin can see (issue #3260 CR).
 func (p OpenclawGatewayPin) String() string {
 	tok := ""
-	if p.Token != "" {
+	if p.Ticket != "" {
 		tok = "***"
 	}
 	return fmt.Sprintf("OpenclawGatewayPin{Host:%q Port:%d Token:%s TLS:%t}", p.Host, p.Port, tok, p.TLS)
@@ -245,14 +245,14 @@ func (p OpenclawGatewayPin) String() string {
 // transport uses its own methodless wire view, so both retain the real token.
 func (p OpenclawGatewayPin) MarshalJSON() ([]byte, error) {
 	type alias struct {
-		Host  string `json:"host,omitempty"`
-		Port  int    `json:"port,omitempty"`
-		Token string `json:"token,omitempty"`
-		TLS   bool   `json:"tls,omitempty"`
+		Host   string `json:"host,omitempty"`
+		Port   int    `json:"port,omitempty"`
+		Ticket string `json:"token,omitempty"`
+		TLS    bool   `json:"tls,omitempty"`
 	}
 	masked := alias{Host: p.Host, Port: p.Port, TLS: p.TLS}
-	if p.Token != "" {
-		masked.Token = "***"
+	if p.Ticket != "" {
+		masked.Ticket = "***"
 	}
 	return json.Marshal(masked)
 }
@@ -530,10 +530,10 @@ func buildGatewayOverride(p OpenclawGatewayPin) map[string]any {
 	if p.TLS {
 		out["tls"] = true
 	}
-	if p.Token != "" {
+	if p.Ticket != "" {
 		out["auth"] = map[string]any{
 			"mode":  "token",
-			"token": p.Token,
+			"token": p.Ticket,
 		}
 	}
 	if len(out) == 0 {

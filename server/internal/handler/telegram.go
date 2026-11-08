@@ -82,7 +82,7 @@ func (h *Handler) ListTelegramInstallations(w http.ResponseWriter, r *http.Reque
 // RegisterTelegramRequest is the body for a bot install: the token the user
 // pasted from @BotFather.
 type RegisterTelegramRequest struct {
-	BotToken string `json:"bot_token"`
+	BotTicket string `json:"bot_token"`
 }
 
 // RegisterTelegramBot (POST /api/workspaces/{id}/telegram/install?agent_id=…)
@@ -131,7 +131,7 @@ func (h *Handler) RegisterTelegramBot(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: wsUUID,
 		AgentID:     agentUUID,
 		InitiatorID: initiatorUUID,
-		BotToken:    body.BotToken,
+		BotTicket:   body.BotTicket,
 	})
 	if err != nil {
 		switch {
@@ -206,7 +206,7 @@ func (h *Handler) RevokeTelegramInstallation(w http.ResponseWriter, r *http.Requ
 // RedeemTelegramBindingTokenRequest carries the raw token from the bot's
 // "link your account" prompt.
 type RedeemTelegramBindingTokenRequest struct {
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 // RedeemTelegramBindingTokenResponse echoes the bound identifiers so the
@@ -235,7 +235,7 @@ func (h *Handler) RedeemTelegramBindingToken(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Token == "" {
+	if req.Ticket == "" {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
 	}
@@ -243,7 +243,7 @@ func (h *Handler) RedeemTelegramBindingToken(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	redeemed, err := h.TelegramBindingTokens.RedeemAndBind(r.Context(), req.Token, userUUID)
+	redeemed, err := h.TelegramBindingTokens.RedeemAndBind(r.Context(), req.Ticket, userUUID)
 	if err != nil {
 		switch {
 		case errors.Is(err, telegram.ErrBindingTokenInvalid):

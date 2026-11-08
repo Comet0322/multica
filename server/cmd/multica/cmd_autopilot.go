@@ -312,15 +312,15 @@ func redactAutopilotWebhookCredentials(resp map[string]any) {
 			continue
 		}
 
-		token := strVal(trigger, "webhook_token")
+		ticket := strVal(trigger, "webhook_token")
 		hasToken, _ := trigger["has_webhook_token"].(bool)
 		hasToken = hasToken ||
 			strVal(trigger, "kind") == "webhook" ||
-			token != "" ||
+			ticket != "" ||
 			strVal(trigger, "webhook_path") != "" ||
 			strVal(trigger, "webhook_url") != ""
 		trigger["has_webhook_token"] = hasToken
-		if hint := webhookTokenHint(token); hint != "" {
+		if hint := webhookTokenHint(ticket); hint != "" {
 			trigger["webhook_token_hint"] = hint
 		} else {
 			trigger["webhook_token_hint"] = nil
@@ -376,11 +376,11 @@ func relativeTimestampAt(ts string, now time.Time) string {
 	return magnitude + suffix
 }
 
-func webhookTokenHint(token string) string {
-	if len(token) < 4 {
+func webhookTokenHint(ticket string) string {
+	if len(ticket) < 4 {
 		return ""
 	}
-	return token[len(token)-4:]
+	return ticket[len(ticket)-4:]
 }
 
 func runAutopilotCreate(cmd *cobra.Command, _ []string) error {

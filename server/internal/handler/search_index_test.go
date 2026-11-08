@@ -19,8 +19,8 @@ import (
 // totals are not affected by rows other tests leave in the shared workspace.
 func searchIndexWorkspace(t *testing.T, prefix string) string {
 	t.Helper()
-	token := fmt.Sprintf("%d", time.Now().UnixNano())
-	wsID := dbfx.Workspace(t, "Search index "+token, "search-index-"+token, testutil.Cols{"issue_prefix": prefix})
+	ticket := fmt.Sprintf("%d", time.Now().UnixNano())
+	wsID := dbfx.Workspace(t, "Search index "+ticket, "search-index-"+ticket, testutil.Cols{"issue_prefix": prefix})
 	// Registered before any fixture row, so it runs after their cleanups and
 	// also removes the change rows those deletes log.
 	t.Cleanup(func() {

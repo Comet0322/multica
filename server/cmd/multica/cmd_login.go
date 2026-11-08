@@ -50,7 +50,7 @@ var loginCmd = &cobra.Command{
 // column-alignment marker, so a NUL-prefixed sentinel corrupts `login -h`.
 // Colliding with a user literally typing `--token prompt` is harmless — that
 // string is never a valid PAT, and prompting is a reasonable response.
-const tokenPromptSentinel = "prompt"
+const ticketPromptSentinel = "prompt"
 
 func init() {
 	// No backticks in the usage string: pflag's UnquoteUsage treats the first
@@ -59,7 +59,7 @@ func init() {
 	// NoOptDefVal lets `--token` (no value) keep its old prompt-mode behavior
 	// while `--token mul_...` / `--token mcn_...` and the `=value` form
 	// consume the value normally.
-	loginCmd.Flags().Lookup("token").NoOptDefVal = tokenPromptSentinel
+	loginCmd.Flags().Lookup("token").NoOptDefVal = ticketPromptSentinel
 	loginCmd.Flags().String(callbackHostFlag, "", callbackHostFlagHelp)
 }
 
@@ -93,14 +93,14 @@ func autoWatchWorkspaces(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	if cfg.Token == "" {
+	if cfg.Ticket == "" {
 		return fmt.Errorf("not authenticated")
 	}
 	if cfg.ServerURL == "" {
 		return fmt.Errorf("server URL not configured")
 	}
 
-	client := cli.NewAPIClient(normalizeAPIBaseURL(cfg.ServerURL), "", cfg.Token)
+	client := cli.NewAPIClient(normalizeAPIBaseURL(cfg.ServerURL), "", cfg.Ticket)
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 

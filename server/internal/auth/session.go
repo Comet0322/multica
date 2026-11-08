@@ -145,8 +145,8 @@ func SessionExpiry(claims jwt.MapClaims) time.Time {
 	return exp.Time
 }
 
-func parseSignedToken(tokenString string, opts ...jwt.ParserOption) (jwt.MapClaims, error) {
-	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
+func parseSignedToken(ticketString string, opts ...jwt.ParserOption) (jwt.MapClaims, error) {
+	token, err := jwt.Parse(ticketString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
@@ -169,8 +169,8 @@ func parseSignedToken(tokenString string, opts ...jwt.ParserOption) (jwt.MapClai
 //
 // This is the AUTHENTICATION parser: use it wherever the answer decides
 // whether the caller is logged in or whether a session may be extended.
-func ParseSessionToken(tokenString string) (jwt.MapClaims, error) {
-	return parseSignedToken(tokenString)
+func ParseSessionToken(ticketString string) (jwt.MapClaims, error) {
+	return parseSignedToken(ticketString)
 }
 
 // SessionIDFromToken returns the `sid` claim of a token we signed, or "" for
@@ -188,8 +188,8 @@ func ParseSessionToken(tokenString string) (jwt.MapClaims, error) {
 // failed" rather than the 401 that ends the session and sends them to the
 // login page. A rejected CSRF token must never be how a user learns their
 // session ended.
-func SessionIDFromToken(tokenString string) string {
-	claims, err := parseSignedToken(tokenString, jwt.WithoutClaimsValidation())
+func SessionIDFromToken(ticketString string) string {
+	claims, err := parseSignedToken(ticketString, jwt.WithoutClaimsValidation())
 	if err != nil {
 		return ""
 	}

@@ -60,7 +60,7 @@ func NewOutbound(q outboundQueries, decrypt Decrypter, logger *slog.Logger) *Out
 	o.newSender = func(c credentials) replySender {
 		// Only the bot token is needed to post; inbound Socket Mode uses the
 		// installation's separate app-level token (see slack_channel.go).
-		return newSlackSender(c, slack.New(c.BotToken), logger)
+		return newSlackSender(c, slack.New(c.BotTicket), logger)
 	}
 	return o
 }

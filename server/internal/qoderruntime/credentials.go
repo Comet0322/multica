@@ -31,9 +31,9 @@ func (b *Bridge) sessionResources(resources []map[string]any) ([]map[string]any,
 		if err != nil {
 			return nil, err
 		}
-		token := b.cfg.GitHubTokens[key]
+		ticket := b.cfg.GitHubTickets[key]
 		path := ""
-		for configured, file := range b.cfg.GitHubTokenFiles {
+		for configured, file := range b.cfg.GitHubTicketFiles {
 			candidate, err := repositoryKey(configured)
 			if err != nil {
 				return nil, fmt.Errorf("invalid GitHub credential repository binding")
@@ -45,11 +45,11 @@ func (b *Bridge) sessionResources(resources []map[string]any) ([]map[string]any,
 				path = file
 			}
 		}
-		if path == "" && token == "" {
+		if path == "" && ticket == "" {
 			return nil, fmt.Errorf("no GitHub credential configured for project repository")
 		}
-		if token == "" {
-			token, err = readRepositoryToken(path)
+		if ticket == "" {
+			ticket, err = readRepositoryToken(path)
 			if err != nil {
 				return nil, err
 			}
@@ -58,7 +58,7 @@ func (b *Bridge) sessionResources(resources []map[string]any) ([]map[string]any,
 		for k, v := range resource {
 			copy[k] = v
 		}
-		copy["authorization_token"] = token
+		copy["authorization_token"] = ticket
 		out = append(out, copy)
 	}
 	return out, nil
@@ -78,11 +78,11 @@ func readRepositoryToken(path string) (string, error) {
 	if err != nil || len(raw) > 16384 {
 		return "", fmt.Errorf("cannot read GitHub credential file or file too large")
 	}
-	token := strings.TrimSpace(string(raw))
-	if token == "" || strings.ContainsAny(token, "\r\n\t ") {
+	ticket := strings.TrimSpace(string(raw))
+	if ticket == "" || strings.ContainsAny(ticket, "\r\n\t ") {
 		return "", fmt.Errorf("GitHub credential file must contain one non-empty token")
 	}
-	return token, nil
+	return ticket, nil
 }
 
 // RepositoryKey validates and canonicalizes a repository credential binding.

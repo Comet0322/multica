@@ -164,7 +164,7 @@ func (c HTTPClientConfig) withDefaults() HTTPClientConfig {
 // tenant_access_token across calls to the same app.
 func NewHTTPAPIClient(cfg HTTPClientConfig) APIClient {
 	cfg = cfg.withDefaults()
-	return &httpAPIClient{cfg: cfg, tokens: make(map[string]*cachedToken)}
+	return &httpAPIClient{cfg: cfg, tickets: make(map[string]*cachedToken)}
 }
 
 type httpAPIClient struct {
@@ -178,7 +178,7 @@ type httpAPIClient struct {
 	// regions. The DB enforces the same assumption with UNIQUE(app_id) on
 	// lark_installation. If Lark ever reused an app_id across clouds, both
 	// this cache key and that constraint would need region added.
-	tokens map[string]*cachedToken
+	tickets map[string]*cachedToken
 }
 
 type cachedToken struct {
@@ -206,13 +206,13 @@ func (c *httpAPIClient) tenantAccessToken(ctx context.Context, creds Installatio
 	if creds.AppID == "" {
 		return "", errors.New("lark http client: missing app_id")
 	}
-	if creds.AppSecret == "" {
+	if creds.AppSealed == "" {
 		return "", errors.New("lark http client: missing app_secret")
 	}
 
 	now := c.cfg.Now()
 	c.mu.Lock()
-	if t, ok := c.tokens[creds.AppID]; ok && t.expiresAt.After(now) {
+	if t, ok := c.tickets[creds.AppID]; ok && t.expiresAt.After(now) {
 		val := t.value
 		c.mu.Unlock()
 		return val, nil
@@ -225,18 +225,18 @@ func (c *httpAPIClient) tenantAccessToken(ctx context.Context, creds Installatio
 	// we stay on /internal.
 	body := map[string]string{
 		"app_id":     creds.AppID,
-		"app_secret": creds.AppSecret,
+		"app_secret": creds.AppSealed,
 	}
 	var resp struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		TenantAccessToken string `json:"tenant_access_token"`
-		Expire            int64  `json:"expire"`
+		Code               int    `json:"code"`
+		Msg                string `json:"msg"`
+		TenantAccessTicket string `json:"tenant_access_token"`
+		Expire             int64  `json:"expire"`
 	}
 	if err := c.doJSON(ctx, c.resolveBaseURL(creds), http.MethodPost, "/open-apis/auth/v3/tenant_access_token/internal", "", body, &resp); err != nil {
 		return "", fmt.Errorf("lark http client: tenant_access_token: %w", err)
 	}
-	if resp.Code != 0 || resp.TenantAccessToken == "" {
+	if resp.Code != 0 || resp.TenantAccessTicket == "" {
 		return "", fmt.Errorf("lark http client: tenant_access_token: code=%d msg=%q", resp.Code, resp.Msg)
 	}
 
@@ -250,10 +250,10 @@ func (c *httpAPIClient) tenantAccessToken(ctx context.Context, creds Installatio
 	expiresAt := c.cfg.Now().Add(expire - tokenSafetyMargin)
 
 	c.mu.Lock()
-	c.tokens[creds.AppID] = &cachedToken{value: resp.TenantAccessToken, expiresAt: expiresAt}
+	c.tickets[creds.AppID] = &cachedToken{value: resp.TenantAccessTicket, expiresAt: expiresAt}
 	c.mu.Unlock()
 
-	return resp.TenantAccessToken, nil
+	return resp.TenantAccessTicket, nil
 }
 
 // resolveBaseURL picks the open-platform host for one call. An explicit
@@ -273,7 +273,7 @@ func (c *httpAPIClient) resolveBaseURL(creds InstallationCredentials) string {
 // call refreshes instead of looping on a stale entry.
 func (c *httpAPIClient) invalidateToken(appID string) {
 	c.mu.Lock()
-	delete(c.tokens, appID)
+	delete(c.tickets, appID)
 	c.mu.Unlock()
 }
 
@@ -301,11 +301,11 @@ func (c *httpAPIClient) InvalidateTokenCache(appID string) {
 // failures are returned untouched — those are either definitive or
 // ambiguous about delivery, and neither is fixed by a new token.
 func (c *httpAPIClient) doAuthedJSON(ctx context.Context, creds InstallationCredentials, method, path string, body, out any) error {
-	token, err := c.tenantAccessToken(ctx, creds)
+	ticket, err := c.tenantAccessToken(ctx, creds)
 	if err != nil {
 		return err
 	}
-	err = c.doJSON(ctx, c.resolveBaseURL(creds), method, path, token, body, out)
+	err = c.doJSON(ctx, c.resolveBaseURL(creds), method, path, ticket, body, out)
 	if !isTokenError(larkErrorCode(err)) {
 		return err
 	}
@@ -583,7 +583,7 @@ func (c *httpAPIClient) SendBindingPromptCard(ctx context.Context, p BindingProm
 // schema would create a drift surface every time the operator edits
 // the Bot on Lark's side.
 func (c *httpAPIClient) GetBotInfo(ctx context.Context, creds InstallationCredentials) (BotInfo, error) {
-	if creds.AppID == "" || creds.AppSecret == "" {
+	if creds.AppID == "" || creds.AppSealed == "" {
 		return BotInfo{}, errors.New("lark http client: missing app credentials for GetBotInfo")
 	}
 	var botResp struct {
@@ -784,11 +784,11 @@ func (c *httpAPIClient) DownloadMessageResourceStream(ctx context.Context, creds
 	// token before it serves any bytes, so replaying the GET once cannot
 	// produce a half-downloaded resource.
 	for attempt := 0; ; attempt++ {
-		token, err := c.tenantAccessToken(ctx, creds)
+		ticket, err := c.tenantAccessToken(ctx, creds)
 		if err != nil {
 			return DownloadedResourceStream{}, err
 		}
-		stream, err := c.downloadMessageResourceStreamOnce(ctx, creds, path, token)
+		stream, err := c.downloadMessageResourceStreamOnce(ctx, creds, path, ticket)
 		if err == nil {
 			return stream, nil
 		}
@@ -801,7 +801,7 @@ func (c *httpAPIClient) DownloadMessageResourceStream(ctx context.Context, creds
 	}
 }
 
-func (c *httpAPIClient) downloadMessageResourceStreamOnce(ctx context.Context, creds InstallationCredentials, path, token string) (DownloadedResourceStream, error) {
+func (c *httpAPIClient) downloadMessageResourceStreamOnce(ctx context.Context, creds InstallationCredentials, path, ticket string) (DownloadedResourceStream, error) {
 	downloadCtx := ctx
 	var cancel context.CancelFunc
 	if c.cfg.ResourceDownloadTimeout > 0 {
@@ -814,7 +814,7 @@ func (c *httpAPIClient) downloadMessageResourceStreamOnce(ctx context.Context, c
 		}
 		return DownloadedResourceStream{}, fmt.Errorf("lark http client: download resource: new request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	resp, err := c.cfg.ResourceHTTPClient.Do(req)
 	if err != nil {
 		if cancel != nil {
@@ -1036,15 +1036,15 @@ func (c *httpAPIClient) ListMessageReactions(ctx context.Context, p ListMessageR
 	base := "/open-apis/im/v1/messages/" + url.PathEscape(p.MessageID) + "/reactions"
 
 	var out []MessageReaction
-	pageToken := ""
+	pageTicket := ""
 	for page := 0; page < larkListReactionsMaxPages; page++ {
 		q := url.Values{}
 		q.Set("page_size", strconv.Itoa(larkListReactionsMaxPageSize))
 		if p.EmojiType != "" {
 			q.Set("reaction_type", p.EmojiType)
 		}
-		if pageToken != "" {
-			q.Set("page_token", pageToken)
+		if pageTicket != "" {
+			q.Set("page_token", pageTicket)
 		}
 		var resp struct {
 			Code int    `json:"code"`
@@ -1060,8 +1060,8 @@ func (c *httpAPIClient) ListMessageReactions(ctx context.Context, p ListMessageR
 						EmojiType string `json:"emoji_type"`
 					} `json:"reaction_type"`
 				} `json:"items"`
-				HasMore   bool   `json:"has_more"`
-				PageToken string `json:"page_token"`
+				HasMore    bool   `json:"has_more"`
+				PageTicket string `json:"page_token"`
 			} `json:"data"`
 		}
 		if err := c.doAuthedJSON(ctx, p.InstallationID, http.MethodGet, base+"?"+q.Encode(), nil, &resp); err != nil {
@@ -1081,10 +1081,10 @@ func (c *httpAPIClient) ListMessageReactions(ctx context.Context, p ListMessageR
 				EmojiType:    it.ReactionType.EmojiType,
 			})
 		}
-		if !resp.Data.HasMore || resp.Data.PageToken == "" {
+		if !resp.Data.HasMore || resp.Data.PageTicket == "" {
 			return out, nil
 		}
-		pageToken = resp.Data.PageToken
+		pageTicket = resp.Data.PageTicket
 	}
 	return out, nil
 }
@@ -1237,7 +1237,7 @@ func (c *httpAPIClient) fetchBotUnionID(ctx context.Context, creds InstallationC
 // resolved via resolveBaseURL (region-aware). token == "" skips the
 // Authorization header (only the tenant_access_token endpoint takes
 // that path).
-func (c *httpAPIClient) doJSON(ctx context.Context, baseURL, method, path, token string, body, out any) error {
+func (c *httpAPIClient) doJSON(ctx context.Context, baseURL, method, path, ticket string, body, out any) error {
 	var rdr io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -1253,8 +1253,8 @@ func (c *httpAPIClient) doJSON(ctx context.Context, baseURL, method, path, token
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	resp, err := c.cfg.HTTPClient.Do(req)
 	if err != nil {

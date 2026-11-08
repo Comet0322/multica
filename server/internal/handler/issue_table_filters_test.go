@@ -17,8 +17,8 @@ import (
 // exercises the same multi-value/nullable filters the table query sends.
 func TestListIssues_TableFacetsAreServerSide(t *testing.T) {
 	ctx := context.Background()
-	token := fmt.Sprintf("table-filter-%d", time.Now().UnixNano())
-	metadata := fmt.Sprintf(`{"table_filter_test":%q}`, token)
+	ticket := fmt.Sprintf("table-filter-%d", time.Now().UnixNano())
+	metadata := fmt.Sprintf(`{"table_filter_test":%q}`, ticket)
 
 	createProject := func(title string) string {
 		var id string
@@ -29,20 +29,20 @@ func TestListIssues_TableFacetsAreServerSide(t *testing.T) {
 		}
 		return id
 	}
-	projectA := createProject(token + " A")
-	projectB := createProject(token + " B")
+	projectA := createProject(ticket + " A")
+	projectB := createProject(ticket + " B")
 
 	var labelA, labelB string
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO issue_label (workspace_id, name, color)
 		VALUES ($1, $2, '#ef4444') RETURNING id
-	`, testWorkspaceID, token+" A").Scan(&labelA); err != nil {
+	`, testWorkspaceID, ticket+" A").Scan(&labelA); err != nil {
 		t.Fatalf("create label A: %v", err)
 	}
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO issue_label (workspace_id, name, color)
 		VALUES ($1, $2, '#22c55e') RETURNING id
-	`, testWorkspaceID, token+" B").Scan(&labelB); err != nil {
+	`, testWorkspaceID, ticket+" B").Scan(&labelB); err != nil {
 		t.Fatalf("create label B: %v", err)
 	}
 
@@ -87,9 +87,9 @@ func TestListIssues_TableFacetsAreServerSide(t *testing.T) {
 		return id
 	}
 
-	issueA := insertIssue(token+" todo", "todo", "high", false, nil, nil)
-	issueB := insertIssue(token+" progress", "in_progress", "low", true, &projectA, nil)
-	issueC := insertIssue(token+" child", "done", "high", true, &projectB, &issueB)
+	issueA := insertIssue(ticket+" todo", "todo", "high", false, nil, nil)
+	issueB := insertIssue(ticket+" progress", "in_progress", "low", true, &projectA, nil)
+	issueC := insertIssue(ticket+" child", "done", "high", true, &projectB, &issueB)
 	if _, err := testPool.Exec(ctx, `
 		INSERT INTO issue_to_label (issue_id, label_id) VALUES ($1, $2), ($3, $4), ($5, $2)
 	`, issueA, labelA, issueB, labelB, issueC); err != nil {
@@ -142,7 +142,7 @@ func TestListIssues_TableFacetsAreServerSide(t *testing.T) {
 	assertList("&project_ids="+projectA+"&include_no_project=true", issueA, issueB)
 	assertList("&label_ids="+labelA, issueA, issueC)
 	assertList("&top_level_only=true", issueA, issueB)
-	assertList("&q="+url.QueryEscape("progress "+token), issueB)
+	assertList("&q="+url.QueryEscape("progress "+ticket), issueB)
 	assertList("&q="+url.QueryEscape("progress")+"&statuses=in_progress", issueB)
 	var issueBNumber int
 	if err := testPool.QueryRow(ctx, `SELECT number FROM issue WHERE id = $1`, issueB).Scan(&issueBNumber); err != nil {
@@ -170,8 +170,8 @@ func TestListIssues_TableFacetsAreServerSide(t *testing.T) {
 // id-list sizes that would overflow a GET.
 func TestQueryIssues_PostTwinMatchesGet(t *testing.T) {
 	ctx := context.Background()
-	token := fmt.Sprintf("post-query-%d", time.Now().UnixNano())
-	metadata := fmt.Sprintf(`{"post_query_test":%q}`, token)
+	ticket := fmt.Sprintf("post-query-%d", time.Now().UnixNano())
+	metadata := fmt.Sprintf(`{"post_query_test":%q}`, ticket)
 
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM issue WHERE metadata @> $1::jsonb`, metadata)
@@ -201,9 +201,9 @@ func TestQueryIssues_PostTwinMatchesGet(t *testing.T) {
 		}
 		return id
 	}
-	issueA := insertIssue(token + " A")
-	issueB := insertIssue(token + " B")
-	insertIssue(token + " C")
+	issueA := insertIssue(ticket + " A")
+	issueB := insertIssue(ticket + " B")
+	insertIssue(ticket + " C")
 
 	decode := func(w *httptest.ResponseRecorder, transport string) ([]string, int64) {
 		t.Helper()
@@ -284,8 +284,8 @@ func TestQueryIssues_PostTwinMatchesGet(t *testing.T) {
 // page boundaries.
 func TestListIssues_OffsetPaginationStableOnCreatedAtTies(t *testing.T) {
 	ctx := context.Background()
-	token := fmt.Sprintf("tie-page-%d", time.Now().UnixNano())
-	metadata := fmt.Sprintf(`{"tie_page_test":%q}`, token)
+	ticket := fmt.Sprintf("tie-page-%d", time.Now().UnixNano())
+	metadata := fmt.Sprintf(`{"tie_page_test":%q}`, ticket)
 
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM issue WHERE metadata @> $1::jsonb`, metadata)
@@ -314,7 +314,7 @@ func TestListIssues_OffsetPaginationStableOnCreatedAtTies(t *testing.T) {
 			) VALUES ($1, $2, 'todo', 'none', 'member', $3, 0, $4, $5::jsonb,
 				'2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
 			RETURNING id
-		`, testWorkspaceID, fmt.Sprintf("%s %d", token, i), testUserID,
+		`, testWorkspaceID, fmt.Sprintf("%s %d", ticket, i), testUserID,
 			nextNumber(), metadata).Scan(&id); err != nil {
 			t.Fatalf("create issue %d: %v", i, err)
 		}

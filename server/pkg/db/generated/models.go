@@ -328,7 +328,7 @@ type AutopilotTrigger struct {
 }
 
 type ChannelBindingToken struct {
-	TokenHash      string             `json:"token_hash"`
+	TicketHash     string             `json:"token_hash"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
 	InstallationID pgtype.UUID        `json:"installation_id"`
 	ChannelType    string             `json:"channel_type"`
@@ -667,7 +667,7 @@ type DaemonConnection struct {
 
 type DaemonToken struct {
 	ID          pgtype.UUID        `json:"id"`
-	TokenHash   string             `json:"token_hash"`
+	TicketHash  string             `json:"token_hash"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
 	DaemonID    string             `json:"daemon_id"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
@@ -1124,7 +1124,7 @@ type IssueWorkflow struct {
 }
 
 type LarkBindingToken struct {
-	TokenHash      string             `json:"token_hash"`
+	TicketHash     string             `json:"token_hash"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
 	InstallationID pgtype.UUID        `json:"installation_id"`
 	LarkOpenID     string             `json:"lark_open_id"`
@@ -1248,15 +1248,15 @@ type NotificationPreference struct {
 }
 
 type PersonalAccessToken struct {
-	ID          pgtype.UUID        `json:"id"`
-	UserID      pgtype.UUID        `json:"user_id"`
-	Name        string             `json:"name"`
-	TokenHash   string             `json:"token_hash"`
-	TokenPrefix string             `json:"token_prefix"`
-	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
-	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
-	Revoked     bool               `json:"revoked"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID           pgtype.UUID        `json:"id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	Name         string             `json:"name"`
+	TicketHash   string             `json:"token_hash"`
+	TicketPrefix string             `json:"token_prefix"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	LastUsedAt   pgtype.Timestamptz `json:"last_used_at"`
+	Revoked      bool               `json:"revoked"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type PinnedItem struct {
@@ -1600,7 +1600,7 @@ type TaskSupplementCapability struct {
 
 type TaskToken struct {
 	ID          pgtype.UUID        `json:"id"`
-	TokenHash   string             `json:"token_hash"`
+	TicketHash  string             `json:"token_hash"`
 	TaskID      pgtype.UUID        `json:"task_id"`
 	AgentID     pgtype.UUID        `json:"agent_id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -1718,8 +1718,8 @@ type VcsConnection struct {
 	Provider               string             `json:"provider"`
 	InstanceUrl            string             `json:"instance_url"`
 	AccountLogin           string             `json:"account_login"`
-	AccessTokenEncrypted   string             `json:"access_token_encrypted"`
-	WebhookSecretEncrypted string             `json:"webhook_secret_encrypted"`
+	AccessTicketEncrypted  string             `json:"access_token_encrypted"`
+	WebhookSealedEncrypted string             `json:"webhook_secret_encrypted"`
 	ConnectedByID          pgtype.UUID        `json:"connected_by_id"`
 	CreatedAt              pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`

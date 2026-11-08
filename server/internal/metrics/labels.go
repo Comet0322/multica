@@ -13,7 +13,7 @@ const (
 	labelProvider       = "provider"
 	labelTerminalStatus = "terminal_status"
 	labelFailureReason  = "failure_reason"
-	labelTokenType      = "token_type"
+	labelTicketType     = "token_type"
 	labelModel          = "model"
 	labelModelAlias     = "model_alias"
 
@@ -51,9 +51,9 @@ var businessMetricLabels = map[string][]string{
 	"multica_agent_task_total_seconds":                 {labelSource, labelRuntimeMode, labelTerminalStatus},
 	"multica_agent_task_in_progress":                   {labelSource, labelRuntimeMode},
 	"multica_agent_task_iteration_count":               {labelSource, labelTerminalStatus},
-	"multica_llm_tokens_total":                         {labelProvider, labelModel, labelTokenType, labelRuntimeMode, labelSource},
-	"multica_llm_cost_usd_total":                       {labelProvider, labelModel, labelTokenType, labelRuntimeMode, labelSource},
-	"multica_llm_unpriced_tokens_total":                {labelProvider, labelModelAlias, labelTokenType},
+	"multica_llm_tokens_total":                         {labelProvider, labelModel, labelTicketType, labelRuntimeMode, labelSource},
+	"multica_llm_cost_usd_total":                       {labelProvider, labelModel, labelTicketType, labelRuntimeMode, labelSource},
+	"multica_llm_unpriced_tokens_total":                {labelProvider, labelModelAlias, labelTicketType},
 	"multica_llm_request_total":                        {labelProvider, labelModel, labelRuntimeMode},
 	"multica_task_queued_expired_total":                {labelSource, labelRuntimeMode},
 	"multica_task_lease_expired_total":                 {labelSource},
@@ -183,7 +183,7 @@ var (
 		"blocked":   "blocked",
 		"other":     "other",
 	}
-	knownTokenTypes = map[string]string{
+	knownTicketTypes = map[string]string{
 		"input":       "input",
 		"output":      "output",
 		"cache_read":  "cache_read",
@@ -383,7 +383,7 @@ func NormalizeFailureReason(value string) string {
 
 func NormalizeTokenType(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	if normalized, ok := knownTokenTypes[value]; ok {
+	if normalized, ok := knownTicketTypes[value]; ok {
 		return normalized
 	}
 	return "input"

@@ -24,7 +24,7 @@ func TestNewDingTalkFactory_DecryptsAndBuilds(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-1",
 		RobotCode:          "appkey-1",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString(sealed),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString(sealed),
 	})
 
 	botNames := NewBotNameResolver(nil, nil)
@@ -40,8 +40,8 @@ func TestNewDingTalkFactory_DecryptsAndBuilds(t *testing.T) {
 	if dc.appKey != "appkey-1" || dc.appID != "appkey-1" || dc.robotCode != "appkey-1" {
 		t.Errorf("identity fields wrong: %+v", dc)
 	}
-	if dc.appSecret != "plain-secret" {
-		t.Errorf("app secret = %q, want decrypted plain-secret", dc.appSecret)
+	if dc.appSealed != "plain-secret" {
+		t.Errorf("app secret = %q, want decrypted plain-secret", dc.appSealed)
 	}
 	if dc.botNames != botNames {
 		t.Fatal("factory did not wire the shared BotNameResolver into the channel")
@@ -57,7 +57,7 @@ func TestNewDingTalkFactory_DecryptsAndBuilds(t *testing.T) {
 func TestNewDingTalkFactory_ReusesDispatcherAcrossReconnects(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-reconnect",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	factory := newDingTalkFactory(ChannelDeps{})
 
@@ -79,7 +79,7 @@ func TestNewDingTalkFactory_ReusesDispatcherAcrossReconnects(t *testing.T) {
 func TestDingTalkChannel_DisconnectDoesNotCloseDispatcherAfterNormalRedial(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-redial",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	factory := newDingTalkFactory(ChannelDeps{})
 	built, err := factory(channel.Config{Type: TypeDingTalk, Raw: cfg, Handler: noopHandler})
@@ -98,7 +98,7 @@ func TestDingTalkChannel_DisconnectDoesNotCloseDispatcherAfterNormalRedial(t *te
 func TestDingTalkChannel_DisconnectClosesOnlyCurrentCancelledGeneration(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-rotation",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	factory := newDingTalkFactory(ChannelDeps{})
 	firstBuilt, err := factory(channel.Config{Type: TypeDingTalk, Raw: cfg, Handler: noopHandler})
@@ -140,7 +140,7 @@ func TestDingTalkChannel_DisconnectClosesOnlyCurrentCancelledGeneration(t *testi
 func TestDingTalkChannel_DisconnectReleasesClosedDispatcherSlot(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-release",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	slots := newDispatchSlotRegistry()
 	factory := newDingTalkFactoryWithRegistry(ChannelDeps{}, slots)
@@ -165,7 +165,7 @@ func TestDingTalkChannel_DisconnectReleasesClosedDispatcherSlot(t *testing.T) {
 func TestDingTalkChannel_DisconnectTimeoutReleasesSlotAfterWorkerExits(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-release-after-timeout",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -214,7 +214,7 @@ func TestDingTalkChannel_DisconnectTimeoutReleasesSlotAfterWorkerExits(t *testin
 func TestDingTalkChannel_DisconnectDrainsQueuedMessagesBeforeReplacement(t *testing.T) {
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "appkey-drain",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
@@ -289,7 +289,7 @@ func TestOnMessage_HandlerError_IssueCommandGetsErrorReply(t *testing.T) {
 	sent := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == accessTicketPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -306,7 +306,7 @@ func TestOnMessage_HandlerError_IssueCommandGetsErrorReply(t *testing.T) {
 		appID:     "appkey-1",
 		robotCode: "robot-1",
 		appKey:    "ak",
-		appSecret: "as",
+		appSealed: "as",
 		client:    NewClient(nil, srv.URL),
 		handler: func(_ context.Context, _ channel.InboundMessage) error {
 			return errors.New("resolve sender: transient db error")
@@ -379,7 +379,7 @@ func TestOnMessage_ReturnsBeforeBotNameLookupAndQueuesCallbackSnapshot(t *testin
 	releaseLookup := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == accessTokenPath {
+		if r.URL.Path == accessTicketPath {
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 			return
 		}
@@ -392,7 +392,7 @@ func TestOnMessage_ReturnsBeforeBotNameLookupAndQueuesCallbackSnapshot(t *testin
 	handled := make(chan channel.InboundMessage, 1)
 	client := NewClient(nil, srv.URL)
 	c := &dingtalkChannel{
-		appID: "appkey-1", robotCode: "robot-1", appKey: "appkey-1", appSecret: "secret",
+		appID: "appkey-1", robotCode: "robot-1", appKey: "appkey-1", appSealed: "secret",
 		client: client, botNames: NewBotNameResolver(client, nil), logger: slog.Default(),
 		handler: func(_ context.Context, msg channel.InboundMessage) error {
 			handled <- msg

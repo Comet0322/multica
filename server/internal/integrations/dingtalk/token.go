@@ -37,8 +37,8 @@ type Client struct {
 	apiBase    string
 	now        func() time.Time
 
-	mu     sync.Mutex
-	tokens map[string]cachedToken
+	mu      sync.Mutex
+	tickets map[string]cachedToken
 
 	// minting collapses concurrent cache misses for the same AppKey into a
 	// single in-flight token request.
@@ -64,13 +64,13 @@ func NewClient(httpClient *http.Client, apiBase string) *Client {
 		httpClient: httpClient,
 		apiBase:    strings.TrimRight(apiBase, "/"),
 		now:        time.Now,
-		tokens:     map[string]cachedToken{},
+		tickets:    map[string]cachedToken{},
 	}
 }
 
 // accessToken returns a usable access_token for (appKey, appSecret), minting and
 // caching one when the cache is empty or stale.
-func (c *Client) accessToken(ctx context.Context, appKey, appSecret string) (string, error) {
+func (c *Client) accessToken(ctx context.Context, appKey, appSealed string) (string, error) {
 	if t, ok := c.cachedToken(appKey); ok {
 		return t, nil
 	}
@@ -87,7 +87,7 @@ func (c *Client) accessToken(ctx context.Context, appKey, appSecret string) (str
 		}
 		mintCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tokenMintTimeout)
 		defer cancel()
-		token, expireIn, err := fetchAccessToken(mintCtx, c.httpClient, c.apiBase, appKey, appSecret)
+		ticket, expireIn, err := fetchAccessToken(mintCtx, c.httpClient, c.apiBase, appKey, appSealed)
 		if err != nil {
 			return "", err
 		}
@@ -96,9 +96,9 @@ func (c *Client) accessToken(ctx context.Context, appKey, appSecret string) (str
 			ttl = tokenSafetyMargin * 2
 		}
 		c.mu.Lock()
-		c.tokens[appKey] = cachedToken{value: token, expiresAt: c.now().Add(ttl - tokenSafetyMargin)}
+		c.tickets[appKey] = cachedToken{value: ticket, expiresAt: c.now().Add(ttl - tokenSafetyMargin)}
 		c.mu.Unlock()
-		return token, nil
+		return ticket, nil
 	})
 	select {
 	case <-ctx.Done():
@@ -115,7 +115,7 @@ func (c *Client) accessToken(ctx context.Context, appKey, appSecret string) (str
 func (c *Client) cachedToken(appKey string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if t, ok := c.tokens[appKey]; ok && t.expiresAt.After(c.now()) {
+	if t, ok := c.tickets[appKey]; ok && t.expiresAt.After(c.now()) {
 		return t.value, true
 	}
 	return "", false
@@ -125,7 +125,7 @@ func (c *Client) cachedToken(appKey string) (string, bool) {
 // refreshes. Used after the API reports an expired/invalid token (HTTP 401).
 func (c *Client) invalidate(appKey string) {
 	c.mu.Lock()
-	delete(c.tokens, appKey)
+	delete(c.tickets, appKey)
 	c.mu.Unlock()
 }
 
@@ -133,20 +133,20 @@ func (c *Client) invalidate(appKey string) {
 // its temporary download URL via POST /v1.0/robot/messageFiles/download. It
 // refreshes the cached token once on a 401 (mirroring sender.sendOne). The
 // returned URL is a short-lived signed link — fetch it immediately.
-func (c *Client) messageFileDownloadURL(ctx context.Context, appKey, appSecret, robotCode, downloadCode string) (string, error) {
+func (c *Client) messageFileDownloadURL(ctx context.Context, appKey, appSealed, robotCode, downloadCode string) (string, error) {
 	body := map[string]string{"robotCode": robotCode, "downloadCode": downloadCode}
 	var out messageFileDownloadResponse
-	token, err := c.accessToken(ctx, appKey, appSecret)
+	ticket, err := c.accessToken(ctx, appKey, appSealed)
 	if err != nil {
 		return "", err
 	}
-	err = c.postJSON(ctx, messageFilesDownloadPath, token, body, &out)
+	err = c.postJSON(ctx, messageFilesDownloadPath, ticket, body, &out)
 	if errors.Is(err, errUnauthorized) {
 		c.invalidate(appKey)
-		if token, err = c.accessToken(ctx, appKey, appSecret); err != nil {
+		if ticket, err = c.accessToken(ctx, appKey, appSealed); err != nil {
 			return "", err
 		}
-		err = c.postJSON(ctx, messageFilesDownloadPath, token, body, &out)
+		err = c.postJSON(ctx, messageFilesDownloadPath, ticket, body, &out)
 	}
 	if err != nil {
 		return "", err
@@ -160,7 +160,7 @@ func (c *Client) messageFileDownloadURL(ctx context.Context, appKey, appSecret, 
 // postJSON posts body to path with the access token header and decodes a 2xx
 // response into out (out may be nil to ignore the body). It returns
 // errUnauthorized on HTTP 401 so the caller can refresh the token and retry.
-func (c *Client) postJSON(ctx context.Context, path, accessToken string, body, out any) error {
+func (c *Client) postJSON(ctx context.Context, path, accessTicket string, body, out any) error {
 	reqBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("dingtalk: marshal request: %w", err)
@@ -170,7 +170,7 @@ func (c *Client) postJSON(ctx context.Context, path, accessToken string, body, o
 		return fmt.Errorf("dingtalk: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-acs-dingtalk-access-token", accessToken)
+	req.Header.Set("x-acs-dingtalk-access-token", accessTicket)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

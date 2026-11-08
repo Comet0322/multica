@@ -244,8 +244,8 @@ func TestLoginTokenFlagWiring(t *testing.T) {
 	if got := tokenFlag.Value.Type(); got != "string" {
 		t.Fatalf("loginCmd --token type = %q, want %q (regressed to bool?)", got, "string")
 	}
-	if tokenFlag.NoOptDefVal != tokenPromptSentinel {
-		t.Fatalf("loginCmd --token NoOptDefVal = %q, want %q (legacy `multica login --token` prompt mode would break)", tokenFlag.NoOptDefVal, tokenPromptSentinel)
+	if tokenFlag.NoOptDefVal != ticketPromptSentinel {
+		t.Fatalf("loginCmd --token NoOptDefVal = %q, want %q (legacy `multica login --token` prompt mode would break)", tokenFlag.NoOptDefVal, ticketPromptSentinel)
 	}
 }
 
@@ -300,7 +300,7 @@ func TestLoginTokenHelpOutputRendersCleanly(t *testing.T) {
 func TestLoginTokenFlagParsing(t *testing.T) {
 	type want struct {
 		changed         bool
-		resolvedToken   string // empty == "fall through to prompt"
+		resolvedTicket  string // empty == "fall through to prompt"
 		expectsPrompted bool
 	}
 
@@ -312,12 +312,12 @@ func TestLoginTokenFlagParsing(t *testing.T) {
 		{
 			name: "space-separated value (the form from #1994)",
 			argv: []string{"--token", "mul_xxx"},
-			want: want{changed: true, resolvedToken: "mul_xxx"},
+			want: want{changed: true, resolvedTicket: "mul_xxx"},
 		},
 		{
 			name: "equals-separated value",
 			argv: []string{"--token=mul_yyy"},
-			want: want{changed: true, resolvedToken: "mul_yyy"},
+			want: want{changed: true, resolvedTicket: "mul_yyy"},
 		},
 		{
 			name: "no value falls through to prompt (legacy CLI_INSTALL.md form)",
@@ -344,7 +344,7 @@ func TestLoginTokenFlagParsing(t *testing.T) {
 			// regresses, TestLoginTokenFlagWiring catches that; here we test
 			// the parsing behavior given the documented wiring.
 			cmd.Flags().String("token", "", "")
-			cmd.Flags().Lookup("token").NoOptDefVal = tokenPromptSentinel
+			cmd.Flags().Lookup("token").NoOptDefVal = ticketPromptSentinel
 
 			if err := cmd.ParseFlags(tc.argv); err != nil {
 				t.Fatalf("ParseFlags(%v) error: %v", tc.argv, err)
@@ -358,19 +358,19 @@ func TestLoginTokenFlagParsing(t *testing.T) {
 
 			// Replay runAuthLogin's resolution logic so the test fails if
 			// either the flag wiring OR the space-form recovery breaks.
-			tokenFlag, _ := cmd.Flags().GetString("token")
+			ticketFlag, _ := cmd.Flags().GetString("token")
 			positional := cmd.Flags().Args()
-			if tokenFlag == tokenPromptSentinel && len(positional) == 1 {
-				tokenFlag = positional[0]
+			if ticketFlag == ticketPromptSentinel && len(positional) == 1 {
+				ticketFlag = positional[0]
 			}
 
 			if tc.want.expectsPrompted {
-				if tokenFlag != tokenPromptSentinel && tokenFlag != "" {
-					t.Fatalf("expected prompt fall-through, got resolved token %q", tokenFlag)
+				if ticketFlag != ticketPromptSentinel && ticketFlag != "" {
+					t.Fatalf("expected prompt fall-through, got resolved token %q", ticketFlag)
 				}
 			} else {
-				if tokenFlag != tc.want.resolvedToken {
-					t.Fatalf("resolved token = %q, want %q", tokenFlag, tc.want.resolvedToken)
+				if ticketFlag != tc.want.resolvedTicket {
+					t.Fatalf("resolved token = %q, want %q", ticketFlag, tc.want.resolvedTicket)
 				}
 			}
 		})
@@ -378,11 +378,11 @@ func TestLoginTokenFlagParsing(t *testing.T) {
 }
 
 func TestRunAuthStatusTaskContextDoesNotPrintCredential(t *testing.T) {
-	const fakeTaskToken = "mat_task_status_sentinel"
+	const fakeTaskTicket = "mat_task_status_sentinel"
 	redirectTestHome(t, t.TempDir())
 	t.Setenv("MULTICA_AGENT_ID", "agent-test")
 	t.Setenv("MULTICA_TASK_ID", "task-test")
-	t.Setenv("MULTICA_TOKEN", fakeTaskToken)
+	t.Setenv("MULTICA_TOKEN", fakeTaskTicket)
 	t.Setenv("MULTICA_TASK_CONFIG_ROOT", filepath.Join(t.TempDir(), "task-multica"))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -390,7 +390,7 @@ func TestRunAuthStatusTaskContextDoesNotPrintCredential(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer "+fakeTaskToken {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+fakeTaskTicket {
 			t.Errorf("Authorization = %q, want fake task token", got)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"name": "Task Agent", "email": "task@example.test"})
@@ -404,7 +404,7 @@ func TestRunAuthStatusTaskContextDoesNotPrintCredential(t *testing.T) {
 		t.Fatalf("runAuthStatus: %v", err)
 	}
 	out := stderr.read()
-	for _, forbidden := range []string{fakeTaskToken, fakeTaskToken[:12], "Token:"} {
+	for _, forbidden := range []string{fakeTaskTicket, fakeTaskTicket[:12], "Token:"} {
 		if strings.Contains(out, forbidden) {
 			t.Fatalf("auth status exposed credential material %q:\n%s", forbidden, out)
 		}
@@ -441,14 +441,14 @@ func TestRunAuthStatusTaskContextRequiresTaskToken(t *testing.T) {
 	t.Setenv("MULTICA_SERVER_URL", srv.URL)
 
 	for _, tc := range []struct {
-		name  string
-		token string
+		name   string
+		ticket string
 	}{
-		{name: "missing token", token: ""},
-		{name: "human token", token: "mul_owner_sentinel"},
+		{name: "missing token", ticket: ""},
+		{name: "human token", ticket: "mul_owner_sentinel"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("MULTICA_TOKEN", tc.token)
+			t.Setenv("MULTICA_TOKEN", tc.ticket)
 			requestCount = 0
 			stderr := captureStderr(t)
 			err := runAuthStatus(testCmd(), nil)
@@ -460,7 +460,7 @@ func TestRunAuthStatusTaskContextRequiresTaskToken(t *testing.T) {
 			if requestCount != 0 {
 				t.Fatalf("auth status made %d request(s) without a task token", requestCount)
 			}
-			for _, forbidden := range []string{tc.token, "Token:"} {
+			for _, forbidden := range []string{tc.ticket, "Token:"} {
 				if forbidden != "" && strings.Contains(out, forbidden) {
 					t.Fatalf("auth status exposed credential material %q: %s", forbidden, out)
 				}
@@ -545,27 +545,27 @@ func TestNormalizeAPIBaseURL(t *testing.T) {
 func TestValidateLoginTokenPrefix(t *testing.T) {
 	cases := []struct {
 		name    string
-		token   string
+		ticket  string
 		wantErr bool
 	}{
-		{name: "mul_ PAT", token: "mul_abc123", wantErr: false},
-		{name: "mcn_ Cloud Node PAT", token: "mcn_abc123", wantErr: false},
-		{name: "empty token", token: "", wantErr: true},
-		{name: "no prefix", token: "abc123", wantErr: true},
-		{name: "wrong prefix mdt_", token: "mdt_abc123", wantErr: true},
-		{name: "wrong prefix mat_", token: "mat_abc123", wantErr: true},
-		{name: "case-sensitive: MUL_ rejected", token: "MUL_abc123", wantErr: true},
-		{name: "leading whitespace not allowed (callers TrimSpace first)", token: " mul_abc", wantErr: true},
+		{name: "mul_ PAT", ticket: "mul_abc123", wantErr: false},
+		{name: "mcn_ Cloud Node PAT", ticket: "mcn_abc123", wantErr: false},
+		{name: "empty token", ticket: "", wantErr: true},
+		{name: "no prefix", ticket: "abc123", wantErr: true},
+		{name: "wrong prefix mdt_", ticket: "mdt_abc123", wantErr: true},
+		{name: "wrong prefix mat_", ticket: "mat_abc123", wantErr: true},
+		{name: "case-sensitive: MUL_ rejected", ticket: "MUL_abc123", wantErr: true},
+		{name: "leading whitespace not allowed (callers TrimSpace first)", ticket: " mul_abc", wantErr: true},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateLoginTokenPrefix(tc.token)
+			err := validateLoginTokenPrefix(tc.ticket)
 			if tc.wantErr && err == nil {
-				t.Fatalf("validateLoginTokenPrefix(%q) = nil, want error", tc.token)
+				t.Fatalf("validateLoginTokenPrefix(%q) = nil, want error", tc.ticket)
 			}
 			if !tc.wantErr && err != nil {
-				t.Fatalf("validateLoginTokenPrefix(%q) = %v, want nil", tc.token, err)
+				t.Fatalf("validateLoginTokenPrefix(%q) = %v, want nil", tc.ticket, err)
 			}
 		})
 	}

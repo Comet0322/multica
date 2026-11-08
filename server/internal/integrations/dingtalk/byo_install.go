@@ -34,7 +34,7 @@ type RegisterBYOParams struct {
 	AgentID     pgtype.UUID
 	InitiatorID pgtype.UUID
 	AppKey      string // client id — robotCode + access-token mint
-	AppSecret   string // client secret — access-token mint (encrypted at rest)
+	AppSealed   string // client secret — access-token mint (encrypted at rest)
 }
 
 // RegisterBYO installs a user-supplied ("bring your own") DingTalk robot for an
@@ -56,11 +56,11 @@ type RegisterBYOParams struct {
 // installation.
 func (s *InstallService) RegisterBYO(ctx context.Context, p RegisterBYOParams) (db.ChannelInstallation, error) {
 	appKey := strings.TrimSpace(p.AppKey)
-	appSecret := strings.TrimSpace(p.AppSecret)
+	appSealed := strings.TrimSpace(p.AppSealed)
 	if appKey == "" {
 		return db.ChannelInstallation{}, ErrInvalidAppKey
 	}
-	if appSecret == "" {
+	if appSealed == "" {
 		return db.ChannelInstallation{}, ErrInvalidAppSecret
 	}
 
@@ -69,18 +69,18 @@ func (s *InstallService) RegisterBYO(ctx context.Context, p RegisterBYOParams) (
 	// robot equals the AppKey, so no separate identity lookup is needed.
 	validationCtx, cancel := context.WithTimeout(ctx, s.validationTimeout)
 	defer cancel()
-	if _, _, err := fetchAccessToken(validationCtx, s.httpClient, s.apiBase, appKey, appSecret); err != nil {
+	if _, _, err := fetchAccessToken(validationCtx, s.httpClient, s.apiBase, appKey, appSealed); err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("%w: %v", ErrCredentialValidation, err)
 	}
 
-	sealedSecret, err := s.box.Seal([]byte(appSecret))
+	sealedSecret, err := s.box.Seal([]byte(appSealed))
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encrypt dingtalk app secret: %w", err)
 	}
 	cfgJSON, err := json.Marshal(installConfig{
 		AppID:              appKey,
 		RobotCode:          appKey,
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString(sealedSecret),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString(sealedSecret),
 	})
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encode dingtalk installation config: %w", err)

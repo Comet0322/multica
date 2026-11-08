@@ -336,7 +336,7 @@ func (n *typingNotifier) OnIngested(ctx context.Context, inst engine.ResolvedIns
 	if msg.Source.ThreadID != "" {
 		threadID, _ = strconv.ParseInt(msg.Source.ThreadID, 10, 64)
 	}
-	if err := newBotAPI(n.apiBase, creds.BotToken, n.client).SendChatAction(ctx, chatID, threadID); err != nil {
+	if err := newBotAPI(n.apiBase, creds.BotTicket, n.client).SendChatAction(ctx, chatID, threadID); err != nil {
 		n.logger.WarnContext(ctx, "telegram typing: sendChatAction failed", "error", err)
 	}
 }

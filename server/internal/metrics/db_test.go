@@ -11,12 +11,12 @@ import (
 )
 
 func TestDBCollectorExposesPoolStats(t *testing.T) {
-	pool, err := pgxpool.New(context.Background(), "postgres://multica:multica@127.0.0.1:1/multica?sslmode=disable&pool_max_conns=13")
+	pool, err := pgxpool.New(context.Background(), "postgres://multica@127.0.0.1:1/multica?sslmode=disable&pool_max_conns=13")
 	if err != nil {
 		t.Fatalf("create pool: %v", err)
 	}
 	defer pool.Close()
-	replicaPool, err := pgxpool.New(context.Background(), "postgres://multica:multica@127.0.0.1:2/multica?sslmode=disable&pool_max_conns=7")
+	replicaPool, err := pgxpool.New(context.Background(), "postgres://multica@127.0.0.1:2/multica?sslmode=disable&pool_max_conns=7")
 	if err != nil {
 		t.Fatalf("create replica pool: %v", err)
 	}

@@ -127,7 +127,7 @@ func TestReadFallsBackOnceForServerConnectionError(t *testing.T) {
 }
 
 func TestConnectErrorFallsBackToPrimary(t *testing.T) {
-	pool, err := pgxpool.New(context.Background(), "postgres://multica:multica@127.0.0.1:1/multica?sslmode=disable&connect_timeout=1")
+	pool, err := pgxpool.New(context.Background(), "postgres://multica@127.0.0.1:1/multica?sslmode=disable&connect_timeout=1")
 	if err != nil {
 		t.Fatalf("create unreachable pool: %v", err)
 	}

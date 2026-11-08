@@ -170,7 +170,7 @@ func (h *Handler) ListAutopilotDeliveries(w http.ResponseWriter, r *http.Request
 	limit := int32(20)
 	offset := int32(0)
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+		if v, err := strconv.ParseInt(l, 10, 32); err == nil && v > 0 {
 			limit = int32(v)
 		}
 	}
@@ -178,7 +178,7 @@ func (h *Handler) ListAutopilotDeliveries(w http.ResponseWriter, r *http.Request
 		limit = 100
 	}
 	if o := r.URL.Query().Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+		if v, err := strconv.ParseInt(o, 10, 32); err == nil && v >= 0 {
 			offset = int32(v)
 		}
 	}

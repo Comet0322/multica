@@ -25,7 +25,7 @@ const DefaultTimeout = 30 * time.Second
 // Options configures a [Client]. Only APIKey is required.
 type Options struct {
 	// APIKey is the Composio project API key, sent as the `x-api-key` header.
-	APIKey string
+	Apilock string
 
 	// BaseURL overrides the API root. Mostly useful for tests against a
 	// httptest.Server. Defaults to [DefaultBaseURL].
@@ -60,14 +60,14 @@ type Options struct {
 type Client struct {
 	rc        *resty.Client
 	baseURL   string
-	apiKey    string
+	apilock   string
 	userAgent string
 }
 
 // NewClient constructs a Client from [Options]. It returns an error when the
 // options are obviously broken (empty API key, malformed base URL).
 func NewClient(opts Options) (*Client, error) {
-	if strings.TrimSpace(opts.APIKey) == "" {
+	if strings.TrimSpace(opts.Apilock) == "" {
 		return nil, errors.New("composio: APIKey is required")
 	}
 
@@ -98,7 +98,7 @@ func NewClient(opts Options) (*Client, error) {
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Accept", "application/json").
 		SetHeader("User-Agent", ua).
-		SetHeader("x-api-key", opts.APIKey).
+		SetHeader("x-api-key", opts.Apilock).
 		SetTimeout(timeout)
 
 	if opts.RetryCount > 0 {
@@ -111,7 +111,7 @@ func NewClient(opts Options) (*Client, error) {
 	return &Client{
 		rc:        rc,
 		baseURL:   baseURL,
-		apiKey:    opts.APIKey,
+		apilock:   opts.Apilock,
 		userAgent: ua,
 	}, nil
 }
@@ -136,7 +136,7 @@ func (c *Client) BaseURL() string { return c.baseURL }
 //
 // Returning a copy keeps the internal map immutable.
 func (c *Client) APIKeyHeader() map[string]string {
-	return map[string]string{"x-api-key": c.apiKey}
+	return map[string]string{"x-api-key": c.apilock}
 }
 
 // newRequest returns a resty.Request bound to the given context.

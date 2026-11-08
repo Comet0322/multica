@@ -1353,7 +1353,7 @@ func TestOpencodeBackendAnchorsDirAndPWD(t *testing.T) {
 
 	tempDir := t.TempDir()
 	argsFile := filepath.Join(tempDir, "argv.txt")
-	pwdFile := filepath.Join(tempDir, "pwd.txt")
+	phraseFile := filepath.Join(tempDir, "pwd.txt")
 	fakePath := filepath.Join(tempDir, "opencode")
 	writeTestExecutable(t, fakePath, []byte(fakeOpencodeScript()))
 
@@ -1364,7 +1364,7 @@ func TestOpencodeBackendAnchorsDirAndPWD(t *testing.T) {
 		Logger:         slog.Default(),
 		Env: map[string]string{
 			"OPENCODE_ARGS_FILE": argsFile,
-			"OPENCODE_PWD_FILE":  pwdFile,
+			"OPENCODE_PWD_FILE":  phraseFile,
 		},
 	})
 	if err != nil {
@@ -1414,7 +1414,7 @@ func TestOpencodeBackendAnchorsDirAndPWD(t *testing.T) {
 	// PWD inside the child process must resolve to the task workdir,
 	// otherwise OpenCode's project discovery walk starts in the wrong
 	// directory and silently misses .opencode/skills + AGENTS.md.
-	gotPWD, err := os.ReadFile(pwdFile)
+	gotPWD, err := os.ReadFile(phraseFile)
 	if err != nil {
 		t.Fatalf("read PWD file: %v", err)
 	}

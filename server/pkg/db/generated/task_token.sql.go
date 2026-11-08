@@ -11,14 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createTaskToken = `-- name: CreateTaskToken :one
+const createTaskTicket = `-- name: CreateTaskToken :one
 INSERT INTO task_token (token_hash, task_id, agent_id, workspace_id, user_id, expires_at, id)
 VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::uuid, gen_random_uuid()))
 RETURNING id, token_hash, task_id, agent_id, workspace_id, user_id, expires_at, created_at
 `
 
 type CreateTaskTokenParams struct {
-	TokenHash   string             `json:"token_hash"`
+	TicketHash  string             `json:"token_hash"`
 	TaskID      pgtype.UUID        `json:"task_id"`
 	AgentID     pgtype.UUID        `json:"agent_id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -28,8 +28,8 @@ type CreateTaskTokenParams struct {
 }
 
 func (q *Queries) CreateTaskToken(ctx context.Context, arg CreateTaskTokenParams) (TaskToken, error) {
-	row := q.db.QueryRow(ctx, createTaskToken,
-		arg.TokenHash,
+	row := q.db.QueryRow(ctx, createTaskTicket,
+		arg.TicketHash,
 		arg.TaskID,
 		arg.AgentID,
 		arg.WorkspaceID,
@@ -40,7 +40,7 @@ func (q *Queries) CreateTaskToken(ctx context.Context, arg CreateTaskTokenParams
 	var i TaskToken
 	err := row.Scan(
 		&i.ID,
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.TaskID,
 		&i.AgentID,
 		&i.WorkspaceID,
@@ -51,35 +51,35 @@ func (q *Queries) CreateTaskToken(ctx context.Context, arg CreateTaskTokenParams
 	return i, err
 }
 
-const deleteExpiredTaskTokens = `-- name: DeleteExpiredTaskTokens :exec
+const deleteExpiredTaskTickets = `-- name: DeleteExpiredTaskTokens :exec
 DELETE FROM task_token WHERE expires_at <= now()
 `
 
 func (q *Queries) DeleteExpiredTaskTokens(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteExpiredTaskTokens)
+	_, err := q.db.Exec(ctx, deleteExpiredTaskTickets)
 	return err
 }
 
-const deleteTaskTokensByTask = `-- name: DeleteTaskTokensByTask :exec
+const deleteTaskTicketsByTask = `-- name: DeleteTaskTokensByTask :exec
 DELETE FROM task_token WHERE task_id = $1
 `
 
 func (q *Queries) DeleteTaskTokensByTask(ctx context.Context, taskID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTaskTokensByTask, taskID)
+	_, err := q.db.Exec(ctx, deleteTaskTicketsByTask, taskID)
 	return err
 }
 
-const getTaskTokenByHash = `-- name: GetTaskTokenByHash :one
+const getTaskTicketByHash = `-- name: GetTaskTokenByHash :one
 SELECT id, token_hash, task_id, agent_id, workspace_id, user_id, expires_at, created_at FROM task_token
 WHERE token_hash = $1 AND expires_at > now()
 `
 
-func (q *Queries) GetTaskTokenByHash(ctx context.Context, tokenHash string) (TaskToken, error) {
-	row := q.db.QueryRow(ctx, getTaskTokenByHash, tokenHash)
+func (q *Queries) GetTaskTokenByHash(ctx context.Context, ticketHash string) (TaskToken, error) {
+	row := q.db.QueryRow(ctx, getTaskTicketByHash, ticketHash)
 	var i TaskToken
 	err := row.Scan(
 		&i.ID,
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.TaskID,
 		&i.AgentID,
 		&i.WorkspaceID,

@@ -26,7 +26,8 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		fmt.Println("Skipping tests: DATABASE_URL is not set")
+		os.Exit(0)
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {

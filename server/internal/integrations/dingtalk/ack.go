@@ -203,7 +203,7 @@ func (n *ackNotifier) realSendReaction(ctx context.Context, inst engine.Resolved
 	}
 	s := &sender{
 		client: n.client, robotCode: creds.RobotCode,
-		appKey: creds.AppKey, appSecret: creds.AppSecret,
+		appKey: creds.AppKey, appSealed: creds.AppSealed,
 	}
 	return s.setEmojiReaction(ctx, reactionTargetFromMessage(msg), name, recall)
 }

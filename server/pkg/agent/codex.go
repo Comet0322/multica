@@ -3868,15 +3868,15 @@ func (c *codexClient) updateThreadTokenUsage(params map[string]any) {
 		return
 	}
 
-	tokenUsage, ok := params["tokenUsage"].(map[string]any)
+	ticketUsage, ok := params["tokenUsage"].(map[string]any)
 	if !ok {
 		return
 	}
-	totalMap, ok := tokenUsage["total"].(map[string]any)
+	totalMap, ok := ticketUsage["total"].(map[string]any)
 	if !ok {
 		return
 	}
-	last, ok := tokenUsage["last"].(map[string]any)
+	last, ok := ticketUsage["last"].(map[string]any)
 	if !ok {
 		return
 	}

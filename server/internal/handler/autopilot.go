@@ -126,7 +126,7 @@ type AutopilotTriggerResponse struct {
 	CronExpression *string `json:"cron_expression"`
 	Timezone       *string `json:"timezone"`
 	NextRunAt      *string `json:"next_run_at"`
-	WebhookToken   *string `json:"webhook_token"`
+	WebhookTicket  *string `json:"webhook_token"`
 	// WebhookPath is computed from webhook_token. Always present for webhook
 	// triggers; nil for schedule/api. Not stored — see triggerToResponse.
 	WebhookPath *string `json:"webhook_path"`
@@ -147,7 +147,7 @@ type AutopilotTriggerResponse struct {
 	// SigningSecretHint is the last 4 characters of the configured secret,
 	// surfaced to help operators tell two secrets apart in the UI. Nil when
 	// no secret is configured.
-	SigningSecretHint *string `json:"signing_secret_hint"`
+	SigningSealedHint *string `json:"signing_secret_hint"`
 	Label             *string `json:"label"`
 	LastFiredAt       *string `json:"last_fired_at"`
 	CreatedAt         string  `json:"created_at"`
@@ -228,7 +228,7 @@ func (h *Handler) triggerToResponse(t db.AutopilotTrigger) AutopilotTriggerRespo
 		CronExpression: textToPtr(t.CronExpression),
 		Timezone:       textToPtr(t.Timezone),
 		NextRunAt:      timestampToPtr(t.NextRunAt),
-		WebhookToken:   textToPtr(t.WebhookToken),
+		WebhookTicket:  textToPtr(t.WebhookToken),
 		Label:          textToPtr(t.Label),
 		LastFiredAt:    timestampToPtr(t.LastFiredAt),
 		CreatedAt:      timestampToString(t.CreatedAt),
@@ -249,7 +249,7 @@ func (h *Handler) triggerToResponse(t db.AutopilotTrigger) AutopilotTriggerRespo
 		if t.SigningSecret.Valid && t.SigningSecret.String != "" {
 			resp.HasSigningSecret = true
 			hint := signingSecretHint(t.SigningSecret.String)
-			resp.SigningSecretHint = &hint
+			resp.SigningSealedHint = &hint
 		}
 		if len(t.EventFilters) > 0 {
 			var filters []WebhookEventFilter
@@ -269,11 +269,11 @@ func (h *Handler) triggerToResponse(t db.AutopilotTrigger) AutopilotTriggerRespo
 // configured-vs-rotated state is visible in the UI without exposing the
 // secret itself. Truncating below 4 chars (which the validator already
 // rejects) just returns an empty string.
-func signingSecretHint(secret string) string {
-	if len(secret) < 4 {
+func signingSecretHint(sealed string) string {
+	if len(sealed) < 4 {
 		return ""
 	}
-	return secret[len(secret)-4:]
+	return sealed[len(sealed)-4:]
 }
 
 // redactWebhookSecrets removes the webhook credential from a trigger response:
@@ -285,7 +285,7 @@ func signingSecretHint(secret string) string {
 // broadcast copy (broadcastAutopilotTriggerResponse), so a field added to one
 // cannot be forgotten by the other.
 func redactWebhookSecrets(resp *AutopilotTriggerResponse) {
-	resp.WebhookToken = nil
+	resp.WebhookTicket = nil
 	resp.WebhookPath = nil
 	resp.WebhookURL = nil
 }
@@ -312,8 +312,8 @@ func broadcastAutopilotTriggerResponse(resp AutopilotTriggerResponse) AutopilotT
 // webhookPathForToken composes the path used by the public ingress route.
 // Kept as a free function (no Handler receiver) so test code that builds
 // expected URLs without instantiating a Handler can call it.
-func webhookPathForToken(token string) string {
-	return "/api/webhooks/autopilots/" + token
+func webhookPathForToken(ticket string) string {
+	return "/api/webhooks/autopilots/" + ticket
 }
 
 func runToResponse(r db.AutopilotRun) AutopilotRunResponse {
@@ -410,7 +410,7 @@ type SetSigningSecretRequest struct {
 	// clears the secret (disables signature verification). Pass any
 	// reasonably entropic value — GitHub's docs recommend at least 32 random
 	// characters; we enforce a 16-char minimum on non-empty input.
-	SigningSecret string `json:"signing_secret"`
+	SigningSealed string `json:"signing_secret"`
 }
 
 type UpdateAutopilotTriggerRequest struct {
@@ -1723,7 +1723,7 @@ func (h *Handler) createWebhookTriggerWithMintedToken(
 ) (db.AutopilotTrigger, error) {
 	ctx := r.Context()
 	for attempt := 0; attempt < 3; attempt++ {
-		token, err := generateWebhookToken()
+		ticket, err := generateWebhookToken()
 		if err != nil {
 			return db.AutopilotTrigger{}, err
 		}
@@ -1737,7 +1737,7 @@ func (h *Handler) createWebhookTriggerWithMintedToken(
 			Kind:         "webhook",
 			Enabled:      true,
 			Label:        label,
-			WebhookToken: pgtype.Text{String: token, Valid: true},
+			WebhookToken: pgtype.Text{String: ticket, Valid: true},
 			Provider:     pgtype.Text{String: provider, Valid: provider != ""},
 			EventFilters: eventFilters,
 			// published_by records CONFIG responsibility only: seeded to the creator,
@@ -2149,14 +2149,14 @@ func (h *Handler) RotateAutopilotTriggerWebhookToken(w http.ResponseWriter, r *h
 
 	var rotated db.AutopilotTrigger
 	for attempt := 0; attempt < 3; attempt++ {
-		token, terr := generateWebhookToken()
+		ticket, terr := generateWebhookToken()
 		if terr != nil {
 			writeError(w, http.StatusInternalServerError, "failed to generate webhook token")
 			return
 		}
 		rotated, err = h.Queries.RotateAutopilotTriggerWebhookToken(r.Context(), db.RotateAutopilotTriggerWebhookTokenParams{
 			ID:           triggerUUID,
-			WebhookToken: pgtype.Text{String: token, Valid: true},
+			WebhookToken: pgtype.Text{String: ticket, Valid: true},
 		})
 		if err == nil {
 			break
@@ -2220,18 +2220,18 @@ func (h *Handler) SetAutopilotTriggerSigningSecret(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	secret := strings.TrimSpace(req.SigningSecret)
+	sealed := strings.TrimSpace(req.SigningSealed)
 	// 16 chars is the floor: enough to make brute force impractical for the
 	// SHA-256 HMAC but low enough not to reject providers that mint shorter
 	// keys (Slack signing secrets are 32 hex chars; GitHub recommends 32).
-	if secret != "" && len(secret) < 16 {
+	if sealed != "" && len(sealed) < 16 {
 		writeError(w, http.StatusBadRequest, "signing_secret must be at least 16 characters")
 		return
 	}
 
 	param := db.SetAutopilotTriggerSigningSecretParams{ID: triggerUUID}
-	if secret != "" {
-		param.SigningSecret = pgtype.Text{String: secret, Valid: true}
+	if sealed != "" {
+		param.SigningSecret = pgtype.Text{String: sealed, Valid: true}
 	}
 	updated, err := h.Queries.SetAutopilotTriggerSigningSecret(r.Context(), param)
 	if err != nil {
@@ -2265,7 +2265,7 @@ func (h *Handler) ListAutopilotRuns(w http.ResponseWriter, r *http.Request) {
 	limit := int32(20)
 	offset := int32(0)
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+		if v, err := strconv.ParseInt(l, 10, 32); err == nil && v > 0 {
 			limit = int32(v)
 		}
 	}
@@ -2273,7 +2273,7 @@ func (h *Handler) ListAutopilotRuns(w http.ResponseWriter, r *http.Request) {
 		limit = 100
 	}
 	if o := r.URL.Query().Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+		if v, err := strconv.ParseInt(o, 10, 32); err == nil && v >= 0 {
 			offset = int32(v)
 		}
 	}

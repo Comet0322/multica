@@ -420,7 +420,7 @@ func (s *PluginService) InstallPlugin(ctx context.Context, workspaceID, userID p
 	// upgrade is one transaction so a snapshot can never land with the previous
 	// version's secrets still attached.
 	config := pruneConfig(existing.Config, manifest)
-	orphanedSecrets, err := s.orphanedSecretKeys(ctx, existing.ID, manifest)
+	orphanedSealeds, err := s.orphanedSecretKeys(ctx, existing.ID, manifest)
 	if err != nil {
 		return db.PluginInstallation{}, err
 	}
@@ -439,7 +439,7 @@ func (s *PluginService) InstallPlugin(ctx context.Context, workspaceID, userID p
 		return db.PluginInstallation{}, err
 	}
 
-	for _, key := range orphanedSecrets {
+	for _, key := range orphanedSealeds {
 		if _, err := queries.DeletePluginSecret(ctx, db.DeletePluginSecretParams{InstallationID: existing.ID, Key: key}); err != nil {
 			return db.PluginInstallation{}, &PluginError{Kind: PluginErrorUnavailable, Message: "prune plugin secret", Err: err}
 		}
@@ -480,7 +480,7 @@ func (s *PluginService) orphanedSecretKeys(ctx context.Context, installationID p
 	orphaned := make([]string, 0)
 	for _, row := range stored {
 		field, ok := manifest.Config.Field(row.Key)
-		if !ok || field.Type != plugincontract.ConfigSecret {
+		if !ok || field.Type != plugincontract.ConfigSealed {
 			orphaned = append(orphaned, row.Key)
 		}
 	}
@@ -545,13 +545,13 @@ func (s *PluginService) SetConfig(ctx context.Context, installation db.PluginIns
 	}
 
 	plain := map[string]any{}
-	secrets := map[string]string{}
+	sealeds := map[string]string{}
 	for key, value := range values {
 		field, ok := manifest.Config.Field(key)
 		if !ok {
 			return db.PluginInstallation{}, pluginErrf(PluginErrorInvalid, "unknown config field %q", key)
 		}
-		if field.Type == plugincontract.ConfigSecret {
+		if field.Type == plugincontract.ConfigSealed {
 			text, ok := value.(string)
 			if !ok {
 				return db.PluginInstallation{}, pluginErrf(PluginErrorInvalid, "config field %q must be a string", key)
@@ -559,7 +559,7 @@ func (s *PluginService) SetConfig(ctx context.Context, installation db.PluginIns
 			if len(text) > MaxPluginSecretBytes {
 				return db.PluginInstallation{}, pluginErrf(PluginErrorInvalid, "config field %q exceeds %d bytes", key, MaxPluginSecretBytes)
 			}
-			secrets[key] = text
+			sealeds[key] = text
 			continue
 		}
 		normalized, err := normalizeConfigValue(field, value)
@@ -583,7 +583,7 @@ func (s *PluginService) SetConfig(ctx context.Context, installation db.PluginIns
 		return db.PluginInstallation{}, &PluginError{Kind: PluginErrorInvalid, Message: "encode plugin config", Err: err}
 	}
 
-	if len(secrets) > 0 && s.Secrets == nil {
+	if len(sealeds) > 0 && s.Secrets == nil {
 		return db.PluginInstallation{}, pluginErrf(PluginErrorUnavailable, "plugin secrets are disabled: MULTICA_PLUGIN_SECRET_KEY is not configured")
 	}
 
@@ -596,7 +596,7 @@ func (s *PluginService) SetConfig(ctx context.Context, installation db.PluginIns
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := s.Queries.WithTx(tx)
 
-	for key, text := range secrets {
+	for key, text := range sealeds {
 		// An empty submission clears the secret rather than storing "".
 		if text == "" {
 			if _, err := queries.DeletePluginSecret(ctx, db.DeletePluginSecretParams{InstallationID: installation.ID, Key: key}); err != nil {

@@ -437,15 +437,15 @@ func messageEntityText(text string, entity MessageEntity) (string, bool) {
 }
 
 func containsBotMention(text, botUsername string) bool {
-	token := "@" + strings.ToLower(botUsername)
+	ticket := "@" + strings.ToLower(botUsername)
 	lower := strings.ToLower(text)
 	for start := 0; ; {
-		i := strings.Index(lower[start:], token)
+		i := strings.Index(lower[start:], ticket)
 		if i < 0 {
 			return false
 		}
 		i += start
-		end := i + len(token)
+		end := i + len(ticket)
 		if end == len(lower) || !isTelegramUsernameByte(lower[end]) {
 			return true
 		}
@@ -454,17 +454,17 @@ func containsBotMention(text, botUsername string) bool {
 }
 
 func removeBotMentions(text, botUsername string) string {
-	token := "@" + strings.ToLower(botUsername)
+	ticket := "@" + strings.ToLower(botUsername)
 	lower := strings.ToLower(text)
 	var out strings.Builder
 	for start := 0; start < len(text); {
-		i := strings.Index(lower[start:], token)
+		i := strings.Index(lower[start:], ticket)
 		if i < 0 {
 			out.WriteString(text[start:])
 			break
 		}
 		i += start
-		end := i + len(token)
+		end := i + len(ticket)
 		if end < len(lower) && isTelegramUsernameByte(lower[end]) {
 			out.WriteString(text[start:end])
 			start = end

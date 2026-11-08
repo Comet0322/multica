@@ -53,7 +53,7 @@ func TestPluginHookScheduleTwoReplicasRetryWithStableDelivery(t *testing.T) {
 		mu              sync.Mutex
 		received        []receivedScheduledHook
 		verificationErr error
-		signingSecret   string
+		signingSealed   string
 		callbacks       = service.NewCallbackTokens()
 	)
 	endpoint := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,10 +63,10 @@ func TestPluginHookScheduleTwoReplicasRetryWithStableDelivery(t *testing.T) {
 			return
 		}
 		mu.Lock()
-		secret := signingSecret
+		sealed := signingSealed
 		mu.Unlock()
 		if err := service.VerifyHookSignature(
-			secret,
+			sealed,
 			r.Header.Get("X-Multica-Timestamp"),
 			raw,
 			r.Header.Get("X-Multica-Signature"),
@@ -175,12 +175,12 @@ func TestPluginHookScheduleTwoReplicasRetryWithStableDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create plugin installation: %v", err)
 	}
-	derivedSigningSecret, err := plugins.HookSigningSecret(installation.ID)
+	derivedSigningSealed, err := plugins.HookSigningSecret(installation.ID)
 	if err != nil {
 		t.Fatalf("derive signing secret: %v", err)
 	}
 	mu.Lock()
-	signingSecret = derivedSigningSecret
+	signingSealed = derivedSigningSealed
 	mu.Unlock()
 	scheduleRow, err := queries.CreatePluginHookSchedule(ctx, db.CreatePluginHookScheduleParams{
 		InstallationID: installation.ID,

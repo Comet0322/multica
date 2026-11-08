@@ -125,10 +125,10 @@ func (f *fakePatcherQueries) UpdateLarkOutboundCardStatus(ctx context.Context, a
 	return nil
 }
 
-type fakeCredentials struct{ secret string }
+type fakeCredentials struct{ sealed string }
 
 func (f fakeCredentials) DecryptAppSecret(inst Installation) (string, error) {
-	return f.secret, nil
+	return f.sealed, nil
 }
 
 type fakeAPIClient struct {
@@ -245,7 +245,7 @@ func newTestPatcher(t *testing.T) (*Patcher, *fakePatcherQueries, *fakeAPIClient
 		cardErr: pgx.ErrNoRows,
 	}
 	api := &fakeAPIClient{sendReturn: "lark_card_msg_1", textSendReturn: "lark_text_msg_1"}
-	p := NewPatcher(q, fakeCredentials{secret: "shh"}, api, PatcherConfig{
+	p := NewPatcher(q, fakeCredentials{sealed: "shh"}, api, PatcherConfig{
 		Logger: newDiscardLogger(),
 		Now:    time.Now,
 	})
@@ -886,7 +886,7 @@ func TestPatcherThreadReplyDoesNotFallBackOnAmbiguousError(t *testing.T) {
 func TestPatcherClearsTypingOnTaskCancelled(t *testing.T) {
 	p, q, api := newTestPatcher(t)
 	typingAPI := &fakeTypingAPIClient{addReturn: "reaction-123"}
-	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{secret: "shh"},
+	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{sealed: "shh"},
 		&fakeTypingQueries{binding: q.binding, installation: q.installation}, newDiscardLogger())
 	p.SetTypingIndicatorManager(typing)
 
@@ -947,7 +947,7 @@ func TestPatcherClearsTypingAfterSessionDeleteRemovedTheBinding(t *testing.T) {
 		bindingErr:   pgx.ErrNoRows,
 	}
 	typingAPI := &fakeTypingAPIClient{addReturn: "reaction-456"}
-	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{secret: "shh"},
+	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{sealed: "shh"},
 		typingQueries, newDiscardLogger())
 	p.SetTypingIndicatorManager(typing)
 
@@ -1016,7 +1016,7 @@ func TestPatcherSweepsTypingOnChatDoneAfterRestartEmptiedTheState(t *testing.T) 
 			{ReactionID: "r-stale", OperatorType: "app", OperatorID: "cli_test_app", EmojiType: typingEmoji},
 		},
 	}
-	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{secret: "shh"},
+	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{sealed: "shh"},
 		&fakeTypingQueries{binding: q.binding, installation: q.installation}, newDiscardLogger())
 	p.SetTypingIndicatorManager(typing)
 
@@ -1059,7 +1059,7 @@ func TestPatcherSweepsTypingOnTaskCancelledThroughTheDeliveryRow(t *testing.T) {
 			{ReactionID: "r-stale", OperatorType: "app", OperatorID: "cli_test_app", EmojiType: typingEmoji},
 		},
 	}
-	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{secret: "shh"},
+	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{sealed: "shh"},
 		&fakeTypingQueries{binding: q.binding, installation: q.installation}, newDiscardLogger())
 	p.SetTypingIndicatorManager(typing)
 
@@ -1098,7 +1098,7 @@ func TestPatcherClearsTypingStateWhenTaskIsNotChannelIngested(t *testing.T) {
 	q.taskChannelIngested = false
 
 	typingAPI := &fakeTypingAPIClient{addReturn: "reaction-web-turn"}
-	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{secret: "shh"},
+	typing := NewTypingIndicatorManager(typingAPI, fakeTypingCreds{sealed: "shh"},
 		&fakeTypingQueries{binding: q.binding, installation: q.installation}, newDiscardLogger())
 	p.SetTypingIndicatorManager(typing)
 

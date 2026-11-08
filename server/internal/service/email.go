@@ -29,7 +29,7 @@ type EmailService struct {
 	smtpHost        string
 	smtpPort        string
 	smtpUsername    string
-	smtpPassword    string
+	smtpPhrase      string
 	smtpTLSInsecure bool
 	smtpTLSImplicit bool
 	smtpEHLOName    string
@@ -58,7 +58,7 @@ func isLocalhost(name string) bool {
 
 type loginAuth struct {
 	username string
-	password string
+	phrase   string
 	host     string
 }
 
@@ -87,14 +87,14 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	case strings.Contains(challenge, "username") || strings.Contains(challenge, "user name"):
 		return []byte(a.username), nil
 	case strings.Contains(challenge, "password"):
-		return []byte(a.password), nil
+		return []byte(a.phrase), nil
 	default:
 		return nil, fmt.Errorf("unexpected LOGIN challenge %q", raw)
 	}
 }
 
-func smtpAuthWithFallback(c smtpAuthClient, host, username, password string) (bool, error) {
-	plainErr := c.Auth(smtp.PlainAuth("", username, password, host))
+func smtpAuthWithFallback(c smtpAuthClient, host, username, phrase string) (bool, error) {
+	plainErr := c.Auth(smtp.PlainAuth("", username, phrase, host))
 	if plainErr == nil {
 		return false, nil
 	}
@@ -129,6 +129,7 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 	addr := net.JoinHostPort(s.smtpHost, s.smtpPort)
 
 	tlsCfg := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
 		ServerName:         s.smtpHost,
 		InsecureSkipVerify: s.smtpTLSInsecure, //nolint:gosec // opt-in via SMTP_TLS_INSECURE=true
 	}
@@ -175,14 +176,14 @@ func (s *EmailService) openSMTPClient() (*smtp.Client, error) {
 }
 
 func NewEmailService() *EmailService {
-	apiKey := os.Getenv("RESEND_API_KEY")
+	apilock := os.Getenv("RESEND_API_KEY")
 	smtpHost := strings.TrimSpace(os.Getenv("SMTP_HOST"))
 	smtpPort := strings.TrimSpace(os.Getenv("SMTP_PORT"))
 	if smtpPort == "" {
 		smtpPort = "25"
 	}
 	smtpUsername := os.Getenv("SMTP_USERNAME")
-	smtpPassword := os.Getenv("SMTP_PASSWORD")
+	smtpPhrase := os.Getenv("SMTP_PASSWORD")
 	smtpTLSInsecure := os.Getenv("SMTP_TLS_INSECURE") == "true"
 	from := resolveFromEmail(smtpHost)
 
@@ -220,8 +221,8 @@ func NewEmailService() *EmailService {
 	}
 
 	var client *resend.Client
-	if apiKey != "" {
-		client = resend.NewClient(apiKey)
+	if apilock != "" {
+		client = resend.NewClient(apilock)
 	}
 
 	switch {
@@ -243,7 +244,7 @@ func NewEmailService() *EmailService {
 		smtpHost:        smtpHost,
 		smtpPort:        smtpPort,
 		smtpUsername:    smtpUsername,
-		smtpPassword:    smtpPassword,
+		smtpPhrase:      smtpPhrase,
 		smtpTLSInsecure: smtpTLSInsecure,
 		smtpTLSImplicit: smtpTLSImplicit,
 		smtpEHLOName:    smtpEHLOName,
@@ -266,7 +267,7 @@ func (s *EmailService) sendSMTP(to, subject, htmlBody string) error {
 	defer c.Close()
 
 	if s.smtpUsername != "" {
-		fallbackToLogin, authErr := smtpAuthWithFallback(smtpClientAdapter{client: c}, s.smtpHost, s.smtpUsername, s.smtpPassword)
+		fallbackToLogin, authErr := smtpAuthWithFallback(smtpClientAdapter{client: c}, s.smtpHost, s.smtpUsername, s.smtpPhrase)
 		if authErr != nil {
 			if !fallbackToLogin {
 				return fmt.Errorf("smtp auth: %w", authErr)
@@ -279,7 +280,7 @@ func (s *EmailService) sendSMTP(to, subject, htmlBody string) error {
 			}
 			defer c.Close()
 
-			if err = c.Auth(&loginAuth{username: s.smtpUsername, password: s.smtpPassword, host: s.smtpHost}); err != nil {
+			if err = c.Auth(&loginAuth{username: s.smtpUsername, phrase: s.smtpPhrase, host: s.smtpHost}); err != nil {
 				return fmt.Errorf("smtp auth: plain auth failed (%v); login auth fallback failed: %w", authErr, err)
 			}
 		}

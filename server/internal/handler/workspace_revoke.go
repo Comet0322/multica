@@ -127,7 +127,7 @@ func (h *Handler) revokeAndRemoveMember(ctx context.Context, workspaceID, userID
 		}
 
 		if len(daemonIDs) > 0 {
-			result.RevokedTokenHashes, err = qtx.DeleteDaemonTokensByWorkspaceAndDaemons(ctx, db.DeleteDaemonTokensByWorkspaceAndDaemonsParams{
+			result.RevokedTicketHashes, err = qtx.DeleteDaemonTokensByWorkspaceAndDaemons(ctx, db.DeleteDaemonTokensByWorkspaceAndDaemonsParams{
 				WorkspaceID: workspaceID,
 				DaemonIds:   daemonIDs,
 			})
@@ -273,14 +273,14 @@ func (h *Handler) revokeAndRemoveMember(ctx context.Context, workspaceID, userID
 // Publishing inside the transaction would let subscribers observe a state the
 // tx might still roll back (see TaskService.BroadcastCancelledTasks docstring).
 type revocationResult struct {
-	Runtimes           []db.AgentRuntime
-	ArchivedAgents     []db.Agent
-	CancelledTasks     []db.AgentTaskQueue
-	OfflineRuntimeIDs  []db.ForceOfflineRuntimesByIDsRow
-	RevokedTokenHashes []string
-	SharedRuntimeCount int
-	SharedTeardown     service.RuntimeTeardownResult
-	ReadyChats         []pgtype.UUID
+	Runtimes            []db.AgentRuntime
+	ArchivedAgents      []db.Agent
+	CancelledTasks      []db.AgentTaskQueue
+	OfflineRuntimeIDs   []db.ForceOfflineRuntimesByIDsRow
+	RevokedTicketHashes []string
+	SharedRuntimeCount  int
+	SharedTeardown      service.RuntimeTeardownResult
+	ReadyChats          []pgtype.UUID
 }
 
 func (r revocationResult) isEmpty() bool {
@@ -296,7 +296,7 @@ func (h *Handler) publishRevocation(ctx context.Context, result revocationResult
 		return
 	}
 
-	for _, hash := range result.RevokedTokenHashes {
+	for _, hash := range result.RevokedTicketHashes {
 		h.DaemonTokenCache.Invalidate(ctx, hash)
 	}
 
@@ -349,7 +349,7 @@ func logRevocation(result revocationResult, workspaceID, userID string, attrs ..
 		"agents_archived", len(result.ArchivedAgents),
 		"tasks_cancelled", len(result.CancelledTasks),
 		"runtimes_taken_offline", len(result.OfflineRuntimeIDs),
-		"daemon_tokens_revoked", len(result.RevokedTokenHashes),
+		"daemon_tokens_revoked", len(result.RevokedTicketHashes),
 	}
 	slog.Info("member runtimes revoked", append(base, attrs...)...)
 }

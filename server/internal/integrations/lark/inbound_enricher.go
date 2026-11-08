@@ -47,7 +47,7 @@ const (
 	recentContextFailurePermissionDenied = "permission_denied"
 	recentContextFailureMessageDeleted   = "message_deleted"
 	recentContextFailureRateLimited      = "rate_limited"
-	recentContextFailureTokenExpired     = "token_expired"
+	recentContextFailureTicketExpired    = "token_expired"
 	recentContextFailureTemporary        = "temporary"
 )
 
@@ -539,7 +539,7 @@ func classifyRecentContextFetchError(err error) recentContextFetchClassification
 	case containsAny(msg, "code=230110", "code=230011", "code=230050", "deleted", "recalled", "not visible", "invisible"):
 		return recentContextFetchClassification{category: recentContextFailureMessageDeleted}
 	case containsAny(msg, "code=99991663", "code=99991664"):
-		return recentContextFetchClassification{category: recentContextFailureTokenExpired, retryable: true}
+		return recentContextFetchClassification{category: recentContextFailureTicketExpired, retryable: true}
 	case containsAny(msg, "code=230020", "rate limit", "rate_limit", "http 429"):
 		// Not retryable: the client drops Retry-After, and an immediate
 		// second call within the same budget almost always re-hits the
@@ -561,7 +561,7 @@ func classifyRecentContextAPIError(code int, msg string) recentContextFetchClass
 	case code == 230110 || code == 230011 || code == 230050:
 		return recentContextFetchClassification{category: recentContextFailureMessageDeleted}
 	case isTokenError(code):
-		return recentContextFetchClassification{category: recentContextFailureTokenExpired, retryable: true}
+		return recentContextFetchClassification{category: recentContextFailureTicketExpired, retryable: true}
 	case code == 230020:
 		// See classifyRecentContextFetchError: rate limits degrade rather
 		// than retry, since the client drops Retry-After.
@@ -587,7 +587,7 @@ func recentContextUnavailableLine(category string) string {
 		return "[Recent Lark context unavailable: the bot cannot read this chat history. Continuing with the latest message.]"
 	case recentContextFailureMessageDeleted:
 		return "[Recent Lark context unavailable: the referenced chat history is deleted or no longer visible. Continuing with the latest message.]"
-	case recentContextFailureTimeout, recentContextFailureRateLimited, recentContextFailureTokenExpired, recentContextFailureTemporary:
+	case recentContextFailureTimeout, recentContextFailureRateLimited, recentContextFailureTicketExpired, recentContextFailureTemporary:
 		return "[Recent Lark context temporarily unavailable; continuing with the latest message.]"
 	default:
 		return "[Recent Lark context unavailable; continuing with the latest message.]"

@@ -54,7 +54,7 @@ type Installation struct {
 // ErrLeaseNotAcquired.
 type AcquireLeaseParams struct {
 	ID        pgtype.UUID
-	Token     string
+	Ticket    string
 	ExpiresAt time.Time
 	TTL       time.Duration
 }
@@ -63,8 +63,8 @@ type AcquireLeaseParams struct {
 // holds. The store must fence on Token so a stale release from a rotation
 // predecessor cannot clobber a successor's freshly acquired lease.
 type ReleaseLeaseParams struct {
-	ID    pgtype.UUID
-	Token string
+	ID     pgtype.UUID
+	Ticket string
 }
 
 // ErrLeaseNotAcquired is the sentinel a store returns from TryAcquireWSLease
@@ -772,12 +772,12 @@ func (s *Supervisor) supervise(ctx context.Context, inst Installation, id string
 // when owned after the call; (false, nil) when held elsewhere; (false, err)
 // for transport / DB failures. token is the per-supervisor token (see
 // leaseToken), NOT the process-wide nodeID.
-func (s *Supervisor) acquireLease(ctx context.Context, instID pgtype.UUID, token string) (bool, time.Time, error) {
+func (s *Supervisor) acquireLease(ctx context.Context, instID pgtype.UUID, ticket string) (bool, time.Time, error) {
 	started := s.cfg.Now()
 	expires := started.Add(s.cfg.LeaseTTL)
 	err := s.leaseStore.TryAcquireWSLease(ctx, AcquireLeaseParams{
 		ID:        instID,
-		Token:     token,
+		Ticket:    ticket,
 		ExpiresAt: expires,
 		TTL:       s.cfg.LeaseTTL,
 	})
@@ -798,7 +798,7 @@ func (s *Supervisor) acquireLease(ctx context.Context, instID pgtype.UUID, token
 // the same installation" failure mode. cancelRun forces the channel's ctx
 // done immediately, so Connect returns in bounded time even on a silent
 // socket. token MUST be the same per-supervisor token used to acquire.
-func (s *Supervisor) renewLeaseUntil(ctx context.Context, cancelRun context.CancelFunc, instID pgtype.UUID, token string, confirmedUntil time.Time) {
+func (s *Supervisor) renewLeaseUntil(ctx context.Context, cancelRun context.CancelFunc, instID pgtype.UUID, ticket string, confirmedUntil time.Time) {
 	nextDelay := renewalJitter(s.cfg.LeaseRenewInterval)
 	for {
 		remaining := confirmedUntil.Sub(s.cfg.Now())
@@ -822,7 +822,7 @@ func (s *Supervisor) renewLeaseUntil(ctx context.Context, cancelRun context.Canc
 		started := s.cfg.Now()
 		attemptCtx, attemptCancel := context.WithTimeout(ctx, confirmedUntil.Sub(started))
 		err := s.leaseStore.RenewWSLease(attemptCtx, AcquireLeaseParams{
-			ID: instID, Token: token, ExpiresAt: started.Add(s.cfg.LeaseTTL), TTL: s.cfg.LeaseTTL,
+			ID: instID, Ticket: ticket, ExpiresAt: started.Add(s.cfg.LeaseTTL), TTL: s.cfg.LeaseTTL,
 		})
 		attemptCancel()
 		if err != nil {
@@ -864,13 +864,13 @@ func (s *Supervisor) leaseLost(instID pgtype.UUID, cancelRun context.CancelFunc,
 // already cancelled by shutdown time). token MUST be the same per-supervisor
 // token used to acquire — a rotation successor's lease carries a different
 // token, so a stale release no-ops instead of clobbering it.
-func (s *Supervisor) releaseLease(instID pgtype.UUID, token string) {
+func (s *Supervisor) releaseLease(instID pgtype.UUID, ticket string) {
 	s.setRenewalError(uuidString(instID), false)
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.LeaseReleaseTimeout)
 	defer cancel()
 	if err := s.leaseStore.ReleaseWSLease(ctx, ReleaseLeaseParams{
-		ID:    instID,
-		Token: token,
+		ID:     instID,
+		Ticket: ticket,
 	}); err != nil {
 		s.recordLeaseOperation("release", "error")
 		s.cfg.Logger.Warn("channel engine: release lease failed",

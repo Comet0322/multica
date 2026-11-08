@@ -120,7 +120,7 @@ const credentialProbeTimeout = handshakeTimeout + subscribeTimeout
 // the handler holds one so a test can exercise the install path without a
 // socket; production always gets the handshake probe.
 type CredentialProbe interface {
-	Probe(ctx context.Context, botID, secret string) error
+	Probe(ctx context.Context, botID, sealed string) error
 }
 
 // handshakeProbe is the production probe: one connection, one subscribe, no
@@ -140,7 +140,7 @@ func NewHandshakeProbe(dialer Dialer, wsURL string) *handshakeProbe {
 	return &handshakeProbe{dialer: dialer, wsURL: wsURL}
 }
 
-func (p *handshakeProbe) Probe(ctx context.Context, botID, secret string) error {
+func (p *handshakeProbe) Probe(ctx context.Context, botID, sealed string) error {
 	dialer := p.dialer
 	if dialer == nil {
 		dialer = defaultDialer
@@ -166,7 +166,7 @@ func (p *handshakeProbe) Probe(ctx context.Context, botID, secret string) error 
 	frame, err := json.Marshal(map[string]any{
 		"cmd":     cmdSubscribe,
 		"headers": frameHeaders{ReqID: reqID},
-		"body":    subscribeBody(botID, secret),
+		"body":    subscribeBody(botID, sealed),
 	})
 	if err != nil {
 		return fmt.Errorf("%w: encode subscribe: %v", ErrCredentialsUnverifiable, err)

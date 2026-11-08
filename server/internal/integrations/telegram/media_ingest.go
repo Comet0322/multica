@@ -87,7 +87,7 @@ func (r *mediaResolver) ResolveMedia(ctx context.Context, inst engine.ResolvedIn
 		r.logWarn(msg, fmt.Errorf("decode credentials: %w", err))
 		return msg
 	}
-	api := newBotAPI(r.apiBase, creds.BotToken, r.client)
+	api := newBotAPI(r.apiBase, creds.BotTicket, r.client)
 	// Every file is attempted; one that fails keeps its placeholder in the
 	// body, and the sender hears about it once.
 	failed := false

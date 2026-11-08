@@ -26,28 +26,28 @@ type searchParityRow struct {
 // matching fixture has a distinct updated_at; deterministic ties are tested as
 // a new candidate-first property rather than attributed to legacy behavior.
 func TestBuildSearchQuery_CandidateFirstParity(t *testing.T) {
-	token := fmt.Sprintf("mulparity%d", time.Now().UnixNano())
+	ticket := fmt.Sprintf("mulparity%d", time.Now().UnixNano())
 	baseTime := time.Now().Add(-time.Hour).UTC()
 
-	exactTitle := token + " exact title"
+	exactTitle := ticket + " exact title"
 	exactID := dbfx.Issue(t, exactTitle, testutil.Cols{
 		"description": nil,
 		"updated_at":  baseTime.Add(time.Minute),
 	})
-	dbfx.Issue(t, token+" phrase starts here", testutil.Cols{
+	dbfx.Issue(t, ticket+" phrase starts here", testutil.Cols{
 		"description": "",
 		"updated_at":  baseTime.Add(2 * time.Minute),
 	})
-	dbfx.Issue(t, "prefix "+token+" phrase contained", testutil.Cols{
+	dbfx.Issue(t, "prefix "+ticket+" phrase contained", testutil.Cols{
 		"description": "unrelated",
 		"updated_at":  baseTime.Add(3 * time.Minute),
 	})
-	descriptionID := dbfx.Issue(t, "description source "+token, testutil.Cols{
-		"description": "the " + token + " description phrase lives here",
+	descriptionID := dbfx.Issue(t, "description source "+ticket, testutil.Cols{
+		"description": "the " + ticket + " description phrase lives here",
 		"updated_at":  baseTime.Add(4 * time.Minute),
 	})
 
-	crossFieldID := dbfx.Issue(t, token+" title-part", testutil.Cols{
+	crossFieldID := dbfx.Issue(t, ticket+" title-part", testutil.Cols{
 		"description": "cross-part",
 		"updated_at":  baseTime.Add(5 * time.Minute),
 	})
@@ -55,64 +55,64 @@ func TestBuildSearchQuery_CandidateFirstParity(t *testing.T) {
 		"created_at": baseTime.Add(5 * time.Minute),
 	})
 
-	sameCommentID := dbfx.Issue(t, "same-comment source "+token, testutil.Cols{
+	sameCommentID := dbfx.Issue(t, "same-comment source "+ticket, testutil.Cols{
 		"updated_at": baseTime.Add(6 * time.Minute),
 	})
-	dbfx.Comment(t, sameCommentID, token+" same gap all", testutil.Cols{
+	dbfx.Comment(t, sameCommentID, ticket+" same gap all", testutil.Cols{
 		"created_at": baseTime.Add(6 * time.Minute),
 	})
 
-	splitCommentID := dbfx.Issue(t, "split-comment source "+token, testutil.Cols{
+	splitCommentID := dbfx.Issue(t, "split-comment source "+ticket, testutil.Cols{
 		"updated_at": baseTime.Add(7 * time.Minute),
 	})
-	dbfx.Comment(t, splitCommentID, token, testutil.Cols{"created_at": baseTime.Add(7 * time.Minute)})
+	dbfx.Comment(t, splitCommentID, ticket, testutil.Cols{"created_at": baseTime.Add(7 * time.Minute)})
 	dbfx.Comment(t, splitCommentID, "same", testutil.Cols{"created_at": baseTime.Add(8 * time.Minute)})
 	dbfx.Comment(t, splitCommentID, "all", testutil.Cols{"created_at": baseTime.Add(9 * time.Minute)})
 
 	latestCommentID := dbfx.Issue(t, "latest-comment source", testutil.Cols{
 		"updated_at": baseTime.Add(10 * time.Minute),
 	})
-	dbfx.Comment(t, latestCommentID, token+" snippet older", testutil.Cols{
+	dbfx.Comment(t, latestCommentID, ticket+" snippet older", testutil.Cols{
 		"created_at": baseTime.Add(10 * time.Minute),
 	})
-	latestComment := token + " snippet newer"
+	latestComment := ticket + " snippet newer"
 	dbfx.Comment(t, latestCommentID, latestComment, testutil.Cols{
 		"created_at": baseTime.Add(11 * time.Minute),
 	})
 
 	dbfx.Issue(t, "special characters", testutil.Cols{
-		"description": token + ` 100% under_score path\segment`,
+		"description": ticket + ` 100% under_score path\segment`,
 		"updated_at":  baseTime.Add(12 * time.Minute),
 	})
-	dbfx.Issue(t, token+" done result", testutil.Cols{
+	dbfx.Issue(t, ticket+" done result", testutil.Cols{
 		"status":     "done",
 		"updated_at": baseTime.Add(13 * time.Minute),
 	})
-	dbfx.Issue(t, token+" custom terminal", testutil.Cols{
+	dbfx.Issue(t, ticket+" custom terminal", testutil.Cols{
 		"status":     "custom_done",
 		"updated_at": baseTime.Add(14 * time.Minute),
 	})
-	dbfx.Issue(t, token+" cancelled exact", testutil.Cols{
+	dbfx.Issue(t, ticket+" cancelled exact", testutil.Cols{
 		"status":     "cancelled",
 		"updated_at": baseTime.Add(15 * time.Minute),
 	})
-	phraseDoubleMatch := token + " overlap phrase"
+	phraseDoubleMatch := ticket + " overlap phrase"
 	phraseDoubleMatchID := dbfx.Issue(t, "title "+phraseDoubleMatch, testutil.Cols{
 		"description": "description also contains " + phraseDoubleMatch,
 		"updated_at":  baseTime.Add(16 * time.Minute),
 	})
-	titleTermsDoubleMatch := token + " ordered phrase"
-	titleTermsDoubleMatchID := dbfx.Issue(t, token+" ordered gap phrase", testutil.Cols{
+	titleTermsDoubleMatch := ticket + " ordered phrase"
+	titleTermsDoubleMatchID := dbfx.Issue(t, ticket+" ordered gap phrase", testutil.Cols{
 		"description": "description contains the contiguous phrase " + titleTermsDoubleMatch,
 		"updated_at":  baseTime.Add(17 * time.Minute),
 	})
 
-	foreignWorkspaceID := dbfx.Workspace(t, "Search parity foreign", token+"-foreign")
-	foreignIssueID := dbfx.Issue(t, token+" foreign issue", testutil.Cols{
+	foreignWorkspaceID := dbfx.Workspace(t, "Search parity foreign", ticket+"-foreign")
+	foreignIssueID := dbfx.Issue(t, ticket+" foreign issue", testutil.Cols{
 		"workspace_id": foreignWorkspaceID,
 		"updated_at":   baseTime.Add(18 * time.Minute),
 	})
-	dbfx.Comment(t, foreignIssueID, token+" foreign comment", testutil.Cols{
+	dbfx.Comment(t, foreignIssueID, ticket+" foreign comment", testutil.Cols{
 		"workspace_id": foreignWorkspaceID,
 		"created_at":   baseTime.Add(18 * time.Minute),
 	})
@@ -132,23 +132,23 @@ func TestBuildSearchQuery_CandidateFirstParity(t *testing.T) {
 		limit         int
 		offset        int
 	}{
-		{name: "single term", phrase: token, terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
-		{name: "two word phrase and all terms", phrase: token + " phrase", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
+		{name: "single term", phrase: ticket, terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
+		{name: "two word phrase and all terms", phrase: ticket + " phrase", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
 		{name: "title and description both contain phrase", phrase: phraseDoubleMatch, includeClosed: true, limit: 50},
 		{name: "title contains all terms while description contains phrase", phrase: titleTermsDoubleMatch, includeClosed: true, limit: 50},
-		{name: "three terms across title description and comment", phrase: token + " cross-part fields-part", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
-		{name: "same comment versus split comments", phrase: token + " same all", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
-		{name: "latest matching comment", phrase: token + " snippet", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
+		{name: "three terms across title description and comment", phrase: ticket + " cross-part fields-part", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
+		{name: "same comment versus split comments", phrase: ticket + " same all", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
+		{name: "latest matching comment", phrase: ticket + " snippet", terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
 		{name: "identifier", phrase: fmt.Sprintf("HAN-%d", exactNumber), queryNum: exactNumber, hasNum: true, includeClosed: true, limit: 50},
 		{name: "bare issue number", phrase: fmt.Sprint(exactNumber), queryNum: exactNumber, hasNum: true, includeClosed: true, limit: 50},
 		{name: "exact title", phrase: exactTitle, includeClosed: true, limit: 50},
-		{name: "percent escape", phrase: token + " 100%", includeClosed: true, limit: 50},
-		{name: "underscore escape", phrase: token + " under_score", includeClosed: true, limit: 50},
-		{name: "backslash escape", phrase: token + ` path\segment`, includeClosed: true, limit: 50},
-		{name: "exclude terminal statuses", phrase: token, terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
-		{name: "include closed and cancelled demotion", phrase: token, includeClosed: true, limit: 50},
-		{name: "limit and offset", phrase: token, includeClosed: true, limit: 3, offset: 2},
-		{name: "no results", phrase: token + " absent-value", includeClosed: true, limit: 50},
+		{name: "percent escape", phrase: ticket + " 100%", includeClosed: true, limit: 50},
+		{name: "underscore escape", phrase: ticket + " under_score", includeClosed: true, limit: 50},
+		{name: "backslash escape", phrase: ticket + ` path\segment`, includeClosed: true, limit: 50},
+		{name: "exclude terminal statuses", phrase: ticket, terminalKeys: []string{"done", "cancelled", "custom_done"}, limit: 50},
+		{name: "include closed and cancelled demotion", phrase: ticket, includeClosed: true, limit: 50},
+		{name: "limit and offset", phrase: ticket, includeClosed: true, limit: 3, offset: 2},
+		{name: "no results", phrase: ticket + " absent-value", includeClosed: true, limit: 50},
 	}
 
 	for _, tt := range cases {
@@ -188,23 +188,23 @@ func TestBuildSearchQuery_CandidateFirstParity(t *testing.T) {
 		lowCommentID, highCommentID = highCommentID, lowCommentID
 	}
 	tiedCommentTime := baseTime.Add(20 * time.Minute)
-	dbfx.Comment(t, tiedSnippetIssueID, token+" tied snippet low", testutil.Cols{
+	dbfx.Comment(t, tiedSnippetIssueID, ticket+" tied snippet low", testutil.Cols{
 		"id":         lowCommentID,
 		"created_at": tiedCommentTime,
 	})
-	highCommentContent := token + " tied snippet high"
+	highCommentContent := ticket + " tied snippet high"
 	dbfx.Comment(t, tiedSnippetIssueID, highCommentContent, testutil.Cols{
 		"id":         highCommentID,
 		"created_at": tiedCommentTime,
 	})
-	tiedRows := runBuiltSearchForParity(t, token+" tied snippet", true, nil, 50, 0)
+	tiedRows := runBuiltSearchForParity(t, ticket+" tied snippet", true, nil, 50, 0)
 	if row, ok := findSearchParityRow(tiedRows, tiedSnippetIssueID); !ok {
 		t.Fatal("tied-comment match is missing")
 	} else if row.matchedCommentContent != highCommentContent {
 		t.Fatalf("tied-comment snippet = %q, want greater-ID comment %q", row.matchedCommentContent, highCommentContent)
 	}
 
-	splitRows := runBuiltSearchForParity(t, token+" same all", true, nil, 50, 0)
+	splitRows := runBuiltSearchForParity(t, ticket+" same all", true, nil, 50, 0)
 	if row, ok := findSearchParityRow(splitRows, splitCommentID); !ok {
 		t.Fatal("split-comment cross-comment match is missing")
 	} else if row.matchSource != "comment" || row.matchedCommentContent != "" {
@@ -216,21 +216,21 @@ func TestBuildSearchQuery_CandidateFirstParity(t *testing.T) {
 		t.Fatalf("same-comment all-terms match has no snippet: %#v", row)
 	}
 
-	crossRows := runBuiltSearchForParity(t, token+" cross-part fields-part", true, nil, 50, 0)
+	crossRows := runBuiltSearchForParity(t, ticket+" cross-part fields-part", true, nil, 50, 0)
 	if row, ok := findSearchParityRow(crossRows, crossFieldID); !ok {
 		t.Fatal("cross-field all-terms match is missing")
 	} else if row.matchSource != "comment" {
 		t.Fatalf("cross-field match source = %q, want legacy fallback comment", row.matchSource)
 	}
 
-	latestRows := runBuiltSearchForParity(t, token+" snippet", true, nil, 50, 0)
+	latestRows := runBuiltSearchForParity(t, ticket+" snippet", true, nil, 50, 0)
 	if row, ok := findSearchParityRow(latestRows, latestCommentID); !ok {
 		t.Fatal("latest-comment match is missing")
 	} else if row.matchedCommentContent != latestComment {
 		t.Fatalf("matched comment = %q, want latest %q", row.matchedCommentContent, latestComment)
 	}
 
-	descriptionRows := runBuiltSearchForParity(t, token+" description phrase", true, nil, 50, 0)
+	descriptionRows := runBuiltSearchForParity(t, ticket+" description phrase", true, nil, 50, 0)
 	if row, ok := findSearchParityRow(descriptionRows, descriptionID); !ok {
 		t.Fatal("description phrase match is missing")
 	} else if row.matchSource != "description" {

@@ -628,11 +628,11 @@ func TestCopilotTokenlessUsageEventDoesNotShadow(t *testing.T) {
 	// Every token field on assistant.usage is optional upstream. A usage event
 	// that names only a model must not mark that source populated and shadow
 	// the sources that do carry numbers.
-	tokenless := `{"type":"assistant.usage","data":{"model":"claude-sonnet-4.5","duration":900},"id":"u-0","timestamp":"2026-08-04T08:00:01.000Z","ephemeral":true}`
+	ticketless := `{"type":"assistant.usage","data":{"model":"claude-sonnet-4.5","duration":900},"id":"u-0","timestamp":"2026-08-04T08:00:01.000Z","ephemeral":true}`
 
 	t.Run("falls through to session totals", func(t *testing.T) {
 		t.Parallel()
-		lines := []string{fixtureSessionStart, fixtureTurnStart, tokenless, fixtureShutdown, fixtureResult}
+		lines := []string{fixtureSessionStart, fixtureTurnStart, ticketless, fixtureShutdown, fixtureResult}
 
 		_, _, _, usage := simulateCopilotEventLoop(t, lines)
 
@@ -645,7 +645,7 @@ func TestCopilotTokenlessUsageEventDoesNotShadow(t *testing.T) {
 		t.Parallel()
 		// Resumed, so the session totals are off the table and the legacy
 		// message tokens are the only thing left.
-		lines := []string{fixtureSessionStart, fixtureTurnStart, tokenless, fixtureAssistantMessage, fixtureShutdown, fixtureResult}
+		lines := []string{fixtureSessionStart, fixtureTurnStart, ticketless, fixtureAssistantMessage, fixtureShutdown, fixtureResult}
 
 		_, st := runCopilotEventLoop(t, lines, "copilot", true)
 

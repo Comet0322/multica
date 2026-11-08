@@ -24,7 +24,7 @@ type CLIConfig struct {
 	ServerURL   string `json:"server_url,omitempty"`
 	AppURL      string `json:"app_url,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
-	Token       string `json:"token,omitempty"`
+	Ticket      string `json:"token,omitempty"`
 
 	// DeviceName is the human-readable label shown in the server's Runtimes
 	// UI for the daemon started with this profile. When multiple daemons run

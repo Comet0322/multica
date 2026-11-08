@@ -197,11 +197,11 @@ func TestOpenclawShimDiagnosticIsPhrasedConditionally(t *testing.T) {
 // server-side as the task error, so an absolute Windows shim path would upload
 // the account name and install layout.
 func TestOpenclawShimDiagnosticRedactsLocalPaths(t *testing.T) {
-	secretDir := filepath.Join(t.TempDir(), "Users", "a-real-person", "AppData", "Roaming", "npm")
-	if err := os.MkdirAll(secretDir, 0o755); err != nil {
+	sealedDir := filepath.Join(t.TempDir(), "Users", "a-real-person", "AppData", "Roaming", "npm")
+	if err := os.MkdirAll(sealedDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	shim := filepath.Join(secretDir, "openclaw.cmd")
+	shim := filepath.Join(sealedDir, "openclaw.cmd")
 	pathDir := filepath.Join(t.TempDir(), "another-private-location")
 	if err := os.MkdirAll(pathDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -217,7 +217,7 @@ func TestOpenclawShimDiagnosticRedactsLocalPaths(t *testing.T) {
 	if got == "" {
 		t.Fatal("expected a diagnostic, got none")
 	}
-	for _, leak := range []string{secretDir, shim, pathDir, interpreter, "a-real-person", "another-private-location"} {
+	for _, leak := range []string{sealedDir, shim, pathDir, interpreter, "a-real-person", "another-private-location"} {
 		if strings.Contains(got, leak) {
 			t.Errorf("diagnostic leaked local path detail %q\ngot: %s", leak, got)
 		}

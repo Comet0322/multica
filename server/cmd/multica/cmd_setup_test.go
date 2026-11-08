@@ -22,7 +22,7 @@ func TestPersistSelfHostConfigIfReachable(t *testing.T) {
 			ServerURL:   "https://api.old.example",
 			AppURL:      "https://old.example",
 			WorkspaceID: "ws-1",
-			Token:       "mul_existing_token",
+			Ticket:      "mul_existing_token",
 		}
 		if err := cli.SaveCLIConfig(existing); err != nil {
 			t.Fatalf("seed config: %v", err)
@@ -43,8 +43,8 @@ func TestPersistSelfHostConfigIfReachable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load config: %v", err)
 		}
-		if got.Token != "mul_existing_token" {
-			t.Fatalf("token: want preserved, got %q", got.Token)
+		if got.Ticket != "mul_existing_token" {
+			t.Fatalf("token: want preserved, got %q", got.Ticket)
 		}
 		if got.ServerURL != "https://api.old.example" {
 			t.Fatalf("server_url: want unchanged, got %q", got.ServerURL)

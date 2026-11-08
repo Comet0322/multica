@@ -172,7 +172,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"session_id
 	}
 	task := Task{
 		ID: "task-config-first", WorkspaceID: "ws-config", IssueID: "issue-config", IssueIdentifier: "MUL-8413",
-		RuntimeID: "runtime-config", AgentID: "agent-config", AuthToken: "mat_config_test",
+		RuntimeID: "runtime-config", AgentID: "agent-config", AuthTicket: "mat_config_test",
 		Agent: &AgentData{ID: "agent-config", Name: "config-agent", CustomEnv: map[string]string{
 			"CLAUDE_CONFIG_DIR": configDir, "HOME": filepath.Join(home, "blocked-home"), "CAPTURE_FILE": captureFile,
 		}},

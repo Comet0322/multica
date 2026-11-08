@@ -145,9 +145,9 @@ type hookRequestBody struct {
 	// minutes it is valid. Narrower than the installation's own token and tied
 	// to this one call, so a handler that leaks it leaks a few minutes of the
 	// scopes it was already using, not standing access.
-	CallbackToken string               `json:"callback_token,omitempty"`
-	CallbackURL   string               `json:"callback_url,omitempty"`
-	Schedule      *hookRequestSchedule `json:"schedule,omitempty"`
+	CallbackTicket string               `json:"callback_token,omitempty"`
+	CallbackURL    string               `json:"callback_url,omitempty"`
+	Schedule       *hookRequestSchedule `json:"schedule,omitempty"`
 }
 
 type hookRequestActor struct {
@@ -296,8 +296,8 @@ func (s *PluginService) callHookEndpoint(ctx context.Context, invocation HookInv
 	// The grant lives exactly as long as the call it was issued for. Without
 	// this it would stay usable for the rest of its TTL after the handler has
 	// already answered.
-	if s.Callbacks != nil && body.CallbackToken != "" {
-		defer s.Callbacks.Revoke(body.CallbackToken)
+	if s.Callbacks != nil && body.CallbackTicket != "" {
+		defer s.Callbacks.Revoke(body.CallbackTicket)
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -370,7 +370,7 @@ func nonSecretConfig(installation db.PluginInstallation) map[string]any {
 	}
 	for key := range values {
 		field, declared := manifest.Config.Field(key)
-		if !declared || field.Type == plugincontract.ConfigSecret {
+		if !declared || field.Type == plugincontract.ConfigSealed {
 			delete(values, key)
 		}
 	}
@@ -413,11 +413,11 @@ func (s *PluginService) buildHookBody(ctx context.Context, invocation HookInvoca
 		body.Input = encoded
 	}
 	if s.Callbacks != nil {
-		token, err := s.Callbacks.Issue(ctx, invocation)
+		ticket, err := s.Callbacks.Issue(ctx, invocation)
 		if err != nil {
 			return hookRequestBody{}, err
 		}
-		body.CallbackToken = token
+		body.CallbackTicket = ticket
 		body.CallbackURL = s.CallbackBaseURL
 	}
 	return body, nil
@@ -476,9 +476,9 @@ func (s *PluginService) HookSigningSecret(installationID pgtype.UUID) (string, e
 // VerifyHookSignature is the receiver's half, exported so a plugin written in Go
 // and our own tests check signatures the same way — a scheme only one side can
 // implement is a scheme nobody can review.
-func VerifyHookSignature(secretHex, timestamp string, body []byte, presented string, now time.Time) error {
-	secretHex = strings.TrimPrefix(secretHex, "whsec_")
-	key, err := hex.DecodeString(secretHex)
+func VerifyHookSignature(sealedHex, timestamp string, body []byte, presented string, now time.Time) error {
+	sealedHex = strings.TrimPrefix(sealedHex, "whsec_")
+	key, err := hex.DecodeString(sealedHex)
 	if err != nil {
 		return errors.New("signing secret is not valid hex")
 	}

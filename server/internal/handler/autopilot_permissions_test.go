@@ -387,7 +387,7 @@ func TestAutopilotWrite_WebhookSecretRedactedForNonWriter(t *testing.T) {
 	if len(ownerView.Triggers) != 1 {
 		t.Fatalf("owner view: expected 1 trigger, got %d", len(ownerView.Triggers))
 	}
-	if ownerView.Triggers[0].WebhookToken == nil || *ownerView.Triggers[0].WebhookToken == "" {
+	if ownerView.Triggers[0].WebhookTicket == nil || *ownerView.Triggers[0].WebhookTicket == "" {
 		t.Fatalf("owner view: expected webhook_token to be present")
 	}
 	if ownerView.Triggers[0].WebhookPath == nil {
@@ -411,8 +411,8 @@ func TestAutopilotWrite_WebhookSecretRedactedForNonWriter(t *testing.T) {
 	if strangerView.Triggers[0].Kind != "webhook" {
 		t.Fatalf("stranger view: expected webhook trigger to remain visible, got kind %q", strangerView.Triggers[0].Kind)
 	}
-	if strangerView.Triggers[0].WebhookToken != nil {
-		t.Fatalf("stranger view: webhook_token leaked: %v", *strangerView.Triggers[0].WebhookToken)
+	if strangerView.Triggers[0].WebhookTicket != nil {
+		t.Fatalf("stranger view: webhook_token leaked: %v", *strangerView.Triggers[0].WebhookTicket)
 	}
 	if strangerView.Triggers[0].WebhookPath != nil {
 		t.Fatalf("stranger view: webhook_path leaked: %v", *strangerView.Triggers[0].WebhookPath)

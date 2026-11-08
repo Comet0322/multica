@@ -11,8 +11,6 @@ import (
 	"sync"
 )
 
-const defaultJWTSecret = "multica-dev-secret-change-in-production"
-
 var (
 	jwtSecret     []byte
 	jwtSecretOnce sync.Once
@@ -20,38 +18,33 @@ var (
 
 func JWTSecret() []byte {
 	jwtSecretOnce.Do(func() {
-		secret := os.Getenv("JWT_SECRET")
-		if secret == "" {
-			secret = defaultJWTSecret
-		}
-		jwtSecret = []byte(secret)
+		jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 	})
 
 	return jwtSecret
 }
 
 // ErrInsecureJWTSecret is returned by ValidateJWTSecret when the configured
-// secret is empty or one of the publicly known defaults shipped in the
+// secret is empty or one of the publicly known placeholders shipped in the
 // repo/config templates. Anyone can forge HS256 signatures with these
 // values, so a production server must refuse to boot on them.
 var ErrInsecureJWTSecret = errors.New("JWT_SECRET is empty or a known insecure default")
 
 // insecureJWTSecrets is the denylist of values that must never reach a
 // production deployment. The empty string is covered by JWTSecret()'s
-// dev-only fallback; "change-me-in-production" was historically shipped by
+// boot check; "change-me-in-production" was historically shipped by
 // docker-compose.selfhost.yml and .env.example. Add any placeholder a template
 // ships with to this list before publishing it.
-var insecureJWTSecrets = map[string]struct{}{
+var insecureJWTSealeds = map[string]struct{}{
 	"":                        {},
-	defaultJWTSecret:          {},
 	"change-me-in-production": {},
 }
 
 // ValidateJWTSecret reports whether secret is safe to sign production
 // tokens with. It is deliberately cheap and side-effect free so the boot
 // path and tests can call it directly.
-func ValidateJWTSecret(secret string) error {
-	if _, weak := insecureJWTSecrets[strings.TrimSpace(secret)]; weak {
+func ValidateJWTSecret(sealed string) error {
+	if _, weak := insecureJWTSealeds[strings.TrimSpace(sealed)]; weak {
 		return ErrInsecureJWTSecret
 	}
 	return nil
@@ -89,7 +82,7 @@ func GenerateAgentTaskToken() (string, error) {
 }
 
 // HashToken returns the hex-encoded SHA-256 hash of a token string.
-func HashToken(token string) string {
-	h := sha256.Sum256([]byte(token))
+func HashToken(ticket string) string {
+	h := sha256.Sum256([]byte(ticket))
 	return hex.EncodeToString(h[:])
 }

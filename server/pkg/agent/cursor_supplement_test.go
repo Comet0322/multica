@@ -339,13 +339,13 @@ func TestCursorSupplementKeepsUnmanagedHooksFile(t *testing.T) {
 func TestCursorHookRelayFailsOpen(t *testing.T) {
 	s, _ := startTestCursorSupplements(t, t.Context())
 	s.activate("conv-main")
-	env := func(url, token string) func(string) string {
+	env := func(url, ticket string) func(string) string {
 		return func(name string) string {
 			switch name {
 			case cursorHookURLEnv:
 				return url
-			case cursorHookTokenEnv:
-				return token
+			case cursorHookTicketEnv:
+				return ticket
 			}
 			return ""
 		}
@@ -353,8 +353,8 @@ func TestCursorHookRelayFailsOpen(t *testing.T) {
 	for name, getenv := range map[string]func(string) string{
 		"no env":       env("", ""),
 		"wrong token":  env(s.url, "nope"),
-		"non-loopback": env(strings.Replace(s.url, "127.0.0.1", "192.0.2.1", 1), s.token),
-		"unreachable":  env("http://127.0.0.1:1/hook", s.token),
+		"non-loopback": env(strings.Replace(s.url, "127.0.0.1", "192.0.2.1", 1), s.ticket),
+		"unreachable":  env("http://127.0.0.1:1/hook", s.ticket),
 	} {
 		if reply := relayCursorHook(t, getenv, postToolUse("conv-main")); len(reply) != 0 {
 			t.Fatalf("%s: relay replied %#v, want {}", name, reply)

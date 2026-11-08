@@ -69,7 +69,7 @@ type pluginInstallationResponse struct {
 	GrantedScopes     []string                    `json:"granted_scopes"`
 	ConfigSchema      []service.PluginConfigField `json:"config_schema"`
 	Config            map[string]any              `json:"config"`
-	ConfiguredSecrets []string                    `json:"configured_secrets"`
+	ConfiguredSealeds []string                    `json:"configured_secrets"`
 	Surfaces          []plugincontract.Surface    `json:"surfaces"`
 	Hooks             []pluginHookResponse        `json:"hooks"`
 	Resources         []plugincontract.Resource   `json:"resources"`
@@ -100,7 +100,7 @@ func (h *Handler) pluginInstallationPayload(ctx context.Context, installation db
 	if err != nil {
 		return pluginInstallationResponse{}, err
 	}
-	secrets, err := h.PluginService.ConfiguredSecretKeys(ctx, installation.ID)
+	sealeds, err := h.PluginService.ConfiguredSecretKeys(ctx, installation.ID)
 	if err != nil {
 		return pluginInstallationResponse{}, err
 	}
@@ -166,7 +166,7 @@ func (h *Handler) pluginInstallationPayload(ctx context.Context, installation db
 		GrantedScopes:     granted,
 		ConfigSchema:      service.ConfigFieldsForManifest(manifest),
 		Config:            config,
-		ConfiguredSecrets: secrets,
+		ConfiguredSealeds: sealeds,
 		Surfaces:          surfaces,
 		Hooks:             hooks,
 		Resources:         resources,

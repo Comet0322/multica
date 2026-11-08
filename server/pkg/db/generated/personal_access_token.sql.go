@@ -11,26 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createPersonalAccessToken = `-- name: CreatePersonalAccessToken :one
+const createPersonalAccessTicket = `-- name: CreatePersonalAccessToken :one
 INSERT INTO personal_access_token (user_id, name, token_hash, token_prefix, expires_at)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id, user_id, name, token_hash, token_prefix, expires_at, last_used_at, revoked, created_at
 `
 
 type CreatePersonalAccessTokenParams struct {
-	UserID      pgtype.UUID        `json:"user_id"`
-	Name        string             `json:"name"`
-	TokenHash   string             `json:"token_hash"`
-	TokenPrefix string             `json:"token_prefix"`
-	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	Name         string             `json:"name"`
+	TicketHash   string             `json:"token_hash"`
+	TicketPrefix string             `json:"token_prefix"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreatePersonalAccessToken(ctx context.Context, arg CreatePersonalAccessTokenParams) (PersonalAccessToken, error) {
-	row := q.db.QueryRow(ctx, createPersonalAccessToken,
+	row := q.db.QueryRow(ctx, createPersonalAccessTicket,
 		arg.UserID,
 		arg.Name,
-		arg.TokenHash,
-		arg.TokenPrefix,
+		arg.TicketHash,
+		arg.TicketPrefix,
 		arg.ExpiresAt,
 	)
 	var i PersonalAccessToken
@@ -38,8 +38,8 @@ func (q *Queries) CreatePersonalAccessToken(ctx context.Context, arg CreatePerso
 		&i.ID,
 		&i.UserID,
 		&i.Name,
-		&i.TokenHash,
-		&i.TokenPrefix,
+		&i.TicketHash,
+		&i.TicketPrefix,
 		&i.ExpiresAt,
 		&i.LastUsedAt,
 		&i.Revoked,
@@ -48,7 +48,7 @@ func (q *Queries) CreatePersonalAccessToken(ctx context.Context, arg CreatePerso
 	return i, err
 }
 
-const extendPersonalAccessTokenExpiry = `-- name: ExtendPersonalAccessTokenExpiry :one
+const extendPersonalAccessTicketExpiry = `-- name: ExtendPersonalAccessTokenExpiry :one
 UPDATE personal_access_token
 SET expires_at = $1
 WHERE id = $2
@@ -77,28 +77,28 @@ type ExtendPersonalAccessTokenExpiryParams struct {
 // `$2 = now + 90d` produce strictly-different values and the second
 // one's $2 is always greater than the row A just wrote.
 func (q *Queries) ExtendPersonalAccessTokenExpiry(ctx context.Context, arg ExtendPersonalAccessTokenExpiryParams) (pgtype.Timestamptz, error) {
-	row := q.db.QueryRow(ctx, extendPersonalAccessTokenExpiry, arg.NewExpiresAt, arg.ID, arg.RenewThresholdAt)
+	row := q.db.QueryRow(ctx, extendPersonalAccessTicketExpiry, arg.NewExpiresAt, arg.ID, arg.RenewThresholdAt)
 	var expires_at pgtype.Timestamptz
 	err := row.Scan(&expires_at)
 	return expires_at, err
 }
 
-const getPersonalAccessTokenByHash = `-- name: GetPersonalAccessTokenByHash :one
+const getPersonalAccessTicketByHash = `-- name: GetPersonalAccessTokenByHash :one
 SELECT id, user_id, name, token_hash, token_prefix, expires_at, last_used_at, revoked, created_at FROM personal_access_token
 WHERE token_hash = $1
   AND revoked = FALSE
   AND (expires_at IS NULL OR expires_at > now())
 `
 
-func (q *Queries) GetPersonalAccessTokenByHash(ctx context.Context, tokenHash string) (PersonalAccessToken, error) {
-	row := q.db.QueryRow(ctx, getPersonalAccessTokenByHash, tokenHash)
+func (q *Queries) GetPersonalAccessTokenByHash(ctx context.Context, ticketHash string) (PersonalAccessToken, error) {
+	row := q.db.QueryRow(ctx, getPersonalAccessTicketByHash, ticketHash)
 	var i PersonalAccessToken
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
 		&i.Name,
-		&i.TokenHash,
-		&i.TokenPrefix,
+		&i.TicketHash,
+		&i.TicketPrefix,
 		&i.ExpiresAt,
 		&i.LastUsedAt,
 		&i.Revoked,
@@ -107,7 +107,7 @@ func (q *Queries) GetPersonalAccessTokenByHash(ctx context.Context, tokenHash st
 	return i, err
 }
 
-const listPersonalAccessTokensByUser = `-- name: ListPersonalAccessTokensByUser :many
+const listPersonalAccessTicketsByUser = `-- name: ListPersonalAccessTokensByUser :many
 SELECT id, user_id, name, token_hash, token_prefix, expires_at, last_used_at, revoked, created_at FROM personal_access_token
 WHERE user_id = $1
   AND revoked = FALSE
@@ -115,7 +115,7 @@ ORDER BY created_at DESC
 `
 
 func (q *Queries) ListPersonalAccessTokensByUser(ctx context.Context, userID pgtype.UUID) ([]PersonalAccessToken, error) {
-	rows, err := q.db.Query(ctx, listPersonalAccessTokensByUser, userID)
+	rows, err := q.db.Query(ctx, listPersonalAccessTicketsByUser, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +127,8 @@ func (q *Queries) ListPersonalAccessTokensByUser(ctx context.Context, userID pgt
 			&i.ID,
 			&i.UserID,
 			&i.Name,
-			&i.TokenHash,
-			&i.TokenPrefix,
+			&i.TicketHash,
+			&i.TicketPrefix,
 			&i.ExpiresAt,
 			&i.LastUsedAt,
 			&i.Revoked,
@@ -144,7 +144,7 @@ func (q *Queries) ListPersonalAccessTokensByUser(ctx context.Context, userID pgt
 	return items, nil
 }
 
-const revokePersonalAccessToken = `-- name: RevokePersonalAccessToken :one
+const revokePersonalAccessTicket = `-- name: RevokePersonalAccessToken :one
 UPDATE personal_access_token
 SET revoked = TRUE
 WHERE id = $1 AND user_id = $2
@@ -157,19 +157,19 @@ type RevokePersonalAccessTokenParams struct {
 }
 
 func (q *Queries) RevokePersonalAccessToken(ctx context.Context, arg RevokePersonalAccessTokenParams) (string, error) {
-	row := q.db.QueryRow(ctx, revokePersonalAccessToken, arg.ID, arg.UserID)
-	var token_hash string
-	err := row.Scan(&token_hash)
-	return token_hash, err
+	row := q.db.QueryRow(ctx, revokePersonalAccessTicket, arg.ID, arg.UserID)
+	var ticket_hash string
+	err := row.Scan(&ticket_hash)
+	return ticket_hash, err
 }
 
-const updatePersonalAccessTokenLastUsed = `-- name: UpdatePersonalAccessTokenLastUsed :exec
+const updatePersonalAccessTicketLastUsed = `-- name: UpdatePersonalAccessTokenLastUsed :exec
 UPDATE personal_access_token
 SET last_used_at = now()
 WHERE id = $1
 `
 
 func (q *Queries) UpdatePersonalAccessTokenLastUsed(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, updatePersonalAccessTokenLastUsed, id)
+	_, err := q.db.Exec(ctx, updatePersonalAccessTicketLastUsed, id)
 	return err
 }

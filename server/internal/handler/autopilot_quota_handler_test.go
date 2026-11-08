@@ -54,7 +54,7 @@ func TestAutopilotQuotaManualAndWebhookEnforcement(t *testing.T) {
 	}
 
 	trigger := createWebhookTriggerViaHandler(t, autopilotID)
-	webhook := postWebhook(t, *trigger.WebhookToken, map[string]any{"event": "quota.test"}, nil)
+	webhook := postWebhook(t, *trigger.WebhookTicket, map[string]any{"event": "quota.test"}, nil)
 	if webhook.Code != http.StatusOK {
 		t.Fatalf("webhook status = %d body=%s, want 200 ignored", webhook.Code, webhook.Body.String())
 	}

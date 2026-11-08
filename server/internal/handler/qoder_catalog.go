@@ -39,7 +39,7 @@ type qoderCatalogItem struct {
 }
 
 // Only names and identifiers leave the server. Provider configurations may contain secrets.
-func fetchQoderCatalog(ctx context.Context, baseURL, token, kind string) ([]qoderCatalogItem, error) {
+func fetchQoderCatalog(ctx context.Context, baseURL, ticket, kind string) ([]qoderCatalogItem, error) {
 	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	items := []qoderCatalogItem{}
 	cursor := ""
@@ -55,7 +55,7 @@ func fetchQoderCatalog(ctx context.Context, baseURL, token, kind string) ([]qode
 		if err != nil {
 			return nil, fmt.Errorf("invalid Qoder Cloud Agents catalog request")
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		res, err := client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("Qoder Cloud Agents connection failed")
@@ -132,7 +132,7 @@ func (h *Handler) ListQoderAgents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "unsupported Qoder Cloud Agents API URL")
 		return
 	}
-	items, err := fetchQoderCatalog(r.Context(), base, cfg.QoderToken, "agents")
+	items, err := fetchQoderCatalog(r.Context(), base, cfg.QoderTicket, "agents")
 	if err != nil {
 		writeError(w, 502, err.Error())
 		return
@@ -152,7 +152,7 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var input struct {
-		Token   string `json:"qoder_token"`
+		Ticket  string `json:"qoder_token"`
 		BaseURL string `json:"base_url"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
@@ -180,15 +180,15 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 400, "unsupported Qoder Cloud Agents API URL")
 		return
 	}
-	token := strings.TrimSpace(input.Token)
-	if token == "" {
-		token = cfg.QoderToken
+	ticket := strings.TrimSpace(input.Ticket)
+	if ticket == "" {
+		ticket = cfg.QoderTicket
 	}
-	if token == "" || strings.ContainsAny(token, "\r\n\t ") {
+	if ticket == "" || strings.ContainsAny(ticket, "\r\n\t ") {
 		writeError(w, 400, "Qoder PAT is required")
 		return
 	}
-	items, err := fetchQoderCatalog(r.Context(), base, token, "environments")
+	items, err := fetchQoderCatalog(r.Context(), base, ticket, "environments")
 	if err != nil {
 		writeError(w, 502, err.Error())
 		return

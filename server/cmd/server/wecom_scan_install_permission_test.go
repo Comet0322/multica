@@ -53,19 +53,19 @@ func TestWecomScanInstallIsForWorkspaceAdmins(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM wecom_install_session WHERE id = $1`, sessionID)
 	})
-	memberToken, err := generateTestJWT(memberID, "scan-agent-owner@multica.test", "Scan Agent Owner")
+	memberTicket, err := generateTestJWT(memberID, "scan-agent-owner@multica.test", "Scan Agent Owner")
 	if err != nil {
 		t.Fatalf("member token: %v", err)
 	}
 
 	base := testServer.URL + "/api/workspaces/" + testWorkspaceID + "/wecom/install/"
-	do := func(t *testing.T, token, method, url string) int {
+	do := func(t *testing.T, ticket, method, url string) int {
 		t.Helper()
 		req, err := http.NewRequest(method, url, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		req.Header.Set("X-Workspace-ID", testWorkspaceID)
 		req.Header.Set("Idempotency-Key", "scan-permission-"+method)
 		resp, err := http.DefaultClient.Do(req)
@@ -79,10 +79,10 @@ func TestWecomScanInstallIsForWorkspaceAdmins(t *testing.T) {
 	status := base + sessionID
 
 	t.Run("the agent's owner, a plain member, is refused", func(t *testing.T) {
-		if got := do(t, memberToken, http.MethodPost, begin); got != http.StatusForbidden {
+		if got := do(t, memberTicket, http.MethodPost, begin); got != http.StatusForbidden {
 			t.Errorf("begin = %d, want 403", got)
 		}
-		if got := do(t, memberToken, http.MethodGet, status); got != http.StatusForbidden {
+		if got := do(t, memberTicket, http.MethodGet, status); got != http.StatusForbidden {
 			t.Errorf("status = %d, want 403", got)
 		}
 	})
@@ -90,10 +90,10 @@ func TestWecomScanInstallIsForWorkspaceAdmins(t *testing.T) {
 	// Past the gate the handler answers: 503 when this server has no scan
 	// install configured, otherwise the begin's 202 and the session's 200.
 	t.Run("a workspace admin reaches the handlers", func(t *testing.T) {
-		if got := do(t, testToken, http.MethodPost, begin); got != http.StatusAccepted && got != http.StatusServiceUnavailable {
+		if got := do(t, testTicket, http.MethodPost, begin); got != http.StatusAccepted && got != http.StatusServiceUnavailable {
 			t.Errorf("begin = %d, want 202, or 503 with scan install off", got)
 		}
-		if got := do(t, testToken, http.MethodGet, status); got != http.StatusOK && got != http.StatusServiceUnavailable {
+		if got := do(t, testTicket, http.MethodGet, status); got != http.StatusOK && got != http.StatusServiceUnavailable {
 			t.Errorf("status = %d, want 200, or 503 with scan install off", got)
 		}
 	})

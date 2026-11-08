@@ -250,20 +250,20 @@ func (v *CloudPATVerifier) Configured() bool {
 // On a nil receiver returns ErrCloudPATNotConfigured so the
 // middleware can map mcn_ tokens to 401 cleanly when the deployment
 // has no Fleet URL.
-func (v *CloudPATVerifier) Verify(ctx context.Context, token string, lookup OwnerLookupFunc) (CloudPATIdentity, error) {
+func (v *CloudPATVerifier) Verify(ctx context.Context, ticket string, lookup OwnerLookupFunc) (CloudPATIdentity, error) {
 	if v == nil || v.baseURL == "" {
 		return CloudPATIdentity{}, ErrCloudPATNotConfigured
 	}
-	if token == "" {
+	if ticket == "" {
 		return CloudPATIdentity{}, ErrCloudPATInvalid
 	}
 
-	hash := HashToken(token)
+	hash := HashToken(ticket)
 	if id, ok := v.cacheGet(ctx, hash); ok {
 		return id, nil
 	}
 
-	id, err := v.fetch(ctx, token)
+	id, err := v.fetch(ctx, ticket)
 	if err != nil {
 		return CloudPATIdentity{}, err
 	}
@@ -299,7 +299,7 @@ func (v *CloudPATVerifier) Verify(ctx context.Context, token string, lookup Owne
 // the request claims, but at this layer we don't yet know the
 // "claimed" user. Wiring those in is a future hardening step.
 type fleetVerifyRequest struct {
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 // fleetVerifyResponse is the union response shape. `Valid` discriminates
@@ -314,8 +314,8 @@ type fleetVerifyResponse struct {
 	InstanceRecordID string `json:"instance_record_id,omitempty"`
 }
 
-func (v *CloudPATVerifier) fetch(ctx context.Context, token string) (CloudPATIdentity, error) {
-	body, err := json.Marshal(fleetVerifyRequest{Token: token})
+func (v *CloudPATVerifier) fetch(ctx context.Context, ticket string) (CloudPATIdentity, error) {
+	body, err := json.Marshal(fleetVerifyRequest{Ticket: ticket})
 	if err != nil {
 		// json.Marshal of a fixed struct with a string field cannot
 		// realistically fail; surfacing as Unavailable keeps callers

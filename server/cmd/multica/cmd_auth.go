@@ -27,18 +27,18 @@ import (
 // with a Multica Cloud Node PAT (`mcn_`) even though the server happily
 // authenticates both kinds. Keep this list in sync with the prefix branches
 // in server/internal/middleware/auth.go.
-var loginTokenPrefixes = []string{"mul_", auth.CloudPATPrefix}
+var loginTicketPrefixes = []string{"mul_", auth.CloudPATPrefix}
 
 // validateLoginTokenPrefix returns nil if token starts with one of the
 // CLI-recognised PAT prefixes, or an error describing the accepted set.
 // Extracted so the prefix list has one obvious test surface.
-func validateLoginTokenPrefix(token string) error {
-	for _, p := range loginTokenPrefixes {
-		if strings.HasPrefix(token, p) {
+func validateLoginTokenPrefix(ticket string) error {
+	for _, p := range loginTicketPrefixes {
+		if strings.HasPrefix(ticket, p) {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid token format: must start with %s", strings.Join(loginTokenPrefixes, " or "))
+	return fmt.Errorf("invalid token format: must start with %s", strings.Join(loginTicketPrefixes, " or "))
 }
 
 var authCmd = &cobra.Command{
@@ -84,7 +84,7 @@ func resolveToken(cmd *cobra.Command) string {
 	}
 	profile := resolveProfile(cmd)
 	cfg, _ := cli.LoadCLIConfigForProfile(profile)
-	return cfg.Token
+	return cfg.Ticket
 }
 
 func resolveAppURL(cmd *cobra.Command) string {
@@ -127,15 +127,15 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if cmd.Flags().Changed("token") {
-		tokenFlag, _ := cmd.Flags().GetString("token")
+		ticketFlag, _ := cmd.Flags().GetString("token")
 		// `--token mul_xxx` (space form) is what users actually type — that's
 		// the form from the docs and from #1994. NoOptDefVal prevents pflag
 		// from consuming the next arg as the flag value, so it lands here as
 		// a positional. Promote it to the token value.
-		if tokenFlag == tokenPromptSentinel && len(args) == 1 {
-			tokenFlag = args[0]
+		if ticketFlag == ticketPromptSentinel && len(args) == 1 {
+			ticketFlag = args[0]
 		}
-		return runAuthLoginToken(cmd, tokenFlag)
+		return runAuthLoginToken(cmd, ticketFlag)
 	}
 	return runAuthLoginBrowser(cmd)
 }
@@ -293,8 +293,8 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
-		if token == "" {
+		ticket := r.URL.Query().Get("token")
+		if ticket == "" {
 			http.Error(w, "missing token", http.StatusBadRequest)
 			return
 		}
@@ -305,7 +305,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 		}
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(callbackSuccessHTML))
-		jwtCh <- token
+		jwtCh <- ticket
 	})
 
 	srv := &http.Server{Handler: mux}
@@ -324,9 +324,9 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 	fmt.Fprint(os.Stderr, browserLoginInstructions(loginURL, callbackHost, port, runningInSSHSession()))
 
 	// Wait for the JWT from the callback (timeout 5 minutes).
-	var jwtToken string
+	var jwtTicket string
 	select {
-	case jwtToken = <-jwtCh:
+	case jwtTicket = <-jwtCh:
 	case err := <-errCh:
 		return fmt.Errorf("local server error: %w", err)
 	case <-time.After(5 * time.Minute):
@@ -334,7 +334,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 	}
 
 	// Use the JWT to create a PAT via the existing API.
-	client := cli.NewAPIClient(serverURL, "", jwtToken)
+	client := cli.NewAPIClient(serverURL, "", jwtTicket)
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
@@ -347,7 +347,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 	expiresInDays := 90
 
 	var patResp struct {
-		Token string `json:"token"`
+		Ticket string `json:"token"`
 	}
 	err = client.PostJSON(ctx, "/api/tokens", map[string]any{
 		"name":            patName,
@@ -358,7 +358,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 	}
 
 	// Verify the PAT works.
-	patClient := cli.NewAPIClient(serverURL, "", patResp.Token)
+	patClient := cli.NewAPIClient(serverURL, "", patResp.Ticket)
 	var me struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
@@ -372,7 +372,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 	profile := resolveProfile(cmd)
 	cfg, _ := cli.LoadCLIConfigForProfile(profile)
 	cfg.WorkspaceID = ""
-	cfg.Token = patResp.Token
+	cfg.Ticket = patResp.Ticket
 	cfg.ServerURL = serverURL
 	cfg.AppURL = appURL
 	if err := cli.SaveCLIConfigForProfile(cfg, profile); err != nil {
@@ -433,31 +433,31 @@ func browserLoginInstructions(loginURL, callbackHost string, port int, remoteSSH
 	return b.String()
 }
 
-func runAuthLoginToken(cmd *cobra.Command, providedToken string) error {
+func runAuthLoginToken(cmd *cobra.Command, providedTicket string) error {
 	// The prompt sentinel is what pflag substitutes for `--token` with no
 	// value (see loginCmd init); treat it the same as an empty string so we
 	// fall through to the interactive prompt.
-	if providedToken == tokenPromptSentinel {
-		providedToken = ""
+	if providedTicket == ticketPromptSentinel {
+		providedTicket = ""
 	}
-	token := strings.TrimSpace(providedToken)
-	if token == "" {
+	ticket := strings.TrimSpace(providedTicket)
+	if ticket == "" {
 		fmt.Print("Enter your personal access token: ")
 		scanner := bufio.NewScanner(os.Stdin)
 		if !scanner.Scan() {
 			return fmt.Errorf("no input")
 		}
-		token = strings.TrimSpace(scanner.Text())
+		ticket = strings.TrimSpace(scanner.Text())
 	}
-	if token == "" {
+	if ticket == "" {
 		return fmt.Errorf("token is required")
 	}
-	if err := validateLoginTokenPrefix(token); err != nil {
+	if err := validateLoginTokenPrefix(ticket); err != nil {
 		return err
 	}
 
 	serverURL := resolveLoginTokenServerURL(cmd)
-	client := cli.NewAPIClient(serverURL, "", token)
+	client := cli.NewAPIClient(serverURL, "", ticket)
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
@@ -473,7 +473,7 @@ func runAuthLoginToken(cmd *cobra.Command, providedToken string) error {
 	profile := resolveProfile(cmd)
 	cfg, _ := cli.LoadCLIConfigForProfile(profile)
 	cfg.WorkspaceID = ""
-	cfg.Token = token
+	cfg.Ticket = ticket
 	cfg.ServerURL = serverURL
 	if cfg.AppURL == "" && serverURL == defaultCloudServerURL {
 		cfg.AppURL = defaultCloudAppURL
@@ -491,18 +491,18 @@ func runAuthStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	taskContext := inDaemonManagedExecutionContext()
-	token := resolveToken(cmd)
-	if taskContext && !strings.HasPrefix(token, "mat_") {
+	ticket := resolveToken(cmd)
+	if taskContext && !strings.HasPrefix(ticket, "mat_") {
 		return fmt.Errorf("agent execution context requires MULTICA_TOKEN to be a task-scoped mat_ token")
 	}
 	serverURL := resolveServerURL(cmd)
 
-	if token == "" {
+	if ticket == "" {
 		fmt.Fprintln(os.Stderr, "Not authenticated. Run 'multica login' to authenticate.")
 		return nil
 	}
 
-	client := cli.NewAPIClient(serverURL, "", token)
+	client := cli.NewAPIClient(serverURL, "", ticket)
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
@@ -521,7 +521,7 @@ func runAuthStatus(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	prefix := token
+	prefix := ticket
 	if len(prefix) > 12 {
 		prefix = prefix[:12] + "..."
 	}
@@ -576,12 +576,12 @@ func runAuthLogout(cmd *cobra.Command, _ []string) error {
 	}
 	profile := resolveProfile(cmd)
 	cfg, _ := cli.LoadCLIConfigForProfile(profile)
-	if cfg.Token == "" {
+	if cfg.Ticket == "" {
 		fmt.Fprintln(os.Stderr, "Not authenticated.")
 		return nil
 	}
 
-	cfg.Token = ""
+	cfg.Ticket = ""
 	if err := cli.SaveCLIConfigForProfile(cfg, profile); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}

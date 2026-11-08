@@ -37,7 +37,7 @@ func TestFeishuMediaResolver_DuplicatePostSpanUploadsOnce(t *testing.T) {
 	sender := &fakeSender{downloaded: DownloadedResource{Data: []byte{1, 2, 3}, ContentType: "image/png", SizeBytes: 3}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	raw := `{"content":[[{"tag":"img","image_key":"img_same"}],[{"tag":"img","image_key":"img_same"}]]}`
 	lm := InboundMessage{MessageID: "om_same", MessageType: "post", Body: flattenPostContent(raw), Content: raw}
 

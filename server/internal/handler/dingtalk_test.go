@@ -847,7 +847,7 @@ func TestRedeemDingTalkBindingTokenPublishesAccountBindingUpdateAfterCommit(t *t
 	h.RedeemDingTalkBindingToken(recorder, newRequest(
 		http.MethodPost,
 		"/api/dingtalk/binding/redeem",
-		RedeemDingTalkBindingTokenRequest{Token: token.Raw},
+		RedeemDingTalkBindingTokenRequest{Ticket: token.Raw},
 	))
 
 	if recorder.Code != http.StatusOK {

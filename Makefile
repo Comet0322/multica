@@ -10,7 +10,6 @@ endif
 
 POSTGRES_DB ?= multica
 POSTGRES_USER ?= multica
-POSTGRES_PASSWORD ?= multica
 POSTGRES_PORT ?= 5432
 PORT := $(or $(BACKEND_PORT),$(API_PORT),$(SERVER_PORT),$(PORT),8080)
 ifeq ($(origin MULTICA_PUBLIC_URL), undefined)
@@ -363,6 +362,8 @@ migrate-down: ## Create the target DB if needed, then roll back database migrati
 
 sqlc: ## Regenerate sqlc code
 	cd server && go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+	cd scripts/credscan && go run . -dir ../../server -rename ./...
+	cd server && gofmt -w pkg/db/generated
 
 # Cleanup
 ##@ Cleanup

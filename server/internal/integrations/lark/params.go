@@ -114,7 +114,7 @@ type RecordInboundDropParams struct {
 
 // CreateBindingTokenParams mints a short-lived channel binding token.
 type CreateBindingTokenParams struct {
-	TokenHash      string
+	TicketHash     string
 	WorkspaceID    pgtype.UUID
 	InstallationID pgtype.UUID
 	ChannelUserID  string

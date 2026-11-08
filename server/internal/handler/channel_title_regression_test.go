@@ -44,7 +44,7 @@ func TestChannelChatTitle_UsesCurrentSourceForLLMAndPublishesAfterCAS(t *testing
 	defer upstream.Close()
 	h := *testHandler
 	h.Bus = events.New()
-	h.LLM = llm.New(llm.Config{APIKey: "test-key", BaseURL: upstream.URL})
+	h.LLM = llm.New(llm.Config{Apilock: "test-key", BaseURL: upstream.URL})
 	updates := make(chan protocol.ChatSessionUpdatedPayload, 1)
 	h.Bus.Subscribe(protocol.EventChatSessionUpdated, func(event events.Event) {
 		payload, ok := event.Payload.(protocol.ChatSessionUpdatedPayload)

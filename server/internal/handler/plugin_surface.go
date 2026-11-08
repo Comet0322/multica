@@ -41,10 +41,10 @@ type pluginSurfaceLaunchClaims struct {
 }
 
 type pluginSurfaceLaunch struct {
-	URL         string `json:"url"`
-	BridgeToken string `json:"bridge_token"`
-	Version     string `json:"version"`
-	Digest      string `json:"digest"`
+	URL          string `json:"url"`
+	BridgeTicket string `json:"bridge_token"`
+	Version      string `json:"version"`
+	Digest       string `json:"digest"`
 }
 
 // NewPluginSurfaceTokenBox derives a separate AES-GCM key from the plugin
@@ -122,11 +122,11 @@ func (h *Handler) mintPluginSurfaceToken(claims pluginSurfaceLaunchClaims) (stri
 	return base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
-func (h *Handler) openPluginSurfaceToken(token string) (pluginSurfaceLaunchClaims, error) {
+func (h *Handler) openPluginSurfaceToken(ticket string) (pluginSurfaceLaunchClaims, error) {
 	if h.PluginSurfaceTokens == nil {
 		return pluginSurfaceLaunchClaims{}, errors.New("plugin surface token encryption is not configured")
 	}
-	sealed, err := base64.RawURLEncoding.DecodeString(token)
+	sealed, err := base64.RawURLEncoding.DecodeString(ticket)
 	if err != nil {
 		return pluginSurfaceLaunchClaims{}, errors.New("invalid plugin surface token encoding")
 	}
@@ -199,17 +199,17 @@ func (h *Handler) GetPluginSurfaceLaunch(w http.ResponseWriter, r *http.Request)
 		Challenge:      challenge,
 		ExpiresAt:      time.Now().Add(pluginSurfaceLaunchTTL).Unix(),
 	}
-	token, err := h.mintPluginSurfaceToken(claims)
+	ticket, err := h.mintPluginSurfaceToken(claims)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create the Plugin surface launch")
 		return
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, pluginSurfaceLaunch{
-		URL:         origin.String() + "/plugin-surfaces/" + token,
-		BridgeToken: challenge,
-		Version:     script.Version,
-		Digest:      script.Digest,
+		URL:          origin.String() + "/plugin-surfaces/" + ticket,
+		BridgeTicket: challenge,
+		Version:      script.Version,
+		Digest:       script.Digest,
 	})
 }
 

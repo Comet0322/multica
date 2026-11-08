@@ -41,10 +41,10 @@ type openclawRuntimeConfig struct {
 // owner could point the daemon at an arbitrary internal address) and
 // gate/allowlist gateway targets accordingly.
 type openclawRuntimeGatewayConfig struct {
-	Host  string `json:"host"`
-	Port  int    `json:"port"`
-	Token string `json:"token"`
-	TLS   bool   `json:"tls"`
+	Host   string `json:"host"`
+	Port   int    `json:"port"`
+	Ticket string `json:"token"`
+	TLS    bool   `json:"tls"`
 }
 
 // decodeOpenclawRuntimeConfig extracts the openclaw-specific knobs from an
@@ -78,9 +78,9 @@ func decodeOpenclawRuntimeConfig(raw json.RawMessage, logger *slog.Logger) (stri
 		return cfg.Mode, execenv.OpenclawGatewayPin{}
 	}
 	return cfg.Mode, execenv.OpenclawGatewayPin{
-		Host:  cfg.Gateway.Host,
-		Port:  cfg.Gateway.Port,
-		Token: cfg.Gateway.Token,
-		TLS:   cfg.Gateway.TLS,
+		Host:   cfg.Gateway.Host,
+		Port:   cfg.Gateway.Port,
+		Ticket: cfg.Gateway.Ticket,
+		TLS:    cfg.Gateway.TLS,
 	}
 }

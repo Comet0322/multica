@@ -318,9 +318,9 @@ func TestAGuardRefusalNeverPutsAnAddressOrUrlInTheChat(t *testing.T) {
 	if content != copyFor(DefaultLocale).MediaUnreadable {
 		t.Errorf("notice = %q, want the plain did-not-arrive wording exactly once", content)
 	}
-	for _, secret := range []string{"127.0.0.1", "::1", srv.URL, testAESKey} {
-		if strings.Contains(content, secret) {
-			t.Errorf("the chat notice leaks %q: %q", secret, content)
+	for _, sealed := range []string{"127.0.0.1", "::1", srv.URL, testAESKey} {
+		if strings.Contains(content, sealed) {
+			t.Errorf("the chat notice leaks %q: %q", sealed, content)
 		}
 	}
 }

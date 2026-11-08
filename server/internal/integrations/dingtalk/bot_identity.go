@@ -43,24 +43,24 @@ type groupBotListItem struct {
 // botNameInGroup returns the readable DingTalk name for one exact robot code
 // in a group. The API returns every bot in the group; callers must never infer
 // identity from list position or persist another bot's metadata.
-func (c *Client) botNameInGroup(ctx context.Context, appKey, appSecret, robotCode, conversationID string) (string, error) {
+func (c *Client) botNameInGroup(ctx context.Context, appKey, appSealed, robotCode, conversationID string) (string, error) {
 	if strings.TrimSpace(robotCode) == "" || strings.TrimSpace(conversationID) == "" {
 		return "", errors.New("dingtalk: bot-name lookup requires robot code and conversation id")
 	}
 
 	body := map[string]string{"openConversationId": conversationID}
 	var out groupBotListResponse
-	token, err := c.accessToken(ctx, appKey, appSecret)
+	ticket, err := c.accessToken(ctx, appKey, appSealed)
 	if err != nil {
 		return "", err
 	}
-	err = c.postJSON(ctx, groupBotsPath, token, body, &out)
+	err = c.postJSON(ctx, groupBotsPath, ticket, body, &out)
 	if errors.Is(err, errUnauthorized) {
 		c.invalidate(appKey)
-		if token, err = c.accessToken(ctx, appKey, appSecret); err != nil {
+		if ticket, err = c.accessToken(ctx, appKey, appSealed); err != nil {
 			return "", err
 		}
-		err = c.postJSON(ctx, groupBotsPath, token, body, &out)
+		err = c.postJSON(ctx, groupBotsPath, ticket, body, &out)
 	}
 	if err != nil {
 		var apiErr *apiRequestError
@@ -185,7 +185,7 @@ func (r *BotNameResolver) resolveFlight(
 		name, lookupErr := r.client.botNameInGroup(
 			lookupCtx,
 			credentials.AppKey,
-			credentials.AppSecret,
+			credentials.AppSealed,
 			credentials.RobotCode,
 			conversationID,
 		)

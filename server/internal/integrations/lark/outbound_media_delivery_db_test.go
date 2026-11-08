@@ -28,8 +28,8 @@ func TestMediaDeliveryDatabaseOwnershipAndRetryRecovery(t *testing.T) {
 	fx.Cleanup(t, "DELETE FROM channel_reply_delivery WHERE turn_id=$1", rootID)
 	q := NewChannelStore(db.New(pool))
 	api := &fakeMediaAPIClient{fakeAPIClient: &fakeAPIClient{}}
-	first := NewPatcher(q, fakeCredentials{secret: "unused"}, api, PatcherConfig{Logger: newDiscardLogger()})
-	second := NewPatcher(q, fakeCredentials{secret: "unused"}, api, PatcherConfig{Logger: newDiscardLogger()})
+	first := NewPatcher(q, fakeCredentials{sealed: "unused"}, api, PatcherConfig{Logger: newDiscardLogger()})
+	second := NewPatcher(q, fakeCredentials{sealed: "unused"}, api, PatcherConfig{Logger: newDiscardLogger()})
 	binding := ChatSessionBinding{ID: util.MustParseUUID(uuid.NewString()), InstallationID: util.MustParseUUID(uuid.NewString()), ChannelChatID: "test-chat"}
 	ctx, finish, ok := first.claimMediaDelivery(context.Background(), rootID, binding)
 	if !ok || !first.markMediaSending(ctx) {

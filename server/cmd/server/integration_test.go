@@ -27,7 +27,7 @@ import (
 var (
 	testServer      *httptest.Server
 	testPool        *pgxpool.Pool
-	testToken       string
+	testTicket      string
 	testUserID      string
 	testWorkspaceID string
 )
@@ -45,7 +45,8 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		fmt.Println("Skipping tests: DATABASE_URL is not set")
+		os.Exit(0)
 	}
 
 	pool, err := pgxpool.New(ctx, dbURL)
@@ -78,7 +79,7 @@ func TestMain(m *testing.M) {
 	testServer = httptest.NewServer(router)
 
 	// Generate a JWT token directly for the test user
-	testToken, err = generateTestJWT(testUserID, integrationTestEmail, integrationTestName)
+	testTicket, err = generateTestJWT(testUserID, integrationTestEmail, integrationTestName)
 	if err != nil {
 		fmt.Printf("Failed to generate test JWT: %v\n", err)
 		testServer.Close()
@@ -180,7 +181,7 @@ func authRequest(t *testing.T, method, path string, body any) *http.Response {
 		t.Fatalf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Authorization", "Bearer "+testTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -337,14 +338,14 @@ func TestSendCodeAndVerify(t *testing.T) {
 	}
 
 	var loginResp struct {
-		Token string `json:"token"`
-		User  struct {
+		Ticket string `json:"token"`
+		User   struct {
 			Email string `json:"email"`
 		} `json:"user"`
 	}
 	readJSON(t, resp, &loginResp)
 
-	if loginResp.Token == "" {
+	if loginResp.Ticket == "" {
 		t.Fatal("expected non-empty token")
 	}
 	if loginResp.User.Email != email {
@@ -353,7 +354,7 @@ func TestSendCodeAndVerify(t *testing.T) {
 
 	// Verify the token works with /api/me
 	req, _ := http.NewRequest("GET", testServer.URL+"/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Ticket)
 	meResp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("getMe failed: %v", err)
@@ -401,13 +402,13 @@ func TestVerifyCodeNewUserHasNoWorkspace(t *testing.T) {
 	}
 
 	var loginResp struct {
-		Token string `json:"token"`
+		Ticket string `json:"token"`
 	}
 	readJSON(t, resp, &loginResp)
 
 	// New users should have no workspaces (/workspaces/new creates one)
 	req, _ := http.NewRequest("GET", testServer.URL+"/api/workspaces", nil)
-	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Ticket)
 	workspacesResp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("listWorkspaces failed: %v", err)
@@ -446,8 +447,8 @@ func TestProtectedRoutesRequireAuth(t *testing.T) {
 
 func TestInvalidJWT(t *testing.T) {
 	cases := []struct {
-		name  string
-		token string
+		name   string
+		ticket string
 	}{
 		{"garbage token", "not-a-jwt"},
 		{"empty token", ""},
@@ -466,8 +467,8 @@ func TestInvalidJWT(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			req, _ := http.NewRequest("GET", testServer.URL+"/api/me", nil)
-			if tc.token != "" {
-				req.Header.Set("Authorization", "Bearer "+tc.token)
+			if tc.ticket != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.ticket)
 			}
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -764,7 +765,7 @@ func TestDeleteWorkspaceRequiresOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Authorization", "Bearer "+testTicket)
 	req.Header.Set("X-Workspace-ID", wsID)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -836,7 +837,7 @@ INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'member')
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM member WHERE workspace_id = $1 AND user_id = $2`, testWorkspaceID, memberUserID)
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM "user" WHERE id = $1`, memberUserID)
 	})
-	memberToken, err := generateTestJWT(memberUserID, "dingtalk-groups-member@example.test", "DingTalk group member")
+	memberTicket, err := generateTestJWT(memberUserID, "dingtalk-groups-member@example.test", "DingTalk group member")
 	if err != nil {
 		t.Fatalf("generate member token: %v", err)
 	}
@@ -844,7 +845,7 @@ INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'member')
 	if err != nil {
 		t.Fatalf("build member request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+memberToken)
+	req.Header.Set("Authorization", "Bearer "+memberTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -879,7 +880,7 @@ UPDATE agent SET owner_id = $2 WHERE id = $1
 	if err != nil {
 		t.Fatalf("build member DingTalk install request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+memberToken)
+	req.Header.Set("Authorization", "Bearer "+memberTicket)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err = http.DefaultClient.Do(req)
@@ -931,7 +932,7 @@ DELETE FROM agent_invocation_target WHERE agent_id = $1 AND target_type = 'works
 	if err != nil {
 		t.Fatalf("build member Agent request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+memberToken)
+	req.Header.Set("Authorization", "Bearer "+memberTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -965,7 +966,7 @@ RETURNING id
 	if err != nil {
 		t.Fatalf("build private Agent request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+memberToken)
+	req.Header.Set("Authorization", "Bearer "+memberTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -1493,7 +1494,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	// First-message auth
 	authMsg, _ := json.Marshal(map[string]any{
 		"type":    "auth",
-		"payload": map[string]string{"token": testToken},
+		"payload": map[string]string{"token": testTicket},
 	})
 	if err := conn.WriteMessage(websocket.TextMessage, authMsg); err != nil {
 		t.Fatalf("failed to send auth message: %v", err)

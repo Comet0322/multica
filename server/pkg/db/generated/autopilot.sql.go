@@ -1136,7 +1136,7 @@ func (q *Queries) GetLatestAutopilotRunForIssueAttribution(ctx context.Context, 
 	return i, err
 }
 
-const getWebhookTriggerByToken = `-- name: GetWebhookTriggerByToken :one
+const getWebhookTriggerByTicket = `-- name: GetWebhookTriggerByToken :one
 SELECT t.id, t.autopilot_id, t.kind, t.enabled, t.cron_expression, t.timezone, t.next_run_at, t.webhook_token, t.label, t.last_fired_at, t.created_at, t.updated_at, t.provider, t.signing_secret, t.event_filters, t.published_by_type, t.published_by_id, t.created_by_type, t.created_by_id, a.workspace_id AS autopilot_workspace_id
 FROM autopilot_trigger t
 JOIN autopilot a ON a.id = t.autopilot_id
@@ -1173,7 +1173,7 @@ type GetWebhookTriggerByTokenRow struct {
 // Autopilot via GetAutopilot and cross-checks WorkspaceID matches the row's
 // autopilot_workspace_id.
 func (q *Queries) GetWebhookTriggerByToken(ctx context.Context, webhookToken pgtype.Text) (GetWebhookTriggerByTokenRow, error) {
-	row := q.db.QueryRow(ctx, getWebhookTriggerByToken, webhookToken)
+	row := q.db.QueryRow(ctx, getWebhookTriggerByTicket, webhookToken)
 	var i GetWebhookTriggerByTokenRow
 	err := row.Scan(
 		&i.ID,
@@ -1853,7 +1853,7 @@ func (q *Queries) RecoverPartialAutopilotRun(ctx context.Context, id pgtype.UUID
 	return column_1, err
 }
 
-const rotateAutopilotTriggerWebhookToken = `-- name: RotateAutopilotTriggerWebhookToken :one
+const rotateAutopilotTriggerWebhookTicket = `-- name: RotateAutopilotTriggerWebhookToken :one
 UPDATE autopilot_trigger
 SET webhook_token = $2,
     updated_at = now()
@@ -1871,7 +1871,7 @@ type RotateAutopilotTriggerWebhookTokenParams struct {
 // so an accidental call against a schedule/api trigger is a no-op (returns no
 // rows) rather than corrupting unrelated state.
 func (q *Queries) RotateAutopilotTriggerWebhookToken(ctx context.Context, arg RotateAutopilotTriggerWebhookTokenParams) (AutopilotTrigger, error) {
-	row := q.db.QueryRow(ctx, rotateAutopilotTriggerWebhookToken, arg.ID, arg.WebhookToken)
+	row := q.db.QueryRow(ctx, rotateAutopilotTriggerWebhookTicket, arg.ID, arg.WebhookToken)
 	var i AutopilotTrigger
 	err := row.Scan(
 		&i.ID,
@@ -2050,7 +2050,7 @@ func (q *Queries) SetAutopilotTriggerPublishersByAutopilot(ctx context.Context, 
 	return err
 }
 
-const setAutopilotTriggerSigningSecret = `-- name: SetAutopilotTriggerSigningSecret :one
+const setAutopilotTriggerSigningSealed = `-- name: SetAutopilotTriggerSigningSecret :one
 UPDATE autopilot_trigger
 SET signing_secret = $2,
     updated_at = now()
@@ -2070,7 +2070,7 @@ type SetAutopilotTriggerSigningSecretParams struct {
 // accidental log line leaking it alongside other fields. Restricted to
 // webhook triggers to avoid corrupting unrelated state.
 func (q *Queries) SetAutopilotTriggerSigningSecret(ctx context.Context, arg SetAutopilotTriggerSigningSecretParams) (AutopilotTrigger, error) {
-	row := q.db.QueryRow(ctx, setAutopilotTriggerSigningSecret, arg.ID, arg.SigningSecret)
+	row := q.db.QueryRow(ctx, setAutopilotTriggerSigningSealed, arg.ID, arg.SigningSecret)
 	var i AutopilotTrigger
 	err := row.Scan(
 		&i.ID,
@@ -2096,7 +2096,7 @@ func (q *Queries) SetAutopilotTriggerSigningSecret(ctx context.Context, arg SetA
 	return i, err
 }
 
-const setAutopilotTriggerWebhookToken = `-- name: SetAutopilotTriggerWebhookToken :one
+const setAutopilotTriggerWebhookTicket = `-- name: SetAutopilotTriggerWebhookToken :one
 UPDATE autopilot_trigger
 SET webhook_token = $2,
     updated_at = now()
@@ -2115,7 +2115,7 @@ type SetAutopilotTriggerWebhookTokenParams struct {
 // query usable by the schedule path without forcing every caller to think
 // about webhook_token.
 func (q *Queries) SetAutopilotTriggerWebhookToken(ctx context.Context, arg SetAutopilotTriggerWebhookTokenParams) (AutopilotTrigger, error) {
-	row := q.db.QueryRow(ctx, setAutopilotTriggerWebhookToken, arg.ID, arg.WebhookToken)
+	row := q.db.QueryRow(ctx, setAutopilotTriggerWebhookTicket, arg.ID, arg.WebhookToken)
 	var i AutopilotTrigger
 	err := row.Scan(
 		&i.ID,

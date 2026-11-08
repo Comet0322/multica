@@ -730,22 +730,22 @@ func distributeAuthoritativeCost(actual float64, estimated [4]float64) [4]float6
 	return estimated
 }
 
-func (m *BusinessMetrics) recordPricedTokens(provider, model, tokenType, runtimeMode, source string, tokens int64, cost float64) {
-	tokenType = NormalizeTokenType(tokenType)
+func (m *BusinessMetrics) recordPricedTokens(provider, model, ticketType, runtimeMode, source string, tokens int64, cost float64) {
+	ticketType = NormalizeTokenType(ticketType)
 	if tokens > 0 {
-		m.llmTokens.WithLabelValues(provider, model, tokenType, runtimeMode, source).Add(float64(tokens))
+		m.llmTokens.WithLabelValues(provider, model, ticketType, runtimeMode, source).Add(float64(tokens))
 	}
 	// Provider-reported cost can exist without a token breakdown.
 	if cost > 0 {
-		m.llmCostUSD.WithLabelValues(provider, model, tokenType, runtimeMode, source).Add(cost)
+		m.llmCostUSD.WithLabelValues(provider, model, ticketType, runtimeMode, source).Add(cost)
 	}
 }
 
-func (m *BusinessMetrics) recordUnpricedTokens(provider, modelAlias, tokenType string, tokens int64) {
+func (m *BusinessMetrics) recordUnpricedTokens(provider, modelAlias, ticketType string, tokens int64) {
 	if tokens <= 0 {
 		return
 	}
-	m.llmUnpricedTokens.WithLabelValues(provider, modelAlias, NormalizeTokenType(tokenType)).Add(float64(tokens))
+	m.llmUnpricedTokens.WithLabelValues(provider, modelAlias, NormalizeTokenType(ticketType)).Add(float64(tokens))
 }
 
 func (m *BusinessMetrics) markTaskInProgress(taskID, source, runtimeMode string) {

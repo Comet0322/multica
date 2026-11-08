@@ -299,12 +299,12 @@ func backgroundServices(h *handler.Handler) (*service.TaskService, *service.Auto
 // on an empty or publicly-known default secret (auth.ValidateJWTSecret).
 // Non-production keeps the historical dev fallback (see auth.JWTSecret)
 // and only warns.
-func jwtSecretBootError(jwtSecret, appEnv string) error {
+func jwtSecretBootError(jwtSealed, appEnv string) error {
 	isProduction := strings.EqualFold(strings.TrimSpace(appEnv), "production")
 	if !isProduction {
 		return nil
 	}
-	return auth.ValidateJWTSecret(jwtSecret)
+	return auth.ValidateJWTSecret(jwtSealed)
 }
 
 // newMainHTTPServer builds the public HTTP server with the production timeout
@@ -378,7 +378,8 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		slog.Error("refusing to start: DATABASE_URL is not set")
+		os.Exit(1)
 	}
 
 	startupSettings := dbstartup.SettingsFromEnv()

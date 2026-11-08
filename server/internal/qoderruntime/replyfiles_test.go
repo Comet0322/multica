@@ -397,7 +397,7 @@ func TestReplyFileNoticeSurvivesRestartAndCompletionRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.Runs[0].Reply.token != "" {
+	if j.Runs[0].Reply.ticket != "" {
 		t.Fatal("task credential persisted")
 	}
 	h.b.state = j

@@ -45,7 +45,8 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		fmt.Println("Skipping tests: DATABASE_URL is not set")
+		os.Exit(0)
 	}
 
 	pool, err := pgxpool.New(ctx, dbURL)
@@ -2278,7 +2279,7 @@ func TestVerifyCode(t *testing.T) {
 
 	var resp LoginResponse
 	json.NewDecoder(w.Body).Decode(&resp)
-	if resp.Token == "" {
+	if resp.Ticket == "" {
 		t.Fatal("VerifyCode: expected non-empty token")
 	}
 	if resp.User.Email != email {

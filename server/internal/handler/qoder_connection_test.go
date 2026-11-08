@@ -32,8 +32,8 @@ func TestQoderConnectionSecrets(t *testing.T) {
 	var encrypted string
 	dbfx.QueryRow(t, `SELECT config_encrypted FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&encrypted)
 	raw, _ := json.Marshal(view)
-	for _, secret := range []string{"qca-test-secret", "github-test-secret"} {
-		if strings.Contains(encrypted, secret) || strings.Contains(string(raw), secret) {
+	for _, sealed := range []string{"qca-test-secret", "github-test-secret"} {
+		if strings.Contains(encrypted, sealed) || strings.Contains(string(raw), sealed) {
 			t.Fatal("plaintext credential exposed")
 		}
 	}
@@ -41,22 +41,22 @@ func TestQoderConnectionSecrets(t *testing.T) {
 	body["github_tokens"] = map[string]string{"https://github.com/owner/repo": ""}
 	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200)
 	cfg, _, _, _, err := testHandler.readQoderSettings(context.Background(), testWorkspaceID)
-	if err != nil || cfg.QoderToken != "qca-test-secret" || cfg.GitHubTokens["https://github.com/owner/repo"] != "github-test-secret" {
+	if err != nil || cfg.QoderTicket != "qca-test-secret" || cfg.GitHubTickets["https://github.com/owner/repo"] != "github-test-secret" {
 		t.Fatal("blank field did not retain credentials")
 	}
-	if !strings.HasPrefix(cfg.MulticaToken, "mdt_") {
+	if !strings.HasPrefix(cfg.MulticaTicket, "mdt_") {
 		t.Fatal("managed bridge must use a daemon credential")
 	}
-	var credentialWorkspace, daemonID string
+	var badgeWorkspace, daemonID string
 	var expiring bool
-	dbfx.QueryRow(t, `SELECT workspace_id::text,daemon_id,expires_at>now() AND expires_at<now()+interval '2 hours' FROM daemon_token WHERE token_hash=$1`, auth.HashToken(cfg.MulticaToken)).Scan(&credentialWorkspace, &daemonID, &expiring)
-	if credentialWorkspace != testWorkspaceID || daemonID != "qoder-managed-"+testWorkspaceID || !expiring {
+	dbfx.QueryRow(t, `SELECT workspace_id::text,daemon_id,expires_at>now() AND expires_at<now()+interval '2 hours' FROM daemon_token WHERE token_hash=$1`, auth.HashToken(cfg.MulticaTicket)).Scan(&badgeWorkspace, &daemonID, &expiring)
+	if badgeWorkspace != testWorkspaceID || daemonID != "qoder-managed-"+testWorkspaceID || !expiring {
 		t.Fatal("unscoped or non-expiring service credential")
 	}
 	body["github_tokens"] = map[string]string{}
 	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200)
 	cfg, _, _, _, err = testHandler.readQoderSettings(context.Background(), testWorkspaceID)
-	if err != nil || len(cfg.GitHubTokens) != 0 {
+	if err != nil || len(cfg.GitHubTickets) != 0 {
 		t.Fatal("removed repository retained credential")
 	}
 	testutil.Call(t, testHandler.StopQoderConnection, vcsHandlerRequest("POST", "/qoder/stop", nil, "")).Want(200).JSON(&view)
@@ -209,7 +209,7 @@ func TestQoderManagedRegistrationAndRevocation(t *testing.T) {
 	}
 	daemonID := "qoder-managed-" + testWorkspaceID
 	req := newDaemonTokenRequest("POST", "/api/daemon/register", map[string]any{"workspace_id": testWorkspaceID, "daemon_id": daemonID, "runtimes": []map[string]any{{"name": "QCA", "type": "qoder_cloud", "runtime_mode": "cloud", "status": "online"}}}, testWorkspaceID, daemonID)
-	req.Header.Set("Authorization", "Bearer "+cfg.MulticaToken)
+	req.Header.Set("Authorization", "Bearer "+cfg.MulticaTicket)
 	testutil.Call(t, testHandler.DaemonRegister, req).Want(200)
 	testutil.Call(t, testHandler.StopQoderConnection, vcsHandlerRequest("POST", "/qoder/stop", nil, "")).Want(200)
 	allowed, err := testHandler.qoderCredentialAllowed(req, testWorkspaceID, daemonID)
@@ -233,7 +233,7 @@ func TestQoderRetirementCancelsRemoteAndClearsPrompt(t *testing.T) {
 	runtimeID := dbfx.Runtime(t, "retired QCA", testutil.Cols{"provider": "qoder_cloud", "runtime_mode": "cloud"})
 	agentID := dbfx.Agent(t, "retired agent", runtimeID)
 	taskID := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, "status": "running"})
-	cfg, _ := json.Marshal(qoderSettings{BaseURL: remote.URL, QoderToken: "fixture-secret"})
+	cfg, _ := json.Marshal(qoderSettings{BaseURL: remote.URL, QoderTicket: "fixture-secret"})
 	encrypted, err := testHandler.sealVCSSecret(string(cfg))
 	if err != nil {
 		t.Fatal(err)

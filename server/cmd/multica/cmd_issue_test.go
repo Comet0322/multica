@@ -4253,12 +4253,12 @@ func TestRunIssueAssignRejectsNoStartWithUnassign(t *testing.T) {
 }
 
 func TestIssueReadCommandsUseInjectedTaskToken(t *testing.T) {
-	const fakeTaskToken = "mat_task_issue_sentinel"
+	const fakeTaskTicket = "mat_task_issue_sentinel"
 	ownerHome := t.TempDir()
 	redirectTestHome(t, ownerHome)
 	t.Setenv("MULTICA_AGENT_ID", "agent-test")
 	t.Setenv("MULTICA_TASK_ID", "task-test")
-	t.Setenv("MULTICA_TOKEN", fakeTaskToken)
+	t.Setenv("MULTICA_TOKEN", fakeTaskTicket)
 	t.Setenv("MULTICA_WORKSPACE_ID", "ws-task")
 	t.Setenv("MULTICA_TASK_CONFIG_ROOT", t.TempDir())
 
@@ -4272,7 +4272,7 @@ func TestIssueReadCommandsUseInjectedTaskToken(t *testing.T) {
 
 	var gotPaths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer "+fakeTaskToken {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+fakeTaskTicket {
 			t.Errorf("Authorization = %q, want injected fake task token", got)
 		}
 		gotPaths = append(gotPaths, r.URL.RequestURI())

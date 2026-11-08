@@ -83,8 +83,8 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			r.Header.Del("X-Agent-ID")
 			r.Header.Del("X-Task-ID")
 
-			tokenString, fromCookie := extractToken(r)
-			if tokenString == "" {
+			ticketString, fromCookie := extractToken(r)
+			if ticketString == "" {
 				slog.Debug("auth: no token found", "path", r.URL.Path)
 				http.Error(w, `{"error":"missing authorization"}`, http.StatusUnauthorized)
 				return
@@ -107,12 +107,12 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			// X-Task-ID. Human-only endpoints (e.g. agent env
 			// management) reject requests authenticated this way; see
 			// `actorSourceFromRequest`. MUL-2600.
-			if strings.HasPrefix(tokenString, "mat_") {
+			if strings.HasPrefix(ticketString, "mat_") {
 				if queries == nil {
 					http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
 					return
 				}
-				hash := auth.HashToken(tokenString)
+				hash := auth.HashToken(ticketString)
 				tt, err := queries.GetTaskTokenByHash(r.Context(), hash)
 				if err != nil {
 					slog.Warn("auth: invalid task token", "path", r.URL.Path, "error", err)
@@ -166,13 +166,13 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			// under a still-active node, or something is forging
 			// owner_ids — either way we must not let the request
 			// pass with a phantom X-User-ID.
-			if strings.HasPrefix(tokenString, auth.CloudPATPrefix) {
+			if strings.HasPrefix(ticketString, auth.CloudPATPrefix) {
 				if cloudPAT == nil {
 					slog.Warn("auth: mcn_ token presented but cloud verifier not configured", "path", r.URL.Path)
 					http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
 					return
 				}
-				identity, err := cloudPAT.Verify(r.Context(), tokenString, ownerLookupFor(queries))
+				identity, err := cloudPAT.Verify(r.Context(), ticketString, ownerLookupFor(queries))
 				if err != nil {
 					if errors.Is(err, auth.ErrCloudPATInvalid) {
 						slog.Warn("auth: cloud rejected mcn_ token", "path", r.URL.Path, "error", err)
@@ -207,8 +207,8 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			}
 
 			// PAT: tokens starting with "mul_"
-			if strings.HasPrefix(tokenString, "mul_") {
-				hash := auth.HashToken(tokenString)
+			if strings.HasPrefix(ticketString, "mul_") {
+				hash := auth.HashToken(ticketString)
 
 				// Cache hit: TTL has not expired, the token was valid the
 				// last time we looked, and nothing has invalidated the
@@ -259,7 +259,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			}
 
 			// JWT
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+			token, err := jwt.Parse(ticketString, func(token *jwt.Token) (any, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, jwt.ErrSignatureInvalid
 				}
@@ -306,11 +306,11 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 
 // extractToken returns the bearer token and whether it came from a cookie.
 // Priority: Authorization header > multica_auth cookie.
-func extractToken(r *http.Request) (token string, fromCookie bool) {
+func extractToken(r *http.Request) (ticket string, fromCookie bool) {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString != authHeader {
-			return tokenString, false
+		ticketString := strings.TrimPrefix(authHeader, "Bearer ")
+		if ticketString != authHeader {
+			return ticketString, false
 		}
 	}
 

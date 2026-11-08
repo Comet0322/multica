@@ -117,7 +117,7 @@ func TestRegisterValidatesAndEncryptsBotToken(t *testing.T) {
 	q := &fakeTelegramInstallQueries{rowID: telegramTestUUID(9)}
 	svc := newTelegramInstallTestService(t, q)
 	svc.apiBase, svc.httpClient = srv.URL, srv.Client()
-	p := RegisterParams{WorkspaceID: telegramTestUUID(1), AgentID: telegramTestUUID(2), InitiatorID: telegramTestUUID(3), BotToken: " 12345:secret "}
+	p := RegisterParams{WorkspaceID: telegramTestUUID(1), AgentID: telegramTestUUID(2), InitiatorID: telegramTestUUID(3), BotTicket: " 12345:secret "}
 	row, err := svc.Register(context.Background(), p)
 	if err != nil {
 		t.Fatal(err)
@@ -129,10 +129,10 @@ func TestRegisterValidatesAndEncryptsBotToken(t *testing.T) {
 	if err := json.Unmarshal(q.upsert.Config, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AppID != "12345" || cfg.BotUsername != "multica_test_bot" || strings.Contains(cfg.BotTokenEncrypted, "secret") {
+	if cfg.AppID != "12345" || cfg.BotUsername != "multica_test_bot" || strings.Contains(cfg.BotTicketEncrypted, "secret") {
 		t.Fatalf("unsafe or incorrect config = %+v", cfg)
 	}
-	plain, err := decryptToken(cfg.BotTokenEncrypted, svc.box.Open)
+	plain, err := decryptToken(cfg.BotTicketEncrypted, svc.box.Open)
 	if err != nil || plain != "12345:secret" {
 		t.Fatalf("decrypted token = %q, %v", plain, err)
 	}
@@ -141,9 +141,9 @@ func TestRegisterValidatesAndEncryptsBotToken(t *testing.T) {
 func TestRegisterRejectsMalformedTokenBeforeNetwork(t *testing.T) {
 	q := &fakeTelegramInstallQueries{}
 	svc := newTelegramInstallTestService(t, q)
-	for _, token := range []string{"", "12345:", ":secret", "abc:secret"} {
-		if _, err := svc.Register(context.Background(), RegisterParams{BotToken: token}); !errors.Is(err, ErrInvalidBotToken) {
-			t.Errorf("token %q error = %v", token, err)
+	for _, ticket := range []string{"", "12345:", ":secret", "abc:secret"} {
+		if _, err := svc.Register(context.Background(), RegisterParams{BotTicket: ticket}); !errors.Is(err, ErrInvalidBotToken) {
+			t.Errorf("token %q error = %v", ticket, err)
 		}
 	}
 	if q.upsertCalled {
@@ -157,7 +157,7 @@ func TestRegisterRefusesConfiguredWebhook(t *testing.T) {
 	q := &fakeTelegramInstallQueries{}
 	svc := newTelegramInstallTestService(t, q)
 	svc.apiBase, svc.httpClient = srv.URL, srv.Client()
-	_, err := svc.Register(context.Background(), RegisterParams{BotToken: "12345:secret"})
+	_, err := svc.Register(context.Background(), RegisterParams{BotTicket: "12345:secret"})
 	if !errors.Is(err, ErrWebhookConfigured) || q.upsertCalled {
 		t.Fatalf("error = %v, persisted = %v", err, q.upsertCalled)
 	}

@@ -108,7 +108,7 @@ func probeParams(ws, agent, app string) InstallationParams {
 		AgentID:         mustUUID(agent),
 		InstallerUserID: mustUUID(wcPrbInstall),
 		BotID:           app,
-		Secret:          "the-callers-guess",
+		Sealed:          "the-callers-guess",
 	}
 }
 

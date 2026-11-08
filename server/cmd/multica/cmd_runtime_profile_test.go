@@ -320,7 +320,7 @@ func TestRunRuntimeProfileSetPathPreservesExistingConfig(t *testing.T) {
 	redirectTestHome(t, home)
 
 	// Seed an existing config with unrelated fields.
-	seed := cli.CLIConfig{ServerURL: "https://api.multica.ai", WorkspaceID: "ws-123", Token: "mul_xyz"}
+	seed := cli.CLIConfig{ServerURL: "https://api.multica.ai", WorkspaceID: "ws-123", Ticket: "mul_xyz"}
 	if err := cli.SaveCLIConfig(seed); err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestRunRuntimeProfileSetPathPreservesExistingConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ServerURL != "https://api.multica.ai" || cfg.WorkspaceID != "ws-123" || cfg.Token != "mul_xyz" {
+	if cfg.ServerURL != "https://api.multica.ai" || cfg.WorkspaceID != "ws-123" || cfg.Ticket != "mul_xyz" {
 		t.Errorf("set-path clobbered existing config: %#v", cfg)
 	}
 	if cfg.ProfileCommandOverrides["prof-1"] != "/opt/bin/company-codex" {

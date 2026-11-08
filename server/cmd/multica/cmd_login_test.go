@@ -108,7 +108,7 @@ func TestRunLoginTokenAutoWatchesDiscoveredWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCLIConfig: %v", err)
 	}
-	if cfg.Token != "mul_test_token" || cfg.ServerURL != srv.URL || cfg.WorkspaceID != "ws-1" {
+	if cfg.Ticket != "mul_test_token" || cfg.ServerURL != srv.URL || cfg.WorkspaceID != "ws-1" {
 		t.Fatalf("config = %#v, want token, server URL, and first workspace", cfg)
 	}
 }

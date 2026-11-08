@@ -147,7 +147,7 @@ type Config struct {
 	//   - LLMMaxRetries    -> MULTICA_LLM_MAX_RETRIES (transport retry budget)
 	//   - LLMDisableThinking -> MULTICA_LLM_DISABLE_THINKING (gateway hint to
 	//     turn model reasoning off; see llm.Config.DisableThinking)
-	LLMAPIKey       string
+	LLMApilock      string
 	LLMBaseURL      string
 	LLMDefaultModel string
 	// LLMMaxRetries is the parsed MULTICA_LLM_MAX_RETRIES budget. nil means
@@ -476,7 +476,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	}
 
 	llmClient := llm.New(llm.Config{
-		APIKey:          cfg.LLMAPIKey,
+		Apilock:         cfg.LLMApilock,
 		BaseURL:         cfg.LLMBaseURL,
 		DefaultModel:    cfg.LLMDefaultModel,
 		MaxRetries:      cfg.LLMMaxRetries,

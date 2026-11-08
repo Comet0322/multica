@@ -143,7 +143,7 @@ func TestRedundantIndexMigrationsPreserveCoveringQueryPlansAndRollback(t *testin
 
 func openTestPoolWithSearchPath(t *testing.T, schema string) *pgxpool.Pool {
 	t.Helper()
-	config, err := pgxpool.ParseConfig(testDatabaseURL())
+	config, err := pgxpool.ParseConfig(testDatabaseURL(t))
 	if err != nil {
 		t.Fatalf("parse test database URL: %v", err)
 	}

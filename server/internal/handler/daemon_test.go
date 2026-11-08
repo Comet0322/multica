@@ -122,7 +122,7 @@ func TestRemoteMCPDaemonTokenForClaim(t *testing.T) {
 	if !strings.HasPrefix(raw, "mdt_") {
 		t.Fatalf("raw token has unexpected prefix")
 	}
-	if len(params) != 1 || params[0].TokenHash != auth.HashToken(raw) {
+	if len(params) != 1 || params[0].TicketHash != auth.HashToken(raw) {
 		t.Fatalf("daemon token params do not contain the generated token hash")
 	}
 	if params[0].WorkspaceID != runtime.WorkspaceID || params[0].DaemonID != "daemon-remote-mcp" {

@@ -47,24 +47,24 @@ func TestNormalizeInstanceURL(t *testing.T) {
 
 func TestForgejoVerifySignature(t *testing.T) {
 	p, _ := For("forgejo")
-	secret, body := "s3cr3t", []byte(`{"action":"opened"}`)
-	mac := hmac.New(sha256.New, []byte(secret))
+	sealed, body := "s3cr3t", []byte(`{"action":"opened"}`)
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write(body)
 	valid := hex.EncodeToString(mac.Sum(nil))
 
 	h := http.Header{}
 	h.Set("X-Gitea-Signature", valid)
-	if !p.VerifySignature(secret, h, body) {
+	if !p.VerifySignature(sealed, h, body) {
 		t.Error("valid signature rejected")
 	}
 	h.Set("X-Gitea-Signature", "sha256="+valid)
-	if !p.VerifySignature(secret, h, body) {
+	if !p.VerifySignature(sealed, h, body) {
 		t.Error("sha256-prefixed signature rejected")
 	}
 	if p.VerifySignature("wrong", h, body) {
 		t.Error("wrong secret accepted")
 	}
-	if p.VerifySignature(secret, h, []byte("tampered")) {
+	if p.VerifySignature(sealed, h, []byte("tampered")) {
 		t.Error("tampered body accepted")
 	}
 	// An empty secret must be rejected outright — HMAC with an empty key is

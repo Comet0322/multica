@@ -515,7 +515,7 @@ func TestGetAutopilot_WebhookTokenFollowsTheActingHuman(t *testing.T) {
 			"id", fx.autopilotID)).Want(http.StatusOK).JSON(&got)
 		tokenVisible := false
 		for _, tr := range got.Triggers {
-			if tr.WebhookToken != nil {
+			if tr.WebhookTicket != nil {
 				tokenVisible = true
 			}
 		}

@@ -142,7 +142,7 @@ func TestHotTableInsertsPersistUUIDv7(t *testing.T) {
 
 		token, err := q.CreateTaskToken(ctx, db.CreateTaskTokenParams{
 			ID:          dbid.NewV7(),
-			TokenHash:   "uuidv7-test-token-hash",
+			TicketHash:  "uuidv7-test-token-hash",
 			TaskID:      task.ID,
 			AgentID:     parseUUID(agentID),
 			WorkspaceID: parseUUID(testWorkspaceID),

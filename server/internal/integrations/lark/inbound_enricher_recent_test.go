@@ -629,7 +629,7 @@ func TestEnrichRecentContextDoneContextDoesNotRetry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	e := NewInboundEnricher(fake, groupCfg())
-	out := e.Enrich(ctx, in, InstallationCredentials{AppID: "a", AppSecret: "s"})
+	out := e.Enrich(ctx, in, InstallationCredentials{AppID: "a", AppSealed: "s"})
 
 	want := `[Recent Lark context temporarily unavailable; continuing with the latest message.]
 

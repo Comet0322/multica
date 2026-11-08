@@ -78,8 +78,8 @@ func TestTypingCrossProcessLateAddAfterTerminalSweepDB(t *testing.T) {
 				q.deliveryErr = pgx.ErrNoRows
 			}
 			api := &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, started: make(chan struct{}), release: make(chan struct{}), remote: map[string][]MessageReaction{"late-trigger": {{ReactionID: "human-typing", OperatorType: "user", EmojiType: typingEmoji}}}}
-			managerA := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, f.store, newDiscardLogger())
-			managerB := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "shh"}, f.store, newDiscardLogger())
+			managerA := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, f.store, newDiscardLogger())
+			managerB := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "shh"}, f.store, newDiscardLogger())
 			p.SetTypingIndicatorManager(managerB)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

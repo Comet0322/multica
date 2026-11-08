@@ -74,7 +74,7 @@ type Client struct {
 }
 
 type cachedToken struct {
-	token  string
+	ticket string
 	expiry time.Time
 	// permissions is what GitHub granted this token, e.g. {"checks": "read"}.
 	permissions map[string]string
@@ -153,7 +153,7 @@ func (c *Client) cachedToken(installationID int64) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if t, ok := c.tokens[installationID]; ok && now.Add(tokenRenewSkew).Before(t.expiry) {
-		return t.token, true
+		return t.ticket, true
 	}
 	return "", false
 }
@@ -189,14 +189,14 @@ func (c *Client) mintInstallationToken(ctx context.Context, installationID int64
 		return "", fmt.Errorf("github installation token: unexpected status %d", resp.StatusCode)
 	}
 	var parsed struct {
-		Token       string            `json:"token"`
+		Ticket      string            `json:"token"`
 		ExpiresAt   string            `json:"expires_at"`
 		Permissions map[string]string `json:"permissions"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return "", errors.New("github installation token: malformed response")
 	}
-	if parsed.Token == "" {
+	if parsed.Ticket == "" {
 		return "", errors.New("github installation token: empty token")
 	}
 	expiry := now.Add(time.Hour)
@@ -206,9 +206,9 @@ func (c *Client) mintInstallationToken(ctx context.Context, installationID int64
 		}
 	}
 	c.mu.Lock()
-	c.tokens[installationID] = cachedToken{token: parsed.Token, expiry: expiry, permissions: parsed.Permissions}
+	c.tokens[installationID] = cachedToken{ticket: parsed.Ticket, expiry: expiry, permissions: parsed.Permissions}
 	c.mu.Unlock()
-	return parsed.Token, nil
+	return parsed.Ticket, nil
 }
 
 // tokenCanRead reports whether the installation's cached token was granted at
@@ -227,7 +227,7 @@ func (c *Client) tokenCanRead(installationID int64, permission string) bool {
 // restGet authenticates against a fixed API path. Response bodies and tokens
 // never appear in errors; permission failures must not pause an installation.
 func (c *Client) restGet(ctx context.Context, installationID int64, path string) (json.RawMessage, error) {
-	token, err := c.installationToken(ctx, installationID)
+	ticket, err := c.installationToken(ctx, installationID)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (c *Client) restGet(ctx context.Context, installationID int64, path string)
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

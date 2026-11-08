@@ -341,7 +341,7 @@ func (s *ChannelStore) RecordLarkInboundDrop(ctx context.Context, arg RecordInbo
 
 func (s *ChannelStore) CreateLarkBindingToken(ctx context.Context, arg CreateBindingTokenParams) (BindingTokenRow, error) {
 	row, err := s.Queries.CreateChannelBindingToken(ctx, db.CreateChannelBindingTokenParams{
-		TokenHash:      arg.TokenHash,
+		TicketHash:     arg.TicketHash,
 		WorkspaceID:    arg.WorkspaceID,
 		InstallationID: arg.InstallationID,
 		ChannelType:    channelTypeFeishu,
@@ -354,8 +354,8 @@ func (s *ChannelStore) CreateLarkBindingToken(ctx context.Context, arg CreateBin
 	return bindingTokenFromRow(row), nil
 }
 
-func (s *ChannelStore) ConsumeLarkBindingToken(ctx context.Context, tokenHash string) (BindingTokenRow, error) {
-	row, err := s.Queries.ConsumeChannelBindingToken(ctx, tokenHash)
+func (s *ChannelStore) ConsumeLarkBindingToken(ctx context.Context, ticketHash string) (BindingTokenRow, error) {
+	row, err := s.Queries.ConsumeChannelBindingToken(ctx, ticketHash)
 	if err != nil {
 		return BindingTokenRow{}, err
 	}

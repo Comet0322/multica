@@ -147,13 +147,13 @@ func (h *Handler) ResolvePluginMCPCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	header, credential, err := h.PluginService.MCPHookCredential(r.Context(), installation, hookKey)
+	header, badge, err := h.PluginService.MCPHookCredential(r.Context(), installation, hookKey)
 	if err != nil {
 		writePluginError(w, err, "failed to resolve the credential")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"credential_header": header,
-		"credential":        credential,
+		"credential":        badge,
 	})
 }

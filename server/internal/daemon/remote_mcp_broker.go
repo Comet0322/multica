@@ -70,7 +70,7 @@ func startTaskRemoteMCPBrokers(setupCtx, lifetimeCtx context.Context, taskID, pr
 			return nil, diagnostics, nil, errors.New(message)
 		}
 		headers := make(http.Header)
-		if connection.CredentialHeader != "" && resolveCredential != nil {
+		if connection.BadgeHeader != "" && resolveCredential != nil {
 			resolvedHeaders, resolveErr := resolveCredential(setupCtx, connection.ContributionID)
 			if resolveErr != nil {
 				message := fmt.Sprintf("Remote MCP %s credential is unavailable", connection.ContributionKey)
@@ -82,7 +82,7 @@ func startTaskRemoteMCPBrokers(setupCtx, lifetimeCtx context.Context, taskID, pr
 				return nil, diagnostics, nil, fmt.Errorf("%s: %w", message, resolveErr)
 			}
 			headers = resolvedHeaders
-		} else if connection.CredentialHeader != "" {
+		} else if connection.BadgeHeader != "" {
 			message := fmt.Sprintf("Remote MCP %s credential resolver is unavailable", connection.ContributionKey)
 			if connection.FailurePolicy == "optional" {
 				diagnostics = append(diagnostics, message)
@@ -114,7 +114,7 @@ func startTaskRemoteMCPBrokers(setupCtx, lifetimeCtx context.Context, taskID, pr
 			set.Close()
 			return nil, diagnostics, nil, fmt.Errorf("listen for Remote MCP broker: %w", err)
 		}
-		pathToken, err := randomBrokerToken()
+		pathTicket, err := randomBrokerToken()
 		if err != nil {
 			_ = listener.Close()
 			set.Close()
@@ -122,8 +122,8 @@ func startTaskRemoteMCPBrokers(setupCtx, lifetimeCtx context.Context, taskID, pr
 		}
 		proxy := &remoteMCPProxy{
 			taskID: taskID, connection: connection, endpoint: endpoint,
-			client: remotemcp.NewSecureHTTPClient(endpoint), credentialHeaders: headers,
-			resolveCredential: resolveCredential, path: "/" + pathToken,
+			client: remotemcp.NewSecureHTTPClient(endpoint), badgeHeaders: headers,
+			resolveCredential: resolveCredential, path: "/" + pathTicket,
 			semaphore: make(chan struct{}, remoteMCPMaxConcurrency), logger: logger,
 		}
 		server := &http.Server{Handler: proxy, ReadHeaderTimeout: 5 * time.Second}
@@ -209,7 +209,7 @@ type remoteMCPProxy struct {
 	connection        remotemcp.Connection
 	endpoint          *url.URL
 	client            *http.Client
-	credentialHeaders http.Header
+	badgeHeaders      http.Header
 	resolveCredential remoteMCPCredentialResolver
 	path              string
 	semaphore         chan struct{}
@@ -291,16 +291,16 @@ func (proxy *remoteMCPProxy) ServeHTTP(w http.ResponseWriter, request *http.Requ
 			upstream.Header.Set(header, value)
 		}
 	}
-	credentialHeaders := proxy.credentialHeaders
-	if proxy.connection.CredentialHeader != "" && proxy.resolveCredential != nil {
-		credentialHeaders, err = proxy.resolveCredential(request.Context(), proxy.connection.ContributionID)
+	badgeHeaders := proxy.badgeHeaders
+	if proxy.connection.BadgeHeader != "" && proxy.resolveCredential != nil {
+		badgeHeaders, err = proxy.resolveCredential(request.Context(), proxy.connection.ContributionID)
 		if err != nil {
 			resultClass = "credential_revoked"
 			writeRemoteMCPError(w, rpcRequest.ID, -32005, "Remote MCP credential is revoked or unavailable")
 			return
 		}
 	}
-	for key, values := range credentialHeaders {
+	for key, values := range badgeHeaders {
 		for _, value := range values {
 			upstream.Header.Add(key, value)
 		}

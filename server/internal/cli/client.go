@@ -49,7 +49,7 @@ func normalizeGOOS(goos string) string {
 type APIClient struct {
 	BaseURL     string
 	WorkspaceID string
-	Token       string
+	Ticket      string
 	// AgentID / TaskID travel as X-Agent-ID / X-Task-ID execution context.
 	// They are NOT what makes the server treat a request as the agent's: the
 	// server strips both headers on entry and re-stamps them from the bound
@@ -74,7 +74,7 @@ type APIClient struct {
 // something the CLI can see — a terminal task is the usual cause, but a
 // malformed token, one sent to the wrong server, and one dropped by an
 // unrelated cleanup all look identical from here.
-const TaskTokenPrefix = "mat_"
+const TaskTicketPrefix = "mat_"
 
 type HTTPError struct {
 	Method     string
@@ -128,7 +128,7 @@ func requestUsedTaskToken(resp *http.Response) bool {
 	if resp == nil || resp.Request == nil {
 		return false
 	}
-	return strings.HasPrefix(resp.Request.Header.Get("Authorization"), "Bearer "+TaskTokenPrefix)
+	return strings.HasPrefix(resp.Request.Header.Get("Authorization"), "Bearer "+TaskTicketPrefix)
 }
 
 // defaultHTTPTimeout is the per-request timeout for the CLI's HTTP client.
@@ -196,11 +196,11 @@ func APIContext(parent context.Context) (context.Context, context.CancelFunc) {
 }
 
 // NewAPIClient creates a new API client for ctrl commands.
-func NewAPIClient(baseURL, workspaceID, token string) *APIClient {
+func NewAPIClient(baseURL, workspaceID, ticket string) *APIClient {
 	return &APIClient{
 		BaseURL:     strings.TrimRight(baseURL, "/"),
 		WorkspaceID: workspaceID,
-		Token:       token,
+		Ticket:      ticket,
 		HTTPClient:  &http.Client{Timeout: httpTimeout()},
 	}
 }
@@ -222,8 +222,8 @@ const clientCapabilities = "stable_attachment_urls"
 
 func (c *APIClient) setHeaders(req *http.Request) {
 	req.Header.Set("X-Client-Capabilities", clientCapabilities)
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.Ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Ticket)
 	}
 	if c.WorkspaceID != "" {
 		req.Header.Set("X-Workspace-ID", c.WorkspaceID)

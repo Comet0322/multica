@@ -23,7 +23,7 @@ import (
 // before the session entered its renewal window. Callers should read
 // CheckAgainInSeconds rather than deciding a cadence for themselves.
 type RefreshSessionResponse struct {
-	Token               string `json:"token,omitempty"`
+	Ticket              string `json:"token,omitempty"`
 	ExpiresAt           string `json:"expires_at"`
 	Renewed             bool   `json:"renewed"`
 	CheckAgainInSeconds int    `json:"check_again_in_seconds"`
@@ -56,13 +56,13 @@ func (h *Handler) RefreshSession(w http.ResponseWriter, r *http.Request) {
 	// The middleware resolved the credential to a user but does not pass the
 	// raw token forward, and renewal needs the claims themselves. Re-read it
 	// from the same two places extractToken looks, in the same order.
-	rawToken, fromCookie := sessionTokenFromRequest(r)
-	if rawToken == "" {
+	rawTicket, fromCookie := sessionTokenFromRequest(r)
+	if rawTicket == "" {
 		writeError(w, http.StatusBadRequest, "only interactive sessions can be refreshed")
 		return
 	}
 
-	claims, err := auth.ParseSessionToken(rawToken)
+	claims, err := auth.ParseSessionToken(rawTicket)
 	if err != nil {
 		// Reached by PAT / task-token / cloud-PAT callers: authenticated, but
 		// holding something that is not a session. 400 rather than 401 — the
@@ -91,7 +91,7 @@ func (h *Handler) RefreshSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newToken, newExpiresAt, err := auth.RenewSessionToken(claims)
+	newTicket, newExpiresAt, err := auth.RenewSessionToken(claims)
 	if err != nil {
 		if errors.Is(err, auth.ErrTemporarilyDisabledUser) {
 			writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
@@ -117,7 +117,7 @@ func (h *Handler) RefreshSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fromCookie {
-		if err := auth.SetAuthCookies(w, newToken); err != nil {
+		if err := auth.SetAuthCookies(w, newTicket); err != nil {
 			slog.Warn("session refresh: failed to set auth cookies",
 				append(logger.RequestAttrs(r), "error", err)...)
 			writeJSON(w, http.StatusOK, RefreshSessionResponse{
@@ -133,7 +133,7 @@ func (h *Handler) RefreshSession(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		resp.Token = newToken
+		resp.Ticket = newTicket
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -143,10 +143,10 @@ func (h *Handler) RefreshSession(w http.ResponseWriter, r *http.Request) {
 // header first, auth cookie second. The bool reports the cookie path, which
 // is what decides whether the renewed token may be written into the response
 // body.
-func sessionTokenFromRequest(r *http.Request) (token string, fromCookie bool) {
+func sessionTokenFromRequest(r *http.Request) (ticket string, fromCookie bool) {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-		if tokenString := strings.TrimPrefix(authHeader, "Bearer "); tokenString != authHeader {
-			return tokenString, false
+		if ticketString := strings.TrimPrefix(authHeader, "Bearer "); ticketString != authHeader {
+			return ticketString, false
 		}
 	}
 	if cookie, err := r.Cookie(auth.AuthCookieName); err == nil && cookie.Value != "" {

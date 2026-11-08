@@ -45,10 +45,10 @@ func TestDecodeOpenclawRuntimeConfigGatewayMode(t *testing.T) {
 		t.Errorf("mode: got %q, want %q", mode, "gateway")
 	}
 	want := execenv.OpenclawGatewayPin{
-		Host:  "gw.internal",
-		Port:  18789,
-		Token: "secret",
-		TLS:   true,
+		Host:   "gw.internal",
+		Port:   18789,
+		Ticket: "secret",
+		TLS:    true,
 	}
 	if gw != want {
 		t.Errorf("gateway: got %+v, want %+v", gw, want)
@@ -92,10 +92,10 @@ func TestOpenclawGatewayPinDefaultFormattingMasksToken(t *testing.T) {
 	t.Parallel()
 
 	pin := execenv.OpenclawGatewayPin{
-		Host:  "gw.internal",
-		Port:  18789,
-		Token: "real-secret",
-		TLS:   true,
+		Host:   "gw.internal",
+		Port:   18789,
+		Ticket: "real-secret",
+		TLS:    true,
 	}
 
 	if got := pin.String(); strings.Contains(got, "real-secret") {

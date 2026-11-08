@@ -19,7 +19,7 @@ import (
 
 func TestParseBotID(t *testing.T) {
 	cases := []struct {
-		token  string
+		ticket string
 		want   string
 		wantOK bool
 	}{
@@ -32,12 +32,12 @@ func TestParseBotID(t *testing.T) {
 		{"", "", false},
 	}
 	for _, c := range cases {
-		got, err := parseBotID(c.token)
+		got, err := parseBotID(c.ticket)
 		if c.wantOK && (err != nil || got != c.want) {
-			t.Errorf("parseBotID(%q) = %q, %v; want %q", c.token, got, err, c.want)
+			t.Errorf("parseBotID(%q) = %q, %v; want %q", c.ticket, got, err, c.want)
 		}
 		if !c.wantOK && err == nil {
-			t.Errorf("parseBotID(%q) should fail", c.token)
+			t.Errorf("parseBotID(%q) should fail", c.ticket)
 		}
 	}
 }

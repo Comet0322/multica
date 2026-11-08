@@ -84,7 +84,7 @@ const (
 	ConfigNumber = "number"
 	ConfigBool   = "bool"
 	ConfigEnum   = "enum"
-	ConfigSecret = "secret"
+	ConfigSealed = "secret"
 )
 
 // Scopes. This list is complete and closed; anything else is rejected at parse
@@ -502,7 +502,7 @@ func (m Manifest) validateConfig() error {
 		}
 		label := "config." + field.Key
 		switch field.Type {
-		case ConfigString, ConfigNumber, ConfigBool, ConfigSecret:
+		case ConfigString, ConfigNumber, ConfigBool, ConfigSealed:
 			if len(field.Options) > 0 {
 				return fmt.Errorf("%s.options is only valid for enum fields", label)
 			}

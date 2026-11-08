@@ -49,7 +49,7 @@ type opencodeMCPEnabledOnly struct {
 // Go's int zero value would otherwise collapse them.
 type opencodeMCPOAuth struct {
 	ClientID     string `json:"clientId,omitempty"`
-	ClientSecret string `json:"clientSecret,omitempty"`
+	ClientSealed string `json:"clientSecret,omitempty"`
 	Scope        string `json:"scope,omitempty"`
 	CallbackPort *int   `json:"callbackPort,omitempty"`
 	RedirectURI  string `json:"redirectUri,omitempty"`

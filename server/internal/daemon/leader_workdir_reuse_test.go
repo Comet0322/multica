@@ -455,7 +455,7 @@ func leaderReuseTestTask(id string) Task {
 		RuntimeID:    "rt-leader",
 		IssueID:      "issue-leader",
 		AgentID:      "agent-leader",
-		AuthToken:    "mat_leader_reuse",
+		AuthTicket:   "mat_leader_reuse",
 		IsLeaderTask: true,
 		Agent: &AgentData{
 			ID:   "agent-leader",

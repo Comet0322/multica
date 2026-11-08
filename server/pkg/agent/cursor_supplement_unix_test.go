@@ -68,7 +68,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
 		switch name {
 		case cursorHookURLEnv:
 			return envLines[0]
-		case cursorHookTokenEnv:
+		case cursorHookTicketEnv:
 			return envLines[1]
 		}
 		return ""

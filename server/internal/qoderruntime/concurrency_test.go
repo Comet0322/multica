@@ -40,7 +40,7 @@ type multiHarness struct {
 }
 
 func newTask(id, prior string) *daemon.Task {
-	return &daemon.Task{ID: id, RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-" + id, IssueIdentifier: "MUL-42", AuthToken: "mat_task", PriorSessionID: prior, Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"qoder_agent_id":"agent_1"}`)}}
+	return &daemon.Task{ID: id, RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-" + id, IssueIdentifier: "MUL-42", AuthTicket: "mat_task", PriorSessionID: prior, Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"qoder_agent_id":"agent_1"}`)}}
 }
 
 func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
@@ -159,7 +159,7 @@ func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 	}))
 	t.Cleanup(q.Close)
 	var err error
-	h.b, err = New(Config{MulticaURL: m.URL, MulticaToken: "multica-secret", WorkspaceID: workspaceID, QoderURL: q.URL, QoderToken: "qoder-secret", EnvironmentID: "env_1", StateDir: t.TempDir(), MaxConcurrency: limit}, nil)
+	h.b, err = New(Config{MulticaURL: m.URL, MulticaTicket: "multica-secret", WorkspaceID: workspaceID, QoderURL: q.URL, QoderTicket: "qoder-secret", EnvironmentID: "env_1", StateDir: t.TempDir(), MaxConcurrency: limit}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 	const repoA, repoB = "https://github.com/acme/a", "https://github.com/acme/b"
 	for name, tc := range map[string]struct {
 		followUp *daemon.Task
-		tokens   map[string]string
+		tickets  map[string]string
 		reuse    bool
 	}{
 		"unchanged":        {repoTask("task-2", "sess_new_1", repoA, "main"), map[string]string{repoA: "tok-a"}, true},
@@ -331,12 +331,12 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := setupMulti(t, 1, repoTask("task-1", "", repoA, "main"), tc.followUp)
-			h.b.cfg.GitHubTokens = map[string]string{repoA: "tok-a"}
+			h.b.cfg.GitHubTickets = map[string]string{repoA: "tok-a"}
 			ctx := context.Background()
 			if err := h.b.step(ctx); err != nil {
 				t.Fatal(err)
 			}
-			h.b.cfg.GitHubTokens = tc.tokens
+			h.b.cfg.GitHubTickets = tc.tickets
 			h.finish("sess_new_1")
 			if err := h.b.step(ctx); err != nil {
 				t.Fatal(err)
@@ -346,7 +346,7 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 			}
 			if !tc.reuse {
 				got := h.resources["sess_new_2"]
-				if len(got) != 1 || got[0]["authorization_token"] != tc.tokens[got[0]["url"].(string)] {
+				if len(got) != 1 || got[0]["authorization_token"] != tc.tickets[got[0]["url"].(string)] {
 					t.Fatalf("new session resources: %v", got)
 				}
 			}
@@ -357,12 +357,12 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 func TestFollowUpFailsWhenRepositoryCredentialWasRemoved(t *testing.T) {
 	const repo = "https://github.com/acme/a"
 	h := setupMulti(t, 1, repoTask("task-1", "", repo, ""), repoTask("task-2", "sess_new_1", repo, ""))
-	h.b.cfg.GitHubTokens = map[string]string{repo: "tok-a"}
+	h.b.cfg.GitHubTickets = map[string]string{repo: "tok-a"}
 	ctx := context.Background()
 	if err := h.b.step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	h.b.cfg.GitHubTokens = nil
+	h.b.cfg.GitHubTickets = nil
 	h.finish("sess_new_1")
 	if err := h.b.step(ctx); err != nil {
 		t.Fatal(err)

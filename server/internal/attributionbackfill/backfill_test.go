@@ -12,8 +12,7 @@ import (
 )
 
 // These tests exercise the migration-198 backfill hook against a live
-// Postgres. They connect to DATABASE_URL (default
-// postgres://multica:multica@localhost:5432/multica?sslmode=disable),
+// Postgres. They connect to DATABASE_URL,
 // matching every other live-Postgres suite in the repo, and skip cleanly
 // when no database is reachable so CI without a DB sees SKIP, not failure.
 //
@@ -32,7 +31,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		t.Skip("DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dbURL)

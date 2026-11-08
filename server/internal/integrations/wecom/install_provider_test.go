@@ -84,7 +84,7 @@ func TestHTTPProviderQueryResultReadsDataEnvelope(t *testing.T) {
 	if got.Status != QueryStatusSuccess {
 		t.Errorf("Status = %q", got.Status)
 	}
-	if got.BotInfo == nil || got.BotInfo.BotID != "bot-1" || got.BotInfo.Secret != "sec-1" {
+	if got.BotInfo == nil || got.BotInfo.BotID != "bot-1" || got.BotInfo.Sealed != "sec-1" {
 		t.Errorf("BotInfo = %+v", got.BotInfo)
 	}
 	if gotScode != "sc-1" || gotSource != "multica" {

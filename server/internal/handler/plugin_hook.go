@@ -170,11 +170,11 @@ func (h *Handler) ListPluginInvocations(w http.ResponseWriter, r *http.Request) 
 type pluginTokenResponse struct {
 	// Token is returned exactly once, on the request that minted it. There is
 	// no read endpoint: an admin who loses it rotates rather than recovers.
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 	// SigningSecret is what the author configures on their own server to verify
 	// our signature. Derived from the deployment key rather than stored, so it
 	// is stable for an installation and reproducible without a database copy.
-	SigningSecret string `json:"signing_secret,omitempty"`
+	SigningSealed string `json:"signing_secret,omitempty"`
 }
 
 // RotatePluginToken — POST /api/workspaces/{id}/plugins/{installationId}/token
@@ -188,7 +188,7 @@ func (h *Handler) RotatePluginToken(w http.ResponseWriter, r *http.Request) {
 		writePluginError(w, err, "failed to issue the Plugin token")
 		return
 	}
-	writeJSON(w, http.StatusOK, pluginTokenResponse{Token: credentials.Token, SigningSecret: credentials.SigningSecret})
+	writeJSON(w, http.StatusOK, pluginTokenResponse{Ticket: credentials.Ticket, SigningSealed: credentials.SigningSealed})
 }
 
 // RevokePluginToken — DELETE /api/workspaces/{id}/plugins/{installationId}/token

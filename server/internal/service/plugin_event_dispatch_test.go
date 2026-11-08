@@ -201,7 +201,7 @@ func TestEventDispatchStampsThePluginActor(t *testing.T) {
 	}
 
 	// Re-issued: callHookEndpoint revokes the grant once its call has returned.
-	token, err := service.Callbacks.Issue(t.Context(), HookInvocation{
+	ticket, err := service.Callbacks.Issue(t.Context(), HookInvocation{
 		Installation: installation,
 		Hook:         hook,
 		Trigger:      plugincontract.TriggerEvent,
@@ -210,7 +210,7 @@ func TestEventDispatchStampsThePluginActor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
-	grant, err := service.Callbacks.Resolve(token)
+	grant, err := service.Callbacks.Resolve(ticket)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}

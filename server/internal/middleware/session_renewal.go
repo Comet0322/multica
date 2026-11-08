@@ -51,7 +51,7 @@ func renewCookieSession(w http.ResponseWriter, r *http.Request, claims jwt.MapCl
 		return r
 	}
 
-	token, expiresAt, err := auth.RenewSessionToken(claims)
+	ticket, expiresAt, err := auth.RenewSessionToken(claims)
 	if err != nil {
 		slog.Debug("auth: session renewal skipped", "path", r.URL.Path, "error", err)
 		return r
@@ -59,7 +59,7 @@ func renewCookieSession(w http.ResponseWriter, r *http.Request, claims jwt.MapCl
 
 	// Headers must be written before the handler starts the response body,
 	// which is why this runs ahead of next.ServeHTTP rather than after.
-	if err := auth.SetAuthCookies(w, token); err != nil {
+	if err := auth.SetAuthCookies(w, ticket); err != nil {
 		slog.Warn("auth: failed to set renewed session cookies", "path", r.URL.Path, "error", err)
 		return r
 	}

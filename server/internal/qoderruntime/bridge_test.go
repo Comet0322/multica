@@ -114,7 +114,7 @@ type harness struct {
 func setup(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{status: "dispatched"}
-	h.task = &daemon.Task{ID: "task-1", RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-1", AuthToken: "mat_task", Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"qoder_agent_id":"agent_1"}`), Skills: []daemon.SkillData{{Name: "multica-platform"}}}}
+	h.task = &daemon.Task{ID: "task-1", RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-1", AuthTicket: "mat_task", Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"qoder_agent_id":"agent_1"}`), Skills: []daemon.SkillData{{Name: "multica-platform"}}}}
 	m := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("X-Workspace-ID") != workspaceID {
@@ -337,7 +337,7 @@ func setup(t *testing.T) *harness {
 	}))
 	t.Cleanup(q.Close)
 	var err error
-	h.b, err = New(Config{MulticaURL: m.URL, MulticaToken: "multica-secret", WorkspaceID: workspaceID, QoderURL: q.URL, QoderToken: "qoder-secret", EnvironmentID: "env_1", StateDir: t.TempDir()}, nil)
+	h.b, err = New(Config{MulticaURL: m.URL, MulticaTicket: "multica-secret", WorkspaceID: workspaceID, QoderURL: q.URL, QoderTicket: "qoder-secret", EnvironmentID: "env_1", StateDir: t.TempDir()}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1226,7 +1226,7 @@ func (j *journal) first() *run {
 }
 
 func TestJournalStorageConfig(t *testing.T) {
-	base := Config{MulticaURL: "http://127.0.0.1:1", MulticaToken: "m", WorkspaceID: workspaceID, QoderURL: "http://127.0.0.1:2", QoderToken: "q", EnvironmentID: "env_1"}
+	base := Config{MulticaURL: "http://127.0.0.1:1", MulticaTicket: "m", WorkspaceID: workspaceID, QoderURL: "http://127.0.0.1:2", QoderTicket: "q", EnvironmentID: "env_1"}
 	load := func(context.Context) ([]byte, error) { return nil, nil }
 	save := func(context.Context, []byte) error { return nil }
 

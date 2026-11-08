@@ -29,11 +29,11 @@ func insertTestPAT(t *testing.T, expiresAt time.Time) (string, string) {
 		prefix = prefix[:12]
 	}
 	pat, err := testHandler.Queries.CreatePersonalAccessToken(context.Background(), db.CreatePersonalAccessTokenParams{
-		UserID:      parseUUID(testUserID),
-		Name:        "renew-test",
-		TokenHash:   auth.HashToken(raw),
-		TokenPrefix: prefix,
-		ExpiresAt:   pgtype.Timestamptz{Time: expiresAt, Valid: !expiresAt.IsZero()},
+		UserID:       parseUUID(testUserID),
+		Name:         "renew-test",
+		TicketHash:   auth.HashToken(raw),
+		TicketPrefix: prefix,
+		ExpiresAt:    pgtype.Timestamptz{Time: expiresAt, Valid: !expiresAt.IsZero()},
 	})
 	if err != nil {
 		t.Fatalf("create pat: %v", err)
@@ -48,10 +48,10 @@ func insertTestPAT(t *testing.T, expiresAt time.Time) (string, string) {
 // newRenewRequest builds a POST /api/tokens/current/renew request with both
 // the X-User-ID and Authorization headers set, so the handler can resolve
 // the PAT row in addition to the caller's user.
-func newRenewRequest(rawToken string) *http.Request {
+func newRenewRequest(rawTicket string) *http.Request {
 	req := newRequest("POST", "/api/tokens/current/renew", nil)
-	if rawToken != "" {
-		req.Header.Set("Authorization", "Bearer "+rawToken)
+	if rawTicket != "" {
+		req.Header.Set("Authorization", "Bearer "+rawTicket)
 	}
 	return req
 }
@@ -345,11 +345,11 @@ func TestRenewPAT_RejectsTokenBelongingToDifferentUser(t *testing.T) {
 		prefix = prefix[:12]
 	}
 	pat, err := testHandler.Queries.CreatePersonalAccessToken(ctx, db.CreatePersonalAccessTokenParams{
-		UserID:      parseUUID(otherUserID),
-		Name:        "other-renew",
-		TokenHash:   auth.HashToken(raw),
-		TokenPrefix: prefix,
-		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(3 * 24 * time.Hour), Valid: true},
+		UserID:       parseUUID(otherUserID),
+		Name:         "other-renew",
+		TicketHash:   auth.HashToken(raw),
+		TicketPrefix: prefix,
+		ExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(3 * 24 * time.Hour), Valid: true},
 	})
 	if err != nil {
 		t.Fatalf("create other pat: %v", err)

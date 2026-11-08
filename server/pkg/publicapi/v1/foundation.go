@@ -13,10 +13,10 @@ const (
 type CredentialKind string
 
 const (
-	CredentialUserOAuth        CredentialKind = "user_oauth"
-	CredentialPersonalAccess   CredentialKind = "personal_access_token"
-	CredentialPluginInstall    CredentialKind = "plugin_installation"
-	CredentialPluginInvocation CredentialKind = "plugin_invocation"
+	BadgeUserOAuth        CredentialKind = "user_oauth"
+	BadgePersonalAccess   CredentialKind = "personal_access_token"
+	BadgePluginInstall    CredentialKind = "plugin_installation"
+	BadgePluginInvocation CredentialKind = "plugin_invocation"
 )
 
 type ActorKind string
@@ -32,7 +32,7 @@ type Actor struct {
 	Kind        ActorKind
 	SubjectID   string
 	WorkspaceID string
-	Credential  CredentialKind
+	Badge       CredentialKind
 }
 
 type RiskLevel string
@@ -65,11 +65,11 @@ const (
 // to the route contract. Surface-specific middleware enforces the credential
 // kind and rate profile; resource authorization enforces workspace and scope.
 type OperationPolicy struct {
-	Credentials []CredentialKind
-	Scope       string
-	Risk        RiskLevel
-	Audit       AuditStatus
-	RateLimits  []RateLimitProfile
+	Badges     []CredentialKind
+	Scope      string
+	Risk       RiskLevel
+	Audit      AuditStatus
+	RateLimits []RateLimitProfile
 }
 
 // PageInfo is the common response metadata for cursor-paginated collections.

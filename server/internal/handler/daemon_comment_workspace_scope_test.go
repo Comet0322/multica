@@ -134,8 +134,8 @@ func TestClaimDoesNotLeakForeignWorkspaceTriggerCommentOrSummary(t *testing.T) {
 	}
 	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM issue WHERE id = $1`, foreignIssueID) })
 
-	const secret = "FOREIGN-WORKSPACE-SECRET-DO-NOT-LEAK"
-	foreignCommentID := insertCommentForScopeTest(t, ctx, foreignIssueID, otherWS, secret)
+	const sealed = "FOREIGN-WORKSPACE-SECRET-DO-NOT-LEAK"
+	foreignCommentID := insertCommentForScopeTest(t, ctx, foreignIssueID, otherWS, sealed)
 
 	// Enqueue through the production path: this is where trigger_summary is
 	// snapshotted and the originator resolved. Both must fail closed.
@@ -168,7 +168,7 @@ func TestClaimDoesNotLeakForeignWorkspaceTriggerCommentOrSummary(t *testing.T) {
 	if summary != "" {
 		t.Fatalf("trigger_summary must be empty for a foreign-workspace comment, got %q", summary)
 	}
-	if strings.Contains(raw, secret) {
+	if strings.Contains(raw, sealed) {
 		t.Fatalf("claim response leaked foreign-workspace comment text:\n%s", raw)
 	}
 }

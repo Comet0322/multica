@@ -239,7 +239,7 @@ func TestWaitForDaemonProfileReleaseDetectsConcurrentStart(t *testing.T) {
 func TestDaemonBackgroundWaitsForShutdownBeforeSpawning(t *testing.T) {
 	const profile = "background-lock-test"
 	mkProfiles(t, profile)
-	if err := cli.SaveCLIConfigForProfile(cli.CLIConfig{Token: "mul_fake"}, profile); err != nil {
+	if err := cli.SaveCLIConfigForProfile(cli.CLIConfig{Ticket: "mul_fake"}, profile); err != nil {
 		t.Fatal(err)
 	}
 	falseBin, err := exec.LookPath("false")

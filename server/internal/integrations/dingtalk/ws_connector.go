@@ -57,7 +57,7 @@ type wsConnector struct {
 	httpClient *http.Client
 	apiBase    string
 	appKey     string
-	appSecret  string
+	appSealed  string
 
 	dialer    wsDialer
 	open      func(ctx context.Context) (string, error) // dial-URL fetch; defaults to openConnection
@@ -75,7 +75,7 @@ func (c *wsConnector) withDefaults() {
 	}
 	if c.open == nil {
 		c.open = func(ctx context.Context) (string, error) {
-			return openConnection(ctx, c.httpClient, c.apiBase, c.appKey, c.appSecret)
+			return openConnection(ctx, c.httpClient, c.apiBase, c.appKey, c.appSealed)
 		}
 	}
 	if c.logger == nil {

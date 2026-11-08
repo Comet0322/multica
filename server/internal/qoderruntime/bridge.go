@@ -26,13 +26,13 @@ type Config struct {
 	SaveState         func(context.Context, []byte) error   `json:"-"`
 	BeforeStep        func(context.Context) (func(), error) `json:"-"`
 	OnReady           func(context.Context, string) error   `json:"-"`
-	GitHubTokens      map[string]string                     `json:"-"`
-	GitHubTokenFiles  map[string]string                     `json:"github_token_files,omitempty"`
+	GitHubTickets     map[string]string                     `json:"-"`
+	GitHubTicketFiles map[string]string                     `json:"github_token_files,omitempty"`
 	MulticaURL        string                                `json:"multica_url"`
-	MulticaToken      string                                `json:"multica_token"`
+	MulticaTicket     string                                `json:"multica_token"`
 	WorkspaceID       string                                `json:"workspace_id"`
 	QoderURL          string                                `json:"qoder_url"`
-	QoderToken        string                                `json:"qoder_token"`
+	QoderTicket       string                                `json:"qoder_token"`
 	EnvironmentID     string                                `json:"environment_id"`
 	StateDir          string                                `json:"state_dir"`
 	Name              string                                `json:"name,omitempty"`
@@ -96,11 +96,11 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	if cfg.Name == "" {
 		cfg.Name = "Qoder Cloud Agents"
 	}
-	m, err := newAPI(cfg.MulticaURL, cfg.MulticaToken, cfg.WorkspaceID)
+	m, err := newAPI(cfg.MulticaURL, cfg.MulticaTicket, cfg.WorkspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("Multica: %w", err)
 	}
-	q, err := newAPI(cfg.QoderURL, cfg.QoderToken, "")
+	q, err := newAPI(cfg.QoderURL, cfg.QoderTicket, "")
 	if err != nil {
 		return nil, fmt.Errorf("Qoder: %w", err)
 	}
@@ -570,8 +570,8 @@ func resourceFingerprint(resources []map[string]any) string {
 	for _, res := range resources {
 		raw, _ := res["url"].(string)
 		key, _ := repositoryKey(raw)
-		token, _ := res["authorization_token"].(string)
-		fmt.Fprintf(h, "%s\x00%s\x00%s\n", key, checkoutBranch(res["checkout"]), token)
+		ticket, _ := res["authorization_token"].(string)
+		fmt.Fprintf(h, "%s\x00%s\x00%s\n", key, checkoutBranch(res["checkout"]), ticket)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -742,7 +742,7 @@ func (b *Bridge) Check(ctx context.Context) error {
 		{b.qoder, "/environments/" + url.PathEscape(b.cfg.EnvironmentID), b.cfg.EnvironmentID, "Qoder environment"},
 	}
 	for _, resource := range resources {
-		if resource.api == b.multica && strings.HasPrefix(b.cfg.MulticaToken, "mdt_") {
+		if resource.api == b.multica && strings.HasPrefix(b.cfg.MulticaTicket, "mdt_") {
 			continue
 		}
 		var response struct {
@@ -811,8 +811,8 @@ func Binding(multicaURL, workspaceID, qoderURL, environmentID string) string {
 
 // CancelRemoteSession is used by the managed supervisor after user access is
 // revoked. It needs only Qoder credentials, never a former owner's Multica PAT.
-func CancelRemoteSession(ctx context.Context, baseURL, token, sessionID string) error {
-	api, err := newAPI(baseURL, token, "")
+func CancelRemoteSession(ctx context.Context, baseURL, ticket, sessionID string) error {
+	api, err := newAPI(baseURL, ticket, "")
 	if err != nil {
 		return err
 	}

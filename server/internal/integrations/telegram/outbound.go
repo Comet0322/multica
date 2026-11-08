@@ -155,14 +155,14 @@ type terminalReply struct {
 	fallbackFreshSend bool
 	plainTextFallback bool
 	plainTextEdit     bool
-	kind            terminalKind
-	settleReason    string
-	turn            replyTurn
-	turnResolved    bool
-	lease           *deliveryLease
-	acquireAttempts int
-	editAttempts    int
-	cleanupOnce     sync.Once
+	kind              terminalKind
+	settleReason      string
+	turn              replyTurn
+	turnResolved      bool
+	lease             *deliveryLease
+	acquireAttempts   int
+	editAttempts      int
+	cleanupOnce       sync.Once
 }
 
 // terminalKind is what a queued item delivers. All three take the turn's lease
@@ -442,7 +442,7 @@ func (o *Outbound) pushPartial(ctx context.Context, target *replyTarget, st *str
 		return
 	}
 
-	api := newBotAPI(o.apiBase, target.botToken, o.client)
+	api := newBotAPI(o.apiBase, target.botTicket, o.client)
 	text := snapshot
 	if utf16Units(text) > maxMessageUnits {
 		// Mid-stream overflow: freeze the streamed message at the cap; the full
@@ -787,7 +787,7 @@ func (o *Outbound) sendNextTerminalRequest(ctx context.Context, reply *terminalR
 	}
 	ctx, cancel := o.callContext(ctx)
 	defer cancel()
-	api := newBotAPI(o.apiBase, reply.target.botToken, o.client)
+	api := newBotAPI(o.apiBase, reply.target.botTicket, o.client)
 
 	if reply.streamedMessageID != 0 && !reply.placeholderEdited && !reply.fallbackFreshSend {
 		return o.editStreamedReply(ctx, api, reply, schedule)
@@ -1121,7 +1121,7 @@ func (o *Outbound) deliverFailureNotice(ctx context.Context, reply *terminalRepl
 	}
 	ctx, cancel := o.callContext(ctx)
 	defer cancel()
-	api := newBotAPI(o.apiBase, target.botToken, o.client)
+	api := newBotAPI(o.apiBase, target.botTicket, o.client)
 
 	if messageID := lease.messageID(); messageID != 0 && !reply.fallbackFreshSend {
 		return o.editNoticeOntoPlaceholder(ctx, api, reply, schedule, messageID)
@@ -1490,7 +1490,7 @@ type replyTarget struct {
 	chatID    int64
 	threadID  int64
 	replyTo   int64
-	botToken  string
+	botTicket string
 
 	// Identity of the reply this target belongs to, for the ownership row.
 	taskID         pgtype.UUID
@@ -1540,7 +1540,7 @@ func (o *Outbound) resolveTarget(ctx context.Context, e events.Event, _ bool) (*
 		chatID:         chatID,
 		threadID:       threadID,
 		replyTo:        replyTo,
-		botToken:       creds.BotToken,
+		botTicket:      creds.BotTicket,
 		taskID:         taskID,
 		bindingID:      delivery.BindingID,
 		installationID: inst.ID,

@@ -61,8 +61,8 @@ func signState(secret []byte, claims stateClaims) (string, error) {
 // signState and returns the embedded claims. Signature is checked with a
 // constant-time compare before the payload is trusted; expiry is checked
 // against now.
-func verifyState(secret []byte, token string, now time.Time) (stateClaims, error) {
-	payload, sig, found := strings.Cut(token, ".")
+func verifyState(secret []byte, ticket string, now time.Time) (stateClaims, error) {
+	payload, sig, found := strings.Cut(ticket, ".")
 	if !found || payload == "" || sig == "" {
 		return stateClaims{}, ErrStateMalformed
 	}

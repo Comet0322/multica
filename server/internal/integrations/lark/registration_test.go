@@ -511,11 +511,11 @@ func TestRegistrationClient_Poll_DomainSwitchOnFeishuTenant(t *testing.T) {
 // gate flips on only one side.
 func TestRegistrationClient_Poll_NoSwitchWhenAlreadyOnMatchingHost(t *testing.T) {
 	cases := []struct {
-		name        string
-		brand       string
-		begunOn     string
-		feishuHost  string
-		larkHost    string
+		name       string
+		brand      string
+		begunOn    string
+		feishuHost string
+		larkHost   string
 	}{
 		{
 			name:       "lark brand on lark host is a no-op",
@@ -583,8 +583,8 @@ func TestRegistrationClient_Poll_Success(t *testing.T) {
 	if res.ClientID != "cli_personal_42" {
 		t.Errorf("ClientID: got %q", res.ClientID)
 	}
-	if res.ClientSecret != "secret_42" {
-		t.Errorf("ClientSecret: got %q", res.ClientSecret)
+	if res.ClientSealed != "secret_42" {
+		t.Errorf("ClientSecret: got %q", res.ClientSealed)
 	}
 	if string(res.OpenID) != "ou_installer_42" {
 		t.Errorf("OpenID: got %q", res.OpenID)

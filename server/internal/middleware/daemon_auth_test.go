@@ -20,8 +20,8 @@ func TestDaemonAuth_DaemonTokenCacheHit(t *testing.T) {
 		t.Fatal("expected non-nil cache")
 	}
 
-	const rawToken = "mdt_cache_hit_test_token"
-	hash := auth.HashToken(rawToken)
+	const rawTicket = "mdt_cache_hit_test_token"
+	hash := auth.HashToken(rawTicket)
 	cache.Set(context.Background(), hash, auth.DaemonTokenIdentity{
 		WorkspaceID: "ws-cached",
 		DaemonID:    "daemon-cached",
@@ -37,7 +37,7 @@ func TestDaemonAuth_DaemonTokenCacheHit(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/daemon/heartbeat", nil)
-	req.Header.Set("Authorization", "Bearer "+rawToken)
+	req.Header.Set("Authorization", "Bearer "+rawTicket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -47,8 +47,8 @@ func TestDaemonAuth_DaemonTokenCacheHit(t *testing.T) {
 	if gotWS != "ws-cached" || gotDaemon != "daemon-cached" {
 		t.Fatalf("expected (ws-cached, daemon-cached), got (%q, %q)", gotWS, gotDaemon)
 	}
-	if gotPath != DaemonAuthPathDaemonToken {
-		t.Fatalf("expected auth path %q, got %q", DaemonAuthPathDaemonToken, gotPath)
+	if gotPath != DaemonAuthPathDaemonTicket {
+		t.Fatalf("expected auth path %q, got %q", DaemonAuthPathDaemonTicket, gotPath)
 	}
 }
 
@@ -62,8 +62,8 @@ func TestDaemonAuth_PATCacheHit(t *testing.T) {
 		t.Fatal("expected non-nil cache")
 	}
 
-	const rawToken = "mul_daemon_pat_cache_hit_test"
-	hash := auth.HashToken(rawToken)
+	const rawTicket = "mul_daemon_pat_cache_hit_test"
+	hash := auth.HashToken(rawTicket)
 	cache.Set(context.Background(), hash, "cached-user-id", auth.AuthCacheTTL)
 
 	var gotUserID, gotPath string
@@ -75,7 +75,7 @@ func TestDaemonAuth_PATCacheHit(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/daemon/heartbeat", nil)
-	req.Header.Set("Authorization", "Bearer "+rawToken)
+	req.Header.Set("Authorization", "Bearer "+rawTicket)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -121,8 +121,8 @@ func TestDaemonAuth_StripsClientSuppliedActorSource(t *testing.T) {
 	rdb := newRedisTestClient(t)
 	cache := auth.NewDaemonTokenCache(rdb)
 
-	const rawToken = "mdt_strip_test"
-	hash := auth.HashToken(rawToken)
+	const rawTicket = "mdt_strip_test"
+	hash := auth.HashToken(rawTicket)
 	cache.Set(context.Background(), hash, auth.DaemonTokenIdentity{
 		WorkspaceID: "ws-1",
 		DaemonID:    "daemon-1",
@@ -136,7 +136,7 @@ func TestDaemonAuth_StripsClientSuppliedActorSource(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/daemon/heartbeat", nil)
-	req.Header.Set("Authorization", "Bearer "+rawToken)
+	req.Header.Set("Authorization", "Bearer "+rawTicket)
 	// Forged value the client tries to smuggle in.
 	req.Header.Set("X-Actor-Source", "cloud_pat")
 	w := httptest.NewRecorder()
@@ -159,8 +159,8 @@ func TestDaemonAuth_StripsForgedAgentIdentityHeaders(t *testing.T) {
 	rdb := newRedisTestClient(t)
 	cache := auth.NewDaemonTokenCache(rdb)
 
-	const rawToken = "mdt_agent_header_strip_test"
-	hash := auth.HashToken(rawToken)
+	const rawTicket = "mdt_agent_header_strip_test"
+	hash := auth.HashToken(rawTicket)
 	cache.Set(context.Background(), hash, auth.DaemonTokenIdentity{
 		WorkspaceID: "ws-1",
 		DaemonID:    "daemon-1",
@@ -175,7 +175,7 @@ func TestDaemonAuth_StripsForgedAgentIdentityHeaders(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/daemon/heartbeat", nil)
-	req.Header.Set("Authorization", "Bearer "+rawToken)
+	req.Header.Set("Authorization", "Bearer "+rawTicket)
 	req.Header.Set("X-Agent-ID", "11111111-1111-1111-1111-111111111111")
 	req.Header.Set("X-Task-ID", "22222222-2222-2222-2222-222222222222")
 	w := httptest.NewRecorder()
@@ -323,7 +323,6 @@ func TestDaemonAuth_MCN_FleetUnreachable(t *testing.T) {
 		t.Fatalf("expected 503 when fleet is unavailable, got %d", w.Code)
 	}
 }
-
 
 // TestDaemonAuth_MCN_OwnerNotInLocalDB pins the new owner-existence
 // guard end-to-end through the middleware. Cloud verifies the token

@@ -19,7 +19,7 @@ func dingtalkInstallTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		t.Skip("DATABASE_URL is not set")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -63,7 +63,7 @@ func TestRegisterBYO_DifferentAppKey_IsolatesIdentityStateDB(t *testing.T) {
 		newAppKey      = "dingtalk_identity_new_app"
 		staffID        = "staff-id-collision"
 		chatID         = "cid-old-organization-chat"
-		tokenHash      = "dingtalk_identity_old_token"
+		ticketHash     = "dingtalk_identity_old_token"
 		auditEventID   = "dingtalk_identity_old_audit"
 		storageKey     = "test/dingtalk/identity-old-image"
 	)
@@ -74,7 +74,7 @@ func TestRegisterBYO_DifferentAppKey_IsolatesIdentityStateDB(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_task_delivery WHERE installation_id = $1`, oldInstallID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_chat_context_generation WHERE chat_session_id = $1`, chatSessionID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_chat_session_binding WHERE chat_session_id = $1`, chatSessionID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_binding_token WHERE token_hash = $1`, tokenHash)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_binding_token WHERE token_hash = $1`, ticketHash)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_user_binding WHERE workspace_id = $1 AND channel_user_id = $2`, workspaceID, staffID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_inbound_message_dedup WHERE message_id = 'dingtalk-identity-old-message'`)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM channel_inbound_audit WHERE channel_event_id = $1`, auditEventID)
@@ -109,7 +109,7 @@ VALUES ($1, 1)
 	exec(`
 INSERT INTO channel_binding_token (token_hash, workspace_id, installation_id, channel_type, channel_user_id, expires_at)
 VALUES ($1, $2, $3, 'dingtalk', $4, now() + interval '10 minutes')
-`, tokenHash, workspaceID, oldInstallID, staffID)
+`, ticketHash, workspaceID, oldInstallID, staffID)
 	exec(`
 INSERT INTO channel_outbound_card_message (chat_session_id, channel_type, channel_chat_id, channel_card_message_id)
 VALUES ($1, 'dingtalk', $2, 'old-outbound-message')

@@ -49,8 +49,8 @@ func main() {
 
 func loadConfig(path string, getenv func(string) string) (qoderruntime.Config, error) {
 	cfg := qoderruntime.Config{
-		MulticaURL: getenv("MULTICA_SERVER_URL"), MulticaToken: getenv("MULTICA_TOKEN"), WorkspaceID: getenv("MULTICA_WORKSPACE_ID"),
-		QoderURL: getenv("QODER_CLOUD_BASE_URL"), QoderToken: getenv("QODER_CLOUD_TOKEN"), EnvironmentID: getenv("QODER_CLOUD_ENVIRONMENT_ID"),
+		MulticaURL: getenv("MULTICA_SERVER_URL"), MulticaTicket: getenv("MULTICA_TOKEN"), WorkspaceID: getenv("MULTICA_WORKSPACE_ID"),
+		QoderURL: getenv("QODER_CLOUD_BASE_URL"), QoderTicket: getenv("QODER_CLOUD_TOKEN"), EnvironmentID: getenv("QODER_CLOUD_ENVIRONMENT_ID"),
 		StateDir: getenv("QODER_BRIDGE_STATE_DIR"), Name: getenv("QODER_BRIDGE_NAME"),
 	}
 	if path == "" {

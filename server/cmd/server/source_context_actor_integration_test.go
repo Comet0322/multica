@@ -27,20 +27,20 @@ func TestSourceContextRoutesRejectAuthoritativeTaskToken(t *testing.T) {
 		t.Fatalf("load integration-test agent: %v", err)
 	}
 	taskID := ensureAgentTask(t, agentID)
-	token, err := auth.GenerateAgentTaskToken()
+	ticket, err := auth.GenerateAgentTaskToken()
 	if err != nil {
 		t.Fatalf("generate task token: %v", err)
 	}
-	var tokenID string
+	var ticketID string
 	if err := testPool.QueryRow(ctx, `
 		INSERT INTO task_token (token_hash, task_id, agent_id, workspace_id, user_id, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id::text
-	`, auth.HashToken(token), taskID, agentID, testWorkspaceID, testUserID, time.Now().Add(time.Hour)).Scan(&tokenID); err != nil {
+	`, auth.HashToken(ticket), taskID, agentID, testWorkspaceID, testUserID, time.Now().Add(time.Hour)).Scan(&ticketID); err != nil {
 		t.Fatalf("insert task token: %v", err)
 	}
 	t.Cleanup(func() {
-		if _, err := testPool.Exec(context.Background(), `DELETE FROM task_token WHERE id = $1`, tokenID); err != nil {
+		if _, err := testPool.Exec(context.Background(), `DELETE FROM task_token WHERE id = $1`, ticketID); err != nil {
 			t.Logf("delete task token fixture: %v", err)
 		}
 	})
@@ -57,7 +57,7 @@ func TestSourceContextRoutesRejectAuthoritativeTaskToken(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create request: %v", err)
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		req.Header.Set("Content-Type", "application/json")
 		// Auth must discard the spoofed actor source and stamp the token's
 		// authoritative one before route guards run. A conflicting

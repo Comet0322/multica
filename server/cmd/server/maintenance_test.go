@@ -14,7 +14,7 @@ func TestMaintenanceRoutesAreAbsentFromPublicServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Even an authenticated application user cannot invoke the internal API here.
-		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Authorization", "Bearer "+testTicket)
 		req.Header.Set("X-Workspace-ID", testWorkspaceID)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

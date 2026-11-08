@@ -170,11 +170,11 @@ func TestRotatePluginTokenIssuesOnceAndInvalidatesThePrevious(t *testing.T) {
 	t.Cleanup(func() { testHandler.PluginService.DeploymentKey = nil })
 
 	first := rotateToken(t, installationID)
-	if first.Token == "" || first.SigningSecret == "" {
+	if first.Ticket == "" || first.SigningSealed == "" {
 		t.Fatalf("rotation returned nothing usable: %+v", first)
 	}
 
-	installation, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), first.Token)
+	installation, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), first.Ticket)
 	if err != nil {
 		t.Fatalf("the freshly issued token must authenticate: %v", err)
 	}
@@ -183,16 +183,16 @@ func TestRotatePluginTokenIssuesOnceAndInvalidatesThePrevious(t *testing.T) {
 	}
 
 	second := rotateToken(t, installationID)
-	if second.Token == first.Token {
+	if second.Ticket == first.Ticket {
 		t.Fatal("rotation reissued the same token")
 	}
-	if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), first.Token); err == nil {
+	if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), first.Ticket); err == nil {
 		t.Fatal("the previous token must stop working after a rotation")
 	}
 	// Derived from the deployment key and the installation, so it survives
 	// rotation — an author does not have to reconfigure their server every
 	// time an admin rotates the token.
-	if second.SigningSecret != first.SigningSecret {
+	if second.SigningSealed != first.SigningSealed {
 		t.Fatal("the signing secret must be stable across token rotations")
 	}
 }
@@ -206,13 +206,13 @@ func TestRotatePluginTokenDoesNotRequireHookSigning(t *testing.T) {
 	t.Cleanup(func() { testHandler.PluginService.DeploymentKey = previousKey })
 
 	issued := rotateToken(t, installationID)
-	if issued.Token == "" {
+	if issued.Ticket == "" {
 		t.Fatal("rotation did not return a Public API token")
 	}
-	if issued.SigningSecret != "" {
-		t.Fatalf("signing_secret = %q without a deployment key", issued.SigningSecret)
+	if issued.SigningSealed != "" {
+		t.Fatalf("signing_secret = %q without a deployment key", issued.SigningSealed)
 	}
-	installation, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), issued.Token)
+	installation, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), issued.Ticket)
 	if err != nil {
 		t.Fatalf("token issued without hook signing must authenticate: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestRotatePluginTokenPreservesPreviousTokenWhenPreparationFails(t *testing.
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("failed preparation status=%d body=%s", response.Code, response.Body.String())
 	}
-	if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), previous.Token); err != nil {
+	if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), previous.Ticket); err != nil {
 		t.Fatalf("failed credential preparation invalidated the previous token: %v", err)
 	}
 }
@@ -259,7 +259,7 @@ func TestRevokePluginTokenStopsAuthentication(t *testing.T) {
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("revoke: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), issued.Token); err == nil {
+	if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), issued.Ticket); err == nil {
 		t.Fatal("a revoked token must not authenticate")
 	}
 }
@@ -268,9 +268,9 @@ func TestRevokePluginTokenStopsAuthentication(t *testing.T) {
 // lookup is by hash, so an empty or malformed value must be refused before it
 // reaches the query.
 func TestAuthenticateInstallTokenRefusesMalformedValues(t *testing.T) {
-	for _, token := range []string{"", "mpi_", "not-a-token", "mpc_something", "Bearer mpi_x"} {
-		if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), token); err == nil {
-			t.Fatalf("token %q must not authenticate", token)
+	for _, ticket := range []string{"", "mpi_", "not-a-token", "mpc_something", "Bearer mpi_x"} {
+		if _, err := testHandler.PluginService.AuthenticateInstallToken(context.Background(), ticket); err == nil {
+			t.Fatalf("token %q must not authenticate", ticket)
 		}
 	}
 }

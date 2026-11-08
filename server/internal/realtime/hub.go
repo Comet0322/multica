@@ -36,7 +36,7 @@ type SlugResolver func(ctx context.Context, slug string) (workspaceID string, er
 
 // PATResolver resolves a Personal Access Token to a user ID.
 type PATResolver interface {
-	ResolveToken(ctx context.Context, token string) (userID string, ok bool)
+	ResolveToken(ctx context.Context, ticket string) (userID string, ok bool)
 }
 
 // ScopeAuthorizer decides whether a connection (identified by userID +
@@ -699,12 +699,12 @@ func (h *Hub) Snapshot() map[string]any {
 }
 
 // authenticateToken validates a JWT or PAT string and returns the user ID.
-func authenticateToken(tokenStr string, pr PATResolver, ctx context.Context) (string, string) {
-	if strings.HasPrefix(tokenStr, "mul_") {
+func authenticateToken(ticketStr string, pr PATResolver, ctx context.Context) (string, string) {
+	if strings.HasPrefix(ticketStr, "mul_") {
 		if pr == nil {
 			return "", `{"error":"invalid token"}`
 		}
-		uid, ok := pr.ResolveToken(ctx, tokenStr)
+		uid, ok := pr.ResolveToken(ctx, ticketStr)
 		if !ok {
 			return "", `{"error":"invalid token"}`
 		}
@@ -714,7 +714,7 @@ func authenticateToken(tokenStr string, pr PATResolver, ctx context.Context) (st
 		return uid, ""
 	}
 
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
+	token, err := jwt.Parse(ticketStr, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
@@ -744,7 +744,7 @@ func authenticateToken(tokenStr string, pr PATResolver, ctx context.Context) (st
 // A non-empty errMsg is for the caller to write back before closing the
 // connection. closed=true means the connection is already torn down and the
 // caller must return without writing anything further.
-func firstMessageAuth(conn *websocket.Conn) (token, errMsg string, closed bool) {
+func firstMessageAuth(conn *websocket.Conn) (ticket, errMsg string, closed bool) {
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	defer conn.SetReadDeadline(time.Time{})
 
@@ -765,14 +765,14 @@ func firstMessageAuth(conn *websocket.Conn) (token, errMsg string, closed bool) 
 	var msg struct {
 		Type    string `json:"type"`
 		Payload struct {
-			Token string `json:"token"`
+			Ticket string `json:"token"`
 		} `json:"payload"`
 	}
-	if err := json.Unmarshal(raw, &msg); err != nil || msg.Type != "auth" || msg.Payload.Token == "" {
+	if err := json.Unmarshal(raw, &msg); err != nil || msg.Type != "auth" || msg.Payload.Ticket == "" {
 		return "", `{"error":"expected auth message as first frame"}`, false
 	}
 
-	return msg.Payload.Token, "", false
+	return msg.Payload.Ticket, "", false
 }
 
 type wsMessageWriter interface {
@@ -847,7 +847,7 @@ func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, resolveSlug
 	conn.SetReadLimit(inboundReadLimit)
 
 	if userID == "" {
-		tokenStr, errMsg, closed := firstMessageAuth(conn)
+		ticketStr, errMsg, closed := firstMessageAuth(conn)
 		if closed {
 			return
 		}
@@ -855,7 +855,7 @@ func HandleWebSocket(hub *Hub, mc MembershipChecker, pr PATResolver, resolveSlug
 			writeWSAuthErrorAndClose(conn, []byte(errMsg), "workspace_id", workspaceID)
 			return
 		}
-		uid, errMsg := authenticateToken(tokenStr, pr, r.Context())
+		uid, errMsg := authenticateToken(ticketStr, pr, r.Context())
 		if errMsg != "" {
 			writeWSAuthErrorAndClose(conn, []byte(errMsg), "workspace_id", workspaceID)
 			return

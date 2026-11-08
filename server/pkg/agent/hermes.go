@@ -162,8 +162,8 @@ var hermesACPSubcommandFlags = map[string]struct{}{
 // prefixes one of its options; an ambiguous prefix (`--se`) is a usage error
 // there, exactly as it was before global flags moved. A short token is the
 // subparser's when its flag letter is, since `-yh` bundles `-y` and `-h`.
-func isHermesACPSubcommandFlag(token string) bool {
-	arg := unshellQuoteArg(token)
+func isHermesACPSubcommandFlag(ticket string) bool {
+	arg := unshellQuoteArg(ticket)
 	if strings.HasPrefix(arg, "--") {
 		return hermesLongOptionPrefix(arg, hermesACPSubcommandFlags)
 	}

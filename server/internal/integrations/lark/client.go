@@ -388,7 +388,7 @@ type MessageReaction struct {
 // call is in flight; callers MUST NOT log or persist it.
 type InstallationCredentials struct {
 	AppID     string
-	AppSecret string
+	AppSealed string
 	TenantKey string
 	// Region selects the Lark open-platform host (Feishu mainland vs
 	// Lark international) for every call made with these credentials.

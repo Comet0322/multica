@@ -42,6 +42,6 @@ func BearerToken(r *http.Request) string {
 // to look at the token, and an invalid token routed here is refused by the
 // handler a moment later. Deciding by prefix keeps a plugin token from being
 // tried against the PAT cache and a PAT from being tried against installations.
-func IsPluginBearerToken(token string) bool {
-	return strings.HasPrefix(token, "mpi_") || strings.HasPrefix(token, "mpc_")
+func IsPluginBearerToken(ticket string) bool {
+	return strings.HasPrefix(ticket, "mpi_") || strings.HasPrefix(ticket, "mpc_")
 }

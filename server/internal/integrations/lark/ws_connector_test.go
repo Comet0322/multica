@@ -148,7 +148,7 @@ func connectorWithLogger(t *testing.T, conn *fakeWSConn, decoder FrameDecoder, p
 		}),
 		FrameDecoder: decoder,
 		CredentialsProvider: CredentialsProviderFunc(func(context.Context, Installation) (InstallationCredentials, error) {
-			return InstallationCredentials{AppID: "test_app", AppSecret: "secret"}, nil
+			return InstallationCredentials{AppID: "test_app", AppSealed: "secret"}, nil
 		}),
 		PingInterval: pingInterval,
 		ReadDeadline: time.Second,

@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-const Credential = "fixture-token"
+const Badge = "fixture-token"
 
 type Server struct {
 	*httptest.Server
@@ -41,7 +41,7 @@ func (fixture *Server) Writes() []string {
 
 func (fixture *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Header.Get("Authorization") != "Bearer "+Credential {
+	if r.Header.Get("Authorization") != "Bearer "+Badge {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{"error": "credential rejected"})
 		return

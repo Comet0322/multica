@@ -36,7 +36,7 @@ func testSigningService(t *testing.T) *PluginService {
 func TestVerifyHookSignatureRejectsTamperedBodyAndReplay(t *testing.T) {
 	service := testSigningService(t)
 	installationID := testInstallationID(t)
-	secret, err := service.HookSigningSecret(installationID)
+	sealed, err := service.HookSigningSecret(installationID)
 	if err != nil {
 		t.Fatalf("derive signing secret: %v", err)
 	}
@@ -49,19 +49,19 @@ func TestVerifyHookSignatureRejectsTamperedBodyAndReplay(t *testing.T) {
 	}
 	signedAt := time.Unix(1700000000, 0)
 
-	if err := VerifyHookSignature(secret, timestamp, body, signature, signedAt); err != nil {
+	if err := VerifyHookSignature(sealed, timestamp, body, signature, signedAt); err != nil {
 		t.Fatalf("a genuine request must verify: %v", err)
 	}
 
 	tampered := []byte(`{"hook_key":"summarize","input":{"issue_id":"someone-elses"}}`)
-	if err := VerifyHookSignature(secret, timestamp, tampered, signature, signedAt); err == nil {
+	if err := VerifyHookSignature(sealed, timestamp, tampered, signature, signedAt); err == nil {
 		t.Fatal("a body edited after signing must not verify")
 	}
 
 	// Same bytes, same signature, hours later. Without the timestamp in the
 	// signed string a captured request would stay valid forever.
 	late := signedAt.Add(2 * time.Hour)
-	if err := VerifyHookSignature(secret, timestamp, body, signature, late); err == nil {
+	if err := VerifyHookSignature(sealed, timestamp, body, signature, late); err == nil {
 		t.Fatal("a replayed request outside the tolerance window must not verify")
 	}
 }
@@ -76,15 +76,15 @@ func TestHookSigningSecretIsPerInstallation(t *testing.T) {
 		t.Fatalf("parse uuid: %v", err)
 	}
 
-	firstSecret, err := service.HookSigningSecret(first)
+	firstSealed, err := service.HookSigningSecret(first)
 	if err != nil {
 		t.Fatalf("derive first: %v", err)
 	}
-	secondSecret, err := service.HookSigningSecret(second)
+	secondSealed, err := service.HookSigningSecret(second)
 	if err != nil {
 		t.Fatalf("derive second: %v", err)
 	}
-	if firstSecret == secondSecret {
+	if firstSealed == secondSealed {
 		t.Fatal("two installations must not share a signing secret")
 	}
 
@@ -94,7 +94,7 @@ func TestHookSigningSecretIsPerInstallation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
-	if err := VerifyHookSignature(secondSecret, timestamp, body, signature, time.Unix(1700000000, 0)); err == nil {
+	if err := VerifyHookSignature(secondSealed, timestamp, body, signature, time.Unix(1700000000, 0)); err == nil {
 		t.Fatal("one installation's signature must not verify against another's secret")
 	}
 }

@@ -60,7 +60,7 @@ func TestBuildAuthorizationURLPinsPKCEStateAndResource(t *testing.T) {
 func TestValidateOAuthMetadataRejectsUnsafeAdvancedOverride(t *testing.T) {
 	err := ValidateOAuthMetadata(t.Context(), OAuthMetadata{
 		AuthorizationEndpoint: "http://127.0.0.1/authorize",
-		TokenEndpoint:         "https://8.8.8.8/token",
+		TicketEndpoint:        "https://8.8.8.8/token",
 	})
 	if err == nil {
 		t.Fatal("unsafe authorization endpoint was accepted")

@@ -206,11 +206,11 @@ func TestMediaHTTPRefreshReplaysMultipart(t *testing.T) {
 			f := newLarkFake(t)
 			f.mux.HandleFunc("/open-apis/auth/v3/tenant_access_token/internal", func(w http.ResponseWriter, r *http.Request) {
 				n := f.tokenN.Add(1)
-				token := "old"
+				ticket := "old"
 				if n > 1 {
-					token = "fresh"
+					ticket = "fresh"
 				}
-				writeJSON(w, map[string]any{"code": 0, "tenant_access_token": token, "expire": 7200})
+				writeJSON(w, map[string]any{"code": 0, "tenant_access_token": ticket, "expire": 7200})
 			})
 			var calls atomic.Int32
 			f.mux.HandleFunc(larkUploadPathImage, func(w http.ResponseWriter, r *http.Request) {

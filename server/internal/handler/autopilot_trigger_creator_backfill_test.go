@@ -51,7 +51,7 @@ func TestMigration467BackfillsTriggerCreatorFromAutopilot(t *testing.T) {
 	}
 
 	liveAutopilotID := autopilot(testUserID)
-	token, err := generateWebhookToken()
+	ticket, err := generateWebhookToken()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,13 +61,13 @@ func TestMigration467BackfillsTriggerCreatorFromAutopilot(t *testing.T) {
 		"autopilot_id":  liveAutopilotID,
 		"kind":          "webhook",
 		"enabled":       true,
-		"webhook_token": token,
+		"webhook_token": ticket,
 	})
 	agentCreatedID := scheduleTrigger(liveAutopilotID, "agent", agentID)
 	memberCreatedID := scheduleTrigger(liveAutopilotID, "member", otherMemberID)
 	departedCreatorID := scheduleTrigger(autopilot(departedID), nil, nil)
 
-	w := postWebhook(t, token, map[string]any{"ref": "refs/heads/main"}, map[string]string{"X-GitHub-Event": "push"})
+	w := postWebhook(t, ticket, map[string]any{"ref": "refs/heads/main"}, map[string]string{"X-GitHub-Event": "push"})
 	var before map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &before); err != nil {
 		t.Fatalf("decode pre-backfill response: %v", err)
@@ -124,7 +124,7 @@ func TestMigration467BackfillsTriggerCreatorFromAutopilot(t *testing.T) {
 	// delivery must run instead of being skipped.
 	dbfx.Exec(t, `UPDATE autopilot_trigger SET created_by_type = $2, created_by_id = $3 WHERE id = $1`,
 		legacyWebhookID, filledType, filledID)
-	w = postWebhook(t, token, map[string]any{"ref": "refs/heads/main"}, map[string]string{"X-GitHub-Event": "push"})
+	w = postWebhook(t, ticket, map[string]any{"ref": "refs/heads/main"}, map[string]string{"X-GitHub-Event": "push"})
 	delivery := processQueuedWebhookDelivery(t, requireAcceptedWebhookResponse(t, w))
 	run, err := testHandler.Queries.GetAutopilotRun(ctx, delivery.AutopilotRunID)
 	if err != nil {

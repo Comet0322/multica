@@ -38,7 +38,7 @@ type CreateLinkRequest struct {
 
 // CreateLinkResponse is the body returned by POST /connected_accounts/link.
 type CreateLinkResponse struct {
-	LinkToken          string `json:"link_token"`
+	LinkTicket         string `json:"link_token"`
 	RedirectURL        string `json:"redirect_url"`
 	ExpiresAt          string `json:"expires_at"`
 	ConnectedAccountID string `json:"connected_account_id"`

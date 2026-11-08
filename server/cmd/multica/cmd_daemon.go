@@ -540,7 +540,7 @@ func requireDaemonAuth(profile string) error {
 	if err != nil {
 		return fmt.Errorf("load CLI config: %w", err)
 	}
-	if cfg.Token == "" {
+	if cfg.Ticket == "" {
 		loginHint := "multica login"
 		if profile != "" {
 			loginHint = fmt.Sprintf("multica login --profile %s", profile)
@@ -1301,7 +1301,7 @@ func requireDaemonRestartPreflight(cmd *cobra.Command, profile string) error {
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
-	if err := cli.NewAPIClient(baseURL, "", cfg.Token).GetJSON(ctx, "/api/me", nil); err != nil {
+	if err := cli.NewAPIClient(baseURL, "", cfg.Ticket).GetJSON(ctx, "/api/me", nil); err != nil {
 		var httpErr *cli.HTTPError
 		if errors.As(err, &httpErr) {
 			if httpErr.StatusCode == http.StatusUnauthorized {
@@ -2060,7 +2060,7 @@ func fillDiskUsageParentStatuses(cmd *cobra.Command, profile string, report *dae
 // caller then leaves the column blank rather than erroring.
 func newParentStatusFetcher(cmd *cobra.Command, profile string) daemon.ParentStatusFetcher {
 	cfg, err := cli.LoadCLIConfigForProfile(profile)
-	if err != nil || strings.TrimSpace(cfg.Token) == "" {
+	if err != nil || strings.TrimSpace(cfg.Ticket) == "" {
 		return nil
 	}
 	rawURL := resolveDaemonServerURL(cmd, profile)
@@ -2073,7 +2073,7 @@ func newParentStatusFetcher(cmd *cobra.Command, profile string) daemon.ParentSta
 	}
 
 	client := daemon.NewClient(baseURL)
-	client.SetToken(cfg.Token)
+	client.SetToken(cfg.Ticket)
 	return func(ctx context.Context, workspaceID string, issueIDs []string) (map[string]string, error) {
 		results, err := client.GetIssueGCChecks(ctx, workspaceID, issueIDs)
 		if err != nil {

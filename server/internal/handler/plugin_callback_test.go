@@ -21,7 +21,7 @@ import (
 // reason the callback token exists instead of handing a plugin's server the
 // install token and trusting it to say who it is acting for.
 
-func callbackRequest(token, method, path string, body any, params map[string]string) *http.Request {
+func callbackRequest(ticket, method, path string, body any, params map[string]string) *http.Request {
 	var payload []byte
 	if body != nil {
 		payload, _ = json.Marshal(body)
@@ -30,7 +30,7 @@ func callbackRequest(token, method, path string, body any, params map[string]str
 	request.Header.Set("Content-Type", "application/json")
 	// No X-User-ID: a plugin's own server has no session. The token is the
 	// entire credential, which is what these tests are about.
-	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Authorization", "Bearer "+ticket)
 	routeContext := chi.NewRouteContext()
 	for key, value := range params {
 		routeContext.URLParams.Add(key, value)
@@ -45,7 +45,7 @@ func issueCallbackToken(t *testing.T, installationID string, actor service.HookA
 	if err != nil {
 		t.Fatalf("load installation: %v", err)
 	}
-	token, err := testHandler.PluginService.Callbacks.Issue(context.Background(), service.HookInvocation{
+	ticket, err := testHandler.PluginService.Callbacks.Issue(context.Background(), service.HookInvocation{
 		Installation: installation,
 		Hook:         plugincontract.Hook{Key: "summarize"},
 		Trigger:      plugincontract.TriggerManual,
@@ -54,7 +54,7 @@ func issueCallbackToken(t *testing.T, installationID string, actor service.HookA
 	if err != nil {
 		t.Fatalf("issue callback token: %v", err)
 	}
-	return token
+	return ticket
 }
 
 func withCallbackTokens(t *testing.T) {
@@ -74,9 +74,9 @@ func TestCallbackFromAUserTriggeredHookWritesAsTheUser(t *testing.T) {
 	installationID := installHookPlugin(t)
 	issueID := createTestIssue(t, "Callback attribution member", "todo", "none")
 
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)})
 	recorder := httptest.NewRecorder()
-	testHandler.CreatePluginComment(recorder, callbackRequest(token, http.MethodPost,
+	testHandler.CreatePluginComment(recorder, callbackRequest(ticket, http.MethodPost,
 		"/v1/issues/"+issueID+"/comments",
 		map[string]any{"content": "posted by a manual hook"},
 		map[string]string{"issue_ref": issueID}))
@@ -105,9 +105,9 @@ func TestCallbackFromAnEventHookWritesAsThePlugin(t *testing.T) {
 	installationID := installHookPlugin(t)
 	issueID := createTestIssue(t, "Callback attribution plugin", "todo", "none")
 
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "plugin", ID: parseUUID(installationID)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "plugin", ID: parseUUID(installationID)})
 	recorder := httptest.NewRecorder()
-	testHandler.CreatePluginComment(recorder, callbackRequest(token, http.MethodPost,
+	testHandler.CreatePluginComment(recorder, callbackRequest(ticket, http.MethodPost,
 		"/v1/issues/"+issueID+"/comments",
 		map[string]any{"content": "posted by an event hook"},
 		map[string]string{"issue_ref": issueID}))
@@ -134,9 +134,9 @@ func TestCallbackTokenServesTheWholeInvocation(t *testing.T) {
 	installationID := installHookPlugin(t)
 	issueID := createTestIssue(t, "Callback single use", "todo", "none")
 
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)})
 	first := httptest.NewRecorder()
-	testHandler.GetPluginIssue(first, callbackRequest(token, http.MethodGet,
+	testHandler.GetPluginIssue(first, callbackRequest(ticket, http.MethodGet,
 		"/v1/issues/"+issueID, nil, map[string]string{"issue_ref": issueID}))
 	if first.Code != http.StatusOK {
 		t.Fatalf("first use: status=%d body=%s", first.Code, first.Body.String())
@@ -144,7 +144,7 @@ func TestCallbackTokenServesTheWholeInvocation(t *testing.T) {
 
 	// The read-then-write shape every non-trivial handler has.
 	second := httptest.NewRecorder()
-	testHandler.CreatePluginComment(second, callbackRequest(token, http.MethodPost,
+	testHandler.CreatePluginComment(second, callbackRequest(ticket, http.MethodPost,
 		"/v1/issues/"+issueID+"/comments",
 		map[string]any{"content": "and now a comment about what I read"},
 		map[string]string{"issue_ref": issueID}))
@@ -153,9 +153,9 @@ func TestCallbackTokenServesTheWholeInvocation(t *testing.T) {
 	}
 
 	// Revoked once the invocation is over.
-	testHandler.PluginService.Callbacks.Revoke(token)
+	testHandler.PluginService.Callbacks.Revoke(ticket)
 	third := httptest.NewRecorder()
-	testHandler.GetPluginIssue(third, callbackRequest(token, http.MethodGet,
+	testHandler.GetPluginIssue(third, callbackRequest(ticket, http.MethodGet,
 		"/v1/issues/"+issueID, nil, map[string]string{"issue_ref": issueID}))
 	if third.Code != http.StatusForbidden {
 		t.Fatalf("a revoked grant must be refused: status=%d body=%s", third.Code, third.Body.String())
@@ -171,9 +171,9 @@ func TestPluginActorCannotReachUserStorage(t *testing.T) {
 	withCallbackTokens(t)
 	installationID := installPluginForAction(t, []string{"issues:read", "comments:write", "storage:user"})
 
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "plugin", ID: parseUUID(installationID)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "plugin", ID: parseUUID(installationID)})
 	recorder := httptest.NewRecorder()
-	testHandler.PutPluginStorage(recorder, callbackRequest(token, http.MethodPut,
+	testHandler.PutPluginStorage(recorder, callbackRequest(ticket, http.MethodPut,
 		"/v1/storage/user/pref",
 		map[string]any{"value": "x"},
 		map[string]string{"scope": "user", "key": "pref"}))
@@ -191,9 +191,9 @@ func TestPluginContextOmitsTheUserForAPluginActor(t *testing.T) {
 	withCallbackTokens(t)
 	installationID := installHookPlugin(t)
 
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "plugin", ID: parseUUID(installationID)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "plugin", ID: parseUUID(installationID)})
 	recorder := httptest.NewRecorder()
-	testHandler.GetPluginContext(recorder, callbackRequest(token, http.MethodGet, "/v1/context", nil, nil))
+	testHandler.GetPluginContext(recorder, callbackRequest(ticket, http.MethodGet, "/v1/context", nil, nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -245,7 +245,7 @@ func TestCallbackTokenCannotReachAnotherIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load installation: %v", err)
 	}
-	token, err := testHandler.PluginService.Callbacks.Issue(context.Background(), service.HookInvocation{
+	ticket, err := testHandler.PluginService.Callbacks.Issue(context.Background(), service.HookInvocation{
 		Installation: installation,
 		Hook:         plugincontract.Hook{Key: "summarize"},
 		Trigger:      plugincontract.TriggerManual,
@@ -258,7 +258,7 @@ func TestCallbackTokenCannotReachAnotherIssue(t *testing.T) {
 
 	// The issue it was issued for: allowed.
 	ok := httptest.NewRecorder()
-	testHandler.GetPluginIssue(ok, callbackRequest(token, http.MethodGet,
+	testHandler.GetPluginIssue(ok, callbackRequest(ticket, http.MethodGet,
 		"/v1/issues/"+granted, nil, map[string]string{"issue_ref": granted}))
 	if ok.Code != http.StatusOK {
 		t.Fatalf("the granted issue must be reachable: status=%d body=%s", ok.Code, ok.Body.String())
@@ -266,14 +266,14 @@ func TestCallbackTokenCannotReachAnotherIssue(t *testing.T) {
 
 	// Any other issue in the same workspace: refused, on both read and write.
 	refusedRead := httptest.NewRecorder()
-	testHandler.GetPluginIssue(refusedRead, callbackRequest(token, http.MethodGet,
+	testHandler.GetPluginIssue(refusedRead, callbackRequest(ticket, http.MethodGet,
 		"/v1/issues/"+other, nil, map[string]string{"issue_ref": other}))
 	if refusedRead.Code != http.StatusNotFound {
 		t.Fatalf("reading another issue must be refused: status=%d body=%s", refusedRead.Code, refusedRead.Body.String())
 	}
 
 	refusedWrite := httptest.NewRecorder()
-	testHandler.CreatePluginComment(refusedWrite, callbackRequest(token, http.MethodPost,
+	testHandler.CreatePluginComment(refusedWrite, callbackRequest(ticket, http.MethodPost,
 		"/v1/issues/"+other+"/comments",
 		map[string]any{"content": "should never land"},
 		map[string]string{"issue_ref": other}))
@@ -292,9 +292,9 @@ func TestCallbackTokenWithoutAnIssueIsNotNarrowed(t *testing.T) {
 	installationID := installHookPlugin(t)
 	issueID := createTestIssue(t, "Callback unscoped grant", "todo", "none")
 
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)})
 	recorder := httptest.NewRecorder()
-	testHandler.GetPluginIssue(recorder, callbackRequest(token, http.MethodGet,
+	testHandler.GetPluginIssue(recorder, callbackRequest(ticket, http.MethodGet,
 		"/v1/issues/"+issueID, nil, map[string]string{"issue_ref": issueID}))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("an unscoped grant must still reach the workspace: status=%d body=%s", recorder.Code, recorder.Body.String())

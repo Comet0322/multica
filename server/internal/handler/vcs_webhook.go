@@ -125,13 +125,13 @@ func (h *Handler) HandleVCSWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret, err := h.openVCSSecret(conn.WebhookSecretEncrypted)
+	sealed, err := h.openVCSSecret(conn.WebhookSealedEncrypted)
 	if err != nil {
 		slog.Error("vcs: decrypt webhook secret failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "secret error")
 		return
 	}
-	if !provider.VerifySignature(secret, r.Header, body) {
+	if !provider.VerifySignature(sealed, r.Header, body) {
 		writeError(w, http.StatusUnauthorized, "invalid signature")
 		return
 	}

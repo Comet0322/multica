@@ -181,7 +181,7 @@ func (h *Handler) RevokeLarkInstallation(w http.ResponseWriter, r *http.Request)
 // RedeemLarkBindingTokenRequest carries the raw token the user
 // clicked through from the Bot's "you need to bind" reply card.
 type RedeemLarkBindingTokenRequest struct {
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 // RedeemLarkBindingTokenResponse is the post-redemption shape. We
@@ -223,7 +223,7 @@ func (h *Handler) RedeemLarkBindingToken(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Token == "" {
+	if req.Ticket == "" {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
 	}
@@ -232,7 +232,7 @@ func (h *Handler) RedeemLarkBindingToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	redeemed, err := h.LarkBindingTokens.RedeemAndBind(r.Context(), req.Token, userUUID)
+	redeemed, err := h.LarkBindingTokens.RedeemAndBind(r.Context(), req.Ticket, userUUID)
 	if err != nil {
 		switch {
 		case errors.Is(err, lark.ErrBindingTokenInvalid):

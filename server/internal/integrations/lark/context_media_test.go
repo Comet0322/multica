@@ -46,7 +46,7 @@ func TestContextMediaCollectQuotedAndForwardedImages(t *testing.T) {
 			}
 			api := &fakeSender{downloaded: DownloadedResource{Data: []byte("image bytes"), ContentType: "image/png", Filename: "context.png"}}
 			storage := &fakeMediaStorage{}
-			resolver := NewFeishuMediaResolver(api, fakeCreds{secret: "plain"}, storage, &fakeMediaLedger{}, newDiscardLogger())
+			resolver := NewFeishuMediaResolver(api, fakeCreds{sealed: "plain"}, storage, &fakeMediaLedger{}, newDiscardLogger())
 			msg := channelMessageFromLark(out)
 			if !resolver.HasMedia(msg) {
 				t.Fatal("context-only image did not suspend dispatch for ingestion")
@@ -95,7 +95,7 @@ func TestContextMediaOneFailedDownloadKeepsOtherImageAndSourcePositions(t *testi
 	fake.byID["parent"] = []LarkMessage{{MessageID: "parent", MessageType: "post", Content: `{"content":[[{"tag":"img","image_key":"bad"},{"tag":"text","text":"between"},{"tag":"img","image_key":"good"}]]}`}}
 	out := enrich(t, fake, InboundMessage{MessageID: "trigger", MessageType: "text", Body: "inspect", ParentID: "parent"}, InboundEnricherConfig{})
 	api := &fakeSender{downloadErrByKey: map[string]error{"bad": errors.New("denied")}, downloaded: DownloadedResource{Data: []byte("good image"), ContentType: "image/png"}}
-	resolver := NewFeishuMediaResolver(api, fakeCreds{secret: "plain"}, &fakeMediaStorage{}, &fakeMediaLedger{}, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(api, fakeCreds{sealed: "plain"}, &fakeMediaStorage{}, &fakeMediaLedger{}, newDiscardLogger())
 	got := resolver.ResolveMedia(t.Context(), testMediaInstallation(t), engine.ResolvedIdentity{}, uuidFromString(t, "22222222-2222-2222-2222-222222222222"), uuidFromString(t, "33333333-3333-4333-8333-333333333333"), channelMessageFromLark(out))
 	if len(got.MediaRefs) != 1 || got.MediaRefs[0].InlinePlaceholder != out.ContextMedia[1].Placeholder || got.Text != out.Body || !strings.Contains(got.Text, "unavailable") {
 		t.Fatalf("failed image shifted the successful picture: %+v", got)
@@ -165,7 +165,7 @@ func TestContextMediaCollectFilesAudioAndVideo(t *testing.T) {
 
 func resolveContextMedia(t *testing.T, out InboundMessage, api *fakeSender, storage *fakeMediaStorage, ledger *fakeMediaLedger) channel.InboundMessage {
 	t.Helper()
-	resolver := NewFeishuMediaResolver(api, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(api, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	msg := channelMessageFromLark(out)
 	if !resolver.HasMedia(msg) {
 		t.Fatal("context-only media did not suspend dispatch")

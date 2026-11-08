@@ -55,7 +55,7 @@ func (q *Queries) DeleteTaskBatch(ctx context.Context, taskIds []pgtype.UUID) er
 	return err
 }
 
-const deleteTaskTokensByAgent = `-- name: DeleteTaskTokensByAgent :exec
+const deleteTaskTicketsByAgent = `-- name: DeleteTaskTokensByAgent :exec
 DELETE FROM task_token WHERE agent_id = $1
 `
 
@@ -66,7 +66,7 @@ DELETE FROM task_token WHERE agent_id = $1
 // (migration 275); one agent key per call for the same planner reason as
 // ListTaskIDsByAgentBatch.
 func (q *Queries) DeleteTaskTokensByAgent(ctx context.Context, agentID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTaskTokensByAgent, agentID)
+	_, err := q.db.Exec(ctx, deleteTaskTicketsByAgent, agentID)
 	return err
 }
 

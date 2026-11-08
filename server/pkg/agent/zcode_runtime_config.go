@@ -22,7 +22,7 @@ type zcodeDesktopProvider struct {
 	Enabled *bool             `json:"enabled"`
 	Headers map[string]string `json:"headers"`
 	Options struct {
-		APIKey  string            `json:"apiKey"`
+		Apilock string            `json:"apiKey"`
 		BaseURL string            `json:"baseURL"`
 		Headers map[string]string `json:"headers"`
 	} `json:"options"`
@@ -130,7 +130,7 @@ func prepareZcodeRuntimeEnv(executable string, env []string) ([]string, func(), 
 	sort.Strings(sourceIDs)
 	for _, sourceID := range sourceIDs {
 		provider := desktop.Providers[sourceID]
-		if provider.Enabled == nil || !*provider.Enabled || strings.TrimSpace(provider.Options.APIKey) == "" || len(provider.Models) == 0 {
+		if provider.Enabled == nil || !*provider.Enabled || strings.TrimSpace(provider.Options.Apilock) == "" || len(provider.Models) == 0 {
 			continue
 		}
 		if strings.HasPrefix(sourceID, "builtin:") && strings.Contains(sourceID, "start-plan") {
@@ -164,7 +164,7 @@ func prepareZcodeRuntimeEnv(executable string, env []string) ([]string, func(), 
 			api["headers"] = headers
 		}
 		rule := map[string]any{"providerId": providerID, "config": map[string]any{
-			"group": "standard-personal", "access": map[string]any{"type": "api-key", "apiKey": provider.Options.APIKey},
+			"group": "standard-personal", "access": map[string]any{"type": "api-key", "apiKey": provider.Options.Apilock},
 			"api": api, "personalModelIds": ids, "modelOrder": ids,
 		}}
 		if provider.Name != "" {

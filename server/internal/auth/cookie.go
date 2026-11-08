@@ -213,8 +213,8 @@ func sessionCSRFSignature(sessionID string, nonce []byte) []byte {
 	return mac.Sum(nil)
 }
 
-func tokenCSRFSignature(authToken string, nonce []byte) []byte {
-	mac := hmac.New(sha256.New, []byte(authToken))
+func tokenCSRFSignature(authTicket string, nonce []byte) []byte {
+	mac := hmac.New(sha256.New, []byte(authTicket))
 	mac.Write(nonce)
 	return mac.Sum(nil)
 }
@@ -247,7 +247,7 @@ func verifyCSRFToken(presented string, sign func(nonce []byte) []byte) bool {
 
 // SetAuthCookies sets the HttpOnly auth cookie and both readable CSRF cookies
 // on the response.
-func SetAuthCookies(w http.ResponseWriter, token string) error {
+func SetAuthCookies(w http.ResponseWriter, ticket string) error {
 	secure := isSecureCookie()
 	domain := cookieDomain()
 	ttl := AuthTokenTTL()
@@ -269,7 +269,7 @@ func SetAuthCookies(w http.ResponseWriter, token string) error {
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     AuthCookieName,
-		Value:    token,
+		Value:    ticket,
 		Path:     "/",
 		Domain:   domain,
 		MaxAge:   int(ttl.Seconds()),
@@ -279,18 +279,18 @@ func SetAuthCookies(w http.ResponseWriter, token string) error {
 		SameSite: http.SameSiteStrictMode,
 	})
 
-	tokenBound, err := csrfToken(func(nonce []byte) []byte {
-		return tokenCSRFSignature(token, nonce)
+	ticketBound, err := csrfToken(func(nonce []byte) []byte {
+		return tokenCSRFSignature(ticket, nonce)
 	})
 	if err != nil {
 		return err
 	}
-	readable(CSRFCookieName, tokenBound)
+	readable(CSRFCookieName, ticketBound)
 
 	// Only a token carrying `sid` can have a session-bound value. A token
 	// minted before MUL-7436 has none until it renews, and until then the
 	// token-bound cookie above is the only one it can use.
-	if sid := SessionIDFromToken(token); sid != "" {
+	if sid := SessionIDFromToken(ticket); sid != "" {
 		sessionBound, err := csrfToken(func(nonce []byte) []byte {
 			return sessionCSRFSignature(sid, nonce)
 		})

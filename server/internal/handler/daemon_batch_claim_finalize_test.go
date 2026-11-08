@@ -12,7 +12,7 @@ type batchClaimReceiptResponse struct {
 	Tasks []struct {
 		ID                  string   `json:"id"`
 		RuntimeID           string   `json:"runtime_id"`
-		AuthToken           string   `json:"auth_token"`
+		AuthTicket          string   `json:"auth_token"`
 		DeliveredCommentIDs []string `json:"delivered_comment_ids"`
 	} `json:"tasks"`
 }

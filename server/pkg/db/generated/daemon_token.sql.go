@@ -11,14 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createDaemonToken = `-- name: CreateDaemonToken :one
+const createDaemonTicket = `-- name: CreateDaemonToken :one
 INSERT INTO daemon_token (token_hash, workspace_id, daemon_id, expires_at, owner_id)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id, token_hash, workspace_id, daemon_id, expires_at, created_at, owner_id
 `
 
 type CreateDaemonTokenParams struct {
-	TokenHash   string             `json:"token_hash"`
+	TicketHash  string             `json:"token_hash"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
 	DaemonID    string             `json:"daemon_id"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
@@ -28,8 +28,8 @@ type CreateDaemonTokenParams struct {
 // owner_id binds the token to the runtime owner it was issued for (MUL-8154);
 // NULL only for Qoder-managed tokens.
 func (q *Queries) CreateDaemonToken(ctx context.Context, arg CreateDaemonTokenParams) (DaemonToken, error) {
-	row := q.db.QueryRow(ctx, createDaemonToken,
-		arg.TokenHash,
+	row := q.db.QueryRow(ctx, createDaemonTicket,
+		arg.TicketHash,
 		arg.WorkspaceID,
 		arg.DaemonID,
 		arg.ExpiresAt,
@@ -38,7 +38,7 @@ func (q *Queries) CreateDaemonToken(ctx context.Context, arg CreateDaemonTokenPa
 	var i DaemonToken
 	err := row.Scan(
 		&i.ID,
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.WorkspaceID,
 		&i.DaemonID,
 		&i.ExpiresAt,
@@ -48,7 +48,7 @@ func (q *Queries) CreateDaemonToken(ctx context.Context, arg CreateDaemonTokenPa
 	return i, err
 }
 
-const deleteDaemonTokensByWorkspaceAndDaemons = `-- name: DeleteDaemonTokensByWorkspaceAndDaemons :many
+const deleteDaemonTicketsByWorkspaceAndDaemons = `-- name: DeleteDaemonTokensByWorkspaceAndDaemons :many
 DELETE FROM daemon_token
 WHERE workspace_id = $1
   AND daemon_id = ANY($2::text[])
@@ -68,18 +68,18 @@ type DeleteDaemonTokensByWorkspaceAndDaemonsParams struct {
 // can keep using its stale token until cache eviction even though the
 // DB row is gone.
 func (q *Queries) DeleteDaemonTokensByWorkspaceAndDaemons(ctx context.Context, arg DeleteDaemonTokensByWorkspaceAndDaemonsParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, deleteDaemonTokensByWorkspaceAndDaemons, arg.WorkspaceID, arg.DaemonIds)
+	rows, err := q.db.Query(ctx, deleteDaemonTicketsByWorkspaceAndDaemons, arg.WorkspaceID, arg.DaemonIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []string{}
 	for rows.Next() {
-		var token_hash string
-		if err := rows.Scan(&token_hash); err != nil {
+		var ticket_hash string
+		if err := rows.Scan(&ticket_hash); err != nil {
 			return nil, err
 		}
-		items = append(items, token_hash)
+		items = append(items, ticket_hash)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -87,27 +87,27 @@ func (q *Queries) DeleteDaemonTokensByWorkspaceAndDaemons(ctx context.Context, a
 	return items, nil
 }
 
-const deleteExpiredDaemonTokens = `-- name: DeleteExpiredDaemonTokens :exec
+const deleteExpiredDaemonTickets = `-- name: DeleteExpiredDaemonTokens :exec
 DELETE FROM daemon_token
 WHERE expires_at <= now()
 `
 
 func (q *Queries) DeleteExpiredDaemonTokens(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteExpiredDaemonTokens)
+	_, err := q.db.Exec(ctx, deleteExpiredDaemonTickets)
 	return err
 }
 
-const getDaemonTokenByHash = `-- name: GetDaemonTokenByHash :one
+const getDaemonTicketByHash = `-- name: GetDaemonTokenByHash :one
 SELECT id, token_hash, workspace_id, daemon_id, expires_at, created_at, owner_id FROM daemon_token
 WHERE token_hash = $1 AND expires_at > now()
 `
 
-func (q *Queries) GetDaemonTokenByHash(ctx context.Context, tokenHash string) (DaemonToken, error) {
-	row := q.db.QueryRow(ctx, getDaemonTokenByHash, tokenHash)
+func (q *Queries) GetDaemonTokenByHash(ctx context.Context, ticketHash string) (DaemonToken, error) {
+	row := q.db.QueryRow(ctx, getDaemonTicketByHash, ticketHash)
 	var i DaemonToken
 	err := row.Scan(
 		&i.ID,
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.WorkspaceID,
 		&i.DaemonID,
 		&i.ExpiresAt,
@@ -117,7 +117,7 @@ func (q *Queries) GetDaemonTokenByHash(ctx context.Context, tokenHash string) (D
 	return i, err
 }
 
-const listLegacyDaemonTokenOwners = `-- name: ListLegacyDaemonTokenOwners :many
+const listLegacyDaemonTicketOwners = `-- name: ListLegacyDaemonTokenOwners :many
 SELECT DISTINCT tt.user_id
 FROM task_token tt
 JOIN agent_task_queue q ON q.id = tt.task_id
@@ -145,7 +145,7 @@ type ListLegacyDaemonTokenOwnersParams struct {
 // runtime of the token's daemon. Callers accept the result only when exactly
 // one owner matches; LIMIT 2 is enough to detect ambiguity.
 func (q *Queries) ListLegacyDaemonTokenOwners(ctx context.Context, arg ListLegacyDaemonTokenOwnersParams) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, listLegacyDaemonTokenOwners, arg.WorkspaceID, arg.CreatedAt, arg.DaemonID)
+	rows, err := q.db.Query(ctx, listLegacyDaemonTicketOwners, arg.WorkspaceID, arg.CreatedAt, arg.DaemonID)
 	if err != nil {
 		return nil, err
 	}

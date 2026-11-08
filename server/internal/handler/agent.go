@@ -149,7 +149,7 @@ type AgentResponse struct {
 // gateway secret. The mask is a sentinel — when the UI later PATCHes the
 // agent and submits the same mask verbatim under that field, the update
 // handler restores the persisted token instead of overwriting it.
-const runtimeConfigGatewayTokenMask = "***"
+const runtimeConfigGatewayTicketMask = "***"
 
 func (h *Handler) agentToResponse(a db.Agent) AgentResponse {
 	var rc any
@@ -260,7 +260,7 @@ func maskGatewayToken(rc any) {
 	if tok == "" {
 		return
 	}
-	gw["token"] = runtimeConfigGatewayTokenMask
+	gw["token"] = runtimeConfigGatewayTicketMask
 }
 
 // preserveMaskedGatewayToken substitutes the previously persisted gateway
@@ -279,13 +279,13 @@ func preserveMaskedGatewayToken(incoming any, persistedRuntimeConfig []byte) {
 		return
 	}
 	tok, _ := gw["token"].(string)
-	if tok != runtimeConfigGatewayTokenMask {
+	if tok != runtimeConfigGatewayTicketMask {
 		return
 	}
 	// The incoming token is the mask — fish the real one out of the row.
 	var prev struct {
 		Gateway struct {
-			Token string `json:"token"`
+			Ticket string `json:"token"`
 		} `json:"gateway"`
 	}
 	if len(persistedRuntimeConfig) == 0 {
@@ -293,11 +293,11 @@ func preserveMaskedGatewayToken(incoming any, persistedRuntimeConfig []byte) {
 		delete(gw, "token")
 		return
 	}
-	if err := json.Unmarshal(persistedRuntimeConfig, &prev); err != nil || prev.Gateway.Token == "" {
+	if err := json.Unmarshal(persistedRuntimeConfig, &prev); err != nil || prev.Gateway.Ticket == "" {
 		delete(gw, "token")
 		return
 	}
-	gw["token"] = prev.Gateway.Token
+	gw["token"] = prev.Gateway.Ticket
 }
 
 // openclawModelOverride reads the agent's persistent underlying-model override
@@ -417,7 +417,7 @@ type AgentTaskResponse struct {
 	// RemoteMCPDaemonToken is a short-lived, workspace-and-daemon scoped
 	// credential used only by the local daemon's write-only Remote MCP broker.
 	// It is never injected into the agent process.
-	RemoteMCPDaemonToken string `json:"remote_mcp_daemon_token,omitempty"`
+	RemoteMCPDaemonTicket string `json:"remote_mcp_daemon_token,omitempty"`
 	// WorkspaceContext is the workspace-level system prompt set in workspace
 	// settings (`workspace.context` DB column). Injected into the agent brief
 	// as `## Workspace Context` so every agent running in this workspace —
@@ -628,7 +628,7 @@ type AgentTaskResponse struct {
 	// env-management endpoint. Claim fails closed when the runtime has no
 	// owning user; the daemon must not fall back to its own credential. See
 	// MUL-3292.
-	AuthToken string `json:"auth_token,omitempty"`
+	AuthTicket string `json:"auth_token,omitempty"`
 }
 
 // TaskAttribution is the wire shape of a run's accountable-human provenance

@@ -26,7 +26,7 @@ func dingtalkMockServer(t *testing.T, tokenOK bool) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path != accessTokenPath {
+		if r.URL.Path != accessTicketPath {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"code":"unknownPath","message":"unknown"}`))
 			return
@@ -46,7 +46,7 @@ func byoParams(ws, agent string) RegisterBYOParams {
 		AgentID:     pgtypeUUID(agent),
 		InitiatorID: pgtypeUUID("33333333-3333-3333-3333-333333333333"),
 		AppKey:      "ding-app-key-xyz",
-		AppSecret:   "ding-app-secret-xyz",
+		AppSealed:   "ding-app-secret-xyz",
 	}
 }
 
@@ -92,15 +92,15 @@ func TestRegisterBYO_PersistsEncryptedSecretKeyedByAppID(t *testing.T) {
 	}
 	// AppSecret stored encrypted (never plaintext) and decrypts back. AppKey is
 	// not a secret and lives in app_id in the clear (like Feishu's app_id).
-	if cfg.AppSecretEncrypted == "" {
+	if cfg.AppSealedEncrypted == "" {
 		t.Fatalf("app secret must be stored: %+v", cfg)
 	}
-	if strings.Contains(cfg.AppSecretEncrypted, "ding-app-secret-xyz") {
+	if strings.Contains(cfg.AppSealedEncrypted, "ding-app-secret-xyz") {
 		t.Error("app secret must be stored encrypted, not plaintext")
 	}
-	secret, err := decryptToken(cfg.AppSecretEncrypted, svc.box.Open)
-	if err != nil || secret != "ding-app-secret-xyz" {
-		t.Errorf("decrypted app secret = %q, %v", secret, err)
+	sealed, err := decryptToken(cfg.AppSealedEncrypted, svc.box.Open)
+	if err != nil || sealed != "ding-app-secret-xyz" {
+		t.Errorf("decrypted app secret = %q, %v", sealed, err)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestRegisterBYO_MissingCredentials(t *testing.T) {
 	}
 	// Empty AppSecret.
 	p = byoParams("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
-	p.AppSecret = ""
+	p.AppSealed = ""
 	if _, err := svc.RegisterBYO(context.Background(), p); err != ErrInvalidAppSecret {
 		t.Errorf("empty app secret = %v, want ErrInvalidAppSecret", err)
 	}

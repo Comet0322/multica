@@ -145,9 +145,9 @@ func surfaceScript(t *testing.T, installationID, surfaceKey string) (*httptest.R
 	if err := json.Unmarshal(recorder.Body.Bytes(), &launch); err != nil {
 		t.Fatalf("decode surface launch: %v", err)
 	}
-	token := launch.URL[strings.LastIndex(launch.URL, "/")+1:]
+	ticket := launch.URL[strings.LastIndex(launch.URL, "/")+1:]
 	documentRecorder := httptest.NewRecorder()
-	documentRequest := pluginHandlerRequest(http.MethodGet, "/plugin-surfaces/"+token, nil, map[string]string{"token": token})
+	documentRequest := pluginHandlerRequest(http.MethodGet, "/plugin-surfaces/"+ticket, nil, map[string]string{"token": ticket})
 	documentRequest.Host = "plugin-content.example.test"
 	testHandler.ServePluginSurface(documentRecorder, documentRequest)
 	if documentRecorder.Code != http.StatusOK {

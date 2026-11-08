@@ -120,10 +120,10 @@ func TestThinkingLevelWarningRedactsBeforeReporting(t *testing.T) {
 	t.Parallel()
 	d, rec := newTranscriptRecorder(t)
 	var seq atomic.Int32
-	secret := "sk-" + strings.Repeat("a", 48)
-	d.reportThinkingLevelWarning(context.Background(), "task-effort", "Model "+secret+" does not support effort.", &seq, quietTaskLog())
+	sealed := "sk-" + strings.Repeat("a", 48)
+	d.reportThinkingLevelWarning(context.Background(), "task-effort", "Model "+sealed+" does not support effort.", &seq, quietTaskLog())
 	rows := rec.snapshot()
-	if len(rows) != 1 || strings.Contains(rows[0].Content, secret) {
+	if len(rows) != 1 || strings.Contains(rows[0].Content, sealed) {
 		t.Fatalf("warning must be redacted before leaving the daemon: %+v", rows)
 	}
 }

@@ -13,7 +13,7 @@ func TestRepositoryCredentialRequestOnly(t *testing.T) {
 	if err := os.WriteFile(file, []byte("test-secret\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	b := &Bridge{cfg: Config{GitHubTokenFiles: map[string]string{"https://github.com/Owner/Repo.git": file}}}
+	b := &Bridge{cfg: Config{GitHubTicketFiles: map[string]string{"https://github.com/Owner/Repo.git": file}}}
 	r := &run{Resources: []map[string]any{{"type": "github_repository", "url": "https://github.com/owner/repo", "checkout": map[string]string{"type": "branch", "name": "main"}}}}
 	request, err := b.sessionResources(r.Resources)
 	if err != nil {
@@ -53,8 +53,8 @@ func TestRepositoryCredentialValidation(t *testing.T) {
 		}
 	}
 	file := filepath.Join(t.TempDir(), "token")
-	for _, secret := range []string{"", "first\nsecond", strings.Repeat("x", 16385)} {
-		if err := os.WriteFile(file, []byte(secret), 0600); err != nil {
+	for _, sealed := range []string{"", "first\nsecond", strings.Repeat("x", 16385)} {
+		if err := os.WriteFile(file, []byte(sealed), 0600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := readRepositoryToken(file); err == nil {

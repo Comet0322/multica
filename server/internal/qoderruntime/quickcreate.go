@@ -26,7 +26,7 @@ type quickCreate struct {
 	Created   bool `json:"created,omitempty"`
 	// The task credential is never persisted; after a restart it is gone and
 	// the run fails instead of creating the issue.
-	token string
+	ticket string
 }
 
 var quickCreatePriorities = map[string]bool{"urgent": true, "high": true, "medium": true, "low": true}
@@ -38,7 +38,7 @@ func prepareQuickCreate(t *claimedTask, r *run) *run {
 		AttachmentIDs: t.QuickCreateAttachmentIDs,
 		ProjectID:     t.ProjectID,
 		ParentIssueID: t.ParentIssueID,
-		token:         t.AuthToken,
+		ticket:        t.AuthTicket,
 	}
 	switch {
 	case t.SquadID != "":
@@ -81,7 +81,7 @@ func (b *Bridge) createQuickIssue(ctx context.Context, r *run) error {
 		r.Outcome, r.Failure = "failed", reason
 		return b.persist()
 	}
-	if qc.token == "" {
+	if qc.ticket == "" {
 		if qc.Submitted {
 			// The create request may have reached Multica before the restart.
 			return fail("the Qoder bridge restarted while creating the issue; check whether it was created before retrying quick-create")
@@ -124,7 +124,7 @@ func (b *Bridge) createQuickIssue(ctx context.Context, r *run) error {
 		return err
 	}
 	taskAPI := *b.multica
-	taskAPI.token = qc.token
+	taskAPI.ticket = qc.ticket
 	var created struct {
 		Identifier string `json:"identifier"`
 	}

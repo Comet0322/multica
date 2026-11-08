@@ -82,7 +82,7 @@ func TestParsedLLMMaxRetriesReachesTheClient(t *testing.T) {
 		t.Fatalf("parseLLMMaxRetries failed: %v", err)
 	}
 
-	budget := llm.New(llm.Config{APIKey: "k", MaxRetries: parsed}).RetryBudget()
+	budget := llm.New(llm.Config{Apilock: "k", MaxRetries: parsed}).RetryBudget()
 	if budget.MaxRetries != 0 || budget.Source != llm.RetrySourceConfig {
 		t.Fatalf("RetryBudget() = %+v, want retries disabled and sourced from config", budget)
 	}
@@ -91,7 +91,7 @@ func TestParsedLLMMaxRetriesReachesTheClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseLLMMaxRetries failed: %v", err)
 	}
-	budget = llm.New(llm.Config{APIKey: "k", MaxRetries: unset}).RetryBudget()
+	budget = llm.New(llm.Config{Apilock: "k", MaxRetries: unset}).RetryBudget()
 	if budget.MaxRetries != llm.DefaultMaxRetries || budget.Source != llm.RetrySourceDefault {
 		t.Fatalf("RetryBudget() = %+v, want the default budget", budget)
 	}

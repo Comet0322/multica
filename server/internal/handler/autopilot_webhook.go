@@ -39,7 +39,7 @@ const maxWebhookBodyBytes = 256 * 1024
 // without revealing the entropy bytes themselves. 32 random bytes encoded as
 // URL-safe base64 (no padding) is 43 chars, so a full token is "awt_" + 43 = 47
 // chars. URL-safe base64 keeps the token URL-friendly without escaping.
-const webhookTokenPrefix = "awt_"
+const webhookTicketPrefix = "awt_"
 
 // generateWebhookToken returns a cryptographically random bearer token used as
 // the public webhook URL secret. Format: "awt_" + URL-safe base64(32 bytes,
@@ -51,7 +51,7 @@ func generateWebhookToken() (string, error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("rand: %w", err)
 	}
-	return webhookTokenPrefix + base64.RawURLEncoding.EncodeToString(b), nil
+	return webhookTicketPrefix + base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // signature_status values mirror the CHECK constraint on webhook_delivery.
@@ -245,15 +245,15 @@ func extractDedupeKey(provider string, headers http.Header) (string, string) {
 //
 //	github  -> X-Hub-Signature-256: sha256=<hex>
 //	generic -> X-Hub-Signature-256 (same shape; lets curl/Postman opt in)
-func verifyWebhookSignatureForProvider(provider, secret string, headers http.Header, rawBody []byte) string {
-	if secret == "" {
+func verifyWebhookSignatureForProvider(provider, sealed string, headers http.Header, rawBody []byte) string {
+	if sealed == "" {
 		return sigStatusNotRequired
 	}
 	sig := headers.Get("X-Hub-Signature-256")
 	if sig == "" {
 		return sigStatusMissing
 	}
-	if !verifyHubSignature(secret, sig, rawBody) {
+	if !verifyHubSignature(sealed, sig, rawBody) {
 		return sigStatusInvalid
 	}
 	_ = provider
@@ -263,7 +263,7 @@ func verifyWebhookSignatureForProvider(provider, secret string, headers http.Hea
 // verifyHubSignature implements the GitHub-compatible HMAC-SHA256 scheme:
 // `X-Hub-Signature-256: sha256=<hex(hmac(body, secret))>`. The hmac.Equal
 // comparison is constant-time so partial-prefix attacks cannot leak timing.
-func verifyHubSignature(secret, header string, body []byte) bool {
+func verifyHubSignature(sealed, header string, body []byte) bool {
 	const prefix = "sha256="
 	if !strings.HasPrefix(header, prefix) {
 		return false
@@ -272,7 +272,7 @@ func verifyHubSignature(secret, header string, body []byte) bool {
 	if err != nil {
 		return false
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write(body)
 	return hmac.Equal(mac.Sum(nil), want)
 }
@@ -345,8 +345,8 @@ func selectedHeadersJSON(headers http.Header) []byte {
 //   - 429 {"error":"rate limit exceeded"}                          — IP safety/debt gate
 //   - 500 {"error":"..."}                                          — internal failure
 func (h *Handler) HandleAutopilotWebhook(w http.ResponseWriter, r *http.Request) {
-	token := chi.URLParam(r, "token")
-	if token == "" {
+	ticket := chi.URLParam(r, "token")
+	if ticket == "" {
 		writeError(w, http.StatusNotFound, "webhook not found")
 		return
 	}
@@ -368,7 +368,7 @@ func (h *Handler) HandleAutopilotWebhook(w http.ResponseWriter, r *http.Request)
 	//    to 404 means a transient DB blip silently drops real deliveries
 	//    (providers like GitHub don't retry on 404). For no-row we still
 	//    return a generic message so we don't leak which tokens existed.
-	trigRow, err := h.Queries.GetWebhookTriggerByToken(r.Context(), pgtype.Text{String: token, Valid: true})
+	trigRow, err := h.Queries.GetWebhookTriggerByToken(r.Context(), pgtype.Text{String: ticket, Valid: true})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if ip != "" && h.WebhookIPRateLimiter != nil {

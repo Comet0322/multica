@@ -20,7 +20,7 @@ import (
 // before the body was ever parsed, so the cached token was never dropped
 // and every later outbound replayed it until the process restarted.
 
-const invalidTokenMsg = "Invalid access token for authorization. Please make a request with token attached."
+const invalidTicketMsg = "Invalid access token for authorization. Please make a request with token attached."
 
 // writeLarkStatusError writes the non-2xx + business-code reply Lark
 // actually sends.
@@ -33,12 +33,12 @@ func writeLarkStatusError(w http.ResponseWriter, status, code int, msg string) {
 // stubRotatingToken hands out a different token per mint so a test can
 // tell the replayed request apart from the original one. The last entry
 // is repeated once the list runs out.
-func stubRotatingToken(f *larkFakeServer, tokens ...string) {
+func stubRotatingToken(f *larkFakeServer, tickets ...string) {
 	f.mux.HandleFunc("/open-apis/auth/v3/tenant_access_token/internal", func(w http.ResponseWriter, r *http.Request) {
 		n := int(f.tokenN.Add(1))
-		tok := tokens[len(tokens)-1]
-		if n <= len(tokens) {
-			tok = tokens[n-1]
+		tok := tickets[len(tickets)-1]
+		if n <= len(tickets) {
+			tok = tickets[n-1]
 		}
 		writeJSON(w, map[string]any{
 			"code":                0,
@@ -52,7 +52,7 @@ func stubRotatingToken(f *larkFakeServer, tokens ...string) {
 func (c *httpAPIClient) cachedTokenValue(appID string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	t, ok := c.tokens[appID]
+	t, ok := c.tickets[appID]
 	if !ok {
 		return "", false
 	}
@@ -73,7 +73,7 @@ func TestHTTPClient_SendCard_HTTP400TokenExpired_RefreshesAndRetries(t *testing.
 			if got := r.Header.Get("Authorization"); got != "Bearer tok_dead" {
 				t.Errorf("first attempt auth = %q, want the cached token", got)
 			}
-			writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTokenMsg)
+			writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTicketMsg)
 		case 2:
 			if got := r.Header.Get("Authorization"); got != "Bearer tok_fresh" {
 				t.Errorf("retry auth = %q, want the refreshed token", got)
@@ -117,7 +117,7 @@ func TestHTTPClient_SendMarkdownCard_HTTP400TokenExpired_StopsAfterOneRetry(t *t
 	var attempts atomic.Int32
 	fake.mux.HandleFunc("/open-apis/im/v1/messages", func(w http.ResponseWriter, r *http.Request) {
 		attempts.Add(1)
-		writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTokenMsg)
+		writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTicketMsg)
 	})
 
 	c := newTestClient(fake, time.Now)
@@ -151,7 +151,7 @@ func TestHTTPClient_AddMessageReaction_HTTP400TokenExpired_RefreshesAndRetries(t
 	var attempts atomic.Int32
 	fake.mux.HandleFunc("/open-apis/im/v1/messages/om_1/reactions", func(w http.ResponseWriter, r *http.Request) {
 		if n := attempts.Add(1); n == 1 {
-			writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTokenMsg)
+			writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTicketMsg)
 			return
 		}
 		writeJSON(w, map[string]any{"code": 0, "data": map[string]string{"reaction_id": "re_1"}})
@@ -217,7 +217,7 @@ func TestHTTPClient_DownloadResource_HTTP400TokenExpired_RefreshesAndRetries(t *
 	var attempts atomic.Int32
 	fake.mux.HandleFunc("/open-apis/im/v1/messages/om_1/resources/img_1", func(w http.ResponseWriter, r *http.Request) {
 		if n := attempts.Add(1); n == 1 {
-			writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTokenMsg)
+			writeLarkStatusError(w, http.StatusBadRequest, codeTenantTokenInvalid, invalidTicketMsg)
 			return
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer tok_fresh" {
@@ -291,7 +291,7 @@ func TestIsThreadReplyUnsupported_ReadsNon2xxBodyCode(t *testing.T) {
 	if !isThreadReplyUnsupported(&larkAPIStatusError{StatusCode: 400, Code: 230071, Msg: "no reply in thread"}) {
 		t.Error("230071 delivered as HTTP 400 should classify as thread-reply-unsupported")
 	}
-	if isThreadReplyUnsupported(&larkAPIStatusError{StatusCode: 400, Code: codeTenantTokenInvalid, Msg: invalidTokenMsg}) {
+	if isThreadReplyUnsupported(&larkAPIStatusError{StatusCode: 400, Code: codeTenantTokenInvalid, Msg: invalidTicketMsg}) {
 		t.Error("a token failure must never trigger the chat-level fallback")
 	}
 	// A gateway error carries no Lark code: delivery is ambiguous and the

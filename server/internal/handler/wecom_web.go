@@ -117,7 +117,7 @@ func (h *Handler) ListWecomInstallations(w http.ResponseWriter, r *http.Request)
 // stack past the wecom.InstallationService.Upsert call.
 type RegisterWecomBYORequest struct {
 	BotID  string `json:"bot_id"`
-	Secret string `json:"secret"`
+	Sealed string `json:"secret"`
 
 	// BotName is the bot's name as it appears in a chat. Optional, and used
 	// for one thing: recognising the bot's own @-mention in a group, which
@@ -178,7 +178,7 @@ func (h *Handler) RegisterWecomBYO(w http.ResponseWriter, r *http.Request) {
 		AgentID:         agentUUID,
 		InstallerUserID: initiatorUUID,
 		BotID:           strings.TrimSpace(body.BotID),
-		Secret:          strings.TrimSpace(body.Secret),
+		Sealed:          strings.TrimSpace(body.Sealed),
 		BotDisplayName:  strings.TrimSpace(body.BotName),
 	})
 	if err != nil {
@@ -341,7 +341,7 @@ func (h *Handler) wecomInstallService() *wecom.InstallationService {
 // RedeemWecomBindingTokenRequest carries the raw token the user clicked
 // through from the bot's "link your Multica account" prompt.
 type RedeemWecomBindingTokenRequest struct {
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 // RedeemWecomBindingTokenResponse echoes the bound workspace / installation
@@ -376,7 +376,7 @@ func (h *Handler) RedeemWecomBindingToken(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Token == "" {
+	if req.Ticket == "" {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
 	}
@@ -384,7 +384,7 @@ func (h *Handler) RedeemWecomBindingToken(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	redeemed, err := h.WecomBindingTokens.RedeemAndBind(r.Context(), req.Token, userUUID)
+	redeemed, err := h.WecomBindingTokens.RedeemAndBind(r.Context(), req.Ticket, userUUID)
 	if err != nil {
 		switch {
 		case errors.Is(err, wecom.ErrBindingTokenInvalid):

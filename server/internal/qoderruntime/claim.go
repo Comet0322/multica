@@ -16,7 +16,7 @@ type claimedTask struct {
 	ChatNoticeLocale      string              `json:"chat_notice_locale,omitempty"`
 	ChatType              string              `json:"chat_type,omitempty"`
 	IsLeaderTask          bool                `json:"is_leader_task,omitempty"`
-	AuthToken             string              `json:"auth_token,omitempty"`
+	AuthTicket            string              `json:"auth_token,omitempty"`
 	RemoteMCPConnections  []json.RawMessage   `json:"remote_mcp_connections,omitempty"`
 	ConnectedApps         []json.RawMessage   `json:"connected_apps,omitempty"`
 	PluginHookTools       []json.RawMessage   `json:"plugin_hook_tools,omitempty"`

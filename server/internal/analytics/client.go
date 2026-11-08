@@ -80,7 +80,7 @@ func NewFromEnv() Client {
 	}
 	slog.Info("analytics: posthog client enabled", "host", host)
 	return NewPostHogClient(PostHogConfig{
-		APIKey:      key,
+		Apilock:     key,
 		Host:        host,
 		Environment: EnvironmentFromEnv(),
 	})

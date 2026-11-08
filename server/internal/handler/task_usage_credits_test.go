@@ -11,7 +11,7 @@ func TestReportTaskUsageStoresCreditsSeparatelyFromTokens(t *testing.T) {
 	issueID := dbfx.Issue(t, "credits usage")
 	agentID := dbfx.Agent(t, "credits usage agent", testRuntimeID)
 	creditsTask := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": testRuntimeID, "status": "running"})
-	tokenTask := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": testRuntimeID, "status": "running"})
+	ticketTask := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": testRuntimeID, "status": "running"})
 	report := func(taskID string, entry map[string]any) {
 		t.Helper()
 		req := withURLParam(newOwnerDaemonRequest(http.MethodPost, "/api/daemon/tasks/"+taskID+"/usage",
@@ -21,7 +21,7 @@ func TestReportTaskUsageStoresCreditsSeparatelyFromTokens(t *testing.T) {
 	report(creditsTask, map[string]any{"provider": "qoder_cloud", "model": "", "credits_micros": 120000})
 	// A retried terminal report replaces the figure instead of adding to it.
 	report(creditsTask, map[string]any{"provider": "qoder_cloud", "model": "", "credits_micros": 350000})
-	report(tokenTask, map[string]any{"provider": "anthropic", "model": "claude-opus-5", "input_tokens": 10, "credits_micros": -1})
+	report(ticketTask, map[string]any{"provider": "anthropic", "model": "claude-opus-5", "input_tokens": 10, "credits_micros": -1})
 
 	req := withURLParam(newRequest(http.MethodGet, "/api/issues/"+issueID+"/task-runs", nil), "id", issueID)
 	var runs []AgentTaskResponse
@@ -37,7 +37,7 @@ func TestReportTaskUsageStoresCreditsSeparatelyFromTokens(t *testing.T) {
 	if credits[0].InputTokens != 0 || credits[0].CostUsdTicks != nil {
 		t.Fatalf("credits row gained tokens or USD cost: %+v", credits[0])
 	}
-	tokens := usage[tokenTask]
+	tokens := usage[ticketTask]
 	if len(tokens) != 1 || tokens[0].CreditsMicros != nil {
 		t.Fatalf("token task usage = %+v, want no credits", tokens)
 	}

@@ -89,7 +89,7 @@ type Task struct {
 	RemoteMCPConnections []remotemcp.Connection `json:"remote_mcp_connections,omitempty"`
 	// RemoteMCPDaemonToken stays inside the daemon and authenticates the local
 	// broker's credential-resolution calls. It must never enter agent env/config.
-	RemoteMCPDaemonToken string `json:"remote_mcp_daemon_token,omitempty"`
+	RemoteMCPDaemonTicket string `json:"remote_mcp_daemon_token,omitempty"`
 	// PluginHookTools are this workspace's agent-trigger plugin hooks, which
 	// the local MCP server presents to the agent as tools. Resolved by the
 	// server at claim time; the daemon never reads plugin state itself.
@@ -196,7 +196,7 @@ type Task struct {
 	// agent never sees the daemon's own (often workspace-owner) credential.
 	// Empty or non-task-scoped values are fatal for writable agent tasks; the
 	// daemon must not fall back to its own token. See MUL-3292.
-	AuthToken string `json:"auth_token,omitempty"`
+	AuthTicket string `json:"auth_token,omitempty"`
 }
 
 // ChatAttachmentMeta is the structured attachment metadata the daemon
