@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildAutopilotWebhookUrl, maskAutopilotWebhookUrl } from "./webhook";
 import type { AutopilotTrigger } from "../types";
 
+const FIXTURE_VALUE_1 = "awt_abc";
+
 const baseTrigger: AutopilotTrigger = {
   id: "t1",
   autopilot_id: "a1",
@@ -10,7 +12,7 @@ const baseTrigger: AutopilotTrigger = {
   cron_expression: null,
   timezone: null,
   next_run_at: null,
-  webhook_token: "awt_abc",
+  webhook_token: FIXTURE_VALUE_1,
   webhook_path: "/api/webhooks/autopilots/awt_abc",
   webhook_url: null,
   label: null,

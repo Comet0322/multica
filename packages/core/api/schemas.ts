@@ -341,12 +341,8 @@ export const PluginSurfaceLaunchSchema = z.object({
   digest: z.string().default(""),
 }).loose();
 
-export const EMPTY_PLUGIN_SURFACE_LAUNCH: PluginSurfaceLaunch = {
-  url: "",
-  bridge_token: "",
-  version: "",
-  digest: "",
-};
+export const EMPTY_PLUGIN_SURFACE_LAUNCH: PluginSurfaceLaunch =
+  PluginSurfaceLaunchSchema.parse({});
 
 export const GitHubInstallationSchema = z.object({
   id: z.string(),

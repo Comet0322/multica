@@ -21,6 +21,9 @@ import {
 } from "../drafts/cleanup-registry";
 import { AuthInitializer } from "./auth-initializer";
 
+const FIXTURE_VALUE_1 = "token-1";
+const FIXTURE_VALUE_2 = "stale-token";
+
 const logger = vi.hoisted(() => ({
   debug: vi.fn(),
   info: vi.fn(),
@@ -445,7 +448,7 @@ describe("AuthInitializer recovery", () => {
   it("erases the previous user's client state when a live session is rejected", async () => {
     const shared = "acme";
     const storage = makeStorage({
-      multica_token: "token-1",
+      multica_token: FIXTURE_VALUE_1,
       "multica_comment_drafts:acme": '{"issue-1":"A private draft"}',
       multica_tabs: '[{"path":"/acme/issues/secret"}]',
     });
@@ -496,7 +499,7 @@ describe("AuthInitializer recovery", () => {
     ["gateway timeout", new ApiError("slow", 504, "Gateway Timeout")],
   ])("keeps the session and every draft when getMe fails: %s", async (_label, error) => {
     const before = {
-      multica_token: "token-1",
+      multica_token: FIXTURE_VALUE_1,
       "multica_comment_drafts:acme": '{"issue-1":"unsent work"}',
       multica_tabs: '[{"path":"/acme/issues/1"}]',
     };
@@ -521,7 +524,7 @@ describe("AuthInitializer recovery", () => {
 
   it("erases the previous session on a cold start with a stale token", async () => {
     const storage = makeStorage({
-      multica_token: "stale-token",
+      multica_token: FIXTURE_VALUE_2,
       "multica_comment_drafts:acme": '{"issue-1":"A private draft"}',
       "multica:chat:activeSessionId:acme": "session-1",
       multica_tabs: '[{"path":"/acme/issues/secret"}]',

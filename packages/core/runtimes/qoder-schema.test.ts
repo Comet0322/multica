@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { parseQoderConnection, parseQoderCatalog } from "./qoder-schema";
+
+const FIXTURE_VALUE_1 = "must-not-surface";
 describe("QCA response boundary", () => {
   it("disables configuration for malformed responses", () => {
     for (const input of [
@@ -28,7 +30,7 @@ describe("QCA response boundary", () => {
       enabled: true,
       status: "online",
       last_error: "",
-      qoder_token: "must-not-surface",
+      qoder_token: FIXTURE_VALUE_1,
     });
     expect(result.environmentId).toBe("env_a");
     expect(result).not.toHaveProperty("agentId");

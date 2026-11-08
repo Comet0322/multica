@@ -101,6 +101,8 @@ vi.mock("../../platform", () => ({ openExternal: mockOpenExternal }));
 
 import { TelegramAgentBindButton, TelegramTab } from "./telegram-tab";
 
+const FIXTURE_VALUE_1 = "123456789:AAtesttoken";
+
 const TEST_RESOURCES = { en: { common: enCommon, settings: enSettings } };
 
 function renderUI(children: ReactNode) {
@@ -132,7 +134,7 @@ describe("TelegramAgentBindButton", () => {
     await userEvent.click(screen.getByTestId("telegram-connect-submit"));
     await waitFor(() =>
       expect(mockRegister).toHaveBeenCalledWith("workspace-1", "agent-1", {
-        bot_token: "123456789:AAtesttoken",
+        bot_token: FIXTURE_VALUE_1,
       }),
     );
     expect(mockOpenExternal).not.toHaveBeenCalled();

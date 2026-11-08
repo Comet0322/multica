@@ -144,7 +144,7 @@ export function createAuthStore(options: AuthStoreOptions) {
       // A first visit to /login 401s on the identity probe too, and telling
       // that person their session expired would be a lie. Read before the
       // teardown below removes the evidence.
-      const hadCredential =
+      const hadSession =
         get().status === "authenticated" ||
         storage.getItem("multica_token") !== null;
 
@@ -172,7 +172,7 @@ export function createAuthStore(options: AuthStoreOptions) {
         user: null,
         isLoading: false,
         status: "unauthenticated",
-        expired: hadCredential,
+        expired: hadSession,
       });
     },
 

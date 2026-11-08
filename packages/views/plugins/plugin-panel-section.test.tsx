@@ -5,11 +5,16 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
 import enIssues from "../locales/en/issues.json";
 
+const FIXTURE = vi.hoisted(() => ({
+  FIXTURE_VALUE_1: "single-use-proof",
+  FIXTURE_VALUE_2: "replacement-proof",
+}));
+
 const data = vi.hoisted(() => ({
   installed: { plugins: [] as Array<Record<string, unknown>> },
   launch: {
     url: "https://plugin-content.example.test/plugin-surfaces/opaque",
-    bridge_token: "single-use-proof",
+    bridge_token: FIXTURE.FIXTURE_VALUE_1,
     version: "1.0.0",
     digest: "abc",
   } as Record<string, unknown> | null,
@@ -72,7 +77,7 @@ describe("PluginPanelSection", () => {
     data.installed.plugins = [];
     data.launch = {
       url: "https://plugin-content.example.test/plugin-surfaces/opaque",
-      bridge_token: "single-use-proof",
+      bridge_token: FIXTURE.FIXTURE_VALUE_1,
       version: "1.0.0",
       digest: "abc",
     };
@@ -212,7 +217,7 @@ describe("PluginPanelSection", () => {
 
     data.launch = {
       url: "https://plugin-content.example.test/plugin-surfaces/replacement",
-      bridge_token: "replacement-proof",
+      bridge_token: FIXTURE.FIXTURE_VALUE_2,
       version: "1.0.1",
       digest: "def",
     };

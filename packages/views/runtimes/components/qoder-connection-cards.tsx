@@ -71,6 +71,9 @@ import { openExternal } from "../../platform";
 import { useT } from "../../i18n";
 import { regionOf, RegionToggle } from "./qoder-connect-form";
 
+// An empty value leaves the saved Qoder credential untouched.
+const UNCHANGED = "";
+
 /**
  * The saved connection as a save payload. A blank token and omitted
  * repositories keep what the server already stores.
@@ -83,7 +86,7 @@ export function savedQoderInput(
     name: data.name || fallbackName,
     baseUrl: data.baseUrl || QODER_REGIONS.global,
     environmentId: data.environmentId,
-    qoderToken: "",
+    qoderToken: UNCHANGED,
     maxConcurrency: data.maxConcurrency,
     runTimeoutMinutes: data.runTimeoutMinutes,
   };

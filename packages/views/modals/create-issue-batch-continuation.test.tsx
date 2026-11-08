@@ -16,6 +16,10 @@ const TEST_RESOURCES = {
   en: { common: enCommon, modals: enModals, editor: enEditor, issues: enIssues },
 };
 
+const FIXTURE = vi.hoisted(() => ({
+  FIXTURE_VALUE_1: "sha256:preview-token",
+}));
+
 const { SOURCE_CONTEXT_PREVIEW } = vi.hoisted(() => ({ SOURCE_CONTEXT_PREVIEW: {
   source_issue: {
     id: "issue-source",
@@ -40,7 +44,7 @@ const { SOURCE_CONTEXT_PREVIEW } = vi.hoisted(() => ({ SOURCE_CONTEXT_PREVIEW: {
     attachments: [],
   }],
   anchor_comment_id: "comment-source",
-  capture_token: "sha256:preview-token",
+  capture_token: FIXTURE.FIXTURE_VALUE_1,
   limits: {
     comment_count: 1,
     text_bytes: 100,

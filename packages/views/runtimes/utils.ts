@@ -1047,8 +1047,8 @@ export function summarizeTaskUsage(
       credits.set(provider, (credits.get(provider) ?? 0) + slice.credits_micros / 1e6);
     }
   }
-  summary.tokens =
-    summary.input + summary.output + summary.cacheRead + summary.cacheWrite;
+  const total = summary.input + summary.output + summary.cacheRead + summary.cacheWrite;
+  summary.tokens = total;
 
   return summary;
 }

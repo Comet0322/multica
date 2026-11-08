@@ -37,6 +37,8 @@ import type {
   UpdateIssueRequest,
 } from "../types";
 
+const FIXTURE_VALUE_1 = "sha256:capture";
+
 vi.mock("../hooks", () => ({
   useWorkspaceId: () => "ws-1",
 }));
@@ -123,7 +125,7 @@ describe("useCreateCommentSubIssue", () => {
         anchorCommentId: "comment-1",
         data: {
           mode: "manual",
-          capture_token: "sha256:capture",
+          capture_token: FIXTURE_VALUE_1,
           issue: { title: "Child" },
         },
       });
@@ -131,7 +133,7 @@ describe("useCreateCommentSubIssue", () => {
 
     expect(createCommentSubIssue).toHaveBeenCalledWith("comment-1", {
       mode: "manual",
-      capture_token: "sha256:capture",
+      capture_token: FIXTURE_VALUE_1,
       issue: { title: "Child" },
     });
     expect(

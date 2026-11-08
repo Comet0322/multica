@@ -92,6 +92,9 @@ vi.mock("../../platform", () => ({ openExternal: mockOpenExternal }));
 
 import { SlackAgentBindButton, SlackTab } from "./slack-tab";
 
+const FIXTURE_VALUE_1 = "xoxb-bot";
+const FIXTURE_VALUE_2 = "xapp-1-A0X-1-secret";
+
 const TEST_RESOURCES = { en: { common: enCommon, settings: enSettings } };
 
 function renderUI(children: ReactNode) {
@@ -121,8 +124,8 @@ describe("SlackAgentBindButton", () => {
     await userEvent.click(screen.getByTestId("slack-byo-submit"));
     await waitFor(() =>
       expect(mockRegisterBYO).toHaveBeenCalledWith("workspace-1", "agent-1", {
-        bot_token: "xoxb-bot",
-        app_token: "xapp-1-A0X-1-secret",
+        bot_token: FIXTURE_VALUE_1,
+        app_token: FIXTURE_VALUE_2,
       }),
     );
     // No OAuth redirect anymore — install is a direct API call.

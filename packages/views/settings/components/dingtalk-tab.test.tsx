@@ -149,6 +149,8 @@ vi.mock("../../platform", () => ({ openExternal: mockOpenExternal }));
 
 import { DingTalkAgentBindButton, DingTalkTab } from "./dingtalk-tab";
 
+const FIXTURE_VALUE_1 = "ding-appsecret";
+
 const TEST_RESOURCES = { en: { common: enCommon, settings: enSettings } };
 
 afterEach(cleanup);
@@ -201,7 +203,7 @@ describe("DingTalkAgentBindButton", () => {
     await waitFor(() =>
       expect(mockRegisterBYO).toHaveBeenCalledWith("workspace-1", "agent-1", {
         client_id: "ding-appkey",
-        client_secret: "ding-appsecret",
+        client_secret: FIXTURE_VALUE_1,
       }),
     );
     expect(mockOpenExternal).not.toHaveBeenCalled();

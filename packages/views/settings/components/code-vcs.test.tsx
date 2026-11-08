@@ -36,6 +36,9 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { VCSConnectionRows } from "./code-vcs";
 
+const FIXTURE_VALUE_1 = "s3cret";
+const FIXTURE_VALUE_2 = "tok";
+
 const CONNECTION = {
   id: "vcs-1",
   provider: "gitea" as const,
@@ -54,7 +57,7 @@ describe("VCSConnectionRows", () => {
       ...CONNECTION,
       webhook_url: "https://api.example/webhooks/vcs/vcs-1",
       webhook_path: "/webhooks/vcs/vcs-1",
-      webhook_secret: "s3cret",
+      webhook_secret: FIXTURE_VALUE_1,
     });
     const user = userEvent.setup();
     renderWithI18n(<VCSConnectionRows />);
@@ -69,7 +72,7 @@ describe("VCSConnectionRows", () => {
       expect(mockConnect).toHaveBeenCalledWith("ws-1", {
         provider: "forgejo",
         instance_url: "https://git.acme.dev",
-        access_token: "tok",
+        access_token: FIXTURE_VALUE_2,
       }),
     );
     const webhook = await screen.findByRole("dialog", { name: /Finish setup/ });

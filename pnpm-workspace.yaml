@@ -22,7 +22,7 @@ catalog:
   eslint-plugin-i18next: ^6.1.4
   i18next: ^26.0.8
   jsdom: ^29.0.1
-  katex: ^0.18.10
+  katex: ^0.18.2
   mdast-util-from-markdown: ^2.0.3
   mermaid: ^11.16.1
   micromark-util-sanitize-uri: ^2.0.1

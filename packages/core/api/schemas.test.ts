@@ -79,6 +79,8 @@ import {
 import { IssueUnreadPageSchema, EMPTY_ISSUE_UNREAD_PAGE } from "./schemas";
 import { parseWithFallback } from "./schema";
 
+const FIXTURE_VALUE_1 = "sha256:token";
+
 describe("IssueUnreadPageSchema", () => {
   const endpoint = "GET /api/issues/unread";
 
@@ -426,7 +428,7 @@ describe("SourceContextPreviewSchema", () => {
         created_at: "now", updated_at: "now", revision: 1, attachments: [],
       }],
       anchor_comment_id: "comment-1",
-      capture_token: "sha256:token",
+      capture_token: FIXTURE_VALUE_1,
       limits: { comment_count: 1, text_bytes: 7, attachment_count: 0, attachment_bytes: 0 },
     };
     expect(SourceContextPreviewSchema.parse(preview).comment_thread).toHaveLength(1);
@@ -446,7 +448,7 @@ describe("SourceContextPreviewSchema", () => {
         created_at: "now", updated_at: "now", revision: 1, attachments: null,
       }],
       anchor_comment_id: "comment-1",
-      capture_token: "sha256:token",
+      capture_token: FIXTURE_VALUE_1,
       limits: { comment_count: 1, text_bytes: 7, attachment_count: 0, attachment_bytes: 0 },
     };
 
