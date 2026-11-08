@@ -124,7 +124,7 @@ body { overflow: hidden; background: transparent; }
       version: ${SURFACE_BRIDGE_PROTOCOL_VERSION},
       challenge: config.bridgeToken
     }, "*", [event.ports[0]]);
-    config.bridgeToken = "";
+    delete config.bridgeToken;
   });
 
   child.src = config.url;
