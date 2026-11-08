@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"io"
 	"log/slog"
 	"net/url"
@@ -44,7 +45,7 @@ func NewLocalStorageFromEnv() *LocalStorage {
 		uploadDir = "./data/uploads"
 	}
 
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := util.MkdirAll(uploadDir, 0755); err != nil {
 		slog.Error("failed to create upload directory", "dir", uploadDir, "error", err)
 		return nil
 	}

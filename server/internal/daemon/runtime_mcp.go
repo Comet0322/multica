@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"os"
 	"path/filepath"
 	"sort"
@@ -89,7 +90,7 @@ func codeArtsUserConfigPath(home string) string {
 		filepath.Join(configDir, "codearts_cli.jsonc"),
 	}
 	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := util.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
 	}
@@ -123,7 +124,7 @@ func codebuddyUserMcpConfigPath(home string) string {
 		filepath.Join(home, ".codebuddy.json"),
 	}
 	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := util.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
 	}
@@ -367,7 +368,7 @@ func loadClaudePluginMcpServerConfigs(home string) map[string]any {
 			filepath.Join(plugin.InstallPath, ".mcp.json"),
 		)
 		for _, path := range paths {
-			raw, err := os.ReadFile(path)
+			raw, err := util.ReadFile(path)
 			if err != nil {
 				continue
 			}
@@ -519,7 +520,7 @@ func listClaudePluginMcpServers(home string) []runtimeLocalMcpServerSummary {
 			filepath.Join(plugin.InstallPath, ".mcp.json"),
 		)
 		for _, path := range paths {
-			raw, err := os.ReadFile(path)
+			raw, err := util.ReadFile(path)
 			if err != nil {
 				continue
 			}
@@ -538,7 +539,7 @@ func listClaudePluginMcpServers(home string) []runtimeLocalMcpServerSummary {
 }
 
 func readRuntimeMcpDocument(path, format string) (map[string]any, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := util.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}

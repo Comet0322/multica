@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"net/url"
 	"os"
@@ -954,7 +955,7 @@ func canonicalExecutablePath(path string) string {
 }
 
 func isExecutableFile(path string) bool {
-	info, err := os.Stat(path)
+	info, err := util.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
 	}
@@ -1209,7 +1210,7 @@ func dshDesktopBinDirs(root string) []string {
 
 // isExistingDir reports whether path is a directory that exists.
 func isExistingDir(path string) bool {
-	info, err := os.Stat(path)
+	info, err := util.Stat(path)
 	return err == nil && info.IsDir()
 }
 

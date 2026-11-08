@@ -3,6 +3,7 @@ package execenv
 import (
 	"bytes"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"os"
 	"regexp"
@@ -287,7 +288,7 @@ func EnsureCodexShellEnvPolicyConfig(configPath string, includeOnly []string, lo
 	if updated == string(data) {
 		return nil
 	}
-	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+	if err := util.WriteFile(configPath, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	if logger != nil {

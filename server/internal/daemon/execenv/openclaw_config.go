@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -993,7 +994,7 @@ func openclawStatConfigPath(path string) (string, bool, error) {
 }
 
 func openclawConfigPathExists(path string) (bool, error) {
-	info, err := os.Stat(path)
+	info, err := util.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
