@@ -2,6 +2,7 @@ package execenv
 
 import (
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -295,7 +296,7 @@ func seedCodexUserSkill(src, dst, name string) error {
 	if err := os.MkdirAll(overlay, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(overlay, "SKILL.md"), []byte(normalized), 0o644); err != nil {
+	if err := util.WriteFile(filepath.Join(overlay, "SKILL.md"), []byte(normalized), 0o644); err != nil {
 		return err
 	}
 	entries, err := os.ReadDir(src)

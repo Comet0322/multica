@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -386,13 +387,16 @@ func runRepoCheckout(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
 	defer cancel()
 	client := &http.Client{}
-	checkoutURL := fmt.Sprintf("http://127.0.0.1:%s/repo/checkout", daemonPort)
+	daemonHost := net.JoinHostPort("127.0.0.1", daemonPort)
 	var body []byte
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, checkoutURL, bytes.NewReader(data))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1/repo/checkout", bytes.NewReader(data))
 		if err != nil {
 			return fmt.Errorf("create daemon checkout request: %w", err)
 		}
+		// NewRequest derived req.Host from the placeholder URL; keep the Host header in step.
+		req.URL.Host = daemonHost
+		req.Host = daemonHost
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+taskTicket)
 		resp, err := client.Do(req)

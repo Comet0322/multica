@@ -1239,7 +1239,7 @@ func (h *Handler) ListChatMessagesPage(w http.ResponseWriter, r *http.Request) {
 	// page appear shorter or lose its next cursor.
 	messages, err := h.Queries.ListChatMessagesPage(r.Context(), db.ListChatMessagesPageParams{
 		ChatSessionID:   session.ID,
-		Limit:           int32(limit + 2),
+		Limit:           util.SatInt32(limit + 2),
 		BeforeCreatedAt: beforeCreatedAt,
 		BeforeID:        beforeID,
 	})

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -598,7 +599,7 @@ func (h *Handler) CreateProjectResource(w http.ResponseWriter, r *http.Request) 
 	} else {
 		// Append after existing resources.
 		count, _ := h.Queries.CountProjectResources(r.Context(), project.ID)
-		position = int32(count)
+		position = util.SatInt32(count)
 	}
 
 	creator, _ := h.parseUserUUIDOrZero(userID)

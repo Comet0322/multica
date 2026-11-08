@@ -622,11 +622,11 @@ func fetchInstallationAccount(ctx context.Context, installationID int64) (login,
 	login = "unknown"
 	accountType = "User"
 	avatar = nil
-	endpoint := fmt.Sprintf("%s/app/installations/%d", strings.TrimRight(githubAPIBase, "/"), installationID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/"), nil)
 	if err != nil {
 		return
 	}
+	req.URL.Path += fmt.Sprintf("/app/installations/%d", installationID)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	if ticket, err := signGitHubAppJWT(time.Now()); err != nil {
 		// Misconfigured private key is operator-actionable — log so the
@@ -865,16 +865,12 @@ func fetchGitHubInstallationRepositories(
 	}
 	defer revokeGitHubInstallationToken(client, tokenBody.Ticket)
 
-	repositoriesEndpoint := fmt.Sprintf(
-		"%s/installation/repositories?page=%d&per_page=%d",
-		strings.TrimRight(githubAPIBase, "/"),
-		page,
-		perPage,
-	)
-	repositoriesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, repositoriesEndpoint, nil)
+	repositoriesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/"), nil)
 	if err != nil {
 		return GitHubRepositoriesResponse{}, err
 	}
+	repositoriesReq.URL.Path += "/installation/repositories"
+	repositoriesReq.URL.RawQuery = fmt.Sprintf("page=%d&per_page=%d", page, perPage)
 	setGitHubAPIHeaders(repositoriesReq, tokenBody.Ticket)
 	repositoriesResp, err := client.Do(repositoriesReq)
 	if err != nil {

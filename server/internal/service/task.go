@@ -4174,7 +4174,7 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 			ClaimRecoverySecs: claimResponseRecoveryWindow.Seconds(),
 			PrepareLeaseSecs:  prepareLeaseDuration.Seconds(),
 			RuntimeStaleSecs:  RuntimeClaimFreshnessSeconds,
-			MaxTasks:          int32(maxTasks),
+			MaxTasks:          util.SatInt32(maxTasks),
 		})
 		if err != nil {
 			s.recordClaimDecision(pgtype.UUID{}, pgtype.UUID{}, "error_reclaim_dispatched", claimScope{claimPath: claimPathBatch}, claimDecisionDetail{})

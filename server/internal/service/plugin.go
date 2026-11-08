@@ -93,7 +93,7 @@ func devHookClient(devOrigins []string, caPath string) *http.Client {
 	if len(devOrigins) == 0 || strings.TrimSpace(caPath) == "" {
 		return nil
 	}
-	pem, err := os.ReadFile(caPath)
+	pem, err := util.ReadFile(caPath)
 	if err != nil {
 		slog.Warn("plugins: MULTICA_PLUGIN_DEV_CA could not be read; dev hook endpoints will not be trusted", "path", caPath, "error", err)
 		return nil

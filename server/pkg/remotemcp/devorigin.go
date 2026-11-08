@@ -3,6 +3,7 @@ package remotemcp
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/multica-ai/multica/server/internal/util"
 	"net/url"
 	"os"
 	"strings"
@@ -48,7 +49,7 @@ func devTLSConfig() *tls.Config {
 	if path == "" {
 		return nil
 	}
-	pem, err := os.ReadFile(path)
+	pem, err := util.ReadFile(path)
 	if err != nil {
 		return nil
 	}

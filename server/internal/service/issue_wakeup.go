@@ -755,7 +755,7 @@ func (s *IssueWakeupService) tickWith(ctx context.Context, workspaceIDs []pgtype
 		}
 		if len(dueQ) == 0 && !dueDrained && room > 0 {
 			limit := min(wakeupTickBatch-len(inputQ), room)
-			rows, err := s.Tasks.Queries.ListDueWakeups(ctx, db.ListDueWakeupsParams{WorkspaceIds: workspaceIDs, SkipIds: claimed, RowLimit: int32(limit)})
+			rows, err := s.Tasks.Queries.ListDueWakeups(ctx, db.ListDueWakeupsParams{WorkspaceIds: workspaceIDs, SkipIds: claimed, RowLimit: util.SatInt32(limit)})
 			if err != nil {
 				return errors.Join(append(errs, err)...)
 			}
@@ -903,7 +903,7 @@ func (s *IssueWakeupService) pendingInputs(ctx context.Context, workspaceIDs []p
 	var out pendingInputSummary
 	q := s.Tasks.Queries
 	systemWaiting := map[pgtype.UUID]bool{}
-	params := db.ListPendingWakeupInputGroupsParams{WorkspaceIds: workspaceIDs, PageSize: int32(pageSize)}
+	params := db.ListPendingWakeupInputGroupsParams{WorkspaceIds: workspaceIDs, PageSize: util.SatInt32(pageSize)}
 	for {
 		groups, err := q.ListPendingWakeupInputGroups(ctx, params)
 		if err != nil {

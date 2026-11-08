@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"hash/fnv"
 	"log/slog"
 	"sync"
@@ -303,7 +304,7 @@ func (r *ShardedStreamRelay) shardFor(scopeType, scopeID string) int {
 	_, _ = h.Write([]byte(scopeType))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(scopeID))
-	return int(h.Sum32() % uint32(r.config.Shards))
+	return int(util.SatInt32(h.Sum32() % util.SatUint32(r.config.Shards)))
 }
 
 // replayStartID returns a Redis stream ID anchored to (now - ReplayGrace) so

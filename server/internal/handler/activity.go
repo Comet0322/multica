@@ -67,7 +67,7 @@ var timelineHardCap = 2000
 // distinguished from "the issue happens to have exactly timelineHardCap rows".
 // Without the probe row an issue sitting exactly on the boundary would report a
 // complete timeline as truncated and pay a needless ancestor-backfill query.
-func timelineProbeLimit() int32 { return int32(timelineHardCap) + 1 }
+func timelineProbeLimit() int32 { return util.SatInt32(timelineHardCap) + 1 }
 
 // Truncation is signalled with a response header rather than a body field
 // because the unpaginated response is a bare JSON array (TimelineEntriesSchema =

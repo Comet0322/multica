@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
-	"math/rand/v2"
 	"net"
 	"net/url"
 	"os"
@@ -262,7 +262,7 @@ func retryStopped(attempts int, cause, lastErr error) error {
 func jitterDelay(delay time.Duration) time.Duration {
 	// Keep each delay within 80-100% so concurrent pods do not reconnect in
 	// lockstep and the configured maximum remains a hard upper bound.
-	return time.Duration(float64(delay) * (0.8 + rand.Float64()*0.2))
+	return time.Duration(float64(delay) * (0.8 + util.RandFloat64()*0.2))
 }
 
 // IsTransientDatabaseError limits whole-migration retries to connection and

@@ -5877,7 +5877,7 @@ func (h *Handler) ReportTaskMessages(w http.ResponseWriter, r *http.Request) {
 		}
 
 		params.Ids = append(params.Ids, pgtype.UUID{Bytes: [16]byte(id), Valid: true})
-		params.Seqs = append(params.Seqs, int32(msg.Seq))
+		params.Seqs = append(params.Seqs, util.SatInt32(msg.Seq))
 		params.Types = append(params.Types, msg.Type)
 		params.Tools = append(params.Tools, msg.Tool)
 		params.CallIds = append(params.CallIds, msg.CallID)
@@ -6153,7 +6153,7 @@ func (h *Handler) ListTaskMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		messages, err = h.Queries.ListTaskMessagesSince(r.Context(), db.ListTaskMessagesSinceParams{
 			TaskID: parseUUID(taskID),
-			Seq:    int32(sinceSeq),
+			Seq:    util.SatInt32(sinceSeq),
 		})
 	} else {
 		messages, err = h.Queries.ListTaskMessages(r.Context(), parseUUID(taskID))
@@ -6567,7 +6567,7 @@ func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request)
 		}
 		messages, queryErr = h.Queries.ListTaskMessagesSince(r.Context(), db.ListTaskMessagesSinceParams{
 			TaskID: taskUUID,
-			Seq:    int32(sinceSeq),
+			Seq:    util.SatInt32(sinceSeq),
 		})
 	} else {
 		messages, queryErr = h.Queries.ListTaskMessages(r.Context(), taskUUID)

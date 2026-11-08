@@ -1,12 +1,16 @@
 package awakeclock
 
-import "time"
+import (
+	"time"
+
+	"github.com/multica-ai/multica/server/internal/util"
+)
 
 // sleptFromReadings converts a sleep-inclusive tick count (ms) and a
 // sleep-exclusive interrupt time (100 ns) into total slept time. A negative
 // result comes from the ms tick resolution and is clamped to zero.
 func sleptFromReadings(tickMs, unbiased100ns uint64) time.Duration {
-	slept := time.Duration(tickMs)*time.Millisecond - time.Duration(unbiased100ns)*100
+	slept := time.Duration(util.SatInt64(tickMs))*time.Millisecond - time.Duration(util.SatInt64(unbiased100ns))*100
 	if slept < 0 {
 		return 0
 	}

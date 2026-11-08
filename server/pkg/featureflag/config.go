@@ -2,6 +2,7 @@ package featureflag
 
 import (
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"os"
 	"strings"
@@ -88,7 +89,7 @@ func (rc ruleConfig) toRule() Rule {
 // operators can drop a flags file in place before authoring any flag
 // without breaking server startup.
 func LoadRulesFromYAMLFile(path string) (map[string]Rule, error) {
-	data, err := os.ReadFile(path)
+	data, err := util.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("featureflag: read %s: %w", path, err)
 	}

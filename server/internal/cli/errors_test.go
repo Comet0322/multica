@@ -455,7 +455,7 @@ func TestErrorKindString(t *testing.T) {
 		KindNetworkOffline:             "network_offline",
 		KindNetworkTLSHandshakeTimeout: "network_tls_handshake_timeout",
 		KindAuthRequired:               "auth_required",
-		KindTaskTicketRejected:          "task_token_rejected",
+		KindTaskTicketRejected:         "task_token_rejected",
 		KindForbidden:                  "forbidden",
 		KindNotFound:                   "not_found",
 		KindConflict:                   "conflict",

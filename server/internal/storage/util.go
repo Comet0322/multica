@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/hex"
+	"github.com/multica-ai/multica/server/internal/util"
 	"strings"
 	"unicode/utf8"
 )
@@ -53,8 +54,8 @@ func rfc5987Encode(name string) string {
 	var b strings.Builder
 	b.Grow(len(name) * 3) // worst case: every byte encoded as %XX
 	for _, r := range name {
-		if r <= 0x7f && isAttrChar(byte(r)) {
-			b.WriteByte(byte(r))
+		if r <= 0x7f && isAttrChar(util.LowByte(util.SatUint64(r))) {
+			b.WriteByte(util.LowByte(util.SatUint64(r)))
 		} else {
 			// Encode each byte of the UTF-8 representation
 			buf := make([]byte, 4)

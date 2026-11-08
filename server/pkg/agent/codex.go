@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"io"
 	"log/slog"
 	"os"
@@ -668,7 +669,7 @@ func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *
 	if updated == existing {
 		return nil
 	}
-	if err := os.WriteFile(configPath, []byte(updated), 0o600); err != nil {
+	if err := util.WriteFile(configPath, []byte(updated), 0o600); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	// os.WriteFile applies the mode only when creating a new file; if the
@@ -4165,7 +4166,7 @@ func codexSessionRoot(codexHome string) string {
 	}
 	if codexHome != "" {
 		dir := filepath.Join(codexHome, "sessions")
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if info, err := util.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -110,7 +111,7 @@ func collect(certDir string, systemDirs []string) ([]*x509.Certificate, []string
 		}
 		for _, entry := range entries {
 			path := filepath.Join(dir, entry.Name())
-			data, err := os.ReadFile(path)
+			data, err := util.ReadFile(path)
 			if err != nil {
 				// Subdirectories land here too; crypto/x509 ignores them the same way.
 				continue

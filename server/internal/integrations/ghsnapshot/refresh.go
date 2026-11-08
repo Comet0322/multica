@@ -2,8 +2,8 @@ package ghsnapshot
 
 import (
 	"context"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -117,7 +117,7 @@ func NewManager(client *Client, queries *db.Queries, pool TxBeginner, onApplied 
 		mergeDelays:   defaultMergeWatchDelays,
 		chaseBackoff:  defaultChaseBackoff,
 		now:           time.Now,
-		jitter:        func() time.Duration { return time.Duration(rand.Int63n(int64(250 * time.Millisecond))) },
+		jitter:        func() time.Duration { return time.Duration(util.RandInt63n(int64(250 * time.Millisecond))) },
 		fetch:         FetchPRSnapshot,
 		queue:         make(chan address, queueBuffer),
 		active:        map[address]bool{},

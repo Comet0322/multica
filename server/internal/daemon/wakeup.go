@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"github.com/multica-ai/multica/server/internal/util"
 	"net/http"
 	"net/url"
 	"sort"
@@ -92,7 +92,7 @@ func jitterDuration(d time.Duration) time.Duration {
 	if spread <= 0 {
 		return d
 	}
-	delta := time.Duration(rand.Int63n(int64(spread)*2+1)) - spread
+	delta := time.Duration(util.RandInt63n(int64(spread)*2+1)) - spread
 	return d + delta
 }
 

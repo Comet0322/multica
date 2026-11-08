@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"time"
 
@@ -323,7 +324,7 @@ func (r *ChannelMediaReconciler) tombstoneRow(ctx context.Context, row db.Channe
 		WorkspaceID:   row.WorkspaceID,
 		LeaseToken:    leaseToken,
 		RedeleteDelay: pgInterval(next),
-		TombstonePass: int32(idx),
+		TombstonePass: util.SatInt32(idx),
 	})
 	if err != nil {
 		r.logger().Warn("channel media reconciler: tombstone failed", "storage_key", row.StorageKey, "error", err)

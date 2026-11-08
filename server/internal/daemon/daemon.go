@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -4453,7 +4452,7 @@ func (d *Daemon) runRuntimeHeartbeat(ctx context.Context, rid string) {
 	}
 	// Jittered initial delay; cap at the interval so the first beat still
 	// happens within one period.
-	if jitter := time.Duration(rand.Int63n(int64(interval))); jitter > 0 {
+	if jitter := time.Duration(util.RandInt63n(int64(interval))); jitter > 0 {
 		select {
 		case <-ctx.Done():
 			return
@@ -5523,7 +5522,7 @@ func downwardJitterDuration(interval time.Duration) time.Duration {
 	if minReduction <= 0 || maxReduction <= minReduction {
 		return interval
 	}
-	reduction := minReduction + time.Duration(rand.Int63n(int64(maxReduction-minReduction)+1))
+	reduction := minReduction + time.Duration(util.RandInt63n(int64(maxReduction-minReduction)+1))
 	return interval - reduction
 }
 
@@ -6705,7 +6704,7 @@ func migrateClaudeWorktreeTranscript(env *execenv.Environment, sessionID, envWor
 		taskLog.Debug("claude: cannot create transcript directory", "path", dstDir, "error", err)
 		return false
 	}
-	if err := os.WriteFile(dst, data, 0o600); err != nil {
+	if err := util.WriteFile(dst, data, 0o600); err != nil {
 		taskLog.Debug("claude: cannot write migrated transcript", "path", dst, "error", err)
 		return false
 	}

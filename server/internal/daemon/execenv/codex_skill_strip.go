@@ -2,6 +2,7 @@ package execenv
 
 import (
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"os"
 	"strings"
 )
@@ -80,7 +81,7 @@ func sanitizeCopiedCodexConfig(configPath string) error {
 	if stripped == string(data) {
 		return nil
 	}
-	if err := os.WriteFile(configPath, []byte(stripped), 0o644); err != nil {
+	if err := util.WriteFile(configPath, []byte(stripped), 0o644); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	return nil

@@ -475,7 +475,7 @@ func (h *Handler) ListPluginTaskMessages(w http.ResponseWriter, r *http.Request)
 		}
 		messages, err = h.Queries.ListTaskMessagesSince(r.Context(), db.ListTaskMessagesSinceParams{
 			TaskID: parsed,
-			Seq:    int32(sinceSeq),
+			Seq:    util.SatInt32(sinceSeq),
 		})
 	} else {
 		messages, err = h.Queries.ListTaskMessages(r.Context(), parsed)

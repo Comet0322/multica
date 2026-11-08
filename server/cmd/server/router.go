@@ -2749,7 +2749,7 @@ func (pr *patResolver) ResolveToken(ctx context.Context, ticket string) (string,
 
 	// Cache miss = first WS auth in this TTL window. Refresh last_used_at;
 	// subsequent connects within the window skip the write.
-	go pr.queries.UpdatePersonalAccessTokenLastUsed(context.Background(), pat.ID)
+	go pr.queries.UpdatePersonalAccessTokenLastUsed(context.WithoutCancel(ctx), pat.ID)
 
 	return userID, true
 }

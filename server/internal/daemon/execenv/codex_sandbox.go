@@ -2,6 +2,7 @@ package execenv
 
 import (
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"log/slog"
 	"os"
 	"regexp"
@@ -471,7 +472,7 @@ func ensureCodexSandboxConfig(configPath string, policy codexSandboxPolicy, dete
 		logger.Warn("codex sandbox: running unsandboxed with danger-full-access", attrs...)
 	}
 
-	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+	if err := util.WriteFile(configPath, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("write config.toml: %w", err)
 	}
 	return nil
