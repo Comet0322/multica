@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -182,7 +183,7 @@ func readSystemCABundle() []byte {
 		files = append([]string{f}, files...)
 	}
 	for _, f := range files {
-		if data, err := os.ReadFile(f); err == nil && len(bytes.TrimSpace(data)) > 0 {
+		if data, err := util.ReadFile(f); err == nil && len(bytes.TrimSpace(data)) > 0 {
 			return data
 		}
 	}

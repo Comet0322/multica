@@ -10,7 +10,7 @@ servers:
   - url: https://plugin-api.multica.ai/v1
     description: Installed Plugin and invocation callback tokens
 security:
-  - pluginBearer: []
+  - pluginAuth: []
 paths:
   /context:
     get:
@@ -204,7 +204,7 @@ paths:
           $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
-    pluginBearer:
+    pluginAuth:
       type: http
       scheme: bearer
       bearerFormat: mpi_ or mpc_ token

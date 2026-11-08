@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/multica-ai/multica/server/internal/util"
 	"net/http"
 	"net/url"
 	"sort"
@@ -348,7 +349,7 @@ func (h *Handler) listDingTalkGroups(
 			IncludeInactive:      includeInactive,
 			ActiveSince:          activeSince,
 			PageOffset:           int32(pageOffset),
-			PageLimit:            int32(pageLimit + boolToInt(includeInactive)),
+			PageLimit:            util.SatInt32(pageLimit + boolToInt(includeInactive)),
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list dingtalk groups")

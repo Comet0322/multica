@@ -5,6 +5,7 @@ package testutil
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"io"
 	"os"
 	"os/exec"
@@ -27,7 +28,7 @@ func RunPiCleanupFixture() bool {
 	dir := os.Getenv("MULTICA_TEST_PI_CLEANUP_DIR")
 	if mode == "writer" {
 		signal.Ignore(syscall.SIGTERM)
-		f, err := os.OpenFile(filepath.Join(dir, "receipt"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		f, err := util.OpenFile(filepath.Join(dir, "receipt"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			panic(err)
 		}
@@ -46,7 +47,11 @@ func RunPiCleanupFixture() bool {
 	} else {
 		signal.Ignore(syscall.SIGTERM)
 	}
-	writer := exec.Command(os.Args[0])
+	self, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	writer := exec.Command(self)
 	writer.Env = append(os.Environ(), piCleanupFixtureMode+"=writer")
 	writer.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	writer.Stdout, writer.Stderr = os.Stdout, os.Stderr
@@ -54,9 +59,9 @@ func RunPiCleanupFixture() bool {
 		panic(err)
 	}
 	data, _ := json.Marshal([]int{os.Getpid(), writer.Process.Pid})
-	_ = os.WriteFile(filepath.Join(dir, "pids.json"), data, 0o600)
+	_ = util.WriteFile(filepath.Join(dir, "pids.json"), data, 0o600)
 	for until := time.Now().Add(3 * time.Second); time.Now().Before(until); {
-		if info, err := os.Stat(filepath.Join(dir, "receipt")); err == nil && info.Size() > 0 {
+		if info, err := util.Stat(filepath.Join(dir, "receipt")); err == nil && info.Size() > 0 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -76,7 +81,7 @@ func RunPiCleanupFixture() bool {
 	}
 	select {
 	case <-term:
-		_ = os.WriteFile(filepath.Join(dir, "term"), []byte("received"), 0o600)
+		_ = util.WriteFile(filepath.Join(dir, "term"), []byte("received"), 0o600)
 		_ = writer.Process.Kill()
 		_ = writer.Wait()
 	case <-time.After(15 * time.Second):

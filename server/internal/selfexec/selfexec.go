@@ -4,6 +4,7 @@ package selfexec
 import (
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,7 +35,7 @@ func resolveWith(osExecutable func() (string, error), args []string) (string, er
 	}
 	if fallbackErr == nil {
 		var info os.FileInfo
-		info, fallbackErr = os.Stat(candidate)
+		info, fallbackErr = util.Stat(candidate)
 		if fallbackErr == nil && !info.Mode().IsRegular() {
 			fallbackErr = fmt.Errorf("%s is not a regular file", candidate)
 		}

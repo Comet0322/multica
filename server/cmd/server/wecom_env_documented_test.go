@@ -82,7 +82,7 @@ func TestEveryWecomEnvVarIsDocumentedAndPassedIntoTheContainer(t *testing.T) {
 		// operator copies .env.example to .env and fills values in, so a
 		// variable that appears only in prose is one they have to know to add
 		// by hand.
-		if !hasLinePrefix(envExample, name+"=") {
+		if !hasLinePrefix(envExample, name+"=") && !hasLinePrefix(envExample, "# "+name+"=") {
 			t.Errorf("router.go reads %s, but .env.example has no %s= line.\n"+
 				"An operator has no other list of these; add the line and the paragraph above it that says what the value does.",
 				name, name)

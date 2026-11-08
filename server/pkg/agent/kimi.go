@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"io"
 	"os"
 	"os/exec"
@@ -918,7 +919,7 @@ func kimiSessionRoot(kimiHome string) string {
 	}
 	if kimiHome != "" {
 		dir := filepath.Join(kimiHome, "sessions")
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if info, err := util.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/util"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,7 +122,7 @@ func codebuddyUserMcpConfigPath(home string) string {
 		filepath.Join(home, ".codebuddy.json"),
 	}
 	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := util.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
 	}
@@ -309,7 +310,7 @@ func loadRuntimeMcpServerConfigs(provider string) (map[string]any, bool, error) 
 	}
 
 	servers := map[string]any{}
-	raw, err := os.ReadFile(path)
+	raw, err := util.ReadFile(path)
 	if err == nil {
 		cfg, err := unmarshalRuntimeMcpConfig(raw, format)
 		if err != nil {
@@ -463,7 +464,7 @@ func listRuntimeLocalMcpServers(provider string) ([]runtimeLocalMcpServerSummary
 	}
 
 	out := make([]runtimeLocalMcpServerSummary, 0)
-	raw, err := os.ReadFile(path)
+	raw, err := util.ReadFile(path)
 	if err == nil {
 		cfg, err := unmarshalRuntimeMcpConfig(raw, format)
 		if err != nil {
