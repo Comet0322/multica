@@ -109,7 +109,7 @@ while IFS= read -r secret_key; do
     echo "in docker-compose.selfhost.yml, so self-hosted deployments cannot enable it."
     exit 1
   fi
-  if ! grep -Eq "^${secret_key}=" .env.example; then
+  if ! grep -Eq "^[# ]*${secret_key}=" .env.example; then
     echo "$secret_key is loaded by the server but missing from .env.example."
     exit 1
   fi
@@ -311,7 +311,7 @@ run_recipe() {
   # empty value .env.example ships; docker-compose.selfhost.yml now refuses
   # to interpolate an empty JWT_SECRET. Seed the throwaway value into the
   # recipe .env so make, the stub, and Compose all see a usable secret.
-  sed -e "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" "$recipe_dir/.env" >"$recipe_dir/.env.tmp"
+  sed -e "s/^[# ]*JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" -e "s/^[# ]*POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" "$recipe_dir/.env" >"$recipe_dir/.env.tmp"
   mv "$recipe_dir/.env.tmp" "$recipe_dir/.env"
   if [ -n "$env_mutation" ]; then
     sed "$env_mutation" "$recipe_dir/.env" >"$recipe_dir/.env.tmp"

@@ -141,12 +141,7 @@ jobs:
             turbo-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime.outputs.node }}-
 
       - name: Build, type check, and lint
-        # Mobile lives in a parallel mobile-verify workflow (path-filtered
-        # to apps/mobile/** + packages/core/**) so it doesn't add
-        # ~50s of expo-lint + tsc to every web/desktop PR. Keep this
-        # filter in sync with the root package.json scripts, which also
-        # exclude @multica/mobile.
-        run: pnpm exec turbo build typecheck lint --filter='!@multica/docs' --filter='!@multica/mobile'
+        run: pnpm exec turbo build typecheck lint --filter='!@multica/docs'
 
       - name: Check frontend quality
         uses: ./.github/actions/frontend-quality
@@ -194,7 +189,7 @@ jobs:
         # job's responsibility -- frontend-build owns the `typecheck` task.
         # `test` reaches dependency sources through the hash-only
         # `^cache-inputs` edge (see turbo.json), so no `tsc` runs here.
-        run: pnpm exec turbo test --filter='!@multica/docs' --filter='!@multica/mobile' --filter='!@multica/views'
+        run: pnpm exec turbo test --filter='!@multica/docs' --filter='!@multica/views'
 
   # Split views across two runners. GitHub reports the matrix job's combined
   # result, so the aggregate gate can continue depending on this one job ID.
@@ -931,12 +926,6 @@ jobs:
         run: |
           node scripts/brand/sync.mjs --check
           node --test scripts/brand/sync.test.mjs
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Test Helm chart
-        run: bash scripts/helm-config.test.sh
 
       - name: Test backend entrypoint signals
         run: bash scripts/entrypoint.test.sh

@@ -34,7 +34,6 @@ with `--check` and fails when a copy drifts from `multica-brand.ts`.
 - `apps/web/public/favicon.svg`, `apps/docs/app/icon.svg`: favicon, with a dark-mode variant
 - `apps/web/public/icons/icon.svg`: full-bleed source for the home-screen icons
 - `docs/assets/logo-{light,dark}.svg`: the README wordmark
-- `apps/mobile/components/brand/multica-logo.tsx`: the block between the `GENERATED` markers. Mobile does not depend on `@multica/ui`.
 - `server/cmd/multica/cmd_auth.go`: the `.brand` SVG on the `multica login` callback page
 
 `generate.mjs` runs `sync.mjs`, then renders the bitmaps in Chromium:
@@ -46,7 +45,6 @@ with `--check` and fails when a copy drifts from `multica-brand.ts`.
 | `apps/desktop/resources/icon.png`, `build/icon.icns` | 16–1024 | Apple's 1024 grid (body 100–924) with a soft shadow |
 | `apps/web/public/icons/icon-{192,512}.png` | 192, 512 | PWA tile with transparent margin |
 | `apps/web/public/icons/apple-touch-icon.png`, `icon-maskable-512.png` | 180, 512 | full-bleed, opaque |
-| `apps/mobile/assets/icon.png` | 1024 | full-bleed, opaque |
 | `apps/web/app/opengraph-image.png` | 1200×630 | OG card, Inter from `@fontsource-variable/inter` |
 | `docs/assets/logo-{light,dark}.gif` | 720×256 | README write-on, 30 fps, 64 colours |
 

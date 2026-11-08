@@ -108,7 +108,7 @@ Multica は、こうしたエージェントとチームメイトを 1 つのワ
 
 *自分のマシン、自分の Git ホスト、自分のルールで。エージェントの操作も監査証跡に残ります。*
 
-- **[すべてをセルフホスト](SELF_HOSTING.md) →** Docker Compose または Helm で、自前のインフラ上に構築できます。
+- **[すべてをセルフホスト](SELF_HOSTING.md) →** Docker Compose で、自前のインフラ上に構築できます。
 - **[お使いの Git ホスト](https://multica.ai/docs/ja/vcs-integration) →** GitHub、GitLab、Gitea、Forgejo に対応しています。セルフホスト版も使えます。
 - **[ワークスペース](https://multica.ai/docs/ja/workspaces) →** エージェント、タスク、設定をチームごとに分けられます。
 - **[ロール](https://multica.ai/docs/ja/members-roles)と[アクセススコープ](https://multica.ai/docs/ja/agents#権限と-access) →** `owner`、`admin`、`member`、そして各メンバーがどのエージェントを実行できるかを正確に設定できます。

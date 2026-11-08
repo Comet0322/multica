@@ -24,7 +24,7 @@ frontend_port=$((13000 + offset))
 frontend_origin="http://localhost:${frontend_port}"
 
 # Worktrees share the main checkout's Postgres, so they log in with its password.
-postgres_password="${POSTGRES_PASSWORD:-}"
+postgres_password=$(printenv POSTGRES_PASSWORD || true)
 if [ -z "$postgres_password" ]; then
   main_root="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
   for candidate in "$main_root/.env" "$main_root/.env.worktree"; do
@@ -56,7 +56,7 @@ MULTICA_PUBLIC_URL=http://localhost:${backend_port}
 MULTICA_APP_URL=${frontend_origin}
 
 GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+# GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=${frontend_origin}/auth/callback
 
 FRONTEND_PORT=${frontend_port}

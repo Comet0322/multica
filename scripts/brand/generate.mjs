@@ -63,7 +63,6 @@ try {
   // iOS, Android and Expo mask these themselves, so they are full-bleed and opaque.
   await png(repo("apps/web/public/icons/apple-touch-icon.png"), [180, 180], tile(180, { bleed: true }), { alpha: false });
   await png(repo("apps/web/public/icons/icon-maskable-512.png"), [512, 512], tile(512, { bleed: true }), { alpha: false });
-  await png(repo("apps/mobile/assets/icon.png"), [1024, 1024], tile(1024, { bleed: true }), { alpha: false });
 
   // macOS: the tile on Apple's 1024 grid (body 100..924) with the standard soft shadow.
   const macOS = (S) => {

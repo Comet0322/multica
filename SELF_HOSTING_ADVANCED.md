@@ -225,17 +225,6 @@ into its own read-only directory and list it after the system directory:
 SSL_CERT_DIR=/etc/ssl/certs:/etc/multica/ca-certs
 ```
 
-**Kubernetes (Helm):** create a ConfigMap whose keys are PEM files, then point
-`backend.extraCACerts.configMap` at it. The chart mounts it at
-`/etc/multica/ca-certs` and sets `SSL_CERT_DIR` as above.
-
-```bash
-kubectl -n multica create configmap multica-extra-ca --from-file=internal-ca.crt
-helm upgrade multica oci://ghcr.io/multica-ai/charts/multica \
-  --version <chart-version> -n multica --reuse-values \
-  --set backend.extraCACerts.configMap=multica-extra-ca
-```
-
 **Docker Compose:** put the PEM files in a directory next to
 `docker-compose.selfhost.yml` (here `./ca-certs`) and add an override file,
 `docker-compose.ca.yml`:
@@ -260,11 +249,9 @@ recreates the backend without the CA.
 Things to know:
 
 - **The backend reads the CA only when it starts.** After you add or replace a
-  CA file, restart the backend: `kubectl -n multica rollout restart deploy/multica-backend`,
-  or `docker compose -f docker-compose.selfhost.yml -f docker-compose.ca.yml restart backend`.
+  CA file, restart the backend: `docker compose -f docker-compose.selfhost.yml -f docker-compose.ca.yml restart backend`.
   With Compose, `up -d` is not enough here: the container's configuration has
-  not changed, so Compose keeps the running container. With Helm, a
-  `helm upgrade` also restarts the backend when the ConfigMap has changed.
+  not changed, so Compose keeps the running container.
 - **The CA applies to the whole backend process**, not only the Git provider
   integration: every outbound TLS client in the backend that uses the system
   trust store trusts it too.

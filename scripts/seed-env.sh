@@ -10,8 +10,8 @@ file="${1:?usage: seed-env.sh ENV_FILE}"
 current() { sed -n "s/^$1=//p" "$file" | tail -1; }
 
 set_value() {
-  if grep -q "^$1=" "$file"; then
-    sed -i.bak "s|^$1=.*|$1=$2|" "$file" && rm -f "$file.bak"
+  if grep -q "^[# ]*$1=" "$file"; then
+    sed -i.bak "s|^[# ]*$1=.*|$1=$2|" "$file" && rm -f "$file.bak"
   else
     printf '%s=%s\n' "$1" "$2" >> "$file"
   fi

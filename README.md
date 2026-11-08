@@ -108,7 +108,7 @@ issue — so nobody reconstructs context, and nothing ships without a human sayi
 
 *Your machines, your Git host, your rules — with an audit trail that includes the robots.*
 
-- **[Self-host everything](SELF_HOSTING.md) →** Docker Compose or Helm, on your own infrastructure.
+- **[Self-host everything](SELF_HOSTING.md) →** Docker Compose, on your own infrastructure.
 - **[Your Git host](https://multica.ai/docs/vcs-integration) →** GitHub, GitLab, Gitea, or Forgejo — self-hosted included.
 - **[Workspaces](https://multica.ai/docs/workspaces) →** Separate agents, issues, and settings per team.
 - **[Roles](https://multica.ai/docs/members-roles) and [access scopes](https://multica.ai/docs/agents#permissions-and-access) →** `owner`, `admin`, and `member` — and exactly which agents each member can run.

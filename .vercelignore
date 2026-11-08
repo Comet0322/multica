@@ -37,10 +37,6 @@ _features
 !/apps/docs
 !/apps/docs/**
 # Root pnpm patchedDependencies needs these files even for frontend-only installs.
-!/apps/mobile
-/apps/mobile/*
-!/apps/mobile/patches
-!/apps/mobile/patches/**
 /scripts/
 
 *.log
