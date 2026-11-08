@@ -63,7 +63,11 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Compare
-        run: node scripts/perf-compare.mjs --base "${{ inputs.base }}" --head "${{ inputs.head }}" --out perf-report --scenario "${{ inputs.scenario }}"
+        env:
+          PERF_BASE: ${{ inputs.base }}
+          PERF_HEAD: ${{ inputs.head }}
+          PERF_SCENARIO: ${{ inputs.scenario }}
+        run: node scripts/perf-compare.mjs --base "$PERF_BASE" --head "$PERF_HEAD" --out perf-report --scenario "$PERF_SCENARIO"
 
       - name: Publish to the job summary
         if: always()
