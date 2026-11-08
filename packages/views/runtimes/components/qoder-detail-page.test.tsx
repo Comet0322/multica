@@ -15,6 +15,8 @@ import enLayout from "../../locales/en/layout.json";
 import enRuntimes from "../../locales/en/runtimes.json";
 import { isQoderLocator, QoderDetailPage } from "./qoder-detail-page";
 
+const FIXTURE_VALUE_1 = "";
+
 const { ApiError, mocks, nav } = vi.hoisted(() => {
   class ApiError extends Error {
     status: number;
@@ -205,7 +207,7 @@ it("resumes with the saved token and repository bindings", async () => {
   const input = mocks.resumeQoderConnection.mock.calls[0]![1];
   expect(input).toMatchObject({
     environmentId: "env_one",
-    qoderToken: "",
+    qoderToken: FIXTURE_VALUE_1,
     maxConcurrency: 3,
     runTimeoutMinutes: 60,
   });
@@ -304,7 +306,7 @@ it("tests an edited connection before saving it", async () => {
     name: "QCA",
     baseUrl: "https://api.qoder.com/api/v1/cloud",
     environmentId: "env_one",
-    qoderToken: "",
+    qoderToken: FIXTURE_VALUE_1,
   });
   expect(input).not.toHaveProperty("githubTokens");
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -341,7 +343,7 @@ it("adds a repository and keeps the saved tokens", async () => {
   fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
   await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
   expect(mocks.saveQoderConnection.mock.calls[0]![1]).toMatchObject({
-    qoderToken: "",
+    qoderToken: FIXTURE_VALUE_1,
     githubTokens: {
       "https://github.com/acme/web": "",
       "https://github.com/acme/api": "ghp_new",

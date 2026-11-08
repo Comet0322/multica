@@ -5,6 +5,9 @@ import { ApiClient, ApiError } from "./client";
 import { parseWithFallback } from "./schema";
 import { CreateIssueResponseSchema } from "./schemas";
 
+const FIXTURE_VALUE_1 = "token";
+const FIXTURE_VALUE_2 = "sha256:digest:issue";
+
 // Helper: stub fetch with a single JSON response. Status defaults to 200.
 function stubFetchJson(body: unknown, status = 200) {
   vi.stubGlobal(
@@ -529,7 +532,7 @@ describe("ApiClient schema fallback", () => {
       await expect(
         client.createCommentSubIssue("comment-1", {
           mode: "manual",
-          capture_token: "token",
+          capture_token: FIXTURE_VALUE_1,
           issue: { title: "Child", properties: { "property-1": true } },
         }),
       ).resolves.toMatchObject({ id: "issue-2" });
@@ -544,7 +547,7 @@ describe("ApiClient schema fallback", () => {
       const client = new ApiClient("https://api.example.test");
       await expect(client.createCommentSubIssue("comment-1", {
         mode: "agent",
-        capture_token: "sha256:digest:issue",
+        capture_token: FIXTURE_VALUE_2,
         quick_create: { agent_id: "agent-1", prompt: "new work" },
       })).resolves.toEqual({ task_id: "task-1" });
       expect(fetch).toHaveBeenCalledWith(
@@ -558,7 +561,7 @@ describe("ApiClient schema fallback", () => {
       const client = new ApiClient("https://api.example.test");
       await expect(client.createCommentSubIssue("comment-1", {
         mode: "agent",
-        capture_token: "token",
+        capture_token: FIXTURE_VALUE_1,
         quick_create: { agent_id: "agent-1", prompt: "new work" },
       })).rejects.toMatchObject({ body: { code: "source_context_server_unsupported" } });
     });

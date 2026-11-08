@@ -95,7 +95,7 @@ const sourceContextPanelData = () => ({
       attachments: [],
     }],
     anchor_comment_id: "comment-source",
-    capture_token: "sha256:preview-token",
+    capture_token: FIXTURE_VALUE_1,
     limits: {
       comment_count: 1,
       text_bytes: 100,
@@ -670,6 +670,8 @@ import {
   CreateIssueModal,
   ManualCreatePanel,
 } from "./create-issue";
+
+const FIXTURE_VALUE_1 = "sha256:preview-token";
 
 function renderModal(element: React.ReactElement) {
   const qc = new QueryClient({
@@ -1985,7 +1987,7 @@ describe("CreateIssueModal", () => {
       "comment-source",
       {
         mode: "manual",
-        capture_token: "sha256:preview-token",
+        capture_token: FIXTURE_VALUE_1,
         issue: expect.objectContaining({
           title: "Create from source comment",
           properties: { "property-tier": "option-enterprise" },
