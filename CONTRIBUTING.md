@@ -44,7 +44,7 @@ This keeps Docker simple while still isolating schema and data.
 
 - Node.js `22`
 - `pnpm` `10.28.2`
-- Go `1.26.9`
+- Go `1.26.10`
 - Docker
 
 Outside mobile, `pnpm typecheck` uses the native TypeScript 7 compiler (`tsc`,
@@ -107,7 +107,7 @@ By default, `.env` points to:
 ```bash
 POSTGRES_DB=multica
 POSTGRES_PORT=5432
-DATABASE_URL=postgres://multica:multica@localhost:5432/multica?sslmode=disable
+DATABASE_URL=postgres://multica:<password>@localhost:5432/multica?sslmode=disable
 PORT=8080
 FRONTEND_PORT=3000
 ```
@@ -127,7 +127,7 @@ POSTGRES_DB=multica_my_feature_702
 POSTGRES_PORT=5432
 PORT=18782
 FRONTEND_PORT=13702
-DATABASE_URL=postgres://multica:multica@localhost:5432/multica_my_feature_702?sslmode=disable
+DATABASE_URL=postgres://multica:<password>@localhost:5432/multica_my_feature_702?sslmode=disable
 ```
 
 Notes:

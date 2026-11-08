@@ -259,7 +259,7 @@ Multica はモデルを同梱していません。インストールと認証を
 
 コントリビューターの方は、まず[コントリビュートガイド](CONTRIBUTING.md)をお読みください。
 
-**前提条件：** [Node.js](https://nodejs.org/) 22、[pnpm](https://pnpm.io/) 10.28.2、[Go](https://go.dev/) 1.26.9、[Docker](https://www.docker.com/)
+**前提条件：** [Node.js](https://nodejs.org/) 22、[pnpm](https://pnpm.io/) 10.28.2、[Go](https://go.dev/) 1.26.10、[Docker](https://www.docker.com/)
 
 ```bash
 make dev

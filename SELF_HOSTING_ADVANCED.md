@@ -10,7 +10,7 @@ All configuration is done via environment variables. Copy `.env.example` as a st
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgres://multica:multica@localhost:5432/multica?sslmode=disable` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://multica:<password>@localhost:5432/multica?sslmode=disable` |
 | `JWT_SECRET` | **Required — no safe default.** Secret key for signing JWT tokens. A production backend refuses to boot if this is empty or a known placeholder. Generate with `openssl rand -hex 32`. | `openssl rand -hex 32` |
 | `FRONTEND_ORIGIN` | URL where the frontend is served (used for CORS) | `https://app.example.com` |
 
@@ -494,7 +494,7 @@ If you are upgrading from a binary that pre-dates MUL-2957 (or the auto-hook fai
 
 If you prefer to build and run services manually:
 
-**Prerequisites:** Go 1.26.9, Node.js 22, pnpm 10.28.2, PostgreSQL 17 — a stock install is enough, see [Database Setup](#database-setup).
+**Prerequisites:** Go 1.26.10, Node.js 22, pnpm 10.28.2, PostgreSQL 17 — a stock install is enough, see [Database Setup](#database-setup).
 
 ```bash
 # Start your PostgreSQL (or use: docker compose up -d postgres)
