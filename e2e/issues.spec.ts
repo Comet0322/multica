@@ -3,8 +3,8 @@ import pg from "pg";
 import { loginAsDefault, createTestApi, preferManualCreateMode, reloadAppPage } from "./helpers";
 import type { TestApiClient } from "./fixtures";
 
-const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgres://multica:multica@localhost:5432/multica?sslmode=disable";
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error("DATABASE_URL is not set");
 
 async function setIssueTimestamps(
   issueId: string,

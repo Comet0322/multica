@@ -23,15 +23,33 @@ backend_port=$((18080 + offset))
 frontend_port=$((13000 + offset))
 frontend_origin="http://localhost:${frontend_port}"
 
+# Worktrees share the main checkout's Postgres, so they log in with its password.
+postgres_password="${POSTGRES_PASSWORD:-}"
+if [ -z "$postgres_password" ]; then
+  main_root="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+  for candidate in "$main_root/.env" "$main_root/.env.worktree"; do
+    if [ -f "$candidate" ]; then
+      postgres_password="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$candidate" | tail -1)"
+      [ -n "$postgres_password" ] && break
+    fi
+  done
+fi
+if [ -z "$postgres_password" ]; then
+  echo "POSTGRES_PASSWORD is not set and the main checkout has no .env with one."
+  echo "Set POSTGRES_PASSWORD to the shared Postgres password and re-run."
+  exit 1
+fi
+jwt_signing_key="$(openssl rand -hex 32)"
+
 cat > "$ENV_FILE" <<EOF
 POSTGRES_DB=${postgres_db}
 POSTGRES_USER=multica
-POSTGRES_PASSWORD=multica
+POSTGRES_PASSWORD=${postgres_password}
 POSTGRES_PORT=${postgres_port}
-DATABASE_URL=postgres://multica:multica@localhost:${postgres_port}/${postgres_db}?sslmode=disable
+DATABASE_URL=postgres://multica:${postgres_password}@localhost:${postgres_port}/${postgres_db}?sslmode=disable
 
 PORT=${backend_port}
-JWT_SECRET=change-me-in-production
+JWT_SECRET=${jwt_signing_key}
 MULTICA_DEV_VERIFICATION_CODE=888888
 MULTICA_SERVER_URL=ws://localhost:${backend_port}/ws
 MULTICA_PUBLIC_URL=http://localhost:${backend_port}

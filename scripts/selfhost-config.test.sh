@@ -11,6 +11,7 @@ cd "$ROOT_DIR"
 # include .env and bare-`export` it to the recipe environment, clobbering
 # this value, so run_recipe seeds it into the recipe .env as well.
 export JWT_SECRET=test-secret-for-config-test
+export POSTGRES_PASSWORD=test-pg-for-config-test
 
 require_config() {
   local config=$1
@@ -310,7 +311,7 @@ run_recipe() {
   # empty value .env.example ships; docker-compose.selfhost.yml now refuses
   # to interpolate an empty JWT_SECRET. Seed the throwaway value into the
   # recipe .env so make, the stub, and Compose all see a usable secret.
-  sed "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" "$recipe_dir/.env" >"$recipe_dir/.env.tmp"
+  sed -e "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" "$recipe_dir/.env" >"$recipe_dir/.env.tmp"
   mv "$recipe_dir/.env.tmp" "$recipe_dir/.env"
   if [ -n "$env_mutation" ]; then
     sed "$env_mutation" "$recipe_dir/.env" >"$recipe_dir/.env.tmp"

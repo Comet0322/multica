@@ -315,7 +315,7 @@ jobs:
         env:
           POSTGRES_DB: multica
           POSTGRES_USER: multica
-          POSTGRES_PASSWORD: multica
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         ports:
           - 5432:5432
         options: >-
@@ -333,13 +333,14 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://multica:multica@localhost:5432/multica?sslmode=disable
+      DATABASE_URL: postgres://multica:${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/multica?sslmode=disable
       # Wires up the RedisLocalSkill*_test.go suite. Distinct from REDIS_URL
       # (which would flip the server binary itself onto the Redis-backed
       # realtime relay + request stores); the tests talk to this Redis
       # directly so they run alongside the Postgres-backed suite.
       REDIS_TEST_URL: redis://localhost:6379/1
       GOFLAGS: -count=1
+      JWT_SECRET: ${{ github.run_id }}-${{ github.run_attempt }}-signing
     steps:
       - name: Checkout
         uses: actions/checkout@v6

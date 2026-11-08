@@ -62,10 +62,17 @@ spec:
         {{- include "multica.labels" . | nindent 8 }}
         app.kubernetes.io/component: backend
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: "{{ .Values.images.backend.repository }}:{{ $backendImageTag }}"
           imagePullPolicy: {{ .Values.images.backend.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 8080
               name: http
