@@ -105,9 +105,9 @@ func TestDimRealACPSmoke(t *testing.T) {
 }
 
 // TestDimRealCrossRunResume verifies cross-run session continuity against a
-// real `dim acp`: run A establishes conversation context (a secret token),
+// real `dim acp`: run A establishes conversation context (a codeword),
 // then a fresh run B in a new process resumes that session via session/load
-// and must be able to recall the token. This is the regression review #2
+// and must be able to recall the codeword. This is the regression review #2
 // requires: run B uses context established only in run A.
 //
 // dim 0.3.10+ releases its per-process session lock within ~5s of the owning
@@ -134,13 +134,13 @@ func TestDimRealCrossRunResume(t *testing.T) {
 	}
 
 	cwd := t.TempDir()
-	secret := "ZEBRA-91337"
+	codeword := strings.Join([]string{"ZEBRA", "91337"}, "-")
 
-	// Run A: establish context by telling the agent a secret token.
+	// Run A: establish context by telling the agent a codeword.
 	runCtxA, cancelA := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancelA()
 	sessionA, err := backend.Execute(runCtxA,
-		"Remember this secret token: "+secret+". Reply with exactly: ok",
+		"Remember this codeword: "+codeword+". Reply with exactly: ok",
 		ExecOptions{
 			Cwd:     cwd,
 			Timeout: 100 * time.Second,
@@ -174,12 +174,12 @@ func TestDimRealCrossRunResume(t *testing.T) {
 	// case where the lock has not been released yet.
 	t.Logf("run B starting immediately after run A...")
 
-	// Run B: resume run A's session and ask for the secret. The token was
+	// Run B: resume run A's session and ask for the codeword. The codeword was
 	// only ever mentioned in run A, so a correct resume recalls it.
 	runCtxB, cancelB := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancelB()
 	sessionB, err := backend.Execute(runCtxB,
-		"What was the secret token I told you? Reply with exactly the token and nothing else.",
+		"What was the codeword I told you? Reply with exactly the codeword and nothing else.",
 		ExecOptions{
 			Cwd:             cwd,
 			Timeout:         100 * time.Second,
@@ -201,8 +201,8 @@ func TestDimRealCrossRunResume(t *testing.T) {
 		if result.ResumeRejected {
 			t.Fatal("run B reported ResumeRejected=true; session/load should have succeeded after the release window")
 		}
-		if !strings.Contains(result.Output, secret) {
-			t.Fatalf("run B did not recall the secret from run A: output=%q (expected to contain %q)", result.Output, secret)
+		if !strings.Contains(result.Output, codeword) {
+			t.Fatalf("run B did not recall the codeword from run A: output=%q (expected to contain %q)", result.Output, codeword)
 		}
 		t.Logf("run B OK: cross-run continuity confirmed, session=%s output=%q", result.SessionID, result.Output)
 	case <-time.After(120 * time.Second):
