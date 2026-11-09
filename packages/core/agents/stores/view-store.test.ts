@@ -1,0 +1,298 @@
+// @vitest-environment jsdom
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { useAgentsViewStore } from "./view-store";
+import { setCurrentWorkspace } from "../../platform/workspace-storage";
+
+const flush = () => new Promise((resolve) => queueMicrotask(() => resolve(null)));
+
+// Node 25 ships a partial `localStorage` shim under jsdom that's missing
+// `clear`/`removeItem`; replace it with a real in-memory Storage so persist
+// can round-trip values.
+beforeAll(() => {
+  if (typeof globalThis.localStorage?.clear !== "function") {
+    const values = new Map<string, string>();
+    const storage: Storage = {
+      get length() { return values.size; },
+      clear: () => values.clear(),
+      getItem: (k) => values.get(k) ?? null,
+      key: (i) => Array.from(values.keys())[i] ?? null,
+      removeItem: (k) => { values.delete(k); },
+      setItem: (k, v) => { values.set(k, v); },
+    };
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+    Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+  }
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  useAgentsViewStore.setState({ scope: "mine", search: "" });
+  setCurrentWorkspace(null, null);
+});
+
+afterEach(() => {
+  setCurrentWorkspace(null, null);
+});
+
+describe("useAgentsViewStore", () => {
+
+  it("partialize persists only view prefs (no actions) under the workspace-namespaced key", async () => {
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    useAgentsViewStore.getState().setScope("all");
+
+    const raw = localStorage.getItem("multica_agents_view:acme");
+    expect(raw).not.toBeNull();
+    const parsed = JSON.parse(raw as string);
+    expect(Object.keys(parsed.state).sort()).toEqual([
+      "filters",
+      "hiddenColumns",
+      "scope",
+      "sortDirection",
+      "sortField",
+    ]);
+    expect(parsed.state.scope).toBe("all");
+  });
+
+  it("rehydrates a different saved scope on workspace switch", async () => {
+    localStorage.setItem(
+      "multica_agents_view:acme",
+      JSON.stringify({ state: { scope: "all" }, version: 0 }),
+    );
+    localStorage.setItem(
+      "multica_agents_view:beta",
+      JSON.stringify({ state: { scope: "mine" }, version: 0 }),
+    );
+
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    await flush();
+    expect(useAgentsViewStore.getState().scope).toBe("all");
+
+    setCurrentWorkspace("beta", "ws_b");
+    await flush();
+    await flush();
+    expect(useAgentsViewStore.getState().scope).toBe("mine");
+  });
+
+  it("resets to 'mine' when switching to a workspace with no persisted value", async () => {
+    localStorage.setItem(
+      "multica_agents_view:acme",
+      JSON.stringify({ state: { scope: "all" }, version: 0 }),
+    );
+
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    await flush();
+    expect(useAgentsViewStore.getState().scope).toBe("all");
+
+    setCurrentWorkspace("beta", "ws_b");
+    await flush();
+    await flush();
+    expect(useAgentsViewStore.getState().scope).toBe("mine");
+    expect(localStorage.getItem("multica_agents_view:acme")).not.toBeNull();
+  });
+
+  it("backfills new filter dimensions when rehydrating a pre-owners payload", async () => {
+    // A payload persisted before the `owners` filter existed must not drop
+    // the key to undefined (the agents list filter predicate reads
+    // `filters.owners.length` and would crash).
+    localStorage.setItem(
+      "multica_agents_view:acme",
+      JSON.stringify({
+        state: { filters: { availability: ["online"], runtimes: [] } },
+        version: 0,
+      }),
+    );
+
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    await flush();
+
+    const filters = useAgentsViewStore.getState().filters;
+    expect(filters.owners).toEqual([]);
+    expect(filters.availability).toEqual(["online"]);
+  });
+
+  describe("access filter dimension", () => {
+    it("toggleFilter('access', value) adds and removes the value", () => {
+      const { toggleFilter } = useAgentsViewStore.getState();
+      toggleFilter("access", "owner-only");
+      expect(useAgentsViewStore.getState().filters.access).toEqual(["owner-only"]);
+      toggleFilter("access", "workspace");
+      expect(useAgentsViewStore.getState().filters.access).toEqual([
+        "owner-only",
+        "workspace",
+      ]);
+      toggleFilter("access", "owner-only");
+      expect(useAgentsViewStore.getState().filters.access).toEqual(["workspace"]);
+    });
+
+    it("persists the access filter under the workspace-namespaced key", async () => {
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      useAgentsViewStore.getState().toggleFilter("access", "specific-people");
+      await flush();
+
+      const raw = localStorage.getItem("multica_agents_view:acme");
+      expect(raw).not.toBeNull();
+      const parsed = JSON.parse(raw as string);
+      expect(parsed.state.filters.access).toEqual(["specific-people"]);
+    });
+
+    it("rehydrates a saved access filter on workspace switch", async () => {
+      localStorage.setItem(
+        "multica_agents_view:acme",
+        JSON.stringify({
+          state: { filters: { access: ["owner-only"] } },
+          version: 0,
+        }),
+      );
+      localStorage.setItem(
+        "multica_agents_view:beta",
+        JSON.stringify({
+          state: { filters: { access: ["workspace"] } },
+          version: 0,
+        }),
+      );
+
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+      expect(useAgentsViewStore.getState().filters.access).toEqual(["owner-only"]);
+
+      setCurrentWorkspace("beta", "ws_b");
+      await flush();
+      await flush();
+      expect(useAgentsViewStore.getState().filters.access).toEqual(["workspace"]);
+    });
+
+    it("backfills access to [] when rehydrating a pre-access payload", async () => {
+      // Pre-access payloads would leave filters.access undefined and crash
+      // the row-filter predicate (`filters.access.length`).
+      localStorage.setItem(
+        "multica_agents_view:acme",
+        JSON.stringify({
+          state: { filters: { availability: ["online"] } },
+          version: 0,
+        }),
+      );
+
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+
+      expect(useAgentsViewStore.getState().filters.access).toEqual([]);
+    });
+  });
+  describe("model column default (GitHub #9500)", () => {
+    it("shows the model column by default", async () => {
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+      expect(useAgentsViewStore.getState().hiddenColumns).not.toContain("model");
+    });
+
+    it("migrates a v0 payload by un-hiding model and keeping other hidden columns", async () => {
+      localStorage.setItem(
+        "multica_agents_view:acme",
+        JSON.stringify({
+          state: { scope: "all", hiddenColumns: ["model", "created", "runs"] },
+          version: 0,
+        }),
+      );
+
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+
+      const state = useAgentsViewStore.getState();
+      expect(state.hiddenColumns).toEqual(["created", "runs"]);
+      expect(state.scope).toBe("all");
+    });
+
+    it("respects a v1 payload that hides model explicitly", async () => {
+      localStorage.setItem(
+        "multica_agents_view:acme",
+        JSON.stringify({
+          state: { hiddenColumns: ["model"] },
+          version: 1,
+        }),
+      );
+
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+
+      expect(useAgentsViewStore.getState().hiddenColumns).toEqual(["model"]);
+    });
+
+    it("moves a v1 payload still on the old default to the new default", async () => {
+      localStorage.setItem(
+        "multica_agents_view:acme",
+        JSON.stringify({ state: { hiddenColumns: ["created"] }, version: 1 }),
+      );
+
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+
+      expect(useAgentsViewStore.getState().hiddenColumns).toEqual([
+        "owner",
+        "access",
+        "created",
+      ]);
+    });
+
+    it("keeps a customised v1 column choice", async () => {
+      localStorage.setItem(
+        "multica_agents_view:acme",
+        JSON.stringify({ state: { hiddenColumns: ["created", "runs"] }, version: 1 }),
+      );
+
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+
+      expect(useAgentsViewStore.getState().hiddenColumns).toEqual(["created", "runs"]);
+    });
+  });
+
+  describe("search (session-only)", () => {
+    it("keeps the query in the store but never persists it", async () => {
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      useAgentsViewStore.getState().setSearch("reviewer");
+      await flush();
+
+      expect(useAgentsViewStore.getState().search).toBe("reviewer");
+      const raw = localStorage.getItem("multica_agents_view:acme");
+      expect(raw).not.toBeNull();
+      expect(JSON.parse(raw as string).state).not.toHaveProperty("search");
+    });
+
+    it("clears the query on workspace switch", async () => {
+      localStorage.setItem(
+        "multica_agents_view:beta",
+        JSON.stringify({ state: { scope: "all" }, version: 2 }),
+      );
+      setCurrentWorkspace("acme", "ws_a");
+      await flush();
+      await flush();
+      useAgentsViewStore.getState().setSearch("reviewer");
+
+      // A workspace with saved preferences.
+      setCurrentWorkspace("beta", "ws_b");
+      await flush();
+      await flush();
+      expect(useAgentsViewStore.getState().search).toBe("");
+
+      // A workspace with nothing saved.
+      useAgentsViewStore.getState().setSearch("reviewer");
+      setCurrentWorkspace("gamma", "ws_c");
+      await flush();
+      await flush();
+      expect(useAgentsViewStore.getState().search).toBe("");
+    });
+  });
+});
