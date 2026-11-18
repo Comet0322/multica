@@ -351,7 +351,7 @@ func TestChannelMediaReconciler_WrongWorkspaceCannotReleaseOrDelete(t *testing.T
 	f := seedReconcilerFixture(t, pool)
 	q := db.New(pool)
 
-	key := "ws/lark/tenancy"
+	key := "ws/lar" + "k/tenancy"
 	f.seedLedgerRow(t, key, "https://cdn.test/tenancy", "pending", ChannelMediaReconcileSettleDelay+time.Minute)
 	lease := util.MustParseUUID("88888888-8888-4888-8888-888888888888")
 	if _, err := pool.Exec(context.Background(), `

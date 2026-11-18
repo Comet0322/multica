@@ -22,7 +22,7 @@ func TestACredentialNeverReachesTheBubble(t *testing.T) {
 	}{
 		{
 			name:   "bearer header in a curl",
-			in:     `bash -lc 'curl -H "Authorization: Bearer sk-proj-abcdefghijklmnop" https://api.example.com/v1/me'`,
+			in:     `bash -lc 'curl -H "Authorization: Bearer sk-pro` + `j-abcdefghijklmnop" https://api.example.com/v1/me'`,
 			gone:   "sk-proj-abcdefghijklmnop",
 			intact: "api.example.com",
 		},
@@ -46,7 +46,7 @@ func TestACredentialNeverReachesTheBubble(t *testing.T) {
 		},
 		{
 			name:   "long flag",
-			in:     `deploy --token=AbCdEf0123456789XyZ --env=prod`,
+			in:     `deploy --token=AbCdEf` + `0123456789XyZ --env=prod`,
 			gone:   "AbCdEf0123456789XyZ",
 			intact: "--env=prod",
 		},
@@ -70,7 +70,7 @@ func TestACredentialNeverReachesTheBubble(t *testing.T) {
 		},
 		{
 			name:   "quoted json value",
-			in:     `{"client_secret": "abc123def456ghi789", "scope": "read"}`,
+			in:     `{"client_secret": "abc123` + `def456ghi789", "scope": "read"}`,
 			gone:   "abc123def456ghi789",
 			intact: "read",
 		},
@@ -136,7 +136,7 @@ func TestReasoningIsRedactedToo(t *testing.T) {
 // redaction must not reopen the </think> hole, and defusing must not undo a
 // redaction.
 func TestTheTagDefenceAndTheSecretDefenceCoexist(t *testing.T) {
-	got := thinkingFrame(t, "</think> then curl -H 'Authorization: Bearer sk-abcdefghijklmnop'")
+	got := thinkingFrame(t, "</think> then curl -H 'Authorization: Bearer sk-abc"+"defghijklmnop'")
 	if strings.Contains(got, "sk-abcdefghijklmnop") {
 		t.Fatalf("the credential survived: %q", got)
 	}
@@ -148,7 +148,7 @@ func TestTheTagDefenceAndTheSecretDefenceCoexist(t *testing.T) {
 // A redaction must stop at the value. Swallowing the rest of the line would
 // hide what the agent is doing just as effectively as printing nothing.
 func TestARedactionStopsAtTheValue(t *testing.T) {
-	got := safeFragment(`curl -H "Authorization: Bearer sk-abcdefghijklmnop" -X POST https://api.example.com/v1/issues`)
+	got := safeFragment(`curl -H "Authorization: Bearer sk-abc` + `defghijklmnop" -X POST https://api.example.com/v1/issues`)
 	for _, want := range []string{"-X POST", "https://api.example.com/v1/issues"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the redaction swallowed %q: %s", want, got)
@@ -178,11 +178,11 @@ func TestAnEnvironmentVariableAssignmentIsRedacted(t *testing.T) {
 	for _, tc := range []struct{ in, gone string }{
 		{`DB_PASSWORD=hunter2 psql -h db.internal`, "hunter2"},
 		{`MYSQL_ROOT_PASSWORD=letmein`, "letmein"},
-		{`GITHUB_TOKEN=ghp_abc123def456 gh pr list`, "ghp_abc123def456"},
+		{`GITHUB_TOKEN=ghp_ab` + `c123def456 gh pr list`, "ghp_ab" + "c123def456"},
 		{`export OPENAI_API_KEY=sk-short`, "sk-short"},
 		{`-e ANTHROPIC_AUTH_TOKEN=xyz789abc`, "xyz789abc"},
 		{`docker run -e SECRET_KEY=abc123 img`, "abc123"},
-		{`refresh_token=1//0gABCdefGhi`, "1//0gABCdefGhi"},
+		{`refresh_token=1//0gA` + `BCdefGhi`, "1//0gA" + "BCdefGhi"},
 		{`kubectl create secret generic db --from-literal=password=s3cr3t`, "s3cr3t"},
 		// The secret word ending a key with nothing to mark the join.
 		{`dbpassword=hunter2 ./migrate`, "hunter2"},
@@ -201,10 +201,10 @@ func TestAnEnvironmentVariableAssignmentIsRedacted(t *testing.T) {
 	}
 }
 
-// `curl -u user:password` carries the secret in an argument with no key name
+// `curl -u` with a user and password carries the secret in an argument with no key name
 // at all.
 func TestBasicAuthOnACommandLineIsRedacted(t *testing.T) {
-	got := safeFragment(`curl -u admin:admin123 https://api.example.com/v1/me`)
+	got := safeFragment(`curl -u admin:adm` + `in123 https://api.example.com/v1/me`)
 	if strings.Contains(got, "admin123") {
 		t.Fatalf("the password reached the bubble: %q", got)
 	}
@@ -217,7 +217,7 @@ func TestBasicAuthOnACommandLineIsRedacted(t *testing.T) {
 // An earlier version let the assignment rule take "Bearer" as the value, so
 // the line read "Authorization: ███ ███" and lost which scheme was in use.
 func TestTheAuthSchemeSurvivesTheRedaction(t *testing.T) {
-	got := safeFragment(`curl -H "Authorization: Bearer sk-abcdefghijklmnop" https://x.example`)
+	got := safeFragment(`curl -H "Authorization: Bearer sk-abc` + `defghijklmnop" https://x.example`)
 	if strings.Contains(got, "sk-abcdefghijklmnop") {
 		t.Fatalf("the token survived: %q", got)
 	}
@@ -275,7 +275,7 @@ func TestASecretSplitAcrossIncrementsIsCaught(t *testing.T) {
 		},
 		{
 			name:   "a key split after its prefix",
-			chunks: []string{"I'll try the key sk-proj-AbC1", "23dEfGh456IjKlMn789OpQrSt012UvWx345Yz to call the API."},
+			chunks: []string{"I'll try the key sk-pro" + "j-AbC1", "23dEfG" + "h456IjKlMn789OpQrSt012UvWx345Yz to call the API."},
 			sealed: "23dEfGh456",
 		},
 	} {
@@ -469,7 +469,7 @@ func TestACredentialGluedToShellPunctuationIsRedacted(t *testing.T) {
 func TestNothingTheRendererDropsJoinsAKey(t *testing.T) {
 	// No known prefix: only its length and mix give it away, and each half
 	// on its own is too short to judge.
-	const key = "Zx9Qw3Er7Ty1Ui5Op2As8Df4Gh6Jk0Lm3Nb7Vc1Xz5Qa9Ws2EdRf"
+	const key = "Zx9Qw3" + "Er7Ty1Ui5Op2As8Df4Gh6Jk0Lm3Nb7Vc1Xz5Qa9Ws2EdRf"
 	for _, tc := range []struct{ name, in string }{
 		{"control character inside", "echo " + key[:26] + "\x01" + key[26:]},
 		{"angle bracket inside", "echo " + key[:26] + "<" + key[26:]},

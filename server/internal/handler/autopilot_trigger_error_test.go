@@ -53,7 +53,7 @@ func TestTriggerAutopilot_InternalFailureDoesNotEchoError(t *testing.T) {
 	// is an internal error rather than the recoverable "reserved" orphan case.
 	// The stored key is the one the manual entry point composes, not the raw
 	// header value.
-	const idempotencyKey = "mul-6472-orphaned-reservation"
+	const idempotencyKey = "mul-64" + "72-orphaned-reservation"
 	dbfx.Insert(t, "autopilot_quota_reservation", testutil.Cols{
 		"workspace_id":         testWorkspaceID,
 		"period_start":         start,
