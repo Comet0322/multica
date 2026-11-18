@@ -239,7 +239,7 @@ This keeps Docker simple while still isolating schema and data.
 
 - Node.js `22`
 - `pnpm` `10.28.2`
-- Go `1.26.10`
+- Go `1.26.11`
 - Docker
 
 Outside mobile, `pnpm typecheck` uses the native TypeScript 7 compiler (`tsc`,
