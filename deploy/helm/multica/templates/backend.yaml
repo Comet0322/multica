@@ -71,6 +71,7 @@ spec:
           imagePullPolicy: {{ .Values.images.backend.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           ports:
@@ -95,18 +96,17 @@ spec:
               value: /etc/ssl/certs:/etc/multica/ca-certs
             {{- end }}
           {{- end }}
-          {{- if or .Values.backend.uploads.persistence.enabled $extraCACerts }}
           volumeMounts:
-            {{- if .Values.backend.uploads.persistence.enabled }}
+            # The root filesystem is read-only; these are the paths it writes.
+            - name: tmp
+              mountPath: /tmp
             - name: uploads
               mountPath: /app/data/uploads
-            {{- end }}
             {{- if $extraCACerts }}
             - name: extra-ca-certs
               mountPath: /etc/multica/ca-certs
               readOnly: true
             {{- end }}
-          {{- end }}
           # The entrypoint runs `./migrate up` before serving traffic. On a
           # cold cluster (Postgres still coming up) this can take minutes. The
           # startupProbe holds off liveness/readiness until /healthz is OK.
@@ -143,19 +143,21 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or .Values.backend.uploads.persistence.enabled $extraCACerts }}
       volumes:
-        {{- if .Values.backend.uploads.persistence.enabled }}
+        - name: tmp
+          emptyDir: {}
         - name: uploads
+          {{- if .Values.backend.uploads.persistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "multica.backend.fullname" . }}-uploads
-        {{- end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         {{- if $extraCACerts }}
         - name: extra-ca-certs
           configMap:
             name: {{ $extraCACerts }}
         {{- end }}
-      {{- end }}
 ---
 apiVersion: v1
 kind: Service
