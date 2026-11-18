@@ -21,7 +21,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { sessionEpochChanged } from "./session-epoch";
 
-const TOKEN_KEY = "multica_token";
+const SESSION_STORAGE_SLOT = "multica_token";
 
 // Tail of the write queue. Each operation chains onto the previous one so no
 // two can be in flight at once; failures do not stall the queue.
@@ -34,15 +34,15 @@ function serialize<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export async function getToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  return SecureStore.getItemAsync(SESSION_STORAGE_SLOT);
 }
 
 export async function setToken(token: string): Promise<void> {
-  await serialize(() => SecureStore.setItemAsync(TOKEN_KEY, token));
+  await serialize(() => SecureStore.setItemAsync(SESSION_STORAGE_SLOT, token));
 }
 
 export async function clearToken(): Promise<void> {
-  await serialize(() => SecureStore.deleteItemAsync(TOKEN_KEY));
+  await serialize(() => SecureStore.deleteItemAsync(SESSION_STORAGE_SLOT));
 }
 
 /**
@@ -63,9 +63,9 @@ export async function commitRenewedToken(
 ): Promise<boolean> {
   return serialize(async () => {
     if (sessionEpochChanged(expected.epoch)) return false;
-    const current = await SecureStore.getItemAsync(TOKEN_KEY);
+    const current = await SecureStore.getItemAsync(SESSION_STORAGE_SLOT);
     if (current !== expected.previousToken) return false;
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await SecureStore.setItemAsync(SESSION_STORAGE_SLOT, token);
     return true;
   });
 }

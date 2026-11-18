@@ -60,3 +60,10 @@ on the same container (see envFrom on the backend Deployment).
 {{- define "multica.databaseUrl" -}}
 postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "multica.postgres.fullname" . }}:5432/$(POSTGRES_DB)?sslmode=disable
 {{- end -}}
+
+{{/*
+Name of the out-of-band Secret with the backend and Postgres credentials.
+*/}}
+{{- define "multica.secretName" -}}
+{{- .Values.existingSecret | default "multica-secrets" -}}
+{{- end -}}

@@ -49,7 +49,8 @@ images:
 # The chart references this Secret by name; it does not template it, so real
 # values never need to land in git.
 # -----------------------------------------------------------------------------
-existingSecret: multica-secrets
+# Empty means the default name, multica-secrets.
+existingSecret: ""
 
 # -----------------------------------------------------------------------------
 # PostgreSQL
