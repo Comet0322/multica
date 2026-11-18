@@ -46,6 +46,7 @@ spec:
           imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           ports:
             - containerPort: 5432
               name: postgres
@@ -72,6 +73,11 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            # The root filesystem is read-only; these are the paths Postgres writes.
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             exec:
               command:
@@ -91,6 +97,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "multica.postgres.fullname" . }}-data
