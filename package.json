@@ -78,7 +78,6 @@
       "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
       "linkify-it@>=5.0.0 <5.0.2": "5.0.2",
       "mermaid@>=11.0.0 <11.16.1": "11.16.1",
-      "node-forge@>=1.0.0 <1.4.1": "1.4.1",
       "path-to-regexp@>=8.0.0 <8.4.0": "8.4.0",
       "picomatch@>=2.0.0 <2.3.2": "2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "4.0.4",
@@ -107,7 +106,8 @@
       "semver@>=5.0.0 <5.7.3": "5.7.3",
       "ws@>=8.0.0 <8.22.2": "8.22.2",
       "@testing-library/user-event@14.6.10": "14.6.9",
-      "hono@>=4.0.0 <4.13.16": "4.13.16"
+      "hono@>=4.0.0 <4.13.16": "4.13.16",
+      "node-forge@>=1.0.0 <1.4.3": "1.4.3"
     },
     "patchedDependencies": {
       "expo-modules-core@57.0.21": "apps/mobile/patches/expo-modules-core@57.0.21.patch"
