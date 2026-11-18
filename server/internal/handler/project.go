@@ -1,0 +1,1175 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/logger"
+	"github.com/multica-ai/multica/server/internal/projectaccess"
+	"github.com/multica-ai/multica/server/internal/util"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
+)
+
+type ProjectResponse struct {
+	ID          string  `json:"id"`
+	WorkspaceID string  `json:"workspace_id"`
+	Title       string  `json:"title"`
+	Description *string `json:"description"`
+	Icon        *string `json:"icon"`
+	Status      string  `json:"status"`
+	Priority    string  `json:"priority"`
+	LeadType    *string `json:"lead_type"`
+	LeadID      *string `json:"lead_id"`
+	CreatorType *string `json:"creator_type"`
+	CreatorID   *string `json:"creator_id"`
+	// StartDate / DueDate are calendar days ("YYYY-MM-DD"), no time-of-day or
+	// timezone — same contract as issue.start_date / issue.due_date.
+	StartDate *string `json:"start_date"`
+	DueDate   *string `json:"due_date"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+	// LastActivityAt is the later of the project's own updated_at and the
+	// latest activity on any of its issues.
+	LastActivityAt string `json:"last_activity_at"`
+	IssueCount     int64  `json:"issue_count"`
+	DoneCount      int64  `json:"done_count"`
+	// ResourceCount is a breadcrumb pointing at the sub-collection at
+	// /api/projects/{id}/resources. Resources themselves stay out of this
+	// payload to keep parent metadata and child collections separate; clients
+	// that need the list call ListProjectResources directly.
+	ResourceCount int64 `json:"resource_count"`
+	// WorkflowID is the workflow this project uses; null means the workspace
+	// Default workflow. (MUL-7420)
+	WorkflowID *string `json:"workflow_id"`
+	// Visibility is "workspace" (every member) or "private" (project members
+	// only, whatever their workspace role). (MUL-8472, MUL-9284)
+	Visibility string `json:"visibility"`
+	// ArchivedAt is non-null while the project is archived: hidden from
+	// default lists and pickers, closed to new issues, otherwise intact.
+	// Orthogonal to Status. (MUL-8861)
+	ArchivedAt     *string `json:"archived_at"`
+	ArchivedByType *string `json:"archived_by_type"`
+	ArchivedByID   *string `json:"archived_by_id"`
+}
+
+func projectToResponse(p db.Project) ProjectResponse {
+	return ProjectResponse{
+		ID:          uuidToString(p.ID),
+		WorkspaceID: uuidToString(p.WorkspaceID),
+		Title:       p.Title,
+		Description: textToPtr(p.Description),
+		Icon:        textToPtr(p.Icon),
+		Status:      p.Status,
+		Priority:    p.Priority,
+		LeadType:    textToPtr(p.LeadType),
+		LeadID:      uuidToPtr(p.LeadID),
+		CreatorType: textToPtr(p.CreatorType),
+		CreatorID:   uuidToPtr(p.CreatorID),
+		StartDate:   dateToPtr(p.StartDate),
+		DueDate:     dateToPtr(p.DueDate),
+		CreatedAt:   timestampToString(p.CreatedAt),
+		UpdatedAt:   timestampToString(p.UpdatedAt),
+		// Until issue stats are applied, the project's own edits are its activity.
+		LastActivityAt: timestampToString(p.UpdatedAt),
+		WorkflowID:     uuidToPtr(p.WorkflowID),
+		Visibility:     projectVisibilityOrDefault(p.Visibility),
+
+		ArchivedAt:     timestampToPtr(p.ArchivedAt),
+		ArchivedByType: textToPtr(p.ArchivedByType),
+		ArchivedByID:   uuidToPtr(p.ArchivedByID),
+	}
+}
+
+// projectVisibilityOrDefault keeps responses on the documented enum for a
+// db.Project built outside sqlc that left Visibility empty.
+func projectVisibilityOrDefault(v string) string {
+	if v == "" {
+		return projectaccess.VisibilityWorkspace
+	}
+	return v
+}
+
+func (h *Handler) fillProjectIssueStats(ctx context.Context, resp *ProjectResponse, project db.Project) {
+	terminalStatusKeys := h.projectTerminalIssueStatusKeys(ctx, project.WorkspaceID)
+	stats, err := h.Queries.GetProjectIssueStats(ctx, db.GetProjectIssueStatsParams{
+		WorkspaceID:        project.WorkspaceID,
+		ProjectIds:         []pgtype.UUID{project.ID},
+		TerminalStatusKeys: terminalStatusKeys,
+	})
+	if err != nil || len(stats) == 0 {
+		return
+	}
+	applyProjectIssueStats(resp, project.UpdatedAt, stats[0])
+}
+
+// applyProjectIssueStats fills the issue counts and moves LastActivityAt to
+// the latest issue activity when that is later than the project's own edit.
+func applyProjectIssueStats(resp *ProjectResponse, projectUpdatedAt pgtype.Timestamptz, s db.GetProjectIssueStatsRow) {
+	resp.IssueCount = s.TotalCount
+	resp.DoneCount = s.DoneCount
+	if s.LastIssueActivityAt.Valid &&
+		(!projectUpdatedAt.Valid || s.LastIssueActivityAt.Time.After(projectUpdatedAt.Time)) {
+		resp.LastActivityAt = timestampToString(s.LastIssueActivityAt)
+	}
+}
+
+// projectTerminalIssueStatusKeys keeps project responses useful if the custom
+// status catalog cannot be read. Canonical terminal keys are less complete
+// than the workspace catalog, but they avoid rendering every project as 0/0.
+func (h *Handler) projectTerminalIssueStatusKeys(ctx context.Context, workspaceID pgtype.UUID) []string {
+	keys, err := h.terminalIssueStatusKeys(ctx, workspaceID)
+	if err == nil {
+		return keys
+	}
+	slog.Warn("expand project terminal status categories failed; using canonical keys",
+		"workspace_id", uuidToString(workspaceID), "error", err)
+	return []string{issuestatus.Done, issuestatus.Cancelled}
+}
+
+func (h *Handler) loadProjectResourceCount(ctx context.Context, projectID pgtype.UUID) int64 {
+	rows, err := h.Queries.GetProjectResourceCounts(ctx, []pgtype.UUID{projectID})
+	if err != nil || len(rows) == 0 {
+		return 0
+	}
+	return rows[0].ResourceCount
+}
+
+type CreateProjectRequest struct {
+	Title       string                                `json:"title"`
+	Description *string                               `json:"description"`
+	Icon        *string                               `json:"icon"`
+	Status      string                                `json:"status"`
+	Priority    string                                `json:"priority"`
+	LeadType    *string                               `json:"lead_type"`
+	LeadID      *string                               `json:"lead_id"`
+	StartDate   *string                               `json:"start_date"`
+	DueDate     *string                               `json:"due_date"`
+	Resources   []CreateProjectResourceRequestPayload `json:"resources,omitempty"`
+	// Visibility "private" creates a private project (MUL-8472). MemberIDs seeds its member list; the creator is
+	// always added.
+	Visibility *string  `json:"visibility,omitempty"`
+	MemberIDs  []string `json:"member_ids,omitempty"`
+	// WorkflowID picks the project's workflow at creation; omitted or null
+	// uses the workspace Default workflow. A new project has no issues, so no
+	// status mapping is involved. (MUL-7420)
+	WorkflowID *string `json:"workflow_id,omitempty"`
+}
+
+// CreateProjectResourceRequestPayload mirrors CreateProjectResourceRequest but
+// is embedded inside the project create payload. Kept as a separate type so a
+// future change to the standalone request can't silently break this surface.
+type CreateProjectResourceRequestPayload struct {
+	ResourceType string          `json:"resource_type"`
+	ResourceRef  json.RawMessage `json:"resource_ref"`
+	Label        *string         `json:"label"`
+	Position     *int32          `json:"position"`
+}
+
+type UpdateProjectRequest struct {
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Icon        *string `json:"icon"`
+	Status      *string `json:"status"`
+	Priority    *string `json:"priority"`
+	LeadType    *string `json:"lead_type"`
+	LeadID      *string `json:"lead_id"`
+	StartDate   *string `json:"start_date"`
+	DueDate     *string `json:"due_date"`
+	// Visibility switches between "workspace" and "private" (MUL-8472).
+	// MemberIDs adds project members to a project that is or becomes
+	// "private"; see prepareProjectAccessUpdate.
+	Visibility *string  `json:"visibility"`
+	MemberIDs  []string `json:"member_ids,omitempty"`
+}
+
+func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
+	if !ok {
+		return
+	}
+	query, err := parseProjectListQuery(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Archived projects are opt-in so agents resolving a project by name only
+	// see the ones that still accept work.
+	projects, err := h.Queries.ListProjects(r.Context(), db.ListProjectsParams{
+		WorkspaceID:     wsUUID,
+		IncludeArchived: query.includeArchived,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list projects")
+		return
+	}
+	hidden, ok := h.requestHiddenProjects(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	// Filters, sort and paging run here, after visibility, so a page never
+	// counts or skips a project the caller cannot see.
+	visible := projects[:0:0]
+	for _, p := range projects {
+		if (hidden.Empty() || hidden.CanSeeProject(p.ID)) && query.matchesProject(p) {
+			visible = append(visible, p)
+		}
+	}
+	projects = visible
+
+	// Batch-fetch issue stats and resource counts for all projects
+	statsMap := make(map[string]db.GetProjectIssueStatsRow)
+	resourceCountMap := make(map[string]int64)
+	if len(projects) > 0 {
+		projectIDs := make([]pgtype.UUID, len(projects))
+		for i, p := range projects {
+			projectIDs[i] = p.ID
+		}
+		terminalStatusKeys := h.projectTerminalIssueStatusKeys(r.Context(), wsUUID)
+		stats, statsErr := h.Queries.GetProjectIssueStats(r.Context(), db.GetProjectIssueStatsParams{
+			WorkspaceID:        wsUUID,
+			ProjectIds:         projectIDs,
+			TerminalStatusKeys: terminalStatusKeys,
+		})
+		if statsErr == nil {
+			for _, s := range stats {
+				statsMap[uuidToString(s.ProjectID)] = s
+			}
+		}
+		counts, err := h.Queries.GetProjectResourceCounts(r.Context(), projectIDs)
+		if err == nil {
+			for _, c := range counts {
+				resourceCountMap[uuidToString(c.ProjectID)] = c.ResourceCount
+			}
+		}
+	}
+
+	resp := make([]ProjectResponse, len(projects))
+	for i, p := range projects {
+		resp[i] = projectToResponse(p)
+		if s, ok := statsMap[resp[i].ID]; ok {
+			applyProjectIssueStats(&resp[i], p.UpdatedAt, s)
+		}
+		resp[i].ResourceCount = resourceCountMap[resp[i].ID]
+	}
+	sortProjectResponses(resp, query.sort, query.desc)
+	total := len(resp)
+	page := query.page(resp)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"projects": page,
+		"total":    total,
+		"has_more": query.offset+len(page) < total,
+	})
+}
+
+func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	workspaceID := h.resolveWorkspaceID(r)
+	idUUID, ok := parseUUIDOrBadRequest(w, id, "project id")
+	if !ok {
+		return
+	}
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	project, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{
+		ID: idUUID, WorkspaceID: wsUUID,
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !h.requireProjectVisible(w, r, workspaceID, project.ID, http.StatusNotFound, "project not found") {
+		return
+	}
+	resp := projectToResponse(project)
+	h.fillProjectIssueStats(r.Context(), &resp, project)
+	resp.ResourceCount = h.loadProjectResourceCount(r.Context(), project.ID)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// validProjectStatuses / validProjectPriorities mirror the CHECK constraints on
+// the project table (migrations 034, 035). CreateProject / UpdateProject
+// pre-validate against these so an unknown enum value returns a clean 400 with
+// the allowed list instead of surfacing the DB CHECK violation as a 500 — the
+// exact mismatch reported in #3925 (`--status active`).
+var validProjectStatuses = []string{"planned", "in_progress", "paused", "completed", "cancelled"}
+var validProjectPriorities = []string{"urgent", "high", "medium", "low", "none"}
+
+// validateProjectEnum writes a 400 and returns false when value is not in
+// allowed; the caller returns immediately on false.
+func validateProjectEnum(w http.ResponseWriter, field, value string, allowed []string) bool {
+	for _, a := range allowed {
+		if value == a {
+			return true
+		}
+	}
+	writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid %s %q; valid values: %s", field, value, strings.Join(allowed, ", ")))
+	return false
+}
+
+// writeProjectWriteError maps a failed project INSERT/UPDATE to an HTTP
+// response. A CHECK constraint violation is a client error (400) — pre-validation
+// already covers status/priority, so this backstops any other constrained column
+// (e.g. lead_type). Anything else is a genuine server fault: log the underlying
+// error so transient DB failures are diagnosable (#3925 had no server-side
+// signal) and return 500.
+func (h *Handler) writeProjectWriteError(w http.ResponseWriter, r *http.Request, err error, action string) {
+	if isCheckViolation(err) {
+		writeError(w, http.StatusBadRequest, "project "+action+" rejected: a field value failed a database constraint")
+		return
+	}
+	slog.Error("project "+action+" failed", append(logger.RequestAttrs(r), "error", err)...)
+	writeError(w, http.StatusInternalServerError, "failed to "+action+" project")
+}
+
+func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	var req CreateProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Title == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	workspaceID := h.resolveWorkspaceID(r)
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	status := req.Status
+	if status == "" {
+		status = "planned"
+	}
+	if !validateProjectEnum(w, "status", status, validProjectStatuses) {
+		return
+	}
+	priority := req.Priority
+	if priority == "" {
+		priority = "none"
+	}
+	if !validateProjectEnum(w, "priority", priority, validProjectPriorities) {
+		return
+	}
+	var leadType pgtype.Text
+	var leadID pgtype.UUID
+	if req.LeadType != nil {
+		leadType = pgtype.Text{String: *req.LeadType, Valid: true}
+	}
+	if req.LeadID != nil {
+		id, ok := parseUUIDOrBadRequest(w, *req.LeadID, "lead_id")
+		if !ok {
+			return
+		}
+		leadID = id
+	}
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
+	if !ok {
+		return
+	}
+	var workflowID pgtype.UUID
+	if req.WorkflowID != nil && *req.WorkflowID != "" {
+		id, ok := parseUUIDOrBadRequest(w, *req.WorkflowID, "workflow_id")
+		if !ok {
+			return
+		}
+		row, err := h.Queries.GetIssueWorkflow(r.Context(), db.GetIssueWorkflowParams{ID: id, WorkspaceID: wsUUID})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "workflow not found in this workspace")
+			return
+		}
+		if !row.IsDefault {
+			workflowID = id
+		}
+	}
+
+	// start_date / due_date are optional calendar days; an absent or empty
+	// value leaves the column NULL. Mirrors CreateIssue's date handling.
+	var startDate pgtype.Date
+	if req.StartDate != nil && *req.StartDate != "" {
+		d, err := util.ParseCalendarDate(*req.StartDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid start_date format, expected YYYY-MM-DD")
+			return
+		}
+		startDate = d
+	}
+	var dueDate pgtype.Date
+	if req.DueDate != nil && *req.DueDate != "" {
+		d, err := util.ParseCalendarDate(*req.DueDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid due_date format, expected YYYY-MM-DD")
+			return
+		}
+		dueDate = d
+	}
+
+	// Pre-validate every resource payload before opening a transaction so an
+	// invalid ref produces a clean 400 with no DB work. For local_directory we
+	// also enforce one row per daemon_id within the batch — the daemon-side
+	// resolver picks the first match by daemon_id, so two rows on the same
+	// daemon would silently route the agent into whichever sorts first.
+	// The standalone POST/PUT paths run the same check via
+	// findLocalDirectoryConflict; this loop just covers the bundled-create
+	// surface, where there is no existing row to compare against yet.
+	normalizedRefs := make([]json.RawMessage, len(req.Resources))
+	localDirSeen := map[string]int{}
+	for i, res := range req.Resources {
+		res.ResourceType = strings.TrimSpace(res.ResourceType)
+		if res.ResourceType == "" {
+			writeError(w, http.StatusBadRequest, "resources[].resource_type is required")
+			return
+		}
+		ref, err := validateAndNormalizeResourceRef(res.ResourceType, res.ResourceRef)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "resources["+strconv.Itoa(i)+"]: "+err.Error())
+			return
+		}
+		normalizedRefs[i] = ref
+		if res.ResourceType == "local_directory" {
+			var ld localDirectoryRef
+			if err := json.Unmarshal(ref, &ld); err != nil {
+				writeError(w, http.StatusBadRequest, "resources["+strconv.Itoa(i)+"]: "+err.Error())
+				return
+			}
+			if prev, ok := localDirSeen[ld.DaemonID]; ok {
+				writeError(w, http.StatusBadRequest, "resources["+strconv.Itoa(i)+"]: duplicate local_directory for daemon (already at index "+strconv.Itoa(prev)+"); each daemon may attach at most one local_directory per project")
+				return
+			}
+			localDirSeen[ld.DaemonID] = i
+			// Same worktree gate the standalone POST/PUT paths run. This
+			// bundled-create surface skipped it, so a project created with a
+			// worktree local_directory could store a mode the machine cannot
+			// run — caught only later, by the claim gate cancelling the task.
+			// It writes its own 422; it runs before the transaction, so a
+			// rejection leaves nothing behind.
+			if !requireWorktreeCapableDaemon(w, r, h.Queries, wsUUID, res.ResourceType, ref) {
+				return
+			}
+		}
+	}
+
+	// MUL-8472: a private project is created with its member list in the same
+	// transaction, so it is never briefly visible to the whole workspace.
+	private := false
+	var privateMemberIDs []pgtype.UUID
+	if req.Visibility != nil && *req.Visibility != "" && *req.Visibility != projectaccess.VisibilityWorkspace {
+		if *req.Visibility != projectaccess.VisibilityPrivate {
+			writeError(w, http.StatusBadRequest, "invalid visibility: must be one of workspace, private")
+			return
+		}
+		if !h.requireHumanProjectAccessActor(w, r, workspaceID) {
+			return
+		}
+		ids, ok := parseProjectMemberIDs(w, req.MemberIDs, "member_ids")
+		if !ok {
+			return
+		}
+		creator, ok := parseUUIDOrBadRequest(w, userID, "user id")
+		if !ok {
+			return
+		}
+		ids = append(ids, creator)
+		if leadType.Valid && leadType.String == "member" && leadID.Valid {
+			ids = append(ids, leadID)
+		}
+		private = true
+		privateMemberIDs = ids
+	}
+
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	creatorID, ok := parseUUIDOrBadRequest(w, actorID, "creator_id")
+	if !ok {
+		return
+	}
+	createParams := db.CreateProjectParams{
+		CreatorType: pgtype.Text{String: actorType, Valid: true},
+		CreatorID:   creatorID,
+		WorkspaceID: wsUUID,
+		Title:       req.Title,
+		Description: ptrToText(req.Description),
+		Icon:        ptrToText(req.Icon),
+		Status:      status,
+		LeadType:    leadType,
+		LeadID:      leadID,
+		Priority:    priority,
+		StartDate:   startDate,
+		DueDate:     dueDate,
+		WorkflowID:  workflowID,
+	}
+
+	// Without resources, keep the simple non-tx path.
+	if len(req.Resources) == 0 && !private {
+		project, err := h.Queries.CreateProject(r.Context(), createParams)
+		if err != nil {
+			h.writeProjectWriteError(w, r, err, "create")
+			return
+		}
+		resp := projectToResponse(project)
+		h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
+		writeJSON(w, http.StatusCreated, resp)
+		return
+	}
+
+	// Transactional path: project + all resources are atomic.
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	project, err := qtx.CreateProject(r.Context(), createParams)
+	if err != nil {
+		h.writeProjectWriteError(w, r, err, "create")
+		return
+	}
+	if private {
+		inserted, err := qtx.AddProjectMembers(r.Context(), db.AddProjectMembersParams{
+			ProjectID:   project.ID,
+			WorkspaceID: project.WorkspaceID,
+			UserIds:     privateMemberIDs,
+			AddedBy:     parseUUIDOrInvalid(userID),
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to add project members")
+			return
+		}
+		if !h.allProjectMembersExist(w, r, qtx, project, privateMemberIDs, inserted) {
+			return
+		}
+		project, err = qtx.UpdateProjectVisibility(r.Context(), db.UpdateProjectVisibilityParams{
+			ID:          project.ID,
+			WorkspaceID: project.WorkspaceID,
+			Visibility:  projectaccess.VisibilityPrivate,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to set project visibility")
+			return
+		}
+	}
+
+	creator, _ := h.parseUserUUIDOrZero(userID)
+	resourceRows := make([]db.ProjectResource, 0, len(req.Resources))
+	for i, res := range req.Resources {
+		var label pgtype.Text
+		if res.Label != nil && strings.TrimSpace(*res.Label) != "" {
+			label = pgtype.Text{String: strings.TrimSpace(*res.Label), Valid: true}
+		}
+		var position int32 = int32(i)
+		if res.Position != nil {
+			position = *res.Position
+		}
+		row, err := qtx.CreateProjectResource(r.Context(), db.CreateProjectResourceParams{
+			ProjectID:    project.ID,
+			WorkspaceID:  project.WorkspaceID,
+			ResourceType: res.ResourceType,
+			ResourceRef:  normalizedRefs[i],
+			Label:        label,
+			Position:     position,
+			CreatedBy:    creator,
+		})
+		if err != nil {
+			if isUniqueViolation(err) {
+				writeError(w, http.StatusConflict, "resources["+strconv.Itoa(i)+"]: this resource is already attached")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to attach resource at index "+strconv.Itoa(i))
+			return
+		}
+		resourceRows = append(resourceRows, row)
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit project create")
+		return
+	}
+
+	resourceResp := make([]ProjectResourceResponse, len(resourceRows))
+	for i, row := range resourceRows {
+		resourceResp[i] = projectResourceToResponse(row)
+	}
+	resp := projectToResponse(project)
+	resp.ResourceCount = int64(len(resourceResp))
+	h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
+	for _, rr := range resourceResp {
+		h.publish(protocol.EventProjectResourceCreated, workspaceID, "member", userID, map[string]any{
+			"resource":   rr,
+			"project_id": resp.ID,
+		})
+	}
+	// One-shot create echo: the parent ProjectResponse fields plus the just-
+	// created resources. This is a transient creation echo, not a contract for
+	// reads — GET /projects/{id} stays metadata-only with resource_count.
+	writeJSON(w, http.StatusCreated, struct {
+		ProjectResponse
+		Resources []ProjectResourceResponse `json:"resources"`
+	}{
+		ProjectResponse: resp,
+		Resources:       resourceResp,
+	})
+}
+
+func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	workspaceID := h.resolveWorkspaceID(r)
+	idUUID, ok := parseUUIDOrBadRequest(w, id, "project id")
+	if !ok {
+		return
+	}
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	prevProject, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{
+		ID: idUUID, WorkspaceID: wsUUID,
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !h.requireProjectVisible(w, r, workspaceID, prevProject.ID, http.StatusNotFound, "project not found") {
+		return
+	}
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	var req UpdateProjectRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	var rawFields map[string]json.RawMessage
+	json.Unmarshal(bodyBytes, &rawFields)
+
+	params := db.UpdateProjectParams{ID: prevProject.ID}
+	_, params.DescriptionSet = rawFields["description"]
+	_, params.IconSet = rawFields["icon"]
+	_, params.LeadTypeSet = rawFields["lead_type"]
+	_, params.LeadIDSet = rawFields["lead_id"]
+	_, params.StartDateSet = rawFields["start_date"]
+	_, params.DueDateSet = rawFields["due_date"]
+	if req.Title != nil {
+		params.Title = pgtype.Text{String: *req.Title, Valid: true}
+	}
+	if req.Status != nil {
+		if !validateProjectEnum(w, "status", *req.Status, validProjectStatuses) {
+			return
+		}
+		params.Status = pgtype.Text{String: *req.Status, Valid: true}
+	}
+	if req.Priority != nil {
+		if !validateProjectEnum(w, "priority", *req.Priority, validProjectPriorities) {
+			return
+		}
+		params.Priority = pgtype.Text{String: *req.Priority, Valid: true}
+	}
+	if _, ok := rawFields["description"]; ok {
+		if req.Description != nil {
+			params.Description = pgtype.Text{String: *req.Description, Valid: true}
+		} else {
+			params.Description = pgtype.Text{Valid: false}
+		}
+	}
+	if _, ok := rawFields["icon"]; ok {
+		if req.Icon != nil {
+			params.Icon = pgtype.Text{String: *req.Icon, Valid: true}
+		} else {
+			params.Icon = pgtype.Text{Valid: false}
+		}
+	}
+	if _, ok := rawFields["lead_type"]; ok {
+		if req.LeadType != nil {
+			params.LeadType = pgtype.Text{String: *req.LeadType, Valid: true}
+		} else {
+			params.LeadType = pgtype.Text{Valid: false}
+		}
+	}
+	if _, ok := rawFields["lead_id"]; ok {
+		if req.LeadID != nil {
+			leadUUID, ok := parseUUIDOrBadRequest(w, *req.LeadID, "lead_id")
+			if !ok {
+				return
+			}
+			params.LeadID = leadUUID
+		} else {
+			params.LeadID = pgtype.UUID{Valid: false}
+		}
+	}
+	// Dates follow the issue contract: a present key with an empty/null value
+	// clears the date; an absent key leaves the prior value untouched.
+	if _, ok := rawFields["start_date"]; ok {
+		if req.StartDate != nil && *req.StartDate != "" {
+			d, err := util.ParseCalendarDate(*req.StartDate)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid start_date format, expected YYYY-MM-DD")
+				return
+			}
+			params.StartDate = d
+		} else {
+			params.StartDate = pgtype.Date{Valid: false} // explicit null = clear date
+		}
+	}
+	if _, ok := rawFields["due_date"]; ok {
+		if req.DueDate != nil && *req.DueDate != "" {
+			d, err := util.ParseCalendarDate(*req.DueDate)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid due_date format, expected YYYY-MM-DD")
+				return
+			}
+			params.DueDate = d
+		} else {
+			params.DueDate = pgtype.Date{Valid: false} // explicit null = clear date
+		}
+	}
+	newLeadType, newLeadID := prevProject.LeadType, prevProject.LeadID
+	if params.LeadTypeSet {
+		newLeadType = params.LeadType
+	}
+	if params.LeadIDSet {
+		newLeadID = params.LeadID
+	}
+	leadChanged := newLeadType != prevProject.LeadType || newLeadID != prevProject.LeadID
+	access, ok := h.prepareProjectAccessUpdate(w, r, prevProject, req.Visibility, req.MemberIDs, newLeadType, newLeadID, leadChanged)
+	if !ok {
+		return
+	}
+	project, ok := h.writeProjectUpdate(w, r, params, access, userID)
+	if !ok {
+		return
+	}
+	resp := projectToResponse(project)
+	h.fillProjectIssueStats(r.Context(), &resp, project)
+	resp.ResourceCount = h.loadProjectResourceCount(r.Context(), project.ID)
+	h.publish(protocol.EventProjectUpdated, workspaceID, "member", userID, map[string]any{"project": resp})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	workspaceID := h.resolveWorkspaceID(r)
+	idUUID, ok := parseUUIDOrBadRequest(w, id, "project id")
+	if !ok {
+		return
+	}
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	project, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{
+		ID: idUUID, WorkspaceID: wsUUID,
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !h.requireProjectVisible(w, r, workspaceID, project.ID, http.StatusNotFound, "project not found") {
+		return
+	}
+	if !h.requireProjectDeletion(w, r, project) {
+		return
+	}
+	userID := requestUserID(r)
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	if _, err := qtx.LockProjectForDelete(r.Context(), db.LockProjectForDeleteParams{
+		ID:          project.ID,
+		WorkspaceID: project.WorkspaceID,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to lock project")
+		return
+	}
+	if err := qtx.ClearChatSessionProjectByProject(r.Context(), db.ClearChatSessionProjectByProjectParams{
+		ProjectID:   project.ID,
+		WorkspaceID: project.WorkspaceID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear project chat context")
+		return
+	}
+	// Project-scoped saved views live on the project page; once the project
+	// is gone they are unreachable, so they go in the same transaction.
+	if err := qtx.DeleteIssueViewsByProjectScope(r.Context(), db.DeleteIssueViewsByProjectScopeParams{
+		WorkspaceID: project.WorkspaceID,
+		ScopeID:     project.ID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete project views")
+		return
+	}
+	if err := qtx.DeleteProjectMembersByProject(r.Context(), db.DeleteProjectMembersByProjectParams{
+		ProjectID:   project.ID,
+		WorkspaceID: project.WorkspaceID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete project members")
+		return
+	}
+	if err := qtx.DeleteProjectSubscribersByProject(r.Context(), db.DeleteProjectSubscribersByProjectParams{
+		ProjectID:   project.ID,
+		WorkspaceID: project.WorkspaceID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete project subscribers")
+		return
+	}
+	if err := qtx.DeleteProject(r.Context(), db.DeleteProjectParams{
+		ID:          project.ID,
+		WorkspaceID: project.WorkspaceID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete project")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit project delete")
+		return
+	}
+	h.publish(protocol.EventProjectDeleted, workspaceID, "member", userID, map[string]any{"project_id": uuidToString(project.ID)})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SearchProjectResponse extends ProjectResponse with search metadata.
+type SearchProjectResponse struct {
+	ProjectResponse
+	MatchSource    string  `json:"match_source"`
+	MatchedSnippet *string `json:"matched_snippet,omitempty"`
+}
+
+// buildProjectSearchQuery builds a dynamic SQL query for project search.
+func buildProjectSearchQuery(phrase string, terms []string, includeClosed, includeArchived bool, hiddenProjectIDs ...pgtype.UUID) (string, []any) {
+	phrase = strings.ToLower(phrase)
+	for i, t := range terms {
+		terms[i] = strings.ToLower(t)
+	}
+
+	argIdx := 1
+	args := []any{}
+	nextArg := func(val any) string {
+		args = append(args, val)
+		s := fmt.Sprintf("$%d", argIdx)
+		argIdx++
+		return s
+	}
+
+	escapedPhrase := escapeLike(phrase)
+	phraseParam := nextArg(escapedPhrase)
+	phraseContains := "'%' || " + phraseParam + " || '%'"
+	phraseStartsWith := phraseParam + " || '%'"
+
+	wsParam := nextArg(nil) // workspace_id placeholder
+
+	var termParams []string
+	if len(terms) > 1 {
+		for _, t := range terms {
+			et := escapeLike(t)
+			termParams = append(termParams, nextArg(et))
+		}
+	}
+
+	// --- WHERE clause ---
+	var whereParts []string
+
+	// Full phrase match: title or description
+	phraseMatch := fmt.Sprintf(
+		"(LOWER(p.title) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)",
+		phraseContains, phraseContains,
+	)
+	whereParts = append(whereParts, phraseMatch)
+
+	// Multi-word AND match
+	if len(termParams) > 1 {
+		var termConditions []string
+		for _, tp := range termParams {
+			tc := "'%' || " + tp + " || '%'"
+			termConditions = append(termConditions, fmt.Sprintf(
+				"(LOWER(p.title) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)",
+				tc, tc,
+			))
+		}
+		whereParts = append(whereParts, "("+strings.Join(termConditions, " AND ")+")")
+	}
+
+	whereClause := "(" + strings.Join(whereParts, " OR ") + ")"
+
+	if !includeClosed {
+		whereClause += " AND p.status NOT IN ('completed', 'cancelled')"
+	}
+	if !includeArchived {
+		whereClause += " AND p.archived_at IS NULL"
+	}
+
+	// --- ORDER BY ranking ---
+	var rankCases []string
+
+	// Tier 0: Exact title match
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) = %s THEN 0", phraseParam))
+
+	// Tier 1: Title starts with phrase
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) LIKE %s THEN 1", phraseStartsWith))
+
+	// Tier 2: Title contains phrase
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) LIKE %s THEN 2", phraseContains))
+
+	// Tier 3: Title matches all words (multi-word only)
+	if len(termParams) > 1 {
+		var titleTerms []string
+		for _, tp := range termParams {
+			titleTerms = append(titleTerms, fmt.Sprintf("LOWER(p.title) LIKE '%s' || %s || '%s'", "%", tp, "%"))
+		}
+		rankCases = append(rankCases, fmt.Sprintf("WHEN (%s) THEN 3", strings.Join(titleTerms, " AND ")))
+	}
+
+	// Tier 4: Description contains phrase
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(COALESCE(p.description, '')) LIKE %s THEN 4", phraseContains))
+
+	rankExpr := "CASE " + strings.Join(rankCases, " ") + " ELSE 5 END"
+
+	// Cancelled projects are abandoned work. Project search has no other status
+	// ranking, and the command palette renders projects above issues, so
+	// without this a cancelled project can be the very first row of the result
+	// list. Demote ahead of rankExpr, with the same direct-hit exception as
+	// issue search (see buildSearchQuery): an exact title means the user is
+	// targeting that one project.
+	// Archived projects sink below cancelled ones for the same reason: they
+	// stay findable, but are rarely what the user is reaching for.
+	cancelledRank := fmt.Sprintf(
+		"CASE WHEN LOWER(p.title) = %s THEN 0 WHEN p.archived_at IS NOT NULL THEN 2 WHEN p.status = 'cancelled' THEN 1 ELSE 0 END",
+		phraseParam,
+	)
+
+	// --- match_source expression ---
+	matchSourceExpr := fmt.Sprintf(`CASE
+		WHEN LOWER(p.title) LIKE %s THEN 'title'
+		ELSE 'description'
+	END`, phraseContains)
+
+	if len(termParams) > 1 {
+		var titleTerms []string
+		for _, tp := range termParams {
+			titleTerms = append(titleTerms, fmt.Sprintf("LOWER(p.title) LIKE '%s' || %s || '%s'", "%", tp, "%"))
+		}
+		matchSourceExpr = fmt.Sprintf(`CASE
+			WHEN LOWER(p.title) LIKE %s THEN 'title'
+			WHEN (%s) THEN 'title'
+			ELSE 'description'
+		END`,
+			phraseContains, strings.Join(titleTerms, " AND "),
+		)
+	}
+
+	if len(hiddenProjectIDs) > 0 {
+		whereClause += fmt.Sprintf(" AND NOT (p.id = ANY(%s::uuid[]))", nextArg(hiddenProjectIDs))
+	}
+
+	limitParam := nextArg(nil)
+	offsetParam := nextArg(nil)
+
+	query := fmt.Sprintf(`SELECT p.id, p.workspace_id, p.title, p.description, p.icon,
+		p.status, p.priority, p.lead_type, p.lead_id,
+		p.start_date, p.due_date,
+		p.created_at, p.updated_at, p.visibility, p.creator_type, p.creator_id,
+		p.archived_at, p.archived_by_type, p.archived_by_id,
+		%s AS match_source
+	FROM project p
+	WHERE p.workspace_id = %s AND %s
+	ORDER BY %s, %s, p.updated_at DESC
+	LIMIT %s OFFSET %s`,
+		matchSourceExpr,
+		wsParam,
+		whereClause,
+		cancelledRank,
+		rankExpr,
+		limitParam,
+		offsetParam,
+	)
+
+	return query, args
+}
+
+func (h *Handler) SearchProjects(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := h.resolveWorkspaceID(r)
+
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "q parameter is required")
+		return
+	}
+
+	limit := 20
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
+	includeClosed := r.URL.Query().Get("include_closed") == "true"
+	includeArchived := r.URL.Query().Get("include_archived") == "true"
+
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
+	if !ok {
+		return
+	}
+	terms := splitSearchTerms(q)
+
+	hidden, ok := h.requestHiddenProjects(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	sqlQuery, args := buildProjectSearchQuery(q, terms, includeClosed, includeArchived, hidden.Param()...)
+	args[1] = wsUUID
+	args[len(args)-2] = limit
+	args[len(args)-1] = offset
+
+	type projectSearchRow struct {
+		project     db.Project
+		matchSource string
+	}
+
+	var results []projectSearchRow
+	err := runSearchQuery(ctx, h.TxStarter, sqlQuery, args, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var row projectSearchRow
+			if err := rows.Scan(
+				&row.project.ID,
+				&row.project.WorkspaceID,
+				&row.project.Title,
+				&row.project.Description,
+				&row.project.Icon,
+				&row.project.Status,
+				&row.project.Priority,
+				&row.project.LeadType,
+				&row.project.LeadID,
+				&row.project.StartDate,
+				&row.project.DueDate,
+				&row.project.CreatedAt,
+				&row.project.UpdatedAt,
+				&row.project.Visibility,
+				&row.project.CreatorType,
+				&row.project.CreatorID,
+				&row.project.ArchivedAt,
+				&row.project.ArchivedByType,
+				&row.project.ArchivedByID,
+				&row.matchSource,
+			); err != nil {
+				return fmt.Errorf("scan: %w", err)
+			}
+			results = append(results, row)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		if writeQueryCancellation(w, r, err) {
+			return
+		}
+		// Statement-timeout surfaces as SQLSTATE 57014 — same
+		// fail-fast contract as SearchIssues (see runSearchQuery).
+		if isSearchStatementTimeout(err) {
+			slog.Warn("search projects timed out",
+				"workspace_id", workspaceID,
+				"query", q,
+				"timeout", searchStatementTimeout)
+			writeError(w, http.StatusServiceUnavailable, "search timed out; please refine your query or try again")
+			return
+		}
+		slog.Warn("search projects failed", "error", err, "workspace_id", workspaceID, "query", q)
+		writeError(w, http.StatusInternalServerError, "failed to search projects")
+		return
+	}
+	if writeQueryCancellation(w, r, ctx.Err()) {
+		return
+	}
+
+	// Batch-fetch issue stats and resource counts
+	statsMap := make(map[string]db.GetProjectIssueStatsRow)
+	resourceCountMap := make(map[string]int64)
+	if len(results) > 0 {
+		projectIDs := make([]pgtype.UUID, len(results))
+		for i, r := range results {
+			projectIDs[i] = r.project.ID
+		}
+		terminalStatusKeys := h.projectTerminalIssueStatusKeys(ctx, wsUUID)
+		stats, statsErr := h.Queries.GetProjectIssueStats(ctx, db.GetProjectIssueStatsParams{
+			WorkspaceID:        wsUUID,
+			ProjectIds:         projectIDs,
+			TerminalStatusKeys: terminalStatusKeys,
+		})
+		if statsErr == nil {
+			for _, s := range stats {
+				statsMap[uuidToString(s.ProjectID)] = s
+			}
+		}
+		counts, err := h.Queries.GetProjectResourceCounts(ctx, projectIDs)
+		if err == nil {
+			for _, c := range counts {
+				resourceCountMap[uuidToString(c.ProjectID)] = c.ResourceCount
+			}
+		}
+	}
+
+	resp := make([]SearchProjectResponse, len(results))
+	for i, row := range results {
+		pr := projectToResponse(row.project)
+		if s, ok := statsMap[pr.ID]; ok {
+			applyProjectIssueStats(&pr, row.project.UpdatedAt, s)
+		}
+		pr.ResourceCount = resourceCountMap[pr.ID]
+		spr := SearchProjectResponse{
+			ProjectResponse: pr,
+			MatchSource:     row.matchSource,
+		}
+		if row.matchSource == "description" {
+			desc := ""
+			if row.project.Description.Valid {
+				desc = row.project.Description.String
+			}
+			if desc != "" {
+				snippet := extractSnippet(desc, q)
+				spr.MatchedSnippet = &snippet
+			}
+		}
+		resp[i] = spr
+	}
+
+	if writeQueryCancellation(w, r, ctx.Err()) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"projects": resp,
+	})
+}

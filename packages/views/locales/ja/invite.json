@@ -1,0 +1,35 @@
+{
+  "header": {
+    "back": "戻る",
+    "log_out": "ログアウト"
+  },
+  "list": {
+    "title": "招待を受け取りました",
+    "subtitle": "参加するとそのワークスペースに移動します。ほかの招待はそのまま残ります。",
+    "workspace_fallback": "ワークスペース",
+    "inviter_fallback": "誰か",
+    "invited_admin": "{{inviter}}さんがあなたをadminとして招待しました",
+    "invited_member": "{{inviter}}さんがあなたをmemberとして招待しました",
+    "accept": "参加",
+    "joining": "参加中...",
+    "decline": "辞退",
+    "declining": "辞退中...",
+    "skip": "スキップして自分のワークスペースを設定"
+  },
+  "empty": {
+    "title": "保留中の招待はありません",
+    "hint": "続けて自分のワークスペースを設定しましょう。",
+    "continue": "セットアップを続ける",
+    "go_to_dashboard": "ダッシュボードへ移動"
+  },
+  "linked": {
+    "not_found": "この招待は期限切れか取り消されたか、お使いのアカウントに属していない可能性があります。",
+    "accepted": "この招待はすでに承認されています。",
+    "declined": "この招待はすでに辞退されています。",
+    "expired": "この招待は期限切れです。"
+  },
+  "errors": {
+    "accept_failed": "招待を承認できませんでした",
+    "decline_failed": "招待を辞退できませんでした"
+  }
+}
