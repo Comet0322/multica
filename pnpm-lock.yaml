@@ -190,8 +190,8 @@ catalogs:
       specifier: ^2.6.0
       version: 2.9.0
     zod:
-      specifier: ^4.1.5
-      version: 4.3.6
+      specifier: ^4.6.6
+      version: 4.6.6
     zustand:
       specifier: ^5.0.0
       version: 5.0.12
@@ -223,7 +223,6 @@ overrides:
   fflate@>=0.4.0 <0.4.9: 0.4.9
   form-data@>=4.0.0 <4.0.6: 4.0.6
   glob@>=10.0.0 <10.5.0: 10.5.0
-  hono@>=4.0.0 <4.13.11: 4.13.11
   image-size@>=2.0.0 <2.0.3: 2.0.3
   ip-address@>=10.0.0 <10.7.4: 10.7.4
   js-yaml@>=4.0.0 <4.3.2: 4.3.2
@@ -258,6 +257,7 @@ overrides:
   semver@>=5.0.0 <5.7.3: 5.7.3
   ws@>=8.0.0 <8.22.2: 8.22.2
   '@testing-library/user-event@14.6.10': 14.6.9
+  hono@>=4.0.0 <4.13.16: 4.13.16
 
 patchedDependencies:
   expo-modules-core@57.0.21:
@@ -805,10 +805,10 @@ importers:
         version: 17.4.1
       fumadocs-core:
         specifier: 'catalog:'
-        version: 16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.3.6)
+        version: 16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.6.6)
       fumadocs-mdx:
         specifier: 'catalog:'
-        version: 15.4.10(@types/mdast@4.0.4)(@types/mdx@2.0.13)(@types/react@19.2.14)(fumadocs-core@16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.3.6))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(rolldown@1.1.7)(vite@8.1.6(@types/node@25.5.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.1))
+        version: 15.4.10(@types/mdast@4.0.4)(@types/mdx@2.0.13)(@types/react@19.2.14)(fumadocs-core@16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.6.6))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(rolldown@1.1.7)(vite@8.1.6(@types/node@25.5.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.1))
       next:
         specifier: 'catalog:'
         version: 16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -826,7 +826,7 @@ importers:
         version: 1.4.0
       zod:
         specifier: 'catalog:'
-        version: 4.3.6
+        version: 4.6.6
     devDependencies:
       '@multica/eslint-config':
         specifier: workspace:*
@@ -905,7 +905,7 @@ importers:
         version: 2.9.0
       zod:
         specifier: 'catalog:'
-        version: 4.3.6
+        version: 4.6.6
       zustand:
         specifier: 'catalog:'
         version: 5.0.12(@types/react@19.2.14)(immer@11.1.4)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
@@ -2645,7 +2645,7 @@ packages:
     resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: 4.13.11
+      hono: 4.13.16
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -8371,8 +8371,8 @@ packages:
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
-  hono@4.13.11:
-    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@4.1.0:
@@ -12171,9 +12171,6 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
-
   zod@4.6.6:
     resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
@@ -13665,9 +13662,9 @@ snapshots:
 
   '@fumari/image-size@0.1.1': {}
 
-  '@hono/node-server@2.1.6(hono@4.13.11)':
+  '@hono/node-server@2.1.6(hono@4.13.16)':
     dependencies:
-      hono: 4.13.11
+      hono: 4.13.16
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -13930,7 +13927,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)':
     dependencies:
-      '@hono/node-server': 2.1.6(hono@4.13.11)
+      '@hono/node-server': 2.1.6(hono@4.13.16)
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       content-type: 1.0.5
@@ -13940,7 +13937,7 @@ snapshots:
       eventsource-parser: 3.0.6
       express: 5.2.1
       express-rate-limit: 8.3.1(express@5.2.1)
-      hono: 4.13.11
+      hono: 4.13.16
       jose: 6.2.2
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -15295,7 +15292,9 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
@@ -19384,42 +19383,6 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
-  fumadocs-core@16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.3.6):
-    dependencies:
-      '@fumari/image-size': 0.1.1
-      estree-util-value-to-estree: 3.5.0
-      github-slugger: 2.0.0
-      hast-util-from-dom: 5.0.1
-      hast-util-to-estree: 3.1.3
-      mdast-util-mdx: 3.0.0
-      micromark: 4.0.3
-      micromark-extension-gfm-table: 2.1.2
-      npm-to-yarn: 3.2.0
-      remark: 15.0.1
-      remark-gfm: 4.0.1
-      remark-rehype: 11.1.2
-      scroll-into-view-if-needed: 3.1.0
-      shiki: 4.5.0
-      tinyglobby: 0.2.17
-      unified: 11.0.5
-      vfile: 6.0.3
-      yaml: 2.9.1
-      zbsearch: 4.0.1
-    optionalDependencies:
-      '@mdx-js/mdx': 3.1.1
-      '@types/estree-jsx': 1.0.5
-      '@types/hast': 3.0.5
-      '@types/mdast': 4.0.4
-      '@types/react': 19.2.14
-      lucide-react: 1.61.0(@types/react@19.2.14)(react@19.2.3)
-      next: 16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      react: 19.2.3
-      react-dom: 19.2.3(react@19.2.3)
-      react-router: 7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      zod: 4.3.6
-    transitivePeerDependencies:
-      - supports-color
-
   fumadocs-core@16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.6.6):
     dependencies:
       '@fumari/image-size': 0.1.1
@@ -19453,38 +19416,6 @@ snapshots:
       react-dom: 19.2.3(react@19.2.3)
       react-router: 7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       zod: 4.6.6
-    transitivePeerDependencies:
-      - supports-color
-
-  fumadocs-mdx@15.4.10(@types/mdast@4.0.4)(@types/mdx@2.0.13)(@types/react@19.2.14)(fumadocs-core@16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.3.6))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(rolldown@1.1.7)(vite@8.1.6(@types/node@25.5.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.1)):
-    dependencies:
-      '@mdx-js/mdx': 3.1.1
-      '@standard-schema/spec': 1.1.0
-      chokidar: 6.0.0
-      esbuild: 0.28.2
-      estree-util-value-to-estree: 3.5.0
-      fumadocs-core: 16.17.8(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.2.14)(lucide-react@1.61.0(@types/react@19.2.14)(react@19.2.3))(next@16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react-router@7.18.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(zod@4.3.6)
-      github-slugger: 2.0.0
-      magic-string: 1.4.3
-      mdast-util-mdx: 3.0.0
-      picocolors: 1.1.1
-      picomatch: 4.0.7
-      tinyexec: 1.3.1
-      tinyglobby: 0.2.17
-      unified: 11.0.5
-      unist-util-remove-position: 5.0.0
-      vfile: 6.0.3
-      yaml: 2.9.1
-      yuku-analyzer: 0.19.0
-      zod: 4.6.7
-    optionalDependencies:
-      '@types/mdast': 4.0.4
-      '@types/mdx': 2.0.13
-      '@types/react': 19.2.14
-      next: 16.4.5(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      react: 19.2.3
-      rolldown: 1.1.7
-      vite: 8.1.6(@types/node@25.5.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -19900,7 +19831,7 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.13.11: {}
+  hono@4.13.16: {}
 
   hosted-git-info@4.1.0:
     dependencies:
@@ -24765,8 +24696,6 @@ snapshots:
       zod: 4.6.6
 
   zod@3.25.76: {}
-
-  zod@4.3.6: {}
 
   zod@4.6.6: {}
 

@@ -69,7 +69,7 @@ catalog:
   unified: ^11.0.5
   vitest: ^4.1.12
   yaml: ^2.6.0
-  zod: ^4.1.5
+  zod: ^4.6.6
   zustand: ^5.0.0
 
 minimumReleaseAge: 10080
