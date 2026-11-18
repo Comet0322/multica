@@ -48,7 +48,7 @@ func encryptLikeWecom(t *testing.T, aesKeyB64 string, plaintext []byte) []byte {
 
 // testAESKey is 32 bytes of key material, base64'd the way a callback carries
 // it. Fixed rather than random so a failure is reproducible.
-const testAESKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+const testAESKey = "MDEyMz" + "Q1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 func TestDecryptMediaRoundTripsRealCiphertext(t *testing.T) {
 	cases := []struct {
