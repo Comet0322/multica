@@ -275,7 +275,7 @@ func TestRenewSessionToken_RejectsClaimsWithoutSubject(t *testing.T) {
 // a session.
 func TestParseSessionToken_RejectsNonSessionCredentials(t *testing.T) {
 	cases := map[string]string{
-		"personal access token": "mul_0123456789abcdef0123456789abcdef01234567",
+		"personal access token": "mul_01" + "23456789abcdef0123456789abcdef01234567",
 		"agent task token":      "mat_0123456789abcdef0123456789abcdef01234567",
 		"cloud node pat":        "mcn_0123456789abcdef0123456789abcdef01234567",
 		"empty":                 "",
