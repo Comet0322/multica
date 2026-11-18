@@ -89,8 +89,8 @@ func (f *fakeStore) TryAcquireWSLease(ctx context.Context, arg AcquireLeaseParam
 	exp := f.leaseExpiresAt[id]
 	now := f.now()
 	// CAS: accept when no holder, holder expired, or holder is us.
-	if !hasOwner || exp.Before(now) || owner == arg.Token {
-		f.leaseOwner[id] = arg.Token
+	if !hasOwner || exp.Before(now) || owner == arg.Ticket {
+		f.leaseOwner[id] = arg.Ticket
 		f.leaseExpiresAt[id] = arg.ExpiresAt
 		if f.acquireAfterWriteErr != nil {
 			err := f.acquireAfterWriteErr
@@ -110,7 +110,7 @@ func (f *fakeStore) RenewWSLease(_ context.Context, arg AcquireLeaseParams) erro
 		return f.renewErr
 	}
 	id := uuidString(arg.ID)
-	if f.leaseOwner[id] != arg.Token || !f.leaseExpiresAt[id].After(f.now()) {
+	if f.leaseOwner[id] != arg.Ticket || !f.leaseExpiresAt[id].After(f.now()) {
 		return ErrLeaseNotAcquired
 	}
 	f.leaseExpiresAt[id] = arg.ExpiresAt
@@ -137,17 +137,17 @@ func (f *fakeStore) ReleaseWSLease(ctx context.Context, arg ReleaseLeaseParams) 
 		return f.releaseErr
 	}
 	id := uuidString(arg.ID)
-	if f.leaseOwner[id] == arg.Token {
+	if f.leaseOwner[id] == arg.Ticket {
 		delete(f.leaseOwner, id)
 		delete(f.leaseExpiresAt, id)
 	}
 	return nil
 }
 
-func (f *fakeStore) presetLease(id pgtype.UUID, token string, expires time.Time) {
+func (f *fakeStore) presetLease(id pgtype.UUID, ticket string, expires time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.leaseOwner[uuidString(id)] = token
+	f.leaseOwner[uuidString(id)] = ticket
 	f.leaseExpiresAt[uuidString(id)] = expires
 }
 

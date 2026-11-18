@@ -25,33 +25,33 @@ var resourceMetadataParameter = regexp.MustCompile(`(?i)(?:^|[, ]+)resource_meta
 type OAuthMetadata struct {
 	ResourceEndpoint      string
 	AuthorizationEndpoint string
-	TokenEndpoint         string
+	TicketEndpoint        string
 	RegistrationEndpoint  string
 	Scopes                []string
-	TokenAuthMethods      []string
+	TicketAuthMethods     []string
 }
 
 type OAuthClientRegistration struct {
-	ClientID                string
-	ClientSecret            string
-	TokenEndpointAuthMethod string
+	ClientID                 string
+	ClientSealed             string
+	TicketEndpointAuthMethod string
 }
 
 type OAuthTokenResponse struct {
-	AccessToken  string
-	TokenType    string
-	ExpiresIn    int64
-	RefreshToken string
-	Scope        string
+	AccessTicket  string
+	TicketType    string
+	ExpiresIn     int64
+	RefreshTicket string
+	Scope         string
 }
 
 // ValidateOAuthMetadata applies the same SSRF boundary to operator-supplied
 // advanced overrides as to discovered metadata.
 func ValidateOAuthMetadata(ctx context.Context, metadata OAuthMetadata) error {
-	if metadata.AuthorizationEndpoint == "" || metadata.TokenEndpoint == "" {
+	if metadata.AuthorizationEndpoint == "" || metadata.TicketEndpoint == "" {
 		return errors.New("OAuth metadata is missing required endpoints")
 	}
-	for _, raw := range []string{metadata.AuthorizationEndpoint, metadata.TokenEndpoint, metadata.RegistrationEndpoint} {
+	for _, raw := range []string{metadata.AuthorizationEndpoint, metadata.TicketEndpoint, metadata.RegistrationEndpoint} {
 		if raw == "" {
 			continue
 		}
@@ -69,11 +69,11 @@ type protectedResourceMetadata struct {
 }
 
 type authorizationServerMetadata struct {
-	AuthorizationEndpoint           string   `json:"authorization_endpoint"`
-	TokenEndpoint                   string   `json:"token_endpoint"`
-	RegistrationEndpoint            string   `json:"registration_endpoint"`
-	CodeChallengeMethodsSupported   []string `json:"code_challenge_methods_supported"`
-	TokenEndpointAuthMethodsSupport []string `json:"token_endpoint_auth_methods_supported"`
+	AuthorizationEndpoint            string   `json:"authorization_endpoint"`
+	TicketEndpoint                   string   `json:"token_endpoint"`
+	RegistrationEndpoint             string   `json:"registration_endpoint"`
+	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
+	TicketEndpointAuthMethodsSupport []string `json:"token_endpoint_auth_methods_supported"`
 }
 
 // DiscoverOAuth follows the MCP authorization discovery chain: a protected
@@ -127,7 +127,7 @@ func DiscoverOAuth(ctx context.Context, rawEndpoint string, allowedHosts []strin
 	if discoveryErr != nil {
 		return OAuthMetadata{}, fmt.Errorf("load authorization server metadata: %w", discoveryErr)
 	}
-	if server.AuthorizationEndpoint == "" || server.TokenEndpoint == "" {
+	if server.AuthorizationEndpoint == "" || server.TicketEndpoint == "" {
 		return OAuthMetadata{}, errors.New("authorization server metadata is missing required endpoints")
 	}
 	if len(server.CodeChallengeMethodsSupported) > 0 && !containsString(server.CodeChallengeMethodsSupported, "S256") {
@@ -136,10 +136,10 @@ func DiscoverOAuth(ctx context.Context, rawEndpoint string, allowedHosts []strin
 	metadata := OAuthMetadata{
 		ResourceEndpoint:      endpoint.String(),
 		AuthorizationEndpoint: server.AuthorizationEndpoint,
-		TokenEndpoint:         server.TokenEndpoint,
+		TicketEndpoint:        server.TicketEndpoint,
 		RegistrationEndpoint:  server.RegistrationEndpoint,
 		Scopes:                append([]string(nil), resource.ScopesSupported...),
-		TokenAuthMethods:      append([]string(nil), server.TokenEndpointAuthMethodsSupport...),
+		TicketAuthMethods:     append([]string(nil), server.TicketEndpointAuthMethodsSupport...),
 	}
 	if err := ValidateOAuthMetadata(ctx, metadata); err != nil {
 		return OAuthMetadata{}, fmt.Errorf("authorization server endpoint: %w", err)
@@ -271,9 +271,9 @@ func RegisterOAuthClient(ctx context.Context, metadata OAuthMetadata, redirectUR
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	var response struct {
-		ClientID                string `json:"client_id"`
-		ClientSecret            string `json:"client_secret"`
-		TokenEndpointAuthMethod string `json:"token_endpoint_auth_method"`
+		ClientID                 string `json:"client_id"`
+		ClientSealed             string `json:"client_secret"`
+		TicketEndpointAuthMethod string `json:"token_endpoint_auth_method"`
 	}
 	if err := doOAuthJSON(NewSecureHTTPClient(endpoint), request, &response); err != nil {
 		return OAuthClientRegistration{}, fmt.Errorf("dynamic client registration: %w", err)
@@ -281,8 +281,8 @@ func RegisterOAuthClient(ctx context.Context, metadata OAuthMetadata, redirectUR
 	if strings.TrimSpace(response.ClientID) == "" {
 		return OAuthClientRegistration{}, errors.New("dynamic client registration returned no client id")
 	}
-	if response.TokenEndpointAuthMethod == "" {
-		response.TokenEndpointAuthMethod = "none"
+	if response.TicketEndpointAuthMethod == "" {
+		response.TicketEndpointAuthMethod = "none"
 	}
 	return OAuthClientRegistration(response), nil
 }
@@ -308,7 +308,7 @@ func BuildAuthorizationURL(metadata OAuthMetadata, registration OAuthClientRegis
 	return endpoint.String(), nil
 }
 
-func ExchangeOAuthCode(ctx context.Context, tokenEndpoint, resource, code, redirectURI, verifier string, registration OAuthClientRegistration) (OAuthTokenResponse, error) {
+func ExchangeOAuthCode(ctx context.Context, ticketEndpoint, resource, code, redirectURI, verifier string, registration OAuthClientRegistration) (OAuthTokenResponse, error) {
 	values := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
@@ -317,17 +317,17 @@ func ExchangeOAuthCode(ctx context.Context, tokenEndpoint, resource, code, redir
 		"code_verifier": {verifier},
 		"resource":      {resource},
 	}
-	return requestOAuthToken(ctx, tokenEndpoint, values, registration)
+	return requestOAuthToken(ctx, ticketEndpoint, values, registration)
 }
 
-func RefreshOAuthToken(ctx context.Context, tokenEndpoint, resource, refreshToken string, registration OAuthClientRegistration) (OAuthTokenResponse, error) {
+func RefreshOAuthToken(ctx context.Context, ticketEndpoint, resource, refreshTicket string, registration OAuthClientRegistration) (OAuthTokenResponse, error) {
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
+		"refresh_token": {refreshTicket},
 		"client_id":     {registration.ClientID},
 		"resource":      {resource},
 	}
-	return requestOAuthToken(ctx, tokenEndpoint, values, registration)
+	return requestOAuthToken(ctx, ticketEndpoint, values, registration)
 }
 
 func requestOAuthToken(ctx context.Context, rawEndpoint string, values url.Values, registration OAuthClientRegistration) (OAuthTokenResponse, error) {
@@ -335,8 +335,8 @@ func requestOAuthToken(ctx context.Context, rawEndpoint string, values url.Value
 	if err != nil {
 		return OAuthTokenResponse{}, err
 	}
-	if registration.ClientSecret != "" && registration.TokenEndpointAuthMethod == "client_secret_post" {
-		values.Set("client_secret", registration.ClientSecret)
+	if registration.ClientSealed != "" && registration.TicketEndpointAuthMethod == "client_secret_post" {
+		values.Set("client_secret", registration.ClientSealed)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(values.Encode()))
 	if err != nil {
@@ -344,20 +344,20 @@ func requestOAuthToken(ctx context.Context, rawEndpoint string, values url.Value
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Accept", "application/json")
-	if registration.ClientSecret != "" && registration.TokenEndpointAuthMethod == "client_secret_basic" {
-		request.SetBasicAuth(registration.ClientID, registration.ClientSecret)
+	if registration.ClientSealed != "" && registration.TicketEndpointAuthMethod == "client_secret_basic" {
+		request.SetBasicAuth(registration.ClientID, registration.ClientSealed)
 	}
 	var response struct {
-		AccessToken  string          `json:"access_token"`
-		TokenType    string          `json:"token_type"`
-		ExpiresIn    json.RawMessage `json:"expires_in"`
-		RefreshToken string          `json:"refresh_token"`
-		Scope        string          `json:"scope"`
+		AccessTicket  string          `json:"access_token"`
+		TicketType    string          `json:"token_type"`
+		ExpiresIn     json.RawMessage `json:"expires_in"`
+		RefreshTicket string          `json:"refresh_token"`
+		Scope         string          `json:"scope"`
 	}
 	if err := doOAuthJSON(NewSecureHTTPClient(endpoint), request, &response); err != nil {
 		return OAuthTokenResponse{}, err
 	}
-	if response.AccessToken == "" || !strings.EqualFold(response.TokenType, "Bearer") {
+	if response.AccessTicket == "" || !strings.EqualFold(response.TicketType, "Bearer") {
 		return OAuthTokenResponse{}, errors.New("token endpoint did not return a Bearer access token")
 	}
 	expiresIn := int64(0)
@@ -370,8 +370,8 @@ func requestOAuthToken(ctx context.Context, rawEndpoint string, values url.Value
 		}
 	}
 	return OAuthTokenResponse{
-		AccessToken: response.AccessToken, TokenType: "Bearer", ExpiresIn: expiresIn,
-		RefreshToken: response.RefreshToken, Scope: response.Scope,
+		AccessTicket: response.AccessTicket, TicketType: "Bearer", ExpiresIn: expiresIn,
+		RefreshTicket: response.RefreshTicket, Scope: response.Scope,
 	}, nil
 }
 

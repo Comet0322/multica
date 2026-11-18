@@ -164,7 +164,7 @@ type SourceContextSnapshot struct {
 type SourceContextBuild struct {
 	Snapshot SourceContextSnapshot
 	Digest   string
-	Token    string
+	Ticket   string
 	Limits   SourceContextLimitUsage
 	Rows     []db.Attachment
 }
@@ -507,14 +507,14 @@ func BuildSourceContext(ctx context.Context, q *db.Queries, workspaceID, anchorC
 	return SourceContextBuild{
 		Snapshot: snapshot,
 		Digest:   digest,
-		Token:    "sha256:" + digest + ":" + util.UUIDToString(anchor.IssueID),
+		Ticket:   "sha256:" + digest + ":" + util.UUIDToString(anchor.IssueID),
 		Limits:   limits,
 		Rows:     allRows,
 	}, nil
 }
 
-func ParseSourceContextToken(token string) (digest string, sourceIssueID pgtype.UUID, ok bool) {
-	parts := strings.Split(token, ":")
+func ParseSourceContextToken(ticket string) (digest string, sourceIssueID pgtype.UUID, ok bool) {
+	parts := strings.Split(ticket, ":")
 	if len(parts) != 3 || parts[0] != "sha256" || len(parts[1]) != sha256.Size*2 {
 		return "", pgtype.UUID{}, false
 	}

@@ -146,7 +146,7 @@ func TestRotateVCSConnectionWebhookHonorsDeploymentSwitch(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetVCSConnectionByID: %v", err)
 		}
-		return conn.WebhookSecretEncrypted
+		return conn.WebhookSealedEncrypted
 	}
 	rotate := func() *httptest.ResponseRecorder {
 		t.Helper()
@@ -161,12 +161,12 @@ func TestRotateVCSConnectionWebhookHonorsDeploymentSwitch(t *testing.T) {
 		return w
 	}
 
-	originalSecret := loadSecret()
+	originalSealed := loadSecret()
 	testHandler.cfg.VCSIntegrationEnabled = false
 	if w := rotate(); w.Code != http.StatusNotFound {
 		t.Fatalf("disabled RotateVCSConnectionWebhook: expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	if got := loadSecret(); got != originalSecret {
+	if got := loadSecret(); got != originalSealed {
 		t.Fatal("disabled RotateVCSConnectionWebhook must not modify the stored secret")
 	}
 
@@ -174,7 +174,7 @@ func TestRotateVCSConnectionWebhookHonorsDeploymentSwitch(t *testing.T) {
 	if w := rotate(); w.Code != http.StatusOK {
 		t.Fatalf("enabled RotateVCSConnectionWebhook: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if got := loadSecret(); got == originalSecret {
+	if got := loadSecret(); got == originalSealed {
 		t.Fatal("enabled RotateVCSConnectionWebhook must replace the stored secret")
 	}
 }

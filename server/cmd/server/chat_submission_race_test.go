@@ -78,7 +78,7 @@ type submissionHTTPResult struct {
 func submissionAsync(serverURL, workspace, method, path string, body any) <-chan submissionHTTPResult {
 	result := make(chan submissionHTTPResult, 1)
 	go func() {
-		status, response, err := submissionHTTP(serverURL, testToken, workspace, method, path, body)
+		status, response, err := submissionHTTP(serverURL, testTicket, workspace, method, path, body)
 		result <- submissionHTTPResult{status, response, err}
 	}()
 	return result
@@ -106,9 +106,9 @@ func TestChatSubmissionConcurrentParentDelete(t *testing.T) {
 			fx.Member(t, workspace, testUserID, "owner")
 			runtime := fx.Runtime(t, "Offline synthetic runtime", testutil.Cols{"workspace_id": workspace, "owner_id": testUserID})
 			agent := fx.Agent(t, "Submission deletion agent", runtime, testutil.Cols{"workspace_id": workspace})
-			created := submissionStatus(t, testServer.URL, testToken, workspace, "POST", "/api/chat/sessions", map[string]any{"agent_id": agent}, http.StatusCreated)
+			created := submissionStatus(t, testServer.URL, testTicket, workspace, "POST", "/api/chat/sessions", map[string]any{"agent_id": agent}, http.StatusCreated)
 			sessionID := created["id"].(string)
-			cleanupSubmissionSession(t, testToken, workspace, sessionID)
+			cleanupSubmissionSession(t, testTicket, workspace, sessionID)
 			hub := realtime.NewHub()
 			go hub.Run()
 			router, h := NewRouterWithOptions(testPool, hub, events.New(), analytics.NoopClient{}, nil, RouterOptions{})
@@ -148,7 +148,7 @@ func TestChatSubmissionConcurrentParentDelete(t *testing.T) {
 			submissionResult(t, send, http.StatusCreated)
 			submissionResult(t, deleted, http.StatusNoContent)
 			submissionCounts(t, sessionID, 0, 0, 0)
-			submissionStatus(t, server.URL, testToken, workspace, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusNotFound)
+			submissionStatus(t, server.URL, testTicket, workspace, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusNotFound)
 		})
 	}
 }
@@ -179,7 +179,7 @@ func TestChatSubmissionDeleteWinsBeforeSendTransaction(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("send did not reach its pre-transaction barrier")
 			}
-			submissionStatus(t, server.URL, testToken, testWorkspaceID, "DELETE", path, nil, http.StatusNoContent)
+			submissionStatus(t, server.URL, testTicket, testWorkspaceID, "DELETE", path, nil, http.StatusNoContent)
 			release.Do(func() { close(barrier.proceed) })
 			submissionResult(t, send, wantStatus)
 			submissionCounts(t, sessionID, 0, 0, 0)
@@ -215,7 +215,7 @@ func TestChatSubmissionMissingAgentIsNotMissingSession(t *testing.T) {
 	t.Cleanup(server.Close)
 	h.TaskService.TxStarter = submissionMissingAgentPool{testPool}
 	body := map[string]any{"content": "agent disappears after preflight", "submission_id": uuid.NewString()}
-	submissionStatus(t, server.URL, testToken, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusInternalServerError)
+	submissionStatus(t, server.URL, testTicket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusInternalServerError)
 	if got := workspaceFixture(t).Count(t, `SELECT count(*) FROM chat_session WHERE id=$1`, sessionID); got != 1 {
 		t.Fatalf("session count=%d, want 1", got)
 	}
@@ -252,7 +252,7 @@ func TestChatSubmissionRecoversPostCommitNotificationFailure(t *testing.T) {
 	h.TaskService.Wakeup = wakeup
 	body := map[string]any{"content": "committed before notification", "submission_id": uuid.NewString()}
 	path := "/api/chat/sessions/" + sessionID + "/messages"
-	status, _, err := submissionHTTP(server.URL, testToken, testWorkspaceID, "POST", path, body)
+	status, _, err := submissionHTTP(server.URL, testTicket, testWorkspaceID, "POST", path, body)
 	if status != http.StatusInternalServerError {
 		t.Fatalf("injected wakeup failure status=%d error=%v", status, err)
 	}
@@ -263,7 +263,7 @@ func TestChatSubmissionRecoversPostCommitNotificationFailure(t *testing.T) {
 	if err := json.Unmarshal(raw, &accepted); err != nil {
 		t.Fatal(err)
 	}
-	replay := submissionStatus(t, server.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	replay := submissionStatus(t, server.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	if !reflect.DeepEqual(accepted, replay) || overlay.calls.Load() != 1 || wakeup.calls.Load() != 1 {
 		t.Fatalf("post-commit replay=%v accepted=%v overlay=%d wakeup=%d", replay, accepted, overlay.calls.Load(), wakeup.calls.Load())
 	}
@@ -277,7 +277,7 @@ func TestChatSubmissionConcurrentPayloadConflict(t *testing.T) {
 	for _, content := range []string{"first payload", "second payload"} {
 		go func(content string) {
 			<-start
-			status, body, err := submissionHTTP(testServer.URL, testToken, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", map[string]any{"content": content, "submission_id": id})
+			status, body, err := submissionHTTP(testServer.URL, testTicket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", map[string]any{"content": content, "submission_id": id})
 			results <- submissionHTTPResult{status, body, err}
 		}(content)
 	}

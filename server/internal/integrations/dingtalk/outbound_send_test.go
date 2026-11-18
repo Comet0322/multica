@@ -35,7 +35,7 @@ func newDingtalkSendServer(t *testing.T) *dingtalkSendServer {
 	d.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case accessTokenPath:
+		case accessTicketPath:
 			atomic.AddInt32(&d.tokenCalls, 1)
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 		case pathSendP2P, pathSendGroup, pathReplyEmotion, pathRecallEmotion:
@@ -68,7 +68,7 @@ func newDingtalkSendServer(t *testing.T) *dingtalkSendServer {
 }
 
 func newTestSender(client *Client) *sender {
-	return &sender{client: client, robotCode: "robot-1", appKey: "ak", appSecret: "as"}
+	return &sender{client: client, robotCode: "robot-1", appKey: "ak", appSealed: "as"}
 }
 
 func TestSender_P2PSendHitsBatchSend(t *testing.T) {
@@ -306,7 +306,7 @@ func TestClient_AccessToken_SingleflightOnConcurrentMiss(t *testing.T) {
 	var tokenCalls int32
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != accessTokenPath {
+		if r.URL.Path != accessTicketPath {
 			http.Error(w, "unexpected path", http.StatusNotFound)
 			return
 		}
@@ -348,7 +348,7 @@ func TestClient_AccessToken_CancelledCallerDoesNotCancelSharedMint(t *testing.T)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != accessTokenPath {
+		if r.URL.Path != accessTicketPath {
 			http.Error(w, "unexpected path", http.StatusNotFound)
 			return
 		}

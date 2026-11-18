@@ -137,7 +137,7 @@ func TestPrivateProjectWorkingIssuesHiddenFromAggregates(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	agentID := createHandlerTestAgent(t, f.marker+"-worker", []byte(`{}`))
 	dbfx.Task(t, agentID, testutil.Cols{
-		"issue_id":      f.secretIssue,
+		"issue_id":      f.sealedIssue,
 		"runtime_id":    handlerTestRuntimeID(t),
 		"status":        "running",
 		"dispatched_at": testutil.Raw("now()"),
@@ -155,10 +155,10 @@ func TestPrivateProjectWorkingIssuesHiddenFromAggregates(t *testing.T) {
 		}
 		return nil, false
 	}
-	if ids, found := workingIssues(f.outsider); !found || slices.Contains(ids, f.secretIssue) {
+	if ids, found := workingIssues(f.outsider); !found || slices.Contains(ids, f.sealedIssue) {
 		t.Errorf("outsider working agent found=%v issue_ids=%v; want the agent without the private issue", found, ids)
 	}
-	if ids, found := workingIssues(f.insider); !found || !slices.Contains(ids, f.secretIssue) {
+	if ids, found := workingIssues(f.insider); !found || !slices.Contains(ids, f.sealedIssue) {
 		t.Errorf("insider working agent found=%v issue_ids=%v; want the private issue", found, ids)
 	}
 
@@ -185,7 +185,7 @@ func TestPrivateProjectWorkingIssuesHiddenFromAggregates(t *testing.T) {
 		t.Errorf("outsider squad member = status %v issues %+v; want working with no issues", hidden.Status, hidden.ActiveIssues)
 	}
 	visible := squadMember(f.insider)
-	if len(visible.ActiveIssues) != 1 || visible.ActiveIssues[0].IssueID != f.secretIssue {
+	if len(visible.ActiveIssues) != 1 || visible.ActiveIssues[0].IssueID != f.sealedIssue {
 		t.Errorf("insider squad member issues = %+v, want the private issue", visible.ActiveIssues)
 	}
 }
@@ -196,14 +196,14 @@ func TestPrivateProjectQuickCreateHistoryRequiresTargetAndParent(t *testing.T) {
 	addProjectMemberRow(t, targetProject, f.outsider)
 	addProjectMemberRow(t, targetProject, testUserID)
 	contextJSON, err := json.Marshal(map[string]string{
-		"type": "quick_create", "project_id": targetProject, "parent_issue_id": f.secretIssue,
+		"type": "quick_create", "project_id": targetProject, "parent_issue_id": f.sealedIssue,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tasks := []db.AgentTaskQueue{
 		{ID: parseUUID(f.publicIssue), Context: contextJSON},
-		{ID: parseUUID(f.secretIssue), IssueID: parseUUID(f.publicIssue)},
+		{ID: parseUUID(f.sealedIssue), IssueID: parseUUID(f.publicIssue)},
 	}
 	for _, tc := range []struct {
 		name, userID string

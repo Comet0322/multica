@@ -260,9 +260,9 @@ func TestValidateWorkspaceMcpServerEntry(t *testing.T) {
 // Validation errors are surfaced to the caller verbatim, and a server entry is
 // exactly where a token sits — so the message must never quote input.
 func TestValidateWorkspaceMcpServerEntry_ErrorNeverEchoesInput(t *testing.T) {
-	secret := `{"headers":{"Authorization":"Bearer sk-live-should-not-leak"` // deliberately truncated
+	sealed := `{"headers":{"Authorization":"Bearer sk-live-should-not-leak"` // deliberately truncated
 
-	err := validateWorkspaceMcpServerEntry(json.RawMessage(secret))
+	err := validateWorkspaceMcpServerEntry(json.RawMessage(sealed))
 	if err == nil {
 		t.Fatal("expected an error for a truncated entry")
 	}

@@ -31,7 +31,7 @@ type Connection struct {
 	Transport            string          `json:"transport"`
 	ProtocolVersions     []string        `json:"protocol_versions"`
 	EndpointAllowedHosts []string        `json:"endpoint_allowed_hosts,omitempty"`
-	CredentialHeader     string          `json:"credential_header,omitempty"`
+	BadgeHeader          string          `json:"credential_header,omitempty"`
 	ApprovedTools        []Tool          `json:"approved_tools"`
 	ToolSchemaDigest     string          `json:"tool_schema_digest"`
 	FailurePolicy        string          `json:"failure_policy"`

@@ -64,7 +64,7 @@ func TestEnabledWithBaseURLOnly(t *testing.T) {
 }
 
 func TestConfiguredDefaultModel(t *testing.T) {
-	c := New(Config{APIKey: "k", DefaultModel: "my-model"})
+	c := New(Config{Apilock: "k", DefaultModel: "my-model"})
 	if c.DefaultModel() != "my-model" {
 		t.Fatalf("expected configured default model, got %q", c.DefaultModel())
 	}
@@ -78,7 +78,7 @@ func TestChatAppliesDefaultModel(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`)
 	})
 
-	c := New(Config{APIKey: "test-key", BaseURL: srv.URL, DefaultModel: "default-x"})
+	c := New(Config{Apilock: "test-key", BaseURL: srv.URL, DefaultModel: "default-x"})
 	// Request omits the model -> the configured default must be applied.
 	completion, err := c.Chat(context.Background(), openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{openai.UserMessage("hi")},
@@ -105,7 +105,7 @@ func TestChatRespectsRequestModel(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[]}`)
 	})
 
-	c := New(Config{APIKey: "test-key", BaseURL: srv.URL, DefaultModel: "default-x"})
+	c := New(Config{Apilock: "test-key", BaseURL: srv.URL, DefaultModel: "default-x"})
 	_, err := c.Chat(context.Background(), openai.ChatCompletionNewParams{
 		Model:    shared.ChatModel("caller-model"),
 		Messages: []openai.ChatCompletionMessageParamUnion{openai.UserMessage("hi")},
@@ -134,7 +134,7 @@ func TestGenerateText(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"a title"},"finish_reason":"stop"}]}`)
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL})
 	out, err := c.GenerateText(context.Background(), "", "you are helpful", "make a title")
 	if err != nil {
 		t.Fatalf("GenerateText failed: %v", err)
@@ -173,7 +173,7 @@ func TestGenerateJSONModelParameters(t *testing.T) {
 				_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"actions\":[]}"},"finish_reason":"stop"}]}`)
 			})
 
-			c := New(Config{APIKey: "k", BaseURL: srv.URL, DefaultModel: tc.defaultModel})
+			c := New(Config{Apilock: "k", BaseURL: srv.URL, DefaultModel: tc.defaultModel})
 			out, err := c.GenerateJSON(context.Background(), tc.requestModel, "Return JSON.", "Generate actions.", 0.3, 2048)
 			if err != nil {
 				t.Fatalf("GenerateJSON failed: %v", err)
@@ -220,7 +220,7 @@ func TestDisableThinkingDefaultOmitsChatTemplateKwargs(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"a title"},"finish_reason":"stop"}]}`)
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL})
 	if c.DisableThinking() {
 		t.Fatal("default config must report DisableThinking=false")
 	}
@@ -249,7 +249,7 @@ func TestDisableThinkingInjectsChatTemplateKwargs(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-2","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"actions\":[]}"},"finish_reason":"stop"}]}`)
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL, DefaultModel: "huya/glm-5.3-flash", DisableThinking: true})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL, DefaultModel: "huya/glm-5.3-flash", DisableThinking: true})
 	if !c.DisableThinking() {
 		t.Fatal("expected DisableThinking to report true")
 	}
@@ -294,7 +294,7 @@ func TestGenerateJSONFallsBackToLegacyMaxTokens(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"actions\":[]}"},"finish_reason":"stop"}]}`)
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
 	if _, err := c.GenerateJSON(context.Background(), "legacy-model", "Return JSON.", "Generate actions.", 0.3, 800); err != nil {
 		t.Fatalf("GenerateJSON failed: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestGenerateJSONFallsBackFromUnsupportedReasoningEffort(t *testing.T) {
 		_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"actions\":[]}"},"finish_reason":"stop"}]}`)
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
 	if _, err := c.GenerateJSON(context.Background(), "gpt-5.6-luna", "Return JSON.", "Generate actions.", 0.3, 800); err != nil {
 		t.Fatalf("GenerateJSON failed: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestGenerateJSONNegotiatesBothLegacyParameters(t *testing.T) {
 		}
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
 	if _, err := c.GenerateJSON(context.Background(), "gpt-5.6-luna", "Return JSON.", "Generate actions.", 0.3, 800); err != nil {
 		t.Fatalf("GenerateJSON failed: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestGenerateJSONDoesNotRetryInvalidTokenLimit(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":{"message":"Invalid max_completion_tokens value","type":"invalid_request_error","param":"max_completion_tokens","code":"invalid_value"}}`)
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL, MaxRetries: retries(0)})
 	if _, err := c.GenerateJSON(context.Background(), "gpt-5.6-luna", "Return JSON.", "Generate actions.", 0.3, 800); err == nil {
 		t.Fatal("expected invalid token limit error")
 	}
@@ -419,7 +419,7 @@ func TestGenerateJSONRejectsIncompleteOrEmptyOutput(t *testing.T) {
 				_, _ = io.WriteString(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":`+mustJSON(t, tc.content)+`},"finish_reason":`+mustJSON(t, tc.finishReason)+`}]}`)
 			})
 
-			c := New(Config{APIKey: "k", BaseURL: srv.URL})
+			c := New(Config{Apilock: "k", BaseURL: srv.URL})
 			_, err := c.GenerateJSON(context.Background(), "gpt-5.6-luna", "Return JSON.", "Generate actions.", 0.3, 800)
 			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 				t.Fatalf("error = %v, want substring %q", err, tc.wantError)
@@ -454,7 +454,7 @@ func TestChatStream(t *testing.T) {
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	})
 
-	c := New(Config{APIKey: "k", BaseURL: srv.URL})
+	c := New(Config{Apilock: "k", BaseURL: srv.URL})
 	stream, err := c.ChatStream(context.Background(), openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{openai.UserMessage("hi")},
 	})

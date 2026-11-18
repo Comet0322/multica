@@ -82,7 +82,7 @@ func botSwapParams(bot string) InstallationParams {
 		AgentID:         mustUUID(wcSwapAgent),
 		InstallerUserID: mustUUID(wcSwapUser),
 		BotID:           bot,
-		Secret:          "s3cr3t",
+		Sealed:          "s3cr3t",
 	}
 }
 

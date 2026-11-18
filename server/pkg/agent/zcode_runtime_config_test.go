@@ -101,8 +101,8 @@ func TestCleanupStaleZcodeProviderSnapshotsRemovesLeftovers(t *testing.T) {
 	if err := os.MkdirAll(leftover, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	secret := filepath.Join(leftover, "providers.json")
-	if err := os.WriteFile(secret, []byte(`{"apiKey":"x"}`), 0o600); err != nil {
+	sealed := filepath.Join(leftover, "providers.json")
+	if err := os.WriteFile(sealed, []byte(`{"apiKey":"x"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Unrelated temp dir must survive.

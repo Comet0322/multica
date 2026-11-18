@@ -673,14 +673,14 @@ func TestDshProvisionOutput(t *testing.T) {
 	// npm URL, and which is scrubbed here rather than in pkg/redact, because a
 	// rule added there changes output for every provider.
 	t.Run("redacts credentials a registry echoed back", func(t *testing.T) {
-		for _, tc := range []struct{ raw, secret string }{
+		for _, tc := range []struct{ raw, sealed string }{
 			{"npm ERR! 401 //registry.example/:_authToken=supersecret123", "supersecret123"},
 			{"npm ERR! 404 https://deploy:hunter2@registry.example.com/@acme/dsh-runtime", "hunter2"},
 			{"ERR_PNPM_FETCH_401 GET http://ci-bot:s3cr3t@npm.internal/@corp%2fdsh", "s3cr3t"},
 		} {
 			got := dshProvisionOutput([]byte(tc.raw))
-			if strings.Contains(got, tc.secret) {
-				t.Errorf("output = %q, want %q redacted", got, tc.secret)
+			if strings.Contains(got, tc.sealed) {
+				t.Errorf("output = %q, want %q redacted", got, tc.sealed)
 			}
 		}
 	})

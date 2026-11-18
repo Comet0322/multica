@@ -2287,7 +2287,7 @@ func TestVerifyCode(t *testing.T) {
 
 	var resp LoginResponse
 	json.NewDecoder(w.Body).Decode(&resp)
-	if resp.Token == "" {
+	if resp.Ticket == "" {
 		t.Fatal("VerifyCode: expected non-empty token")
 	}
 	if resp.User.Email != email {

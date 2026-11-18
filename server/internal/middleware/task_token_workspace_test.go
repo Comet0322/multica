@@ -19,7 +19,7 @@ import (
 // Fixtures for the GitHub #9403 regression tests. The token is bound to
 // workspace A; B is a different workspace the agent's user can see.
 const (
-	ttTestToken   = "mat_test_9403_token"
+	ttTestTicket  = "mat_test_9403_token"
 	ttWorkspaceA  = "0a0a0a0a-0000-4000-8000-00000000000a"
 	ttWorkspaceB  = "0b0b0b0b-0000-4000-8000-00000000000b"
 	ttUserID      = "11111111-0000-4000-8000-000000000001"
@@ -51,7 +51,7 @@ func (f *fakeTaskTokenDB) Query(context.Context, string, ...interface{}) (pgx.Ro
 func (f *fakeTaskTokenDB) QueryRow(_ context.Context, sql string, args ...interface{}) pgx.Row {
 	switch {
 	case strings.Contains(sql, "name: GetTaskTokenByHash"):
-		if len(args) != 1 || args[0] != auth.HashToken(ttTestToken) {
+		if len(args) != 1 || args[0] != auth.HashToken(ttTestTicket) {
 			return fakeRow{err: pgx.ErrNoRows}
 		}
 		return fakeRow{scan: func(dest ...any) {
@@ -191,7 +191,7 @@ func TestAuth_TaskTokenWorkspaceSelectors(t *testing.T) {
 			}))
 
 			req := httptest.NewRequest(tc.method, tc.target, nil)
-			req.Header.Set("Authorization", "Bearer "+ttTestToken)
+			req.Header.Set("Authorization", "Bearer "+ttTestTicket)
 			for k, vs := range tc.headers {
 				for _, v := range vs {
 					req.Header.Add(k, v)
@@ -207,8 +207,8 @@ func TestAuth_TaskTokenWorkspaceSelectors(t *testing.T) {
 				if called {
 					t.Fatalf("handler must not run when the selector is rejected")
 				}
-				if tc.wantStatus == http.StatusForbidden && !strings.Contains(w.Body.String(), errTaskTokenWorkspaceMismatch) {
-					t.Fatalf("403 body = %s, want %q", w.Body.String(), errTaskTokenWorkspaceMismatch)
+				if tc.wantStatus == http.StatusForbidden && !strings.Contains(w.Body.String(), errTaskTicketWorkspaceMismatch) {
+					t.Fatalf("403 body = %s, want %q", w.Body.String(), errTaskTicketWorkspaceMismatch)
 				}
 				return
 			}

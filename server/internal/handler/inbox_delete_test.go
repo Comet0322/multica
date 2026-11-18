@@ -120,7 +120,7 @@ func TestDeleteInboxItemPrivateProjectAfterRevocation(t *testing.T) {
 			id := dbfx.Insert(t, "inbox_item", testutil.Cols{
 				"workspace_id": testWorkspaceID, "recipient_type": "member", "recipient_id": f.insider,
 				"type": "mentioned", "severity": "info", "title": "Private notification",
-				"issue_id": f.secretIssue, "archived": archived,
+				"issue_id": f.sealedIssue, "archived": archived,
 			})
 			removeProjectMemberAsOwner(t, f, f.insider)
 			published := 0

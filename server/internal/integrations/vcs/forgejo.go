@@ -46,11 +46,11 @@ func (p forgejoProvider) EventKind(h http.Header) EventKind {
 
 // VerifySignature checks X-Gitea-Signature, a bare hex HMAC-SHA256 of the body
 // (no "sha256=" prefix — that is GitHub's convention; tolerate it anyway).
-func (p forgejoProvider) VerifySignature(secret string, h http.Header, body []byte) bool {
+func (p forgejoProvider) VerifySignature(sealed string, h http.Header, body []byte) bool {
 	// HMAC with an empty key is forgeable, so reject an empty secret outright
 	// (mirrors the GitLab verifier). Not reachable today — the secret is always
 	// 32 random bytes — but keep the auth boundary safe regardless.
-	if secret == "" {
+	if sealed == "" {
 		return false
 	}
 	sig := strings.TrimSpace(h.Get("X-Gitea-Signature"))
@@ -59,7 +59,7 @@ func (p forgejoProvider) VerifySignature(secret string, h http.Header, body []by
 	if err != nil {
 		return false
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write(body)
 	return hmac.Equal(mac.Sum(nil), want)
 }
@@ -181,13 +181,13 @@ func normalizeForgejoState(s string) string {
 	}
 }
 
-func (p forgejoProvider) ValidateToken(ctx context.Context, instanceURL, token string) (Account, error) {
+func (p forgejoProvider) ValidateToken(ctx context.Context, instanceURL, ticket string) (Account, error) {
 	endpoint := NormalizeInstanceURL(instanceURL) + "/api/v1/user"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return Account{}, fmt.Errorf("forgejo: build request: %w", err)
 	}
-	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Authorization", "token "+ticket)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := httpClient.Do(req)

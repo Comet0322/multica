@@ -169,7 +169,7 @@ func TestDaemonRPC_QoderClaimRevalidatesConnectionCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, err := testHandler.Queries.CreateDaemonToken(ctx, db.CreateDaemonTokenParams{
-		TokenHash: auth.HashToken(raw), WorkspaceID: parseUUID(testWorkspaceID), DaemonID: daemonID,
+		TicketHash: auth.HashToken(raw), WorkspaceID: parseUUID(testWorkspaceID), DaemonID: daemonID,
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 	})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestDaemonRPC_QoderClaimRevalidatesConnectionCredential(t *testing.T) {
 	if !ok {
 		t.Fatalf("valid Qoder handshake refused: %d %s", hw.Code, hw.Body.String())
 	}
-	if identity.DaemonTokenHash == "" {
+	if identity.DaemonTicketHash == "" {
 		t.Fatal("WS identity did not capture the authenticating token")
 	}
 
@@ -451,7 +451,7 @@ func TestDaemonRegister_QoderPrefixNeedsLiveConnectionForEveryShape(t *testing.T
 		t.Fatal(err)
 	}
 	token, err := testHandler.Queries.CreateDaemonToken(ctx, db.CreateDaemonTokenParams{
-		TokenHash: auth.HashToken(raw), WorkspaceID: parseUUID(testWorkspaceID), DaemonID: daemonID,
+		TicketHash: auth.HashToken(raw), WorkspaceID: parseUUID(testWorkspaceID), DaemonID: daemonID,
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 	})
 	if err != nil {

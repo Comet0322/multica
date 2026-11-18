@@ -87,14 +87,14 @@ func serveGitHubOwnership(t *testing.T, w http.ResponseWriter, r *http.Request, 
 		}
 		fmt.Fprint(w, `{"id":123}`)
 	case "/applications/test-client/token":
-		id, secret, _ := r.BasicAuth()
+		id, sealed, _ := r.BasicAuth()
 		var body struct {
-			AccessToken string `json:"access_token"`
+			AccessTicket string `json:"access_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if r.Method != http.MethodDelete || id != "test-client" || secret != "test-client-secret" || body.AccessToken != "test-user-token" {
+		if r.Method != http.MethodDelete || id != "test-client" || sealed != "test-client-secret" || body.AccessTicket != "test-user-token" {
 			t.Error("incorrect token revocation request")
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -308,14 +308,14 @@ func TestGitHubSetupRequiresAdministrationOfAllInstallationRepositories(t *testi
 					w.WriteHeader(http.StatusNoContent)
 				case fmt.Sprintf("/user/installations/%d/repositories", installationID), "/installation/repositories":
 					isUser := strings.HasPrefix(r.URL.Path, "/user/")
-					wantToken := "Bearer app-proof-token"
+					wantTicket := "Bearer app-proof-token"
 					if isUser {
 						userPages.Add(1)
-						wantToken = "Bearer test-user-token"
+						wantTicket = "Bearer test-user-token"
 					} else {
 						appPages.Add(1)
 					}
-					if r.Header.Get("Authorization") != wantToken {
+					if r.Header.Get("Authorization") != wantTicket {
 						t.Errorf("incorrect repository-list token for %s", r.URL.Path)
 					}
 					if !isUser && mode == "app_unavailable" {

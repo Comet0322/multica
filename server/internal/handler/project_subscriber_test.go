@@ -63,7 +63,7 @@ func TestIssueSubscribersIncludeProjectSubscribers(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM project_subscriber WHERE project_id = $1`, f.projectID)
-		testPool.Exec(context.Background(), `DELETE FROM issue_subscriber WHERE issue_id = $1`, f.secretIssue)
+		testPool.Exec(context.Background(), `DELETE FROM issue_subscriber WHERE issue_id = $1`, f.sealedIssue)
 	})
 	// The outsider's row stands for a member who lost access after
 	// subscribing, the admin's for one whose role used to be enough.
@@ -75,11 +75,11 @@ func TestIssueSubscribersIncludeProjectSubscribers(t *testing.T) {
 		}
 	}
 
-	issuePath := "/api/issues/" + f.secretIssue
+	issuePath := "/api/issues/" + f.sealedIssue
 	reasons := func() map[string][]string {
 		t.Helper()
 		var resp []SubscriberResponse
-		req := withURLParam(asUser(newRequest(http.MethodGet, issuePath+"/subscribers", nil), testUserID), "id", f.secretIssue)
+		req := withURLParam(asUser(newRequest(http.MethodGet, issuePath+"/subscribers", nil), testUserID), "id", f.sealedIssue)
 		testutil.Call(t, testHandler.ListIssueSubscribers, req).Want(http.StatusOK).JSON(&resp)
 		got := map[string][]string{}
 		for _, s := range resp {
@@ -89,7 +89,7 @@ func TestIssueSubscribersIncludeProjectSubscribers(t *testing.T) {
 	}
 	act := func(h http.HandlerFunc, path, userID string) {
 		t.Helper()
-		req := withURLParam(asUser(newRequest(http.MethodPost, path, nil), userID), "id", f.secretIssue)
+		req := withURLParam(asUser(newRequest(http.MethodPost, path, nil), userID), "id", f.sealedIssue)
 		testutil.Call(t, h, req).Want(http.StatusOK)
 	}
 	optOutScope := func(userID string) string {
@@ -98,7 +98,7 @@ func TestIssueSubscribersIncludeProjectSubscribers(t *testing.T) {
 		if err := testPool.QueryRow(ctx, `
 			SELECT opt_out_scope FROM issue_subscriber
 			WHERE issue_id = $1 AND user_type = 'member' AND user_id = $2 AND unsubscribed_at IS NOT NULL
-		`, f.secretIssue, userID).Scan(&scope); err != nil {
+		`, f.sealedIssue, userID).Scan(&scope); err != nil {
 			t.Fatalf("opt-out for %s: %v", userID, err)
 		}
 		return scope
@@ -128,7 +128,7 @@ func TestIssueSubscribersIncludeProjectSubscribers(t *testing.T) {
 	if _, err := testPool.Exec(ctx, `
 		INSERT INTO issue_subscriber (issue_id, user_type, user_id, reason, unsubscribed_at, opt_out_scope)
 		VALUES ($1, 'member', $2, 'manual', now(), 'subtree')
-	`, f.secretIssue, testUserID); err != nil {
+	`, f.sealedIssue, testUserID); err != nil {
 		t.Fatal(err)
 	}
 	act(testHandler.UnsubscribeFromIssue, issuePath+"/unsubscribe", testUserID)

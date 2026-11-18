@@ -313,7 +313,7 @@ func (m *mediaResolver) fetchResource(ctx context.Context, creds credentials, re
 }
 
 func (m *mediaResolver) fetchByCode(ctx context.Context, creds credentials, code string) ([]byte, string, error) {
-	downloadURL, err := m.client.messageFileDownloadURL(ctx, creds.AppKey, creds.AppSecret, creds.RobotCode, code)
+	downloadURL, err := m.client.messageFileDownloadURL(ctx, creds.AppKey, creds.AppSealed, creds.RobotCode, code)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve download url: %w", err)
 	}

@@ -189,7 +189,7 @@ func TestResolveTargetDeliversChannelTaskReply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target == nil || target.chatID != 42 || target.replyTo != 17 || target.botToken != "123:secret" || target.streamKey != telegramTestEvent().TaskID {
+	if target == nil || target.chatID != 42 || target.replyTo != 17 || target.botTicket != "123:secret" || target.streamKey != telegramTestEvent().TaskID {
 		t.Fatalf("target = %+v", target)
 	}
 }

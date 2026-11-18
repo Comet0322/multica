@@ -27,7 +27,7 @@ func TestPluginActionRouteTrustBoundaries(t *testing.T) {
 		{
 			name:          "public API rejects a browser session token",
 			path:          "/v1/context",
-			authorization: "Bearer " + testToken,
+			authorization: "Bearer " + testTicket,
 			wantStatus:    http.StatusUnauthorized,
 		},
 		{
@@ -39,7 +39,7 @@ func TestPluginActionRouteTrustBoundaries(t *testing.T) {
 		{
 			name:          "surface bridge accepts a browser session",
 			path:          "/api/plugin-bridge/v1/context",
-			authorization: "Bearer " + testToken,
+			authorization: "Bearer " + testTicket,
 			wantHandler:   true,
 		},
 		{
@@ -72,7 +72,7 @@ func TestPluginActionRouteTrustBoundaries(t *testing.T) {
 		{
 			name:          "surface bridge retains person-triggered hooks",
 			path:          "/api/plugin-bridge/v1/hooks/summarize",
-			authorization: "Bearer " + testToken,
+			authorization: "Bearer " + testTicket,
 			wantStatus:    http.StatusMethodNotAllowed,
 		},
 	}

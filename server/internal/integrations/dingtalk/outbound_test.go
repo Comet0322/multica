@@ -187,7 +187,7 @@ func TestOutboundTerminalReactionLifecycle(t *testing.T) {
 				}
 				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 			})}, "https://dingtalk.test")
-			config, err := json.Marshal(installConfig{AppID: "app", RobotCode: "robot", AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret"))})
+			config, err := json.Marshal(installConfig{AppID: "app", RobotCode: "robot", AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret"))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -285,7 +285,7 @@ func TestOutboundPartialReplyFailureDoesNotMarkDone(t *testing.T) {
 		}
 		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})}, "https://dingtalk.test")
-	config, err := json.Marshal(installConfig{AppID: "app", AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret"))})
+	config, err := json.Marshal(installConfig{AppID: "app", AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret"))})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -120,15 +120,15 @@ func TestEnvironmentCommandsNeedATask(t *testing.T) {
 func TestEnvironmentUnauthorizedUsesTheFinalRequest(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
-		token      string
+		ticket     string
 		redirect   bool
 		locale     string
 		wantScoped bool
 	}{
-		{name: "task credential", token: "mat_synthetic", wantScoped: true},
-		{name: "task credential in Chinese", token: "mat_synthetic", locale: "zh_CN.UTF-8", wantScoped: true},
-		{name: "other credential", token: "synthetic_other"},
-		{name: "cross host redirect", token: "mat_synthetic", redirect: true},
+		{name: "task credential", ticket: "mat_synthetic", wantScoped: true},
+		{name: "task credential in Chinese", ticket: "mat_synthetic", locale: "zh_CN.UTF-8", wantScoped: true},
+		{name: "other credential", ticket: "synthetic_other"},
+		{name: "cross host redirect", ticket: "mat_synthetic", redirect: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			const message = "environment commands need the credential of a task running in this daemon"
@@ -146,7 +146,7 @@ func TestEnvironmentUnauthorizedUsesTheFinalRequest(t *testing.T) {
 			}))
 			defer final.Close()
 			fakeEnvironmentDaemon(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "Bearer "+tc.token {
+				if r.Header.Get("Authorization") != "Bearer "+tc.ticket {
 					t.Errorf("initial Authorization = %q", r.Header.Get("Authorization"))
 				}
 				if tc.redirect {
@@ -155,7 +155,7 @@ func TestEnvironmentUnauthorizedUsesTheFinalRequest(t *testing.T) {
 				}
 				http.Error(w, message, http.StatusUnauthorized)
 			})
-			t.Setenv("MULTICA_TOKEN", tc.token)
+			t.Setenv("MULTICA_TOKEN", tc.ticket)
 			err := runEnvironmentList(newEnvironmentTestCmd(nil), nil)
 			var httpErr *cli.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusUnauthorized || httpErr.TaskScoped != tc.wantScoped {

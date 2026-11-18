@@ -161,10 +161,10 @@ var (
 	redisClaimState = redis.NewScript(redisClaimStateSource)
 )
 
-func (d *redisDedupe) Claim(ctx context.Context, key, token string, ttl time.Duration) (bool, error) {
+func (d *redisDedupe) Claim(ctx context.Context, key, ticket string, ttl time.Duration) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, d.budget)
 	defer cancel()
-	n, err := redisClaim.Run(ctx, d.rdb, []string{key}, token, ttl.Milliseconds()).Int()
+	n, err := redisClaim.Run(ctx, d.rdb, []string{key}, ticket, ttl.Milliseconds()).Int()
 	return n == 1, err
 }
 
@@ -193,10 +193,10 @@ func (d *redisDedupe) bookkeepingBudget(ctx context.Context) (context.Context, c
 
 // Release is a compare-and-delete on the token. An error means the outcome is
 // unknown; the caller reads it as exactly that (RelayOutbound.perform).
-func (d *redisDedupe) Release(ctx context.Context, key, token string) (bool, error) {
+func (d *redisDedupe) Release(ctx context.Context, key, ticket string) (bool, error) {
 	ctx, cancel := d.bookkeepingBudget(ctx)
 	defer cancel()
-	n, err := redisRelease.Run(ctx, d.rdb, []string{key}, token).Int()
+	n, err := redisRelease.Run(ctx, d.rdb, []string{key}, ticket).Int()
 	if err != nil {
 		d.log.WarnContext(ctx, "wecom relay: claim release outcome unknown",
 			"error", err, "key", key)
@@ -205,10 +205,10 @@ func (d *redisDedupe) Release(ctx context.Context, key, token string) (bool, err
 	return n == 1, nil
 }
 
-func (d *redisDedupe) Settle(ctx context.Context, key, token string) (bool, error) {
+func (d *redisDedupe) Settle(ctx context.Context, key, ticket string) (bool, error) {
 	ctx, cancel := d.bookkeepingBudget(ctx)
 	defer cancel()
-	n, err := redisSettle.Run(ctx, d.rdb, []string{key}, token, claimSettledValue).Int()
+	n, err := redisSettle.Run(ctx, d.rdb, []string{key}, ticket, claimSettledValue).Int()
 	return n == 1, err
 }
 

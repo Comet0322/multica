@@ -78,9 +78,9 @@ func NewCloudFrontSignerFromEnv() *CloudFrontSigner {
 // loadPrivateKey loads the RSA private key from Secrets Manager or env var fallback.
 func loadPrivateKey() (*rsa.PrivateKey, error) {
 	// 1. Try Secrets Manager
-	if secretName := os.Getenv("CLOUDFRONT_PRIVATE_KEY_SECRET"); secretName != "" {
-		slog.Info("loading CloudFront private key from Secrets Manager", "secret", secretName)
-		return loadKeyFromSecretsManager(secretName)
+	if sealedName := os.Getenv("CLOUDFRONT_PRIVATE_KEY_SECRET"); sealedName != "" {
+		slog.Info("loading CloudFront private key from Secrets Manager", "secret", sealedName)
+		return loadKeyFromSecretsManager(sealedName)
 	}
 
 	// 2. Fallback: base64-encoded env var (local dev)
@@ -96,7 +96,7 @@ func loadPrivateKey() (*rsa.PrivateKey, error) {
 	return nil, fmt.Errorf("neither CLOUDFRONT_PRIVATE_KEY_SECRET nor CLOUDFRONT_PRIVATE_KEY is set")
 }
 
-func loadKeyFromSecretsManager(secretName string) (*rsa.PrivateKey, error) {
+func loadKeyFromSecretsManager(sealedName string) (*rsa.PrivateKey, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("load AWS config: %w", err)
@@ -104,14 +104,14 @@ func loadKeyFromSecretsManager(secretName string) (*rsa.PrivateKey, error) {
 
 	client := secretsmanager.NewFromConfig(cfg)
 	result, err := client.GetSecretValue(context.Background(), &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretName),
+		SecretId: aws.String(sealedName),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get secret %q: %w", secretName, err)
+		return nil, fmt.Errorf("get secret %q: %w", sealedName, err)
 	}
 
 	if result.SecretString == nil {
-		return nil, fmt.Errorf("secret %q has no string value", secretName)
+		return nil, fmt.Errorf("secret %q has no string value", sealedName)
 	}
 
 	return parseRSAPrivateKey([]byte(*result.SecretString))

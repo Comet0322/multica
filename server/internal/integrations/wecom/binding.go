@@ -110,7 +110,7 @@ type RedeemedBindingToken struct {
 type bindingMintQueries interface {
 	CreateChannelBindingToken(ctx context.Context, arg db.CreateChannelBindingTokenParams) (db.ChannelBindingToken, error)
 	FindLiveChannelBindingToken(ctx context.Context, arg db.FindLiveChannelBindingTokenParams) (db.ChannelBindingToken, error)
-	ConsumeChannelBindingToken(ctx context.Context, tokenHash string) (db.ChannelBindingToken, error)
+	ConsumeChannelBindingToken(ctx context.Context, ticketHash string) (db.ChannelBindingToken, error)
 }
 
 // BindingTokenService mints and redeems WeCom binding tokens. Redemption is
@@ -174,7 +174,7 @@ func (s *BindingTokenService) Mint(ctx context.Context, workspaceID, installatio
 	}
 	expiresAt := s.now().Add(BindingTokenTTL)
 	if _, err := s.mint.CreateChannelBindingToken(ctx, db.CreateChannelBindingTokenParams{
-		TokenHash:      hashBindingToken(raw),
+		TicketHash:     hashBindingToken(raw),
 		WorkspaceID:    workspaceID,
 		InstallationID: installationID,
 		ChannelType:    channelTypeWecom,

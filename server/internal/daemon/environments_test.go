@@ -187,10 +187,10 @@ func TestEnvironmentResolveAttributesRunningAndFinishedTasks(t *testing.T) {
 	}
 }
 
-func doEnvironmentRequest(handler http.HandlerFunc, path, token, body string) *httptest.ResponseRecorder {
+func doEnvironmentRequest(handler http.HandlerFunc, path, ticket, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	rec := httptest.NewRecorder()
 	handler(rec, req)

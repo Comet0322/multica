@@ -38,11 +38,11 @@ func withVCSBox(t *testing.T) *secretbox.Box {
 	return box
 }
 
-const vcsTestSecret = "vcs-webhook-secret"
+const vcsTestSealed = "vcs-webhook-secret"
 
 func seedVCSConnection(t *testing.T, ctx context.Context, box *secretbox.Box, provider, instanceURL string) string {
 	t.Helper()
-	sealed, err := box.Seal([]byte(vcsTestSecret))
+	sealed, err := box.Seal([]byte(vcsTestSealed))
 	if err != nil {
 		t.Fatalf("seal: %v", err)
 	}
@@ -52,8 +52,8 @@ func seedVCSConnection(t *testing.T, ctx context.Context, box *secretbox.Box, pr
 		Provider:               provider,
 		InstanceUrl:            instanceURL,
 		AccountLogin:           "acme",
-		AccessTokenEncrypted:   base64.StdEncoding.EncodeToString(tokenSealed),
-		WebhookSecretEncrypted: base64.StdEncoding.EncodeToString(sealed),
+		AccessTicketEncrypted:  base64.StdEncoding.EncodeToString(tokenSealed),
+		WebhookSealedEncrypted: base64.StdEncoding.EncodeToString(sealed),
 		ConnectedByID:          pgtype.UUID{},
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func vcsWebhookReq(connID string, headers map[string]string, raw []byte) *http.R
 }
 
 func giteaSig(raw []byte) string {
-	mac := hmac.New(sha256.New, []byte(vcsTestSecret))
+	mac := hmac.New(sha256.New, []byte(vcsTestSealed))
 	mac.Write(raw)
 	return hex.EncodeToString(mac.Sum(nil))
 }
@@ -463,7 +463,7 @@ func TestVCSWebhook_GitlabMergeRequest(t *testing.T) {
 	// GitLab authenticates by plaintext X-Gitlab-Token, not HMAC.
 	w := httptest.NewRecorder()
 	testHandler.HandleVCSWebhook(w, vcsWebhookReq(connID, map[string]string{
-		"X-Gitlab-Event": "Merge Request Hook", "X-Gitlab-Token": vcsTestSecret,
+		"X-Gitlab-Event": "Merge Request Hook", "X-Gitlab-Token": vcsTestSealed,
 	}, raw))
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d (%s)", w.Code, w.Body.String())

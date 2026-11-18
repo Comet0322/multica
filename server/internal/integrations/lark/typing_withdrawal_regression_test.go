@@ -68,7 +68,7 @@ func TestQAR2WithdrawalPreservesNextDebounceInput(t *testing.T) {
 			next := f.Insert(t, "chat_message", dbfx.Cols{"chat_session_id": f.sessionID, "role": "user", "content": "next debounce input", "channel_ingested": true})
 			api := &qaR2DeleteBarrier{crossProcessReactionAPI: &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: map[string][]MessageReaction{"checked-trigger": {{ReactionID: "human-typing", OperatorType: "user", EmojiType: typingEmoji}}}}, started: make(chan struct{}), release: make(chan struct{}), t: t}
 			queries := &qaR2CheckQueries{ChannelStore: f.store, oldID: f.messageID, fail: failure, t: t}
-			mgr := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "fixture"}, queries, newDiscardLogger())
+			mgr := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "fixture"}, queries, newDiscardLogger())
 			var once sync.Once
 			defer once.Do(func() { close(api.release) })
 			done := make(chan struct{})

@@ -17,11 +17,11 @@ func TestBuildSearchQuery_OpenCommentCandidates(t *testing.T) {
 		t.Skip("requires DB")
 	}
 
-	token := "opencandidates" + uuid.NewString()[:8]
+	ticket := "opencandidates" + uuid.NewString()[:8]
 	var open, closed []string
 	for _, status := range []string{"todo", "blocked", "done", "cancelled", "verified"} {
 		id := dbfx.Issue(t, "unrelated", testutil.Cols{"status": status})
-		dbfx.Comment(t, id, token+" alpha")
+		dbfx.Comment(t, id, ticket+" alpha")
 		dbfx.Comment(t, id, "beta")
 		if status == "todo" || status == "blocked" {
 			open = append(open, id)
@@ -32,8 +32,8 @@ func TestBuildSearchQuery_OpenCommentCandidates(t *testing.T) {
 	for _, includeClosed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("include_closed=%t", includeClosed), func(t *testing.T) {
 			query, args := buildSearchQuery(
-				token+" alpha beta",
-				[]string{token, "alpha", "beta"},
+				ticket+" alpha beta",
+				[]string{ticket, "alpha", "beta"},
 				0,
 				false,
 				includeClosed,

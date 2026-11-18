@@ -32,13 +32,13 @@ func startupConnection(fixture *remotemcptest.Server, approved []remotemcp.Tool)
 		Transport:            "http",
 		EndpointAllowedHosts: []string{"127.0.0.1"},
 		ProtocolVersions:     fixtureProtocolVersions,
-		CredentialHeader:     "Authorization",
+		BadgeHeader:          "Authorization",
 		ApprovedTools:        approved,
 	}
 }
 
 func fixtureCredential(context.Context, string) (http.Header, error) {
-	return http.Header{"Authorization": []string{"Bearer " + remotemcptest.Credential}}, nil
+	return http.Header{"Authorization": []string{"Bearer " + remotemcptest.Badge}}, nil
 }
 
 // discoveredTools asks the fixture what it offers, so a test can pin the real
@@ -48,7 +48,7 @@ func discoveredTools(t *testing.T, fixture *remotemcptest.Server) map[string]rem
 	t.Helper()
 	tools, _, err := remotemcp.Discover(context.Background(), fixture.URL,
 		[]string{"127.0.0.1"}, fixtureProtocolVersions,
-		http.Header{"Authorization": []string{"Bearer " + remotemcptest.Credential}})
+		http.Header{"Authorization": []string{"Bearer " + remotemcptest.Badge}})
 	if err != nil {
 		t.Fatalf("discover fixture tools: %v", err)
 	}

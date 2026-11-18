@@ -46,12 +46,12 @@ func TestHelperProcess(t *testing.T) {
 		os.WriteFile(os.Getenv("LOCALENV_PID_FILE"), []byte(strconv.Itoa(server.Process.Pid)), 0o600)
 		server.Wait()
 	case "crash":
-		fmt.Println("boom: cannot reach postgres://demo:" + crashSecret + "@db.invalid/app")
+		fmt.Println("boom: cannot reach postgres://demo:" + crashSealed + "@db.invalid/app")
 		os.Exit(3)
 	}
 }
 
-const crashSecret = "fake-password-for-tests"
+const crashSealed = "fake-password-for-tests"
 
 func helperCommand(mode string) string {
 	return fmt.Sprintf("LOCALENV_HELPER=%s exec '%s' -test.run='^TestHelperProcess$'", mode, os.Args[0])
@@ -142,7 +142,7 @@ func TestManagerReportsACrash(t *testing.T) {
 		t.Fatalf("an ended environment has no expiry, got %v", env.ExpiresAt)
 	}
 	log, err := os.ReadFile(env.LogPath)
-	if err != nil || !strings.Contains(string(log), crashSecret) {
+	if err != nil || !strings.Contains(string(log), crashSealed) {
 		t.Fatalf("local log = %q, %v; want the command's output kept there", log, err)
 	}
 }

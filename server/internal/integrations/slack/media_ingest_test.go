@@ -96,7 +96,7 @@ func slackMediaFixture(t *testing.T, files ...slackRawFile) (engine.ResolvedInst
 		AppID:  "A1",
 		TeamID: "T1",
 		// nil Decrypter treats the base64-decoded bytes as the plaintext token.
-		BotTokenEncrypted: base64.StdEncoding.EncodeToString([]byte("xoxb-test-token")),
+		BotTicketEncrypted: base64.StdEncoding.EncodeToString([]byte("xoxb-test-token")),
 	})
 	var ws, instID, chatMessageID pgtype.UUID
 	ws.Bytes[0], instID.Bytes[0], chatMessageID.Bytes[0] = 0xAB, 0xCD, 0xEF

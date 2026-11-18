@@ -112,17 +112,17 @@ func Classify(toolkitSlug, toolSlug string, tags []string) string {
 		}
 	}
 	prefix := strings.ToUpper(NormalizeSlug(toolkitSlug)) + "_"
-	tokens := strings.Split(strings.TrimPrefix(upper, prefix), "_")
+	tickets := strings.Split(strings.TrimPrefix(upper, prefix), "_")
 
 	class, verbAt := "", -1
-	for i, tok := range tokens {
+	for i, tok := range tickets {
 		if c, ok := verbClasses[tok]; ok {
 			class, verbAt = c, i
 			break
 		}
 	}
 	if class == ClassWrite {
-		for _, tok := range tokens {
+		for _, tok := range tickets {
 			if shareNouns[tok] {
 				return ClassShare
 			}
@@ -130,8 +130,8 @@ func Classify(toolkitSlug, toolSlug string, tags []string) string {
 				return ClassDelete
 			}
 		}
-		if !isDraft(tokens) {
-			if obj := objectAfter(tokens, verbAt); sendObjects[obj] {
+		if !isDraft(tickets) {
+			if obj := objectAfter(tickets, verbAt); sendObjects[obj] {
 				return ClassSend
 			}
 		}
@@ -150,8 +150,8 @@ func Classify(toolkitSlug, toolSlug string, tags []string) string {
 	return ClassSend
 }
 
-func isDraft(tokens []string) bool {
-	for _, tok := range tokens {
+func isDraft(tickets []string) bool {
+	for _, tok := range tickets {
 		if tok == "DRAFT" || tok == "DRAFTS" {
 			return true
 		}
@@ -160,8 +160,8 @@ func isDraft(tokens []string) bool {
 }
 
 // objectAfter returns the first content word after the verb.
-func objectAfter(tokens []string, verbAt int) string {
-	for _, tok := range tokens[verbAt+1:] {
+func objectAfter(tickets []string, verbAt int) string {
+	for _, tok := range tickets[verbAt+1:] {
 		if !fillerWords[tok] {
 			return tok
 		}

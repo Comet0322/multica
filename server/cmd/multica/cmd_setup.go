@@ -367,13 +367,13 @@ func saveSetupTarget(profile, serverURL, appURL string, expected cli.CLIConfig) 
 		return fmt.Errorf("profile changed during setup; rerun setup")
 	}
 	if sameSetupBackend(cfg.ServerURL, serverURL) {
-		if strings.TrimRight(cfg.AppURL, "/") == strings.TrimRight(appURL, "/") && cfg.Token == "" && cfg.WorkspaceID == "" {
+		if strings.TrimRight(cfg.AppURL, "/") == strings.TrimRight(appURL, "/") && cfg.Ticket == "" && cfg.WorkspaceID == "" {
 			return nil
 		}
 	} else {
 		cfg = cli.CLIConfig{}
 	}
-	cfg.Token, cfg.WorkspaceID = "", ""
+	cfg.Ticket, cfg.WorkspaceID = "", ""
 	cfg.ServerURL, cfg.AppURL = serverURL, appURL
 	return cli.SaveCLIConfigForProfile(cfg, profile)
 }

@@ -36,8 +36,8 @@ type RegisterBYOParams struct {
 	WorkspaceID pgtype.UUID
 	AgentID     pgtype.UUID
 	InitiatorID pgtype.UUID
-	BotToken    string // xoxb-… — outbound Web API (chat.postMessage)
-	AppToken    string // xapp-… — this app's OWN Socket Mode connection (inbound)
+	BotTicket   string // xoxb-… — outbound Web API (chat.postMessage)
+	AppTicket   string // xapp-… — this app's OWN Socket Mode connection (inbound)
 }
 
 // RegisterBYO installs a user-supplied ("bring your own") Slack app for an agent.
@@ -56,12 +56,12 @@ type RegisterBYOParams struct {
 // that consumes the stored app token lives in slack_channel.go; this method
 // only persists the installation.
 func (s *InstallService) RegisterBYO(ctx context.Context, p RegisterBYOParams) (db.ChannelInstallation, error) {
-	botToken := strings.TrimSpace(p.BotToken)
-	appToken := strings.TrimSpace(p.AppToken)
-	if !strings.HasPrefix(botToken, "xoxb-") {
+	botTicket := strings.TrimSpace(p.BotTicket)
+	appTicket := strings.TrimSpace(p.AppTicket)
+	if !strings.HasPrefix(botTicket, "xoxb-") {
 		return db.ChannelInstallation{}, ErrInvalidBotToken
 	}
-	appID, err := parseSlackAppID(appToken)
+	appID, err := parseSlackAppID(appTicket)
 	if err != nil {
 		return db.ChannelInstallation{}, err
 	}
@@ -69,7 +69,7 @@ func (s *InstallService) RegisterBYO(ctx context.Context, p RegisterBYOParams) (
 	// Validate the bot token live and learn the team + bot user id. auth.test
 	// authenticates with the bot token and returns the bot's OWN user id, which
 	// is the @-mention identity inbound translation strips.
-	auth, err := s.authTest(ctx, botToken)
+	auth, err := s.authTest(ctx, botTicket)
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("slack auth.test: %w", err)
 	}
@@ -83,7 +83,7 @@ func (s *InstallService) RegisterBYO(ctx context.Context, p RegisterBYOParams) (
 	// A's bot token with app B's app token would "connect" but be broken —
 	// inbound arrives on app B's socket (routed by api_app_id=B) while mention
 	// detection + outbound use app A's bot identity / token (Niko review).
-	botAppID, err := s.botAppID(ctx, botToken, auth.BotID)
+	botAppID, err := s.botAppID(ctx, botTicket, auth.BotID)
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("slack bots.info: %w", err)
 	}
@@ -93,24 +93,24 @@ func (s *InstallService) RegisterBYO(ctx context.Context, p RegisterBYOParams) (
 
 	// Validate the app-level token is live (Socket Mode can actually open) so we
 	// never persist a token that will silently never receive events.
-	if err := s.validateAppToken(ctx, appToken); err != nil {
+	if err := s.validateAppToken(ctx, appTicket); err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("slack apps.connections.open: %w", err)
 	}
 
-	sealedBot, err := s.box.Seal([]byte(botToken))
+	sealedBot, err := s.box.Seal([]byte(botTicket))
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encrypt slack bot token: %w", err)
 	}
-	sealedApp, err := s.box.Seal([]byte(appToken))
+	sealedApp, err := s.box.Seal([]byte(appTicket))
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encrypt slack app token: %w", err)
 	}
 	cfgJSON, err := json.Marshal(installConfig{
-		AppID:             appID,
-		TeamID:            auth.TeamID,
-		BotUserID:         auth.UserID,
-		BotTokenEncrypted: base64.StdEncoding.EncodeToString(sealedBot),
-		AppTokenEncrypted: base64.StdEncoding.EncodeToString(sealedApp),
+		AppID:              appID,
+		TeamID:             auth.TeamID,
+		BotUserID:          auth.UserID,
+		BotTicketEncrypted: base64.StdEncoding.EncodeToString(sealedBot),
+		AppTicketEncrypted: base64.StdEncoding.EncodeToString(sealedApp),
 	})
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encode slack installation config: %w", err)
@@ -150,15 +150,15 @@ func (s *InstallService) slackOpts() []slack.Option {
 
 // authTest calls Slack auth.test with the bot token: validates it and returns
 // the team id, the bot's own user id, and the bot id (for the bots.info lookup).
-func (s *InstallService) authTest(ctx context.Context, botToken string) (*slack.AuthTestResponse, error) {
-	return slack.New(botToken, s.slackOpts()...).AuthTestContext(ctx)
+func (s *InstallService) authTest(ctx context.Context, botTicket string) (*slack.AuthTestResponse, error) {
+	return slack.New(botTicket, s.slackOpts()...).AuthTestContext(ctx)
 }
 
 // botAppID resolves the Slack app that OWNS the bot, via bots.info on the bot id
 // from auth.test. It is the only token→app_id path for a bot token, so it is how
 // we prove the pasted bot + app tokens belong to the same app.
-func (s *InstallService) botAppID(ctx context.Context, botToken, botID string) (string, error) {
-	bot, err := slack.New(botToken, s.slackOpts()...).GetBotInfoContext(ctx, slack.GetBotInfoParameters{Bot: botID})
+func (s *InstallService) botAppID(ctx context.Context, botTicket, botID string) (string, error) {
+	bot, err := slack.New(botTicket, s.slackOpts()...).GetBotInfoContext(ctx, slack.GetBotInfoParameters{Bot: botID})
 	if err != nil {
 		return "", err
 	}
@@ -168,8 +168,8 @@ func (s *InstallService) botAppID(ctx context.Context, botToken, botID string) (
 // validateAppToken confirms the app-level token can open a Socket Mode
 // connection (apps.connections.open) — a live check that the xapp is valid for
 // THIS app, so we never store a token that will silently receive nothing.
-func (s *InstallService) validateAppToken(ctx context.Context, appToken string) error {
-	api := slack.New("", append(s.slackOpts(), slack.OptionAppLevelToken(appToken))...)
+func (s *InstallService) validateAppToken(ctx context.Context, appTicket string) error {
+	api := slack.New("", append(s.slackOpts(), slack.OptionAppLevelToken(appTicket))...)
 	_, _, err := api.StartSocketModeContext(ctx)
 	return err
 }
@@ -178,11 +178,11 @@ func (s *InstallService) validateAppToken(ctx context.Context, appToken string) 
 // token format is `xapp-1-<APP_ID>-<gen>-<secret>` (e.g. xapp-1-A0BCXGVCS7R-…),
 // so the app id is the third dash-segment. It is the per-app storage / routing
 // key that lets multiple BYO apps coexist in one Slack workspace.
-func parseSlackAppID(appToken string) (string, error) {
-	if !strings.HasPrefix(appToken, "xapp-") {
+func parseSlackAppID(appTicket string) (string, error) {
+	if !strings.HasPrefix(appTicket, "xapp-") {
 		return "", ErrInvalidAppToken
 	}
-	parts := strings.SplitN(appToken, "-", 5)
+	parts := strings.SplitN(appTicket, "-", 5)
 	if len(parts) < 4 || parts[2] == "" || !strings.HasPrefix(parts[2], "A") {
 		return "", ErrInvalidAppToken
 	}

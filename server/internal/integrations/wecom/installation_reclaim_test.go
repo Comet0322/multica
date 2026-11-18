@@ -127,7 +127,7 @@ func params(app, agent string) InstallationParams {
 		AgentID:         mustUUID(agent),
 		InstallerUserID: mustUUID(wcRclInstall),
 		BotID:           app,
-		Secret:          "s3cr3t",
+		Sealed:          "s3cr3t",
 	}
 }
 

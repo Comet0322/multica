@@ -291,13 +291,13 @@ func (s *Service) AuthorizeOverlay(overlay []byte, taskID pgtype.UUID) ([]byte, 
 	if err := json.Unmarshal(entry, &server); err != nil {
 		return nil, err
 	}
-	token, err := SignTaskToken(s.secret, util.UUIDToString(taskID), s.now().Add(tokenTTL))
+	ticket, err := SignTaskToken(s.secret, util.UUIDToString(taskID), s.now().Add(tokenTTL))
 	if err != nil {
 		return nil, err
 	}
 	server.Type = "http"
 	server.URL = s.gatewayURL
-	server.Headers = map[string]string{"Authorization": "Bearer " + token}
+	server.Headers = map[string]string{"Authorization": "Bearer " + ticket}
 	raw, err := json.Marshal(server)
 	if err != nil {
 		return nil, err

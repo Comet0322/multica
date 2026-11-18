@@ -21,23 +21,23 @@ import (
 const Provider = "qoder_cloud"
 
 type Config struct {
-	DaemonID         string                                `json:"daemon_id,omitempty"`
-	LoadState        func(context.Context) ([]byte, error) `json:"-"`
-	SaveState        func(context.Context, []byte) error   `json:"-"`
-	BeforeStep       func(context.Context) (func(), error) `json:"-"`
-	OnReady          func(context.Context, string) error   `json:"-"`
-	GitHubTokens     map[string]string                     `json:"-"`
-	GitHubTokenFiles map[string]string                     `json:"github_token_files,omitempty"`
+	DaemonID          string                                `json:"daemon_id,omitempty"`
+	LoadState         func(context.Context) ([]byte, error) `json:"-"`
+	SaveState         func(context.Context, []byte) error   `json:"-"`
+	BeforeStep        func(context.Context) (func(), error) `json:"-"`
+	OnReady           func(context.Context, string) error   `json:"-"`
+	GitHubTickets     map[string]string                     `json:"-"`
+	GitHubTicketFiles map[string]string                     `json:"github_token_files,omitempty"`
 	// GitHubAppToken issues a short-lived installation token restricted to one
 	// repository through the workspace's GitHub App integration. It returns
 	// ErrGitHubAppNotCovered when no bound installation authorizes the
 	// repository. The token stays in the transient request copy only.
 	GitHubAppToken    func(ctx context.Context, owner, repo string) (string, int64, error) `json:"-"`
 	MulticaURL        string                                                               `json:"multica_url"`
-	MulticaToken      string                                                               `json:"multica_token"`
+	MulticaTicket     string                                                               `json:"multica_token"`
 	WorkspaceID       string                                                               `json:"workspace_id"`
 	QoderURL          string                                                               `json:"qoder_url"`
-	QoderToken        string                                                               `json:"qoder_token"`
+	QoderTicket       string                                                               `json:"qoder_token"`
 	EnvironmentID     string                                                               `json:"environment_id"`
 	StateDir          string                                                               `json:"state_dir"`
 	Name              string                                                               `json:"name,omitempty"`
@@ -101,11 +101,11 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	if cfg.Name == "" {
 		cfg.Name = "Qoder Cloud Agents"
 	}
-	m, err := newAPI(cfg.MulticaURL, cfg.MulticaToken, cfg.WorkspaceID)
+	m, err := newAPI(cfg.MulticaURL, cfg.MulticaTicket, cfg.WorkspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("Multica: %w", err)
 	}
-	q, err := newAPI(cfg.QoderURL, cfg.QoderToken, "")
+	q, err := newAPI(cfg.QoderURL, cfg.QoderTicket, "")
 	if err != nil {
 		return nil, fmt.Errorf("Qoder: %w", err)
 	}
@@ -618,7 +618,7 @@ const resourcesMetadataKey = "multica_resources"
 // App token hashes as its installation binding so rotating short-lived tokens
 // keep the fingerprint stable.
 type fingerprintEntry struct {
-	key, branch, credential string
+	key, branch, badge string
 }
 
 // resourceFingerprint identifies the repositories, branches and credentials a
@@ -627,7 +627,7 @@ func resourceFingerprint(entries []fingerprintEntry) string {
 	h := sha256.New()
 	h.Write([]byte("multica-qoder-resources-v1\n"))
 	for _, entry := range entries {
-		fmt.Fprintf(h, "%s\x00%s\x00%s\n", entry.key, entry.branch, entry.credential)
+		fmt.Fprintf(h, "%s\x00%s\x00%s\n", entry.key, entry.branch, entry.badge)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -743,7 +743,7 @@ func (b *Bridge) refreshRepositoryCredentials(ctx context.Context, sessionID str
 		if err != nil {
 			return fmt.Errorf("refresh session repository credential: %w", err)
 		}
-		token, _ := resources[i]["authorization_token"].(string)
+		ticket, _ := resources[i]["authorization_token"].(string)
 		resourceID, err := b.sessionRepositoryResourceID(ctx, sessionID, key)
 		if err != nil {
 			if rateLimited(err) {
@@ -757,7 +757,7 @@ func (b *Bridge) refreshRepositoryCredentials(ctx context.Context, sessionID str
 		if resourceID == "" {
 			return errRefreshRefused
 		}
-		err = b.qoder.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(sessionID)+"/resources/"+url.PathEscape(resourceID), map[string]string{"authorization_token": token}, nil)
+		err = b.qoder.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(sessionID)+"/resources/"+url.PathEscape(resourceID), map[string]string{"authorization_token": ticket}, nil)
 		if err != nil {
 			if rateLimited(err) {
 				return errRefreshDeferred
@@ -924,7 +924,7 @@ func (b *Bridge) Check(ctx context.Context) error {
 		{b.qoder, "/environments/" + url.PathEscape(b.cfg.EnvironmentID), b.cfg.EnvironmentID, "Qoder environment"},
 	}
 	for _, resource := range resources {
-		if resource.api == b.multica && strings.HasPrefix(b.cfg.MulticaToken, "mdt_") {
+		if resource.api == b.multica && strings.HasPrefix(b.cfg.MulticaTicket, "mdt_") {
 			continue
 		}
 		var response struct {
@@ -993,8 +993,8 @@ func Binding(multicaURL, workspaceID, qoderURL, environmentID string) string {
 
 // CancelRemoteSession is used by the managed supervisor after user access is
 // revoked. It needs only Qoder credentials, never a former owner's Multica PAT.
-func CancelRemoteSession(ctx context.Context, baseURL, token, sessionID string) error {
-	api, err := newAPI(baseURL, token, "")
+func CancelRemoteSession(ctx context.Context, baseURL, ticket, sessionID string) error {
+	api, err := newAPI(baseURL, ticket, "")
 	if err != nil {
 		return err
 	}

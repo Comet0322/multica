@@ -58,7 +58,7 @@ func (f *larkFakeServer) lastAuth() string {
 
 // stubToken installs a token endpoint that returns the supplied token
 // with the supplied expire (seconds) and counts hits.
-func (f *larkFakeServer) stubToken(token string, expireSec int64) {
+func (f *larkFakeServer) stubToken(ticket string, expireSec int64) {
 	f.mux.HandleFunc("/open-apis/auth/v3/tenant_access_token/internal", func(w http.ResponseWriter, r *http.Request) {
 		f.tokenN.Add(1)
 		if r.Method != http.MethodPost {
@@ -74,7 +74,7 @@ func (f *larkFakeServer) stubToken(token string, expireSec int64) {
 		writeJSON(w, map[string]any{
 			"code":                0,
 			"msg":                 "ok",
-			"tenant_access_token": token,
+			"tenant_access_token": ticket,
 			"expire":              expireSec,
 		})
 	})
@@ -231,7 +231,7 @@ func newTestClient(fake *larkFakeServer, now func() time.Time) *httpAPIClient {
 }
 
 func testCreds() InstallationCredentials {
-	return InstallationCredentials{AppID: "cli_app_xx", AppSecret: "secret_xx"}
+	return InstallationCredentials{AppID: "cli_app_xx", AppSealed: "secret_xx"}
 }
 
 func TestHTTPClient_IsConfigured(t *testing.T) {
@@ -1241,7 +1241,7 @@ func TestHTTPClient_DeleteMessageReaction_Validation(t *testing.T) {
 
 func TestHTTPClient_MissingAppCredentials(t *testing.T) {
 	c := NewHTTPAPIClient(HTTPClientConfig{}).(*httpAPIClient)
-	_, err := c.tenantAccessToken(context.Background(), InstallationCredentials{AppSecret: "x"})
+	_, err := c.tenantAccessToken(context.Background(), InstallationCredentials{AppSealed: "x"})
 	if err == nil || !strings.Contains(err.Error(), "app_id") {
 		t.Errorf("want missing app_id error, got %v", err)
 	}

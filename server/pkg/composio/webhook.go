@@ -81,8 +81,8 @@ type VerifyOptions struct {
 // secret must be the value from the matching webhook subscription —
 // fetch via the Composio dashboard or the
 // `GET /webhook_subscriptions/{id}` endpoint.
-func VerifyWebhook(secret string, headers WebhookHeaders, rawBody []byte, opts VerifyOptions) error {
-	if secret == "" {
+func VerifyWebhook(sealed string, headers WebhookHeaders, rawBody []byte, opts VerifyOptions) error {
+	if sealed == "" {
 		return ErrWebhookSecretMissing
 	}
 	if headers.ID == "" || headers.Timestamp == "" || headers.Signature == "" {
@@ -118,7 +118,7 @@ func VerifyWebhook(secret string, headers WebhookHeaders, rawBody []byte, opts V
 	}
 
 	signingString := headers.ID + "." + headers.Timestamp + "." + string(rawBody)
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	_, _ = mac.Write([]byte(signingString))
 	expected := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
@@ -148,7 +148,7 @@ func VerifyWebhook(secret string, headers WebhookHeaders, rawBody []byte, opts V
 //
 // On error the returned body slice is still populated (when read succeeded)
 // so handlers can choose to log it.
-func VerifyHTTPRequest(secret string, r *http.Request, opts VerifyOptions) ([]byte, error) {
+func VerifyHTTPRequest(sealed string, r *http.Request, opts VerifyOptions) ([]byte, error) {
 	if r == nil || r.Body == nil {
 		return nil, errors.New("composio: VerifyHTTPRequest: request body is nil")
 	}
@@ -157,7 +157,7 @@ func VerifyHTTPRequest(secret string, r *http.Request, opts VerifyOptions) ([]by
 		return nil, fmt.Errorf("composio: read webhook body: %w", err)
 	}
 	_ = r.Body.Close()
-	if verr := VerifyWebhook(secret, HeadersFromHTTP(r.Header), body, opts); verr != nil {
+	if verr := VerifyWebhook(sealed, HeadersFromHTTP(r.Header), body, opts); verr != nil {
 		return body, verr
 	}
 	return body, nil

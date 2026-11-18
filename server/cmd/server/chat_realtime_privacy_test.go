@@ -47,7 +47,7 @@ func readChatPrivacyFrames(t *testing.T, conn *websocket.Conn, stop string) []ch
 	}
 }
 
-func chatPrivacyRequest(t *testing.T, server *httptest.Server, token, method, path string, body any, out any) {
+func chatPrivacyRequest(t *testing.T, server *httptest.Server, ticket, method, path string, body any, out any) {
 	t.Helper()
 	b, _ := json.Marshal(body)
 	req, err := http.NewRequest(method, server.URL+path, bytes.NewReader(b))
@@ -55,7 +55,7 @@ func chatPrivacyRequest(t *testing.T, server *httptest.Server, token, method, pa
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestChatRealtimeIsPrivateToSessionOwner(t *testing.T) {
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	owner, ownerToken := realtimeMembershipConn(t, server, testUserID, testWorkspaceID)
+	owner, ownerTicket := realtimeMembershipConn(t, server, testUserID, testWorkspaceID)
 	bystander, _ := realtimeMembershipConn(t, server, bystanderID, testWorkspaceID)
 
 	const userTurn = "private-user-turn-7f3a"
@@ -110,7 +110,7 @@ func TestChatRealtimeIsPrivateToSessionOwner(t *testing.T) {
 	var session struct {
 		ID string `json:"id"`
 	}
-	chatPrivacyRequest(t, server, ownerToken, http.MethodPost, "/api/chat/sessions",
+	chatPrivacyRequest(t, server, ownerTicket, http.MethodPost, "/api/chat/sessions",
 		map[string]any{"agent_id": agentID}, &session)
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE chat_session_id = $1`, session.ID)
@@ -119,7 +119,7 @@ func TestChatRealtimeIsPrivateToSessionOwner(t *testing.T) {
 	var sent struct {
 		TaskID string `json:"task_id"`
 	}
-	chatPrivacyRequest(t, server, ownerToken, http.MethodPost, "/api/chat/sessions/"+session.ID+"/messages",
+	chatPrivacyRequest(t, server, ownerTicket, http.MethodPost, "/api/chat/sessions/"+session.ID+"/messages",
 		map[string]any{"content": userTurn}, &sent)
 
 	// The daemon claims and runs the task, streams a transcript row, then
@@ -153,14 +153,14 @@ func TestChatRealtimeIsPrivateToSessionOwner(t *testing.T) {
 	for _, f := range ownerFrames {
 		ownerGot[f.Type] += f.raw
 	}
-	for typ, secret := range map[string]string{
+	for typ, sealed := range map[string]string{
 		protocol.EventChatMessage:      userTurn,
 		protocol.EventTaskMessage:      transcript,
 		protocol.EventChatDone:         reply,
 		protocol.EventChatQuickActions: followUp,
 	} {
-		if !strings.Contains(ownerGot[typ], secret) {
-			t.Errorf("owner did not receive %s carrying %q; got %v", typ, secret, ownerGot)
+		if !strings.Contains(ownerGot[typ], sealed) {
+			t.Errorf("owner did not receive %s carrying %q; got %v", typ, sealed, ownerGot)
 		}
 	}
 
@@ -170,9 +170,9 @@ func TestChatRealtimeIsPrivateToSessionOwner(t *testing.T) {
 		if strings.HasPrefix(f.Type, "chat:") || f.Type == protocol.EventTaskMessage {
 			t.Errorf("bystander received %s: %s", f.Type, f.raw)
 		}
-		for _, secret := range []string{userTurn, transcript, reply, followUp} {
-			if strings.Contains(f.raw, secret) {
-				t.Errorf("bystander frame %s leaked %q: %s", f.Type, secret, f.raw)
+		for _, sealed := range []string{userTurn, transcript, reply, followUp} {
+			if strings.Contains(f.raw, sealed) {
+				t.Errorf("bystander frame %s leaked %q: %s", f.Type, sealed, f.raw)
 			}
 		}
 	}
@@ -212,12 +212,12 @@ func TestChatRealtimeStopsAtWorkspaceRemoval(t *testing.T) {
 	router, h := NewRouterWithOptions(testPool, hub, bus, analytics.NoopClient{}, nil, RouterOptions{})
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
-	other, creatorToken := realtimeMembershipConn(t, server, creatorID, otherWS)
+	other, creatorTicket := realtimeMembershipConn(t, server, creatorID, otherWS)
 
 	var session struct {
 		ID string `json:"id"`
 	}
-	chatPrivacyRequest(t, server, creatorToken, http.MethodPost, "/api/chat/sessions",
+	chatPrivacyRequest(t, server, creatorTicket, http.MethodPost, "/api/chat/sessions",
 		map[string]any{"agent_id": agentID}, &session)
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE chat_session_id=$1`, session.ID)
@@ -226,7 +226,7 @@ func TestChatRealtimeStopsAtWorkspaceRemoval(t *testing.T) {
 	var sent struct {
 		TaskID string `json:"task_id"`
 	}
-	chatPrivacyRequest(t, server, creatorToken, http.MethodPost, "/api/chat/sessions/"+session.ID+"/messages",
+	chatPrivacyRequest(t, server, creatorTicket, http.MethodPost, "/api/chat/sessions/"+session.ID+"/messages",
 		map[string]any{"content": "read workspace documents"}, &sent)
 	fx.Exec(t, `UPDATE agent_task_queue SET status='running', dispatched_at=now(), started_at=now() WHERE id=$1`, sent.TaskID)
 	bus.Publish(events.Event{Type: protocol.EventIssueUpdated, WorkspaceID: otherWS, Payload: map[string]string{}})
@@ -234,7 +234,7 @@ func TestChatRealtimeStopsAtWorkspaceRemoval(t *testing.T) {
 
 	// Use the actual removal API. The shared agent/runtime belongs to the
 	// workspace owner, so this member's removal does not cancel the task.
-	chatPrivacyRequest(t, server, testToken, http.MethodDelete,
+	chatPrivacyRequest(t, server, testTicket, http.MethodDelete,
 		"/api/workspaces/"+testWorkspaceID+"/members/"+memberID, nil, nil)
 	if fx.Count(t, `SELECT count(*) FROM member WHERE id=$1`, memberID) != 0 {
 		t.Fatal("membership was not removed")
@@ -243,7 +243,7 @@ func TestChatRealtimeStopsAtWorkspaceRemoval(t *testing.T) {
 		t.Fatal("shared-agent task unexpectedly stopped")
 	}
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/tasks/"+sent.TaskID+"/messages", nil)
-	req.Header.Set("Authorization", "Bearer "+creatorToken)
+	req.Header.Set("Authorization", "Bearer "+creatorTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -254,19 +254,19 @@ func TestChatRealtimeStopsAtWorkspaceRemoval(t *testing.T) {
 		t.Fatalf("removed member's REST read: got %d, want 403 or 404", resp.StatusCode)
 	}
 
-	const secret = "workspace-secret-after-membership-was-revoked"
+	const sealed = "workspace-secret-after-membership-was-revoked"
 	report := testutil.JSONRequest(http.MethodPost, "/api/daemon/tasks/"+sent.TaskID+"/messages",
-		map[string]any{"messages": []any{map[string]any{"seq": 1, "type": "text", "content": secret}}})
+		map[string]any{"messages": []any{map[string]any{"seq": 1, "type": "text", "content": sealed}}})
 	report = testutil.WithURLParams(report, "taskId", sent.TaskID)
 	report.Header.Set("X-User-ID", testUserID)
 	testutil.Call(t, h.ReportTaskMessages, report).Want(http.StatusOK)
-	result, _ := json.Marshal(map[string]string{"output": secret})
+	result, _ := json.Marshal(map[string]string{"output": sealed})
 	if _, err := h.TaskService.CompleteTask(ctx, util.MustParseUUID(sent.TaskID), result, "", "", "", false, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	bus.Publish(events.Event{Type: protocol.EventIssueUpdated, WorkspaceID: otherWS, Payload: map[string]string{}})
 	for _, frame := range readChatPrivacyFrames(t, other, protocol.EventIssueUpdated) {
-		if strings.Contains(frame.raw, secret) {
+		if strings.Contains(frame.raw, sealed) {
 			t.Errorf("removed member received old-workspace content via other-workspace socket: %s", frame.raw)
 		}
 	}

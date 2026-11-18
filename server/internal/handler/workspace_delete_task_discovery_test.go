@@ -39,10 +39,10 @@ type workspaceDeletePathFixture struct {
 	taskViaRuntime string
 	neighbourTask  string
 
-	victimToken        string
-	crossTaskToken     string
-	crossAgentToken    string
-	neighbourOnlyToken string
+	victimTicket        string
+	crossTaskTicket     string
+	crossAgentTicket    string
+	neighbourOnlyTicket string
 }
 
 func newWorkspaceDeletePathFixture(t *testing.T, slugSuffix string) workspaceDeletePathFixture {
@@ -123,15 +123,15 @@ RETURNING id
 	f.taskViaRuntime = insertDeletePathTask(t, f.neighbourAgent, f.neighbourIssue, f.victimRuntime)
 	f.neighbourTask = insertDeletePathTask(t, f.neighbourAgent, f.neighbourIssue, f.neighbourRuntime)
 
-	f.victimToken = insertDeletePathToken(t, "mul5999-victim-"+slugSuffix, f.taskViaAgent, f.victimAgent, f.victimID)
-	f.crossTaskToken = insertDeletePathToken(t, "mul5999-cross-task-"+slugSuffix, f.taskViaIssue, f.neighbourAgent, f.neighbourID)
-	f.crossAgentToken = insertDeletePathToken(t, "mul5999-cross-agent-"+slugSuffix, f.neighbourTask, f.victimAgent, f.neighbourID)
-	f.neighbourOnlyToken = insertDeletePathToken(t, "mul5999-neighbour-"+slugSuffix, f.neighbourTask, f.neighbourAgent, f.neighbourID)
+	f.victimTicket = insertDeletePathToken(t, "mul5999-victim-"+slugSuffix, f.taskViaAgent, f.victimAgent, f.victimID)
+	f.crossTaskTicket = insertDeletePathToken(t, "mul5999-cross-task-"+slugSuffix, f.taskViaIssue, f.neighbourAgent, f.neighbourID)
+	f.crossAgentTicket = insertDeletePathToken(t, "mul5999-cross-agent-"+slugSuffix, f.neighbourTask, f.victimAgent, f.neighbourID)
+	f.neighbourOnlyTicket = insertDeletePathToken(t, "mul5999-neighbour-"+slugSuffix, f.neighbourTask, f.neighbourAgent, f.neighbourID)
 
 	t.Cleanup(func() {
 		bg := context.Background()
 		_, _ = testPool.Exec(bg, `DELETE FROM task_token WHERE id = ANY($1::uuid[])`,
-			[]string{f.victimToken, f.crossTaskToken, f.crossAgentToken, f.neighbourOnlyToken})
+			[]string{f.victimTicket, f.crossTaskTicket, f.crossAgentTicket, f.neighbourOnlyTicket})
 		_, _ = testPool.Exec(bg, `DELETE FROM agent_task_queue WHERE id = ANY($1::uuid[])`,
 			[]string{f.taskViaAgent, f.taskViaIssue, f.taskViaRuntime, f.neighbourTask})
 	})
@@ -218,7 +218,7 @@ func TestDeleteWorkspaceTasks_IsSelfSufficientWithoutCascades(t *testing.T) {
 		t.Errorf("%d of the 3 ownership-path tasks survived the sweep", n)
 	}
 	if n := count(`SELECT count(*) FROM task_token WHERE id = ANY($1::uuid[])`,
-		[]string{f.victimToken, f.crossTaskToken, f.crossAgentToken}); n != 0 {
+		[]string{f.victimTicket, f.crossTaskTicket, f.crossAgentTicket}); n != 0 {
 		t.Errorf("%d of the 3 task_token paths survived the sweep", n)
 	}
 	if n := count(`SELECT count(*) FROM agent WHERE id = $1`, f.victimAgent); n != 1 {
@@ -227,7 +227,7 @@ func TestDeleteWorkspaceTasks_IsSelfSufficientWithoutCascades(t *testing.T) {
 	if n := count(`SELECT count(*) FROM agent_task_queue WHERE id = $1`, f.neighbourTask); n != 1 {
 		t.Error("neighbour-only task was deleted by the victim's task sweep")
 	}
-	if n := count(`SELECT count(*) FROM task_token WHERE id = $1`, f.neighbourOnlyToken); n != 1 {
+	if n := count(`SELECT count(*) FROM task_token WHERE id = $1`, f.neighbourOnlyTicket); n != 1 {
 		t.Error("neighbour-only task token was deleted by the victim's task sweep")
 	}
 }
@@ -259,9 +259,9 @@ func TestDeleteWorkspace_CollectsTasksThroughEveryOwnershipPath(t *testing.T) {
 		}
 	}
 	for name, id := range map[string]string{
-		"token owned by the deleted workspace": f.victimToken,
-		"token whose task is the victim's":     f.crossTaskToken,
-		"token whose agent is the victim's":    f.crossAgentToken,
+		"token owned by the deleted workspace": f.victimTicket,
+		"token whose task is the victim's":     f.crossTaskTicket,
+		"token whose agent is the victim's":    f.crossAgentTicket,
 	} {
 		if rowExists(t, "task_token", id) {
 			t.Errorf("%s survived workspace delete", name)
@@ -271,7 +271,7 @@ func TestDeleteWorkspace_CollectsTasksThroughEveryOwnershipPath(t *testing.T) {
 	if !rowExists(t, "agent_task_queue", f.neighbourTask) {
 		t.Error("neighbour workspace task was deleted")
 	}
-	if !rowExists(t, "task_token", f.neighbourOnlyToken) {
+	if !rowExists(t, "task_token", f.neighbourOnlyTicket) {
 		t.Error("neighbour workspace task token was deleted")
 	}
 	if !rowExists(t, "agent", f.neighbourAgent) ||

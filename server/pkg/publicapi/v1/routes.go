@@ -40,30 +40,30 @@ type Operation struct {
 	Policy   OperationPolicy
 }
 
-var sharedCredentials = []CredentialKind{
-	CredentialUserOAuth,
-	CredentialPersonalAccess,
-	CredentialPluginInstall,
-	CredentialPluginInvocation,
+var sharedBadges = []CredentialKind{
+	BadgeUserOAuth,
+	BadgePersonalAccess,
+	BadgePluginInstall,
+	BadgePluginInvocation,
 }
 
-var pluginCredentials = []CredentialKind{
-	CredentialPluginInstall,
-	CredentialPluginInvocation,
+var pluginBadges = []CredentialKind{
+	BadgePluginInstall,
+	BadgePluginInvocation,
 }
 
 var sharedRateLimits = []RateLimitProfile{RateLimitUserDefault, RateLimitPluginStrict}
 var pluginRateLimits = []RateLimitProfile{RateLimitPluginStrict}
 
 var Operations = []Operation{
-	{Method: http.MethodGet, Path: PathContext, Contract: ContractPluginExtension, Policy: OperationPolicy{Credentials: pluginCredentials, Risk: RiskRead, Audit: AuditNotRequired, RateLimits: pluginRateLimits}},
-	{Method: http.MethodGet, Path: PathIssue, Contract: ContractSharedResource, Policy: OperationPolicy{Credentials: sharedCredentials, Scope: "issues:read", Risk: RiskRead, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
-	{Method: http.MethodPatch, Path: PathIssue, Contract: ContractSharedResource, Policy: OperationPolicy{Credentials: sharedCredentials, Scope: "issues:write", Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
-	{Method: http.MethodGet, Path: PathIssueComments, Contract: ContractSharedResource, Policy: OperationPolicy{Credentials: sharedCredentials, Scope: "comments:read", Risk: RiskRead, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
-	{Method: http.MethodPost, Path: PathIssueComments, Contract: ContractSharedResource, Policy: OperationPolicy{Credentials: sharedCredentials, Scope: "comments:write", Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
-	{Method: http.MethodGet, Path: PathTaskMessages, Contract: ContractSharedResource, Policy: OperationPolicy{Credentials: sharedCredentials, Scope: "tasks:read", Risk: RiskRead, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
-	{Method: http.MethodGet, Path: PathStorageScope, Contract: ContractPluginExtension, Policy: OperationPolicy{Credentials: pluginCredentials, Risk: RiskRead, Audit: AuditNotRequired, RateLimits: pluginRateLimits}},
-	{Method: http.MethodGet, Path: PathStorageValue, Contract: ContractPluginExtension, Policy: OperationPolicy{Credentials: pluginCredentials, Risk: RiskRead, Audit: AuditNotRequired, RateLimits: pluginRateLimits}},
-	{Method: http.MethodPut, Path: PathStorageValue, Contract: ContractPluginExtension, Policy: OperationPolicy{Credentials: pluginCredentials, Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: pluginRateLimits}},
-	{Method: http.MethodDelete, Path: PathStorageValue, Contract: ContractPluginExtension, Policy: OperationPolicy{Credentials: pluginCredentials, Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: pluginRateLimits}},
+	{Method: http.MethodGet, Path: PathContext, Contract: ContractPluginExtension, Policy: OperationPolicy{Badges: pluginBadges, Risk: RiskRead, Audit: AuditNotRequired, RateLimits: pluginRateLimits}},
+	{Method: http.MethodGet, Path: PathIssue, Contract: ContractSharedResource, Policy: OperationPolicy{Badges: sharedBadges, Scope: "issues:read", Risk: RiskRead, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
+	{Method: http.MethodPatch, Path: PathIssue, Contract: ContractSharedResource, Policy: OperationPolicy{Badges: sharedBadges, Scope: "issues:write", Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
+	{Method: http.MethodGet, Path: PathIssueComments, Contract: ContractSharedResource, Policy: OperationPolicy{Badges: sharedBadges, Scope: "comments:read", Risk: RiskRead, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
+	{Method: http.MethodPost, Path: PathIssueComments, Contract: ContractSharedResource, Policy: OperationPolicy{Badges: sharedBadges, Scope: "comments:write", Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
+	{Method: http.MethodGet, Path: PathTaskMessages, Contract: ContractSharedResource, Policy: OperationPolicy{Badges: sharedBadges, Scope: "tasks:read", Risk: RiskRead, Audit: AuditPlanned, RateLimits: sharedRateLimits}},
+	{Method: http.MethodGet, Path: PathStorageScope, Contract: ContractPluginExtension, Policy: OperationPolicy{Badges: pluginBadges, Risk: RiskRead, Audit: AuditNotRequired, RateLimits: pluginRateLimits}},
+	{Method: http.MethodGet, Path: PathStorageValue, Contract: ContractPluginExtension, Policy: OperationPolicy{Badges: pluginBadges, Risk: RiskRead, Audit: AuditNotRequired, RateLimits: pluginRateLimits}},
+	{Method: http.MethodPut, Path: PathStorageValue, Contract: ContractPluginExtension, Policy: OperationPolicy{Badges: pluginBadges, Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: pluginRateLimits}},
+	{Method: http.MethodDelete, Path: PathStorageValue, Contract: ContractPluginExtension, Policy: OperationPolicy{Badges: pluginBadges, Risk: RiskContentWrite, Audit: AuditPlanned, RateLimits: pluginRateLimits}},
 }

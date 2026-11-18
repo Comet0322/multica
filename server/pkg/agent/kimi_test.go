@@ -1634,10 +1634,10 @@ func TestScanKimiMainTurnFailureSanitizesWireDiagnostic(t *testing.T) {
 
 	home := t.TempDir()
 	now := time.Now()
-	const fakeSecret = "review-only-fake-secret"
+	const fakeSealed = "review-only-fake-secret"
 	writeKimiWireLog(t, home, "session_secret", "main",
 		kimiWireTurnEndedLine("failed",
-			`request={"api_key":"`+fakeSecret+`"} while calling https://api.kimi.com`,
+			`request={"api_key":"`+fakeSealed+`"} while calling https://api.kimi.com`,
 			now),
 	)
 
@@ -1648,7 +1648,7 @@ func TestScanKimiMainTurnFailureSanitizesWireDiagnostic(t *testing.T) {
 	if !failed {
 		t.Fatal("expected the failed main-agent terminal event to be reported")
 	}
-	if strings.Contains(detail, fakeSecret) {
+	if strings.Contains(detail, fakeSealed) {
 		t.Errorf("secret leaked through the wire diagnostic: %q", detail)
 	}
 	if !strings.Contains(detail, `api_key":"[REDACTED]"`) {

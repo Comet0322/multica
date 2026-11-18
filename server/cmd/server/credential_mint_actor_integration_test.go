@@ -28,7 +28,7 @@ func TestCredentialRoutesRejectTaskToken(t *testing.T) {
 		t.Fatalf("load integration-test agent: %v", err)
 	}
 	taskID := ensureAgentTask(t, agentID)
-	matToken := mintAgentTaskToken(t, agentID, taskID, testUserID)
+	matTicket := mintAgentTaskToken(t, agentID, taskID, testUserID)
 
 	// A human PAT for the same user, so the revoke route has a real target
 	// and we can assert it survives the rejected request.
@@ -55,7 +55,7 @@ func TestCredentialRoutesRejectTaskToken(t *testing.T) {
 		return n
 	}
 
-	do := func(t *testing.T, method, path, bearer string, body any) *http.Response {
+	do := func(t *testing.T, method, path, carrier string, body any) *http.Response {
 		t.Helper()
 		var buf bytes.Buffer
 		if body != nil {
@@ -67,7 +67,7 @@ func TestCredentialRoutesRejectTaskToken(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create request: %v", err)
 		}
-		req.Header.Set("Authorization", "Bearer "+bearer)
+		req.Header.Set("Authorization", "Bearer "+carrier)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Actor-Source", "member")
 		resp, err := http.DefaultClient.Do(req)
@@ -91,7 +91,7 @@ func TestCredentialRoutesRejectTaskToken(t *testing.T) {
 		{name: "renew current", method: http.MethodPost, path: "/api/tokens/current/renew"},
 	} {
 		t.Run("mat_ "+tc.name, func(t *testing.T) {
-			resp := do(t, tc.method, tc.path, matToken, tc.body)
+			resp := do(t, tc.method, tc.path, matTicket, tc.body)
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusForbidden {
 				t.Fatalf("status = %d, want 403", resp.StatusCode)
@@ -104,14 +104,14 @@ func TestCredentialRoutesRejectTaskToken(t *testing.T) {
 
 	// Human credentials keep working through the same chain.
 	t.Run("jwt cli-token", func(t *testing.T) {
-		resp := do(t, http.MethodPost, "/api/cli-token", testToken, nil)
+		resp := do(t, http.MethodPost, "/api/cli-token", testTicket, nil)
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, want 200", resp.StatusCode)
 		}
 	})
 	t.Run("jwt create pat", func(t *testing.T) {
-		resp := do(t, http.MethodPost, "/api/tokens", testToken, map[string]any{"name": "mul-8154-human"})
+		resp := do(t, http.MethodPost, "/api/tokens", testTicket, map[string]any{"name": "mul-8154-human"})
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusCreated {
 			t.Fatalf("status = %d, want 201", resp.StatusCode)

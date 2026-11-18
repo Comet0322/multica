@@ -146,7 +146,7 @@ func TestTaskContextReceipt_OtherWorkspaceDaemonCannotReport(t *testing.T) {
 func TestTaskContextReceipt_FollowsRunVisibility(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	agentID := seededHandlerTestAgent(t)
-	taskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.secretIssue, "runtime_id": testRuntimeID})
+	taskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.sealedIssue, "runtime_id": testRuntimeID})
 	dbfx.Cleanup(t, `DELETE FROM task_context_receipt WHERE task_id = $1`, taskID)
 	reportContextReceipt(t, taskID, sampleContextReceipt()).Want(http.StatusNoContent)
 

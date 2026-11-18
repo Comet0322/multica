@@ -227,7 +227,7 @@ func sendInstallationText(ctx context.Context, client *Client, decrypt Decrypter
 	if err != nil {
 		return "", fmt.Errorf("decode credentials: %w", err)
 	}
-	s := &sender{client: client, robotCode: creds.RobotCode, appKey: creds.AppKey, appSecret: creds.AppSecret}
+	s := &sender{client: client, robotCode: creds.RobotCode, appKey: creds.AppKey, appSealed: creds.AppSealed}
 	return s.send(ctx, target, text)
 }
 

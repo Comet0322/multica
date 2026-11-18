@@ -162,7 +162,7 @@ func TestClaimTasksByRuntime_PartialSuccessFitsClientDeadlines(t *testing.T) {
 				if elapsed >= 5*time.Second {
 					t.Fatalf("claim took %s; must leave response time inside the existing 5s budget", elapsed)
 				}
-				if len(response.Tasks) != 1 || response.Tasks[0].ID != taskA || response.Tasks[0].AuthToken == "" || response.ClaimPollHintSupported {
+				if len(response.Tasks) != 1 || response.Tasks[0].ID != taskA || response.Tasks[0].AuthTicket == "" || response.ClaimPollHintSupported {
 					t.Fatalf("partial response lost A or enabled long polling: %+v", response)
 				}
 				rowA, err := testHandler.Queries.GetAgentTask(ctx, parseUUID(taskA))
@@ -259,7 +259,7 @@ func TestClaimTasksByRuntime_ChatRecoversAfterRepeatedInputFailures(t *testing.T
 		}
 	}
 	tasks := claim() // No stale-recovery wait between attempts.
-	if len(tasks) != 1 || tasks[0].ID != taskID || !strings.Contains(tasks[0].ChatMessage, input) || tasks[0].AuthToken == "" {
+	if len(tasks) != 1 || tasks[0].ID != taskID || !strings.Contains(tasks[0].ChatMessage, input) || tasks[0].AuthTicket == "" {
 		t.Fatalf("retry did not deliver the original chat input: %+v", tasks)
 	}
 	if duplicate := claim(); len(duplicate) != 0 {

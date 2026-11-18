@@ -21,7 +21,7 @@ type InstallationParams struct {
 	WorkspaceID     pgtype.UUID
 	AgentID         pgtype.UUID
 	AppID           string
-	AppSecret       string // plaintext; encrypted at the service boundary
+	AppSealed       string // plaintext; encrypted at the service boundary
 	TenantKey       string // optional, "" treated as NULL
 	BotOpenID       string
 	InstallerUserID pgtype.UUID
@@ -60,7 +60,7 @@ func (s *InstallationService) Upsert(ctx context.Context, p InstallationParams) 
 	if err := validateInstallationParams(p); err != nil {
 		return Installation{}, err
 	}
-	sealed, err := s.box.Seal([]byte(p.AppSecret))
+	sealed, err := s.box.Seal([]byte(p.AppSealed))
 	if err != nil {
 		return Installation{}, fmt.Errorf("encrypt app_secret: %w", err)
 	}
@@ -143,7 +143,7 @@ func validateInstallationParams(p InstallationParams) error {
 		return errors.New("installer_user_id is required")
 	case p.AppID == "":
 		return errors.New("app_id is required")
-	case p.AppSecret == "":
+	case p.AppSealed == "":
 		return errors.New("app_secret is required")
 	case p.BotOpenID == "":
 		return errors.New("bot_open_id is required")

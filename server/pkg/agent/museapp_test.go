@@ -128,10 +128,10 @@ func fastMuseAppPolls(t *testing.T) {
 // museappTestConfig points the backend at endpoint through the process
 // environment, which is the only place the backend reads its endpoint and
 // token from.
-func museappTestConfig(t *testing.T, endpoint, token string) Config {
+func museappTestConfig(t *testing.T, endpoint, ticket string) Config {
 	t.Helper()
 	t.Setenv(museappEnvEndpoint, endpoint)
-	t.Setenv(museappEnvToken, token)
+	t.Setenv(museappEnvTicket, ticket)
 	return Config{Logger: slog.Default()}
 }
 
@@ -267,7 +267,7 @@ func TestMuseAppExecuteForwardsTaskToken(t *testing.T) {
 	}
 	session, err := b.Execute(context.Background(), "do the thing", ExecOptions{
 		Cwd:                "/tmp/work-1",
-		TaskToken:          "mat_abc123",
+		TaskTicket:         "mat_abc123",
 		MulticaServerURL:   "https://multica.example.com",
 		MulticaWorkspaceID: "ws-123",
 	})
@@ -279,8 +279,8 @@ func TestMuseAppExecuteForwardsTaskToken(t *testing.T) {
 	if err := json.Unmarshal(fake.executeBody, &body); err != nil {
 		t.Fatalf("decode execute body: %v", err)
 	}
-	if body.TaskToken != "mat_abc123" {
-		t.Errorf("task_token = %q, want %q", body.TaskToken, "mat_abc123")
+	if body.TaskTicket != "mat_abc123" {
+		t.Errorf("task_token = %q, want %q", body.TaskTicket, "mat_abc123")
 	}
 	if body.ServerURL != "https://multica.example.com" {
 		t.Errorf("server_url = %q", body.ServerURL)
@@ -353,8 +353,8 @@ func TestMuseAppExecuteUnauthorized(t *testing.T) {
 	b, _ := New("museapp", museappTestConfig(t, srv.URL, "wrong"))
 	if _, err := b.Execute(context.Background(), "hi", ExecOptions{}); err == nil {
 		t.Fatal("Execute succeeded on HTTP 401, want error")
-	} else if !strings.Contains(err.Error(), museappEnvToken) {
-		t.Errorf("error = %q, want it to name %s", err, museappEnvToken)
+	} else if !strings.Contains(err.Error(), museappEnvTicket) {
+		t.Errorf("error = %q, want it to name %s", err, museappEnvTicket)
 	}
 }
 
@@ -494,10 +494,10 @@ func TestMuseAppEndpointAndTokenIgnoreCfgEnv(t *testing.T) {
 	defer other.Close()
 
 	t.Setenv(museappEnvEndpoint, legitSrv.URL)
-	t.Setenv(museappEnvToken, "daemon-token")
+	t.Setenv(museappEnvTicket, "daemon-token")
 	b, _ := New("museapp", Config{
 		Logger: slog.Default(),
-		Env:    map[string]string{museappEnvEndpoint: other.URL, museappEnvToken: "agent-token"},
+		Env:    map[string]string{museappEnvEndpoint: other.URL, museappEnvTicket: "agent-token"},
 	})
 	sess, err := b.Execute(context.Background(), "hi", ExecOptions{})
 	if err != nil {

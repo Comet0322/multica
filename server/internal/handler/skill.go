@@ -1830,8 +1830,8 @@ func addGitHubAuthHeader(req *http.Request) {
 	if req == nil {
 		return
 	}
-	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 }
 

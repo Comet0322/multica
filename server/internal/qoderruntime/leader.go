@@ -28,7 +28,7 @@ type squadLeader struct {
 	EvaluationSubmitted bool `json:"evaluation_submitted,omitempty"`
 	// The task credential is never persisted; after a restart it is gone and
 	// the run fails instead of delivering the turn.
-	token string
+	ticket string
 }
 
 const leaderBridgeNote = `
@@ -74,14 +74,14 @@ func (b *Bridge) deliverLeader(ctx context.Context, r *run) error {
 		r.Outcome, r.Failure = "failed", reason
 		return b.persist()
 	}
-	if l.token == "" {
+	if l.ticket == "" {
 		if l.CommentSubmitted || l.Commented {
 			return fail("the bridge restarted during squad leader delivery; check the issue comments and activity before retrying, because members may already be running")
 		}
 		return fail("the bridge restarted before the squad leader turn was delivered; trigger the leader again")
 	}
 	taskAPI := *b.multica
-	taskAPI.token = l.token
+	taskAPI.ticket = l.ticket
 	outcome, reason, comment := parseLeaderOutput(r.Output)
 	if outcome == "action" && comment == "" && r.Failure == "" {
 		r.Failure = "the squad leader reported action without a delegation comment"

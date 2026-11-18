@@ -147,7 +147,7 @@ func testMediaPipelineDatabaseAttachmentsReachHTTPOnce(t *testing.T, markdown bo
 	})
 	client := NewHTTPAPIClient(HTTPClientConfig{BaseURL: fake.URL(), ResourceHTTPClient: fake.srv.Client(), Logger: newDiscardLogger()})
 	queries := db.New(pool)
-	p := NewPatcher(NewChannelStore(queries), fakeCredentials{secret: "test-secret"}, client, PatcherConfig{Logger: newDiscardLogger()})
+	p := NewPatcher(NewChannelStore(queries), fakeCredentials{sealed: "test-secret"}, client, PatcherConfig{Logger: newDiscardLogger()})
 	if !p.SetAttachments(fakeObjectStore{objects: data}) {
 		t.Fatal("file delivery not enabled")
 	}

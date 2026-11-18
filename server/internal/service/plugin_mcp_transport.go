@@ -185,9 +185,9 @@ func mcpConnectionsFor(installation db.PluginInstallation) []remotemcp.Connectio
 		if !ok || len(approval.Tools) == 0 {
 			continue
 		}
-		credentialHeader := ""
-		if field, found := manifest.Config.Field(hook.Key + "_credential"); found && field.Type == plugincontract.ConfigSecret {
-			credentialHeader = "Authorization"
+		badgeHeader := ""
+		if field, found := manifest.Config.Field(hook.Key + "_credential"); found && field.Type == plugincontract.ConfigSealed {
+			badgeHeader = "Authorization"
 		}
 		connections = append(connections, remotemcp.Connection{
 			InstallationID:  uuidString(installation.ID),
@@ -199,7 +199,7 @@ func mcpConnectionsFor(installation db.PluginInstallation) []remotemcp.Connectio
 			// re-checks it at dial, so a manifest that later repoints its own
 			// hook still cannot reach anywhere new.
 			EndpointAllowedHosts: domains,
-			CredentialHeader:     credentialHeader,
+			BadgeHeader:          badgeHeader,
 			ApprovedTools:        approval.Tools,
 			ToolSchemaDigest:     toolSetDigest(approval.Tools),
 			// A plugin's MCP server going down must not fail the task, for the
@@ -235,16 +235,16 @@ func (s *PluginService) mcpCredentialHeaders(ctx context.Context, installation d
 		return nil, err
 	}
 	field, ok := manifest.Config.Field(hook.Key + "_credential")
-	if !ok || field.Type != plugincontract.ConfigSecret {
+	if !ok || field.Type != plugincontract.ConfigSealed {
 		return nil, nil
 	}
-	secret, err := s.decryptedSecret(ctx, installation.ID, hook.Key+"_credential")
-	if err != nil || secret == "" {
+	sealed, err := s.decryptedSecret(ctx, installation.ID, hook.Key+"_credential")
+	if err != nil || sealed == "" {
 		// A declared-but-unset credential is a configuration gap, not a reason
 		// to fail discovery with a confusing transport error.
 		return nil, nil
 	}
-	return map[string][]string{"Authorization": {secret}}, nil
+	return map[string][]string{"Authorization": {sealed}}, nil
 }
 
 // decryptedSecret opens one stored secret.

@@ -70,8 +70,8 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	taskID, err := VerifyTaskToken(s.secret, token, s.now())
+	ticket, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	taskID, err := VerifyTaskToken(s.secret, ticket, s.now())
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

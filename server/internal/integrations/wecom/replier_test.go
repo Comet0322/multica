@@ -171,8 +171,8 @@ func TestPostPrivate_AddressesUserWithSingleChatType(t *testing.T) {
 	r, inst, conn := newReplierWithConn(t)
 
 	const senderUserID = "SENDER_USERID"
-	const secretURL = "https://multica.example/wecom/bind?token=SECRET_TOKEN"
-	if err := r.postPrivate(context.Background(), inst, senderUserID, secretURL); err != nil {
+	const sealedURL = "https://multica.example/wecom/bind?token=SECRET_TOKEN"
+	if err := r.postPrivate(context.Background(), inst, senderUserID, sealedURL); err != nil {
 		t.Fatalf("postPrivate: %v", err)
 	}
 
@@ -239,7 +239,7 @@ func TestReply_CommandOutcomes_PostGuidance(t *testing.T) {
 // token. Re-pointing sendBindingPrompt at post() (the pre-fix bug) fails this.
 func TestSendBindingPrompt_GroupNeverLeaksToken(t *testing.T) {
 	t.Parallel()
-	const rawToken = "SECRET_BEARER_TOKEN_do_not_leak"
+	const rawTicket = "SECRET_BEARER_TOKEN_do_not_leak"
 	const senderID = "SENDER_USERID"
 	const groupID = "GROUP_CHAT_ID"
 
@@ -252,7 +252,7 @@ func TestSendBindingPrompt_GroupNeverLeaksToken(t *testing.T) {
 		Senders: reg,
 		AppURL:  "https://multica.example",
 	})
-	r.binding = fakeBinder{raw: rawToken}
+	r.binding = fakeBinder{raw: rawTicket}
 
 	msg := channel.InboundMessage{Source: channel.Source{
 		ChatID:   groupID,
@@ -280,7 +280,7 @@ func TestSendBindingPrompt_GroupNeverLeaksToken(t *testing.T) {
 		if md, ok := body["markdown"].(map[string]any); ok {
 			content, _ = md["content"].(string)
 		}
-		carriesToken := strings.Contains(content, rawToken)
+		carriesToken := strings.Contains(content, rawTicket)
 		chatID, _ := body["chatid"].(string)
 
 		if chatID == groupID {
@@ -314,13 +314,13 @@ func TestSendBindingPrompt_GroupNeverLeaksToken(t *testing.T) {
 // private chat, so exactly one frame (the token) goes out, no group ack.
 func TestSendBindingPrompt_P2PSendsOnlyPrivately(t *testing.T) {
 	t.Parallel()
-	const rawToken = "P2P_TOKEN"
+	const rawTicket = "P2P_TOKEN"
 	reg := newSendersRegistry()
 	inst := engine.ResolvedInstallation{ID: mustTestUUID(t)}
 	conn := &recordingConn{}
 	reg.set(inst.ID, conn.autoAck(newWSSender(conn, nil)))
 	r := NewOutboundReplier(OutboundReplierConfig{Senders: reg, AppURL: "https://multica.example"})
-	r.binding = fakeBinder{raw: rawToken}
+	r.binding = fakeBinder{raw: rawTicket}
 
 	msg := channel.InboundMessage{Source: channel.Source{ChatID: "USER_A", ChatType: channel.ChatTypeP2P, SenderID: "USER_A"}}
 	if err := r.sendBindingPrompt(context.Background(), inst, msg, engine.Result{Sender: "USER_A"}, copyFor(DefaultLocale)); err != nil {
@@ -419,10 +419,10 @@ func groupMessage() channel.InboundMessage {
 // is withdrawn so the message they send in the 1:1 gets a fresh one.
 func TestSendBindingPrompt_AsksTheRoomWhenTheUserMustMessageFirst(t *testing.T) {
 	t.Parallel()
-	const rawToken = "SECRET_BEARER_TOKEN_do_not_leak"
+	const rawTicket = "SECRET_BEARER_TOKEN_do_not_leak"
 	r, inst, conn := newReplierWithConn(t)
 	var withdrawn []string
-	r.binding = fakeBinder{raw: rawToken, withdrawn: &withdrawn}
+	r.binding = fakeBinder{raw: rawTicket, withdrawn: &withdrawn}
 	conn.refuseTo, conn.refuseCode, conn.refuseMsg = "SENDER_USERID", errcodeUserMustMessageFirst, "aibot send msg frequency limit exceeded"
 
 	err := r.sendBindingPrompt(context.Background(), inst, groupMessage(), engine.Result{Sender: "SENDER_USERID"}, copyFor(DefaultLocale))
@@ -441,10 +441,10 @@ func TestSendBindingPrompt_AsksTheRoomWhenTheUserMustMessageFirst(t *testing.T) 
 	if got, want := sentMarkdown(t, conn, 1), copyFor(DefaultLocale).MessageMeFirst; got != want {
 		t.Fatalf("room line = %q, want %q", got, want)
 	}
-	if strings.Contains(sentMarkdown(t, conn, 1), rawToken) {
+	if strings.Contains(sentMarkdown(t, conn, 1), rawTicket) {
 		t.Fatal("SECURITY: the room line carries the raw token")
 	}
-	if len(withdrawn) != 1 || withdrawn[0] != rawToken {
+	if len(withdrawn) != 1 || withdrawn[0] != rawTicket {
 		t.Fatalf("withdrawn = %v, want the refused link withdrawn", withdrawn)
 	}
 }

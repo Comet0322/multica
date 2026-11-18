@@ -38,9 +38,9 @@ func (f *appsFixture) requestStatus(t *testing.T, id string) string {
 func TestConnectedApps_RunCredentialIsNotAPerson(t *testing.T) {
 	f := newAppsFixture(t)
 	req := f.submitSend(t)
-	token := "mat_apps_boundary_" + f.taskID
+	ticket := "mat_apps_boundary_" + f.taskID
 	if _, err := f.h.Queries.CreateTaskToken(context.Background(), db.CreateTaskTokenParams{
-		TokenHash: auth.HashToken(token), TaskID: parseUUID(f.taskID), AgentID: parseUUID(f.agentID),
+		TicketHash: auth.HashToken(ticket), TaskID: parseUUID(f.taskID), AgentID: parseUUID(f.agentID),
 		WorkspaceID: parseUUID(testWorkspaceID), UserID: parseUUID(testUserID),
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 	}); err != nil {
@@ -56,7 +56,7 @@ func TestConnectedApps_RunCredentialIsNotAPerson(t *testing.T) {
 	router.Put("/api/apps/rules", f.h.UpdateAppRules)
 	send := func(method, path, body string) int {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
-		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Authorization", "Bearer "+ticket)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
 		return w.Code

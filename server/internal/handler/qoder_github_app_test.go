@@ -71,12 +71,12 @@ func TestIssueQoderRepositoryTokenSingleRepositoryScope(t *testing.T) {
 		})
 	})
 
-	token, gotInstallation, err := testHandler.issueQoderRepositoryToken(context.Background(), testWorkspaceID, "acme", "app")
+	ticket, gotInstallation, err := testHandler.issueQoderRepositoryToken(context.Background(), testWorkspaceID, "acme", "app")
 	if err != nil {
 		t.Fatalf("issueQoderRepositoryToken: %v", err)
 	}
-	if token != "ghs_one_repo" || gotInstallation != installationID {
-		t.Fatalf("token=%q installation=%d", token, gotInstallation)
+	if ticket != "ghs_one_repo" || gotInstallation != installationID {
+		t.Fatalf("token=%q installation=%d", ticket, gotInstallation)
 	}
 	if len(requestBodies) != 1 {
 		t.Fatalf("expected one token request, got %d", len(requestBodies))
@@ -145,7 +145,7 @@ func TestIssueQoderRepositoryTokenRejectsWiderScope(t *testing.T) {
 			"repositories": []map[string]any{},
 		})
 	})
-	if token, _, err := testHandler.issueQoderRepositoryToken(context.Background(), testWorkspaceID, "acme", "app"); err == nil || token != "" {
-		t.Fatalf("wide-scope token accepted: token=%q err=%v", token, err)
+	if ticket, _, err := testHandler.issueQoderRepositoryToken(context.Background(), testWorkspaceID, "acme", "app"); err == nil || ticket != "" {
+		t.Fatalf("wide-scope token accepted: token=%q err=%v", ticket, err)
 	}
 }

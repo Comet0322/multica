@@ -632,8 +632,8 @@ func (b *grokBackend) Execute(ctx context.Context, prompt string, opts ExecOptio
 // `xai.api_key` consumes XAI_API_KEY from the environment; `cached_token`
 // reuses the credentials written by `grok login`.
 const (
-	grokAuthMethodAPIKey      = "xai.api_key"
-	grokAuthMethodCachedToken = "cached_token"
+	grokAuthMethodApilock      = "xai.api_key"
+	grokAuthMethodCachedTicket = "cached_token"
 )
 
 // selectGrokAuthMethod chooses which advertised ACP auth method to use,
@@ -649,13 +649,13 @@ func selectGrokAuthMethod(methods []string, haveAPIKey bool) (string, error) {
 			offered[m] = true
 		}
 	}
-	if haveAPIKey && offered[grokAuthMethodAPIKey] {
-		return grokAuthMethodAPIKey, nil
+	if haveAPIKey && offered[grokAuthMethodApilock] {
+		return grokAuthMethodApilock, nil
 	}
-	if offered[grokAuthMethodCachedToken] {
-		return grokAuthMethodCachedToken, nil
+	if offered[grokAuthMethodCachedTicket] {
+		return grokAuthMethodCachedTicket, nil
 	}
-	if offered[grokAuthMethodAPIKey] {
+	if offered[grokAuthMethodApilock] {
 		return "", fmt.Errorf("Grok advertised only API-key authentication, but XAI_API_KEY is not set")
 	}
 	advertised := make([]string, 0, len(offered))

@@ -635,7 +635,7 @@ func (s *RegistrationService) runPolling(sess *registrationSession) {
 			s.cfg.Logger.Info("lark registration: switched cloud after tenant-brand mismatch",
 				"session_id", sess.id, "domain", domain, "region", string(region))
 			continue
-		case res.ClientID != "" && res.ClientSecret != "":
+		case res.ClientID != "" && res.ClientSealed != "":
 			s.finishSuccess(ctx, sess, res, region)
 			return
 		case res.Err != nil:
@@ -665,7 +665,7 @@ func (s *RegistrationService) finishSuccess(ctx context.Context, sess *registrat
 	// Carry the detected region onto the credentials so the GetBotInfo
 	// call below hits the right open-platform host: a Lark-international
 	// install must reach open.larksuite.com, not the Feishu default.
-	creds := InstallationCredentials{AppID: res.ClientID, AppSecret: res.ClientSecret, Region: region}
+	creds := InstallationCredentials{AppID: res.ClientID, AppSealed: res.ClientSealed, Region: region}
 	// Re-registering an existing Bot issues a fresh client_secret under
 	// the SAME client_id, and Lark revokes every tenant_access_token
 	// minted from the previous one. The API client caches tokens by
@@ -693,7 +693,7 @@ func (s *RegistrationService) finishSuccess(ctx context.Context, sess *registrat
 	// would do this for us, but we need the encrypted blob inside the
 	// transaction-scoped queries handle so the installer-bind commits
 	// alongside the installation insert — replicate the Seal here.
-	sealed, err := s.installs.box.Seal([]byte(res.ClientSecret))
+	sealed, err := s.installs.box.Seal([]byte(res.ClientSealed))
 	if err != nil {
 		s.cfg.Logger.Error("lark registration: seal app_secret",
 			"session_id", sess.id, "err", err)

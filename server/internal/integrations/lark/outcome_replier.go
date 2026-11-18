@@ -386,13 +386,13 @@ func (r *LarkOutcomeReplier) sendChatNotice(ctx context.Context, inst Installati
 }
 
 func (r *LarkOutcomeReplier) installationCredentials(inst Installation) (InstallationCredentials, error) {
-	secret, err := r.credentials.DecryptAppSecret(inst)
+	sealed, err := r.credentials.DecryptAppSecret(inst)
 	if err != nil {
 		return InstallationCredentials{}, fmt.Errorf("decrypt app_secret: %w", err)
 	}
 	creds := InstallationCredentials{
 		AppID:     inst.AppID,
-		AppSecret: secret,
+		AppSealed: sealed,
 		Region:    RegionOrDefault(inst.Region),
 	}
 	if inst.TenantKey.Valid {

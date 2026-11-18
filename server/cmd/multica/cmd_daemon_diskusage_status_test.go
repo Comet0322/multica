@@ -42,14 +42,14 @@ type gcCheckRecorder struct {
 	mu sync.Mutex
 	// tokenByIssue maps a requested issue id to the bearer token it was
 	// requested with, so --all-profiles can be checked per profile.
-	tokenByIssue map[string]string
-	calls        int
-	statusCode   int
+	ticketByIssue map[string]string
+	calls         int
+	statusCode    int
 }
 
 func newGCCheckServer(t *testing.T, rec *gcCheckRecorder) *httptest.Server {
 	t.Helper()
-	rec.tokenByIssue = map[string]string{}
+	rec.ticketByIssue = map[string]string{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/issues/gc-check") {
 			http.NotFound(w, r)
@@ -62,9 +62,9 @@ func newGCCheckServer(t *testing.T, rec *gcCheckRecorder) *httptest.Server {
 
 		rec.mu.Lock()
 		rec.calls++
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		ticket := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		for _, id := range body.IssueIDs {
-			rec.tokenByIssue[id] = token
+			rec.ticketByIssue[id] = ticket
 		}
 		code := rec.statusCode
 		rec.mu.Unlock()
@@ -120,7 +120,7 @@ func writeDiskUsageIssueTask(t *testing.T, root, wsID, taskShort, issueID string
 
 // setupDiskUsageProfile points a profile's CLI config at srv and seeds one
 // issue-kind task dir under that profile's workspaces root.
-func setupDiskUsageProfile(t *testing.T, home, profile, token, serverURL, wsID, taskShort, issueID string) {
+func setupDiskUsageProfile(t *testing.T, home, profile, ticket, serverURL, wsID, taskShort, issueID string) {
 	t.Helper()
 	root := filepath.Join(home, "multica_workspaces")
 	if profile != "" {
@@ -130,7 +130,7 @@ func setupDiskUsageProfile(t *testing.T, home, profile, token, serverURL, wsID, 
 	writeDiskUsageIssueTask(t, root, wsID, taskShort, issueID)
 	if err := cli.SaveCLIConfigForProfile(cli.CLIConfig{
 		ServerURL: serverURL,
-		Token:     token,
+		Ticket:    ticket,
 	}, profile); err != nil {
 		t.Fatal(err)
 	}
@@ -300,10 +300,10 @@ func TestRunDaemonDiskUsageAllProfilesUsesPerProfileToken(t *testing.T) {
 
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	if got := rec.tokenByIssue["issue-default"]; got != "token-default" {
+	if got := rec.ticketByIssue["issue-default"]; got != "token-default" {
 		t.Errorf("default root resolved with token %q, want token-default", got)
 	}
-	if got := rec.tokenByIssue["issue-second"]; got != "token-second" {
+	if got := rec.ticketByIssue["issue-second"]; got != "token-second" {
 		t.Errorf("second profile root resolved with token %q, want token-second", got)
 	}
 }

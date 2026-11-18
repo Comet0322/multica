@@ -255,7 +255,7 @@ func TestSendSMTPRequiresConfiguredFromEmail(t *testing.T) {
 		smtpHost:     "127.0.0.1",
 		smtpPort:     "1",
 		smtpUsername: "auth@example.com",
-		smtpPassword: "testpass",
+		smtpPhrase:   "testpass",
 	}
 
 	err := s.sendSMTP("to@example.com", "Test Subject", "<p>Hello</p>")
@@ -415,7 +415,7 @@ func TestBuildInvitationParams_ToAndFromPassedThrough(t *testing.T) {
 // --- loginAuth.Start security tests ---
 
 func TestLoginAuth_Start_RefusesUnencryptedRemote(t *testing.T) {
-	auth := &loginAuth{username: "user", password: "pass", host: "smtp.office365.com"}
+	auth := &loginAuth{username: "user", phrase: "pass", host: "smtp.office365.com"}
 	_, _, err := auth.Start(&smtp.ServerInfo{
 		Name: "smtp.office365.com",
 		TLS:  false,
@@ -429,7 +429,7 @@ func TestLoginAuth_Start_RefusesUnencryptedRemote(t *testing.T) {
 }
 
 func TestLoginAuth_Start_AllowsTLS(t *testing.T) {
-	auth := &loginAuth{username: "user", password: "pass", host: "smtp.office365.com"}
+	auth := &loginAuth{username: "user", phrase: "pass", host: "smtp.office365.com"}
 	_, _, err := auth.Start(&smtp.ServerInfo{
 		Name: "smtp.office365.com",
 		TLS:  true,
@@ -440,7 +440,7 @@ func TestLoginAuth_Start_AllowsTLS(t *testing.T) {
 }
 
 func TestLoginAuth_Start_AllowsLocalhost(t *testing.T) {
-	auth := &loginAuth{username: "user", password: "pass", host: "localhost"}
+	auth := &loginAuth{username: "user", phrase: "pass", host: "localhost"}
 	_, _, err := auth.Start(&smtp.ServerInfo{
 		Name: "localhost",
 		TLS:  false,
@@ -451,7 +451,7 @@ func TestLoginAuth_Start_AllowsLocalhost(t *testing.T) {
 }
 
 func TestLoginAuth_Start_RejectsWrongHost(t *testing.T) {
-	auth := &loginAuth{username: "user", password: "pass", host: "smtp.office365.com"}
+	auth := &loginAuth{username: "user", phrase: "pass", host: "smtp.office365.com"}
 	_, _, err := auth.Start(&smtp.ServerInfo{
 		Name: "evil-relay.example.com",
 		TLS:  true,
@@ -466,7 +466,7 @@ func TestLoginAuth_Start_RejectsWrongHost(t *testing.T) {
 
 func TestLoginAuth_Start_AllowsLoopbackIPs(t *testing.T) {
 	for _, name := range []string{"127.0.0.1", "::1"} {
-		auth := &loginAuth{username: "user", password: "pass", host: name}
+		auth := &loginAuth{username: "user", phrase: "pass", host: name}
 		_, _, err := auth.Start(&smtp.ServerInfo{
 			Name: name,
 			TLS:  false,
@@ -485,7 +485,7 @@ func TestSendSMTP_OpenClientFailureNoPanic(t *testing.T) {
 		smtpHost:     "255.255.255.255", // unroutable, will time out or fail
 		smtpPort:     "25",
 		smtpUsername: "user",
-		smtpPassword: "pass",
+		smtpPhrase:   "pass",
 	}
 	err := s.sendSMTP("to@example.com", "Subject", "<p>body</p>")
 	if err == nil {
@@ -652,7 +652,7 @@ func TestSendSMTP_FallbackReconnectsAndAuthsWithLOGIN(t *testing.T) {
 		smtpHost:     host,
 		smtpPort:     port,
 		smtpUsername: "testuser",
-		smtpPassword: "testpass",
+		smtpPhrase:   "testpass",
 	}
 	// smtpEHLOName is empty so net/smtp defaults to "localhost", which the
 	// test server accepts. No STARTTLS advertised → plain connection to
@@ -679,7 +679,7 @@ func TestSendSMTP_PlainAuthSucceedsWithoutFallback(t *testing.T) {
 		smtpHost:     host,
 		smtpPort:     port,
 		smtpUsername: "testuser",
-		smtpPassword: "testpass",
+		smtpPhrase:   "testpass",
 	}
 
 	err := s.sendSMTP("to@example.com", "Test Subject", "<p>Hello</p>")
@@ -714,7 +714,7 @@ func TestSendSMTP_LoginAuthRejectsUnencryptedRemote(t *testing.T) {
 	// must refuse to send credentials.
 	auth := &loginAuth{
 		username: "user",
-		password: "pass",
+		phrase:   "pass",
 		host:     "smtp.remote.example.com",
 	}
 	_, _, err := auth.Start(&smtp.ServerInfo{

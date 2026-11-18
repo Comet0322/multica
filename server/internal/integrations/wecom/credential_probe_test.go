@@ -47,10 +47,10 @@ type fakeProbe struct {
 	once    sync.Once
 }
 
-func (f *fakeProbe) Probe(_ context.Context, botID, secret string) error {
+func (f *fakeProbe) Probe(_ context.Context, botID, sealed string) error {
 	f.mu.Lock()
 	f.calls++
-	f.gotBot, f.gotSec = botID, secret
+	f.gotBot, f.gotSec = botID, sealed
 	err := f.err
 	entered, release := f.entered, f.release
 	f.mu.Unlock()
@@ -246,7 +246,7 @@ func TestUpsertRefusesWithoutAProbe(t *testing.T) {
 		AgentID:         testUUID(2),
 		InstallerUserID: testUUID(3),
 		BotID:           "somebody-elses-bot",
-		Secret:          "a-guess",
+		Sealed:          "a-guess",
 	})
 	if !errors.Is(err, ErrProbeRequired) {
 		t.Fatalf("Upsert without a probe = %v, want ErrProbeRequired", err)

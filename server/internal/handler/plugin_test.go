@@ -404,7 +404,7 @@ func TestPluginPreviewShowsScopesWithoutInstalling(t *testing.T) {
 	if len(preview.Scopes) != 3 || preview.Installed {
 		t.Fatalf("unexpected preview: %+v", preview)
 	}
-	if len(preview.ConfigSchema) != 2 || preview.ConfigSchema[0].Key != "repo" || preview.ConfigSchema[1].Type != plugincontract.ConfigSecret {
+	if len(preview.ConfigSchema) != 2 || preview.ConfigSchema[0].Key != "repo" || preview.ConfigSchema[1].Type != plugincontract.ConfigSealed {
 		t.Fatalf("unexpected config schema: %+v", preview.ConfigSchema)
 	}
 
@@ -468,7 +468,7 @@ func TestPluginInstallConfigureAndUninstall(t *testing.T) {
 		PluginKey         string         `json:"plugin_key"`
 		Enabled           bool           `json:"enabled"`
 		Config            map[string]any `json:"config"`
-		ConfiguredSecrets []string       `json:"configured_secrets"`
+		ConfiguredSealeds []string       `json:"configured_secrets"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &installed); err != nil {
 		t.Fatalf("decode installation: %v", err)
@@ -491,7 +491,7 @@ func TestPluginInstallConfigureAndUninstall(t *testing.T) {
 	}
 	var configured struct {
 		Config            map[string]any `json:"config"`
-		ConfiguredSecrets []string       `json:"configured_secrets"`
+		ConfiguredSealeds []string       `json:"configured_secrets"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &configured); err != nil {
 		t.Fatalf("decode configured installation: %v", err)
@@ -502,8 +502,8 @@ func TestPluginInstallConfigureAndUninstall(t *testing.T) {
 	if _, present := configured.Config["token"]; present {
 		t.Fatalf("secret value was stored in config: %v", configured.Config)
 	}
-	if len(configured.ConfiguredSecrets) != 1 || configured.ConfiguredSecrets[0] != "token" {
-		t.Fatalf("configured secrets = %v, want [token]", configured.ConfiguredSecrets)
+	if len(configured.ConfiguredSealeds) != 1 || configured.ConfiguredSealeds[0] != "token" {
+		t.Fatalf("configured secrets = %v, want [token]", configured.ConfiguredSealeds)
 	}
 
 	recorder = httptest.NewRecorder()

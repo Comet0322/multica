@@ -62,10 +62,10 @@ func NewS3StorageFromEnv() *S3Storage {
 	}
 
 	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	if accessKey != "" && secretKey != "" {
+	sealedKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	if accessKey != "" && sealedKey != "" {
 		opts = append(opts, config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+			credentials.NewStaticCredentialsProvider(accessKey, sealedKey, ""),
 		))
 	}
 

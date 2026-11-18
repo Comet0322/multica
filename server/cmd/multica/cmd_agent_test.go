@@ -252,7 +252,7 @@ func TestMissingServerConfigMessageExplainsPortOnlyContext(t *testing.T) {
 func TestNewAPIClient_WorkdirParentEscapeFailsClosed(t *testing.T) {
 	// Seed a user config with a mul_ PAT that must never be picked up.
 	redirectTestHome(t, t.TempDir())
-	if err := cli.SaveCLIConfig(cli.CLIConfig{Token: "mul_owner_pat"}); err != nil {
+	if err := cli.SaveCLIConfig(cli.CLIConfig{Ticket: "mul_owner_pat"}); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 
@@ -430,7 +430,7 @@ func TestResolveWorkspaceID_AgentContextSkipsConfig(t *testing.T) {
 func TestResolveToken_AgentContextSkipsConfig(t *testing.T) {
 	redirectTestHome(t, t.TempDir())
 
-	if err := cli.SaveCLIConfig(cli.CLIConfig{Token: "mul_profile_token"}); err != nil {
+	if err := cli.SaveCLIConfig(cli.CLIConfig{Ticket: "mul_profile_token"}); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 
@@ -634,8 +634,8 @@ func TestNewAPIClient_AgentContextRequiresTaskToken(t *testing.T) {
 		if err != nil {
 			t.Fatalf("newAPIClient(): %v", err)
 		}
-		if client.Token != "mat_task_token" {
-			t.Fatalf("client token = %q, want task token", client.Token)
+		if client.Ticket != "mat_task_token" {
+			t.Fatalf("client token = %q, want task token", client.Ticket)
 		}
 	})
 }
@@ -650,7 +650,7 @@ func TestNewAPIClient_DaemonPortRequiresTaskToken(t *testing.T) {
 	t.Setenv("MULTICA_DAEMON_PORT", "27182")
 	t.Setenv("MULTICA_TOKEN", "")
 
-	if err := cli.SaveCLIConfig(cli.CLIConfig{Token: "mul_profile_token", WorkspaceID: "config-file-ws"}); err != nil {
+	if err := cli.SaveCLIConfig(cli.CLIConfig{Ticket: "mul_profile_token", WorkspaceID: "config-file-ws"}); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 
@@ -675,7 +675,7 @@ func TestNewAPIClient_WorkdirMarkerRequiresTaskToken(t *testing.T) {
 	t.Setenv("MULTICA_TOKEN", "")
 	chdirWithDaemonTaskMarker(t)
 
-	if err := cli.SaveCLIConfig(cli.CLIConfig{Token: "mul_profile_token", WorkspaceID: "config-file-ws"}); err != nil {
+	if err := cli.SaveCLIConfig(cli.CLIConfig{Ticket: "mul_profile_token", WorkspaceID: "config-file-ws"}); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 
@@ -944,8 +944,8 @@ func TestAgentMaxConcurrentTasksFlagValidation(t *testing.T) {
 func TestParseCustomEnvErrorSanitization(t *testing.T) {
 	// Pick a string that, if echoed, would be obvious. The key is
 	// that the error must not contain any substring of the raw input.
-	secretish := `{"SECRET_TOKEN":verySensitiveValue}` // invalid JSON, unquoted value
-	_, err := parseCustomEnv(secretish)
+	sealedish := `{"SECRET_TOKEN":verySensitiveValue}` // invalid JSON, unquoted value
+	_, err := parseCustomEnv(sealedish)
 	if err == nil {
 		t.Fatal("expected parse error for invalid JSON")
 	}
@@ -963,8 +963,8 @@ func TestParseCustomEnvErrorSanitization(t *testing.T) {
 // list, so json.Unmarshal errors must never echo input fragments here
 // either.
 func TestParseCustomArgsErrorSanitization(t *testing.T) {
-	secretish := `["--api-key=verySensitiveValue", oops]` // invalid JSON, bare oops
-	_, err := parseCustomArgs(secretish)
+	sealedish := `["--api-key=verySensitiveValue", oops]` // invalid JSON, bare oops
+	_, err := parseCustomArgs(sealedish)
 	if err == nil {
 		t.Fatal("expected parse error for invalid JSON")
 	}
@@ -1223,8 +1223,8 @@ func TestParseMcpConfig(t *testing.T) {
 // mcp_config carries secret material (MCP entries embed API tokens), so a
 // json.Unmarshal failure must never echo fragments of the input.
 func TestParseMcpConfigErrorSanitization(t *testing.T) {
-	secretish := `{"mcpServers":{"x":{"env":{"TOKEN":verySensitiveValue}}}}` // invalid JSON, unquoted value
-	_, err := parseMcpConfig(secretish)
+	sealedish := `{"mcpServers":{"x":{"env":{"TOKEN":verySensitiveValue}}}}` // invalid JSON, unquoted value
+	_, err := parseMcpConfig(sealedish)
 	if err == nil {
 		t.Fatal("expected parse error for invalid JSON")
 	}

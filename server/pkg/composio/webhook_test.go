@@ -17,20 +17,20 @@ import (
 )
 
 // helper: produce a valid signature for the given inputs.
-func sign(secret, id, ts, body string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
+func sign(sealed, id, ts, body string) string {
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write([]byte(id + "." + ts + "." + body))
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func TestVerifyWebhook_Success(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{"id":"evt_1","type":"composio.connected_account.expired"}`
 	id := "msg_abc"
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	sig := sign(secret, id, ts, body)
+	sig := sign(sealed, id, ts, body)
 
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: "v1," + sig,
 	}, []byte(body), composio.VerifyOptions{})
 	if err != nil {
@@ -39,13 +39,13 @@ func TestVerifyWebhook_Success(t *testing.T) {
 }
 
 func TestVerifyWebhook_AcceptsBareSignature(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{}`
 	id := "msg_b"
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	sig := sign(secret, id, ts, body)
+	sig := sign(sealed, id, ts, body)
 	// No version prefix: just the raw base64
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: sig,
 	}, []byte(body), composio.VerifyOptions{})
 	if err != nil {
@@ -54,15 +54,15 @@ func TestVerifyWebhook_AcceptsBareSignature(t *testing.T) {
 }
 
 func TestVerifyWebhook_AcceptsMultipleVersions(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{}`
 	id := "msg_c"
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	good := sign(secret, id, ts, body)
+	good := sign(sealed, id, ts, body)
 	bad := "AAAA" + good[4:]
 	// One bad sig, one good sig — verify should still pass.
 	hdr := "v2," + bad + " v1," + good
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: hdr,
 	}, []byte(body), composio.VerifyOptions{})
 	if err != nil {
@@ -71,13 +71,13 @@ func TestVerifyWebhook_AcceptsMultipleVersions(t *testing.T) {
 }
 
 func TestVerifyWebhook_RejectsTamperedBody(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{"data":"original"}`
 	id := "msg_d"
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	sig := sign(secret, id, ts, body)
+	sig := sign(sealed, id, ts, body)
 
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: "v1," + sig,
 	}, []byte(`{"data":"tampered"}`), composio.VerifyOptions{})
 	if !errors.Is(err, composio.ErrInvalidWebhookSignature) {
@@ -86,13 +86,13 @@ func TestVerifyWebhook_RejectsTamperedBody(t *testing.T) {
 }
 
 func TestVerifyWebhook_RejectsStaleTimestamp(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{}`
 	id := "msg_e"
 	old := time.Now().Add(-10 * time.Minute).Unix()
 	ts := strconv.FormatInt(old, 10)
-	sig := sign(secret, id, ts, body)
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	sig := sign(sealed, id, ts, body)
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: "v1," + sig,
 	}, []byte(body), composio.VerifyOptions{Tolerance: 5 * time.Minute})
 	if !errors.Is(err, composio.ErrWebhookTimestampStale) {
@@ -101,12 +101,12 @@ func TestVerifyWebhook_RejectsStaleTimestamp(t *testing.T) {
 }
 
 func TestVerifyWebhook_NegativeToleranceDisablesCheck(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{}`
 	id := "msg_f"
 	ts := "1" // ancient
-	sig := sign(secret, id, ts, body)
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	sig := sign(sealed, id, ts, body)
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: "v1," + sig,
 	}, []byte(body), composio.VerifyOptions{Tolerance: -1})
 	if err != nil {
@@ -115,12 +115,12 @@ func TestVerifyWebhook_NegativeToleranceDisablesCheck(t *testing.T) {
 }
 
 func TestVerifyWebhook_HonorsCustomNow(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{}`
 	id := "msg_g"
 	ts := "1700000000"
-	sig := sign(secret, id, ts, body)
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	sig := sign(sealed, id, ts, body)
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: ts, Signature: "v1," + sig,
 	}, []byte(body), composio.VerifyOptions{
 		Tolerance: 5 * time.Second,
@@ -148,12 +148,12 @@ func TestVerifyWebhook_EmptySecret(t *testing.T) {
 }
 
 func TestVerifyWebhook_AcceptsRFC3339Timestamp(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{}`
 	id := "msg_h"
 	now := time.Now().UTC().Format(time.RFC3339)
-	sig := sign(secret, id, now, body)
-	err := composio.VerifyWebhook(secret, composio.WebhookHeaders{
+	sig := sign(sealed, id, now, body)
+	err := composio.VerifyWebhook(sealed, composio.WebhookHeaders{
 		ID: id, Timestamp: now, Signature: "v1," + sig,
 	}, []byte(body), composio.VerifyOptions{})
 	if err != nil {
@@ -162,18 +162,18 @@ func TestVerifyWebhook_AcceptsRFC3339Timestamp(t *testing.T) {
 }
 
 func TestVerifyHTTPRequest_HappyPath(t *testing.T) {
-	secret := "shh"
+	sealed := "shh"
 	body := `{"x":1}`
 	id := "msg_req"
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	sig := sign(secret, id, ts, body)
+	sig := sign(sealed, id, ts, body)
 
 	r := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader([]byte(body)))
 	r.Header.Set(composio.HeaderWebhookID, id)
 	r.Header.Set(composio.HeaderWebhookTimestamp, ts)
 	r.Header.Set(composio.HeaderWebhookSignature, "v1,"+sig)
 
-	got, err := composio.VerifyHTTPRequest(secret, r, composio.VerifyOptions{})
+	got, err := composio.VerifyHTTPRequest(sealed, r, composio.VerifyOptions{})
 	if err != nil {
 		t.Fatalf("VerifyHTTPRequest: %v", err)
 	}

@@ -605,7 +605,7 @@ func (q *Queries) CloseChannelReplyDeliveryTurn(ctx context.Context, arg CloseCh
 	return i, err
 }
 
-const consumeChannelBindingToken = `-- name: ConsumeChannelBindingToken :one
+const consumeChannelBindingTicket = `-- name: ConsumeChannelBindingToken :one
 UPDATE channel_binding_token
 SET consumed_at = now()
 WHERE token_hash = $1
@@ -616,11 +616,11 @@ RETURNING token_hash, workspace_id, installation_id, channel_type, channel_user_
 
 // Atomic redemption: returns the row only if the hash exists, is
 // unconsumed, and unexpired. Two simultaneous redemptions cannot both win.
-func (q *Queries) ConsumeChannelBindingToken(ctx context.Context, tokenHash string) (ChannelBindingToken, error) {
-	row := q.db.QueryRow(ctx, consumeChannelBindingToken, tokenHash)
+func (q *Queries) ConsumeChannelBindingToken(ctx context.Context, ticketHash string) (ChannelBindingToken, error) {
+	row := q.db.QueryRow(ctx, consumeChannelBindingTicket, ticketHash)
 	var i ChannelBindingToken
 	err := row.Scan(
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.WorkspaceID,
 		&i.InstallationID,
 		&i.ChannelType,
@@ -654,7 +654,7 @@ func (q *Queries) CopyChannelTaskDelivery(ctx context.Context, arg CopyChannelTa
 	return err
 }
 
-const createChannelBindingToken = `-- name: CreateChannelBindingToken :one
+const createChannelBindingTicket = `-- name: CreateChannelBindingToken :one
 
 INSERT INTO channel_binding_token (
     token_hash, workspace_id, installation_id, channel_type,
@@ -667,7 +667,7 @@ RETURNING token_hash, workspace_id, installation_id, channel_type, channel_user_
 `
 
 type CreateChannelBindingTokenParams struct {
-	TokenHash      string             `json:"token_hash"`
+	TicketHash     string             `json:"token_hash"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
 	InstallationID pgtype.UUID        `json:"installation_id"`
 	ChannelType    string             `json:"channel_type"`
@@ -684,8 +684,8 @@ type CreateChannelBindingTokenParams struct {
 // skew between an app node and Postgres cannot reject an otherwise valid
 // 15-minute token. The HASH is stored, never the raw token.
 func (q *Queries) CreateChannelBindingToken(ctx context.Context, arg CreateChannelBindingTokenParams) (ChannelBindingToken, error) {
-	row := q.db.QueryRow(ctx, createChannelBindingToken,
-		arg.TokenHash,
+	row := q.db.QueryRow(ctx, createChannelBindingTicket,
+		arg.TicketHash,
 		arg.WorkspaceID,
 		arg.InstallationID,
 		arg.ChannelType,
@@ -694,7 +694,7 @@ func (q *Queries) CreateChannelBindingToken(ctx context.Context, arg CreateChann
 	)
 	var i ChannelBindingToken
 	err := row.Scan(
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.WorkspaceID,
 		&i.InstallationID,
 		&i.ChannelType,
@@ -1096,7 +1096,7 @@ func (q *Queries) CreateChannelUserBinding(ctx context.Context, arg CreateChanne
 	return i, err
 }
 
-const deleteChannelBindingTokensByInstallation = `-- name: DeleteChannelBindingTokensByInstallation :exec
+const deleteChannelBindingTicketsByInstallation = `-- name: DeleteChannelBindingTokensByInstallation :exec
 DELETE FROM channel_binding_token
 WHERE installation_id = $1
 `
@@ -1108,7 +1108,7 @@ WHERE installation_id = $1
 // would consume the token and get a "bound" result written against a deleted
 // installation — a link that never actually reaches the live bot.
 func (q *Queries) DeleteChannelBindingTokensByInstallation(ctx context.Context, installationID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteChannelBindingTokensByInstallation, installationID)
+	_, err := q.db.Exec(ctx, deleteChannelBindingTicketsByInstallation, installationID)
 	return err
 }
 
@@ -1436,7 +1436,7 @@ func (q *Queries) FindChannelBindingForMemberOnAgentInstallation(ctx context.Con
 	return i, err
 }
 
-const findLiveChannelBindingToken = `-- name: FindLiveChannelBindingToken :one
+const findLiveChannelBindingTicket = `-- name: FindLiveChannelBindingToken :one
 SELECT token_hash, workspace_id, installation_id, channel_type, channel_user_id, expires_at, consumed_at, created_at FROM channel_binding_token
 WHERE installation_id = $1
   AND channel_type = $2
@@ -1476,7 +1476,7 @@ type FindLiveChannelBindingTokenParams struct {
 // the rest is a filter over that installation's live tokens, which is a small
 // set because nothing here outlives the 15-minute TTL.
 func (q *Queries) FindLiveChannelBindingToken(ctx context.Context, arg FindLiveChannelBindingTokenParams) (ChannelBindingToken, error) {
-	row := q.db.QueryRow(ctx, findLiveChannelBindingToken,
+	row := q.db.QueryRow(ctx, findLiveChannelBindingTicket,
 		arg.InstallationID,
 		arg.ChannelType,
 		arg.ChannelUserID,
@@ -1484,7 +1484,7 @@ func (q *Queries) FindLiveChannelBindingToken(ctx context.Context, arg FindLiveC
 	)
 	var i ChannelBindingToken
 	err := row.Scan(
-		&i.TokenHash,
+		&i.TicketHash,
 		&i.WorkspaceID,
 		&i.InstallationID,
 		&i.ChannelType,
@@ -2660,13 +2660,13 @@ func (q *Queries) PurgeChannelInboundDedup(ctx context.Context, receivedAt pgtyp
 	return err
 }
 
-const purgeExpiredChannelBindingTokens = `-- name: PurgeExpiredChannelBindingTokens :exec
+const purgeExpiredChannelBindingTickets = `-- name: PurgeExpiredChannelBindingTokens :exec
 DELETE FROM channel_binding_token
 WHERE expires_at < $1
 `
 
 func (q *Queries) PurgeExpiredChannelBindingTokens(ctx context.Context, expiresAt pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, purgeExpiredChannelBindingTokens, expiresAt)
+	_, err := q.db.Exec(ctx, purgeExpiredChannelBindingTickets, expiresAt)
 	return err
 }
 
