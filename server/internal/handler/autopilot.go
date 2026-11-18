@@ -2319,7 +2319,7 @@ func (h *Handler) ListAutopilotRuns(w http.ResponseWriter, r *http.Request) {
 	offset := int32(0)
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 {
-			limit = int32(v)
+			limit = util.SatInt32(v)
 		}
 	}
 	if limit > 100 {
@@ -2327,7 +2327,7 @@ func (h *Handler) ListAutopilotRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
-			offset = int32(v)
+			offset = util.SatInt32(v)
 		}
 	}
 

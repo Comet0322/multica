@@ -2124,7 +2124,7 @@ func issueNumberForPrefix(identifier, prefix string) (int32, bool) {
 	if !strings.EqualFold(gotPrefix, prefix) {
 		return 0, false
 	}
-	n, err := strconv.Atoi(numStr)
+	n, err := strconv.ParseInt(numStr, 10, 32)
 	if err != nil {
 		return 0, false
 	}
