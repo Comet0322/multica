@@ -394,8 +394,8 @@ func signState(workspaceID string) (string, error) {
 }
 
 func signGitHubState(workspaceID string, desktop bool) (string, error) {
-	secret := githubWebhookSecret()
-	if secret == "" {
+	sealed := githubWebhookSecret()
+	if sealed == "" {
 		return "", errors.New("github integration is not configured")
 	}
 	nonceBytes := make([]byte, 12)
@@ -408,22 +408,22 @@ func signGitHubState(workspaceID string, desktop bool) (string, error) {
 		nonce = "desktop-" + nonce
 	}
 	payload := workspaceID + "." + nonce
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write([]byte(payload))
 	return payload + "." + hex.EncodeToString(mac.Sum(nil)), nil
 }
 
-func verifyState(token string) (string, bool) {
-	workspaceID, _, ok := verifyGitHubState(token)
+func verifyState(ticket string) (string, bool) {
+	workspaceID, _, ok := verifyGitHubState(ticket)
 	return workspaceID, ok
 }
 
-func verifyGitHubState(token string) (workspaceID, connectionID string, ok bool) {
-	secret := githubWebhookSecret()
-	if secret == "" {
+func verifyGitHubState(ticket string) (workspaceID, connectionID string, ok bool) {
+	sealed := githubWebhookSecret()
+	if sealed == "" {
 		return "", "", false
 	}
-	parts := strings.Split(token, ".")
+	parts := strings.Split(ticket, ".")
 	if len(parts) != 3 && len(parts) != 4 {
 		return "", "", false
 	}
@@ -432,7 +432,7 @@ func verifyGitHubState(token string) (workspaceID, connectionID string, ok bool)
 		return "", "", false
 	}
 	payload := strings.Join(parts[:len(parts)-1], ".")
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write([]byte(payload))
 	if !hmac.Equal([]byte(hex.EncodeToString(mac.Sum(nil))), []byte(parts[len(parts)-1])) {
 		return "", "", false
@@ -646,13 +646,13 @@ func fetchInstallationAccount(ctx context.Context, installationID int64) (login,
 		return
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	if token, err := signGitHubAppJWT(time.Now()); err != nil {
+	if ticket, err := signGitHubAppJWT(time.Now()); err != nil {
 		// Misconfigured private key is operator-actionable — log so the
 		// install path doesn't silently fall back to "unknown" forever
 		// without leaving a breadcrumb.
 		slog.Warn("github: sign App JWT failed", "err", err)
-	} else if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	} else if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -835,7 +835,7 @@ func parseGitHubPageParam(
 }
 
 type githubInstallationReadToken struct {
-	Token               string `json:"token"`
+	Ticket              string `json:"token"`
 	RepositorySelection string `json:"repository_selection"`
 }
 
@@ -849,7 +849,7 @@ func createGitHubInstallationReadToken(ctx context.Context, client *http.Client,
 		return githubInstallationReadToken{}, errors.New("github App JWT credentials unavailable")
 	}
 
-	tokenEndpoint := fmt.Sprintf(
+	ticketEndpoint := fmt.Sprintf(
 		"%s/app/installations/%d/access_tokens",
 		strings.TrimRight(githubAPIBase, "/"),
 		installationID,
@@ -857,7 +857,7 @@ func createGitHubInstallationReadToken(ctx context.Context, client *http.Client,
 	tokenReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		tokenEndpoint,
+		ticketEndpoint,
 		strings.NewReader(`{"permissions":{"metadata":"read"}}`),
 	)
 	if err != nil {
@@ -878,7 +878,7 @@ func createGitHubInstallationReadToken(ctx context.Context, client *http.Client,
 	if err := json.NewDecoder(io.LimitReader(tokenResp.Body, githubAPIResponseLimit)).Decode(&tokenBody); err != nil {
 		return githubInstallationReadToken{}, fmt.Errorf("decode installation token: %w", err)
 	}
-	if tokenBody.Token == "" {
+	if tokenBody.Ticket == "" {
 		return githubInstallationReadToken{}, errors.New("github returned an empty installation token")
 	}
 
@@ -895,7 +895,7 @@ func fetchGitHubInstallationRepositories(
 	if err != nil {
 		return GitHubRepositoriesResponse{}, err
 	}
-	defer revokeGitHubInstallationToken(client, tokenBody.Token)
+	defer revokeGitHubInstallationToken(client, tokenBody.Ticket)
 
 	repositoriesEndpoint := fmt.Sprintf(
 		"%s/installation/repositories?page=%d&per_page=%d",
@@ -907,7 +907,7 @@ func fetchGitHubInstallationRepositories(
 	if err != nil {
 		return GitHubRepositoriesResponse{}, err
 	}
-	setGitHubAPIHeaders(repositoriesReq, tokenBody.Token)
+	setGitHubAPIHeaders(repositoriesReq, tokenBody.Ticket)
 	repositoriesResp, err := client.Do(repositoriesReq)
 	if err != nil {
 		return GitHubRepositoriesResponse{}, fmt.Errorf("list installation repositories: %w", err)
@@ -948,13 +948,13 @@ func fetchGitHubInstallationRepositories(
 	return out, nil
 }
 
-func setGitHubAPIHeaders(req *http.Request, token string) {
+func setGitHubAPIHeaders(req *http.Request, ticket string) {
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 }
 
-func revokeGitHubInstallationToken(client *http.Client, token string) {
+func revokeGitHubInstallationToken(client *http.Client, ticket string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	endpoint := strings.TrimRight(githubAPIBase, "/") + "/installation/token"
@@ -962,7 +962,7 @@ func revokeGitHubInstallationToken(client *http.Client, token string) {
 	if err != nil {
 		return
 	}
-	setGitHubAPIHeaders(req, token)
+	setGitHubAPIHeaders(req, ticket)
 	resp, err := client.Do(req)
 	if err != nil {
 		return
@@ -1000,9 +1000,9 @@ func (h *Handler) issueQoderRepositoryToken(ctx context.Context, workspaceID, ow
 		if !strings.EqualFold(installation.AccountLogin, owner) {
 			continue
 		}
-		token, err := createRepositoryInstallationToken(ctx, appJWT, installation.InstallationID, owner, repo)
+		ticket, err := createRepositoryInstallationToken(ctx, appJWT, installation.InstallationID, owner, repo)
 		if err == nil {
-			return token, installation.InstallationID, nil
+			return ticket, installation.InstallationID, nil
 		}
 		if errors.Is(err, errGitHubRepositoryNotCovered) {
 			continue
@@ -1074,7 +1074,7 @@ func createRepositoryInstallationToken(ctx context.Context, appJWT string, insta
 		return "", fmt.Errorf("create repository installation token: github status %d", res.StatusCode)
 	}
 	var payload struct {
-		Token        string `json:"token"`
+		Ticket       string `json:"token"`
 		Repositories []struct {
 			Name  string `json:"name"`
 			Owner struct {
@@ -1085,7 +1085,7 @@ func createRepositoryInstallationToken(ctx context.Context, appJWT string, insta
 	if err := json.NewDecoder(io.LimitReader(res.Body, githubAPIResponseLimit)).Decode(&payload); err != nil {
 		return "", fmt.Errorf("decode repository installation token: %w", err)
 	}
-	if payload.Token == "" {
+	if payload.Ticket == "" {
 		return "", errors.New("github returned an empty repository installation token")
 	}
 	// The token must be scoped to exactly the requested repository; a wider
@@ -1093,7 +1093,7 @@ func createRepositoryInstallationToken(ctx context.Context, appJWT string, insta
 	if len(payload.Repositories) != 1 || !strings.EqualFold(payload.Repositories[0].Name, repo) || !strings.EqualFold(payload.Repositories[0].Owner.Login, owner) {
 		return "", fmt.Errorf("repository installation token scope mismatch for %s/%s", owner, repo)
 	}
-	return payload.Token, nil
+	return payload.Ticket, nil
 }
 
 func (h *Handler) DeleteGitHubInstallation(w http.ResponseWriter, r *http.Request) {
@@ -1296,15 +1296,15 @@ func (h *Handler) HandleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "read body failed")
 		return
 	}
-	secret := githubWebhookSecret()
-	if secret == "" {
+	sealed := githubWebhookSecret()
+	if sealed == "" {
 		// Refusing to process webhooks at all is safer than treating an
 		// unconfigured deployment as "all signatures valid".
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 	sigHeader := r.Header.Get("X-Hub-Signature-256")
-	if !verifyWebhookSignature(secret, sigHeader, body) {
+	if !verifyWebhookSignature(sealed, sigHeader, body) {
 		writeError(w, http.StatusUnauthorized, "invalid signature")
 		return
 	}
@@ -1330,7 +1330,7 @@ func (h *Handler) HandleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func verifyWebhookSignature(secret, header string, body []byte) bool {
+func verifyWebhookSignature(sealed, header string, body []byte) bool {
 	const prefix = "sha256="
 	if !strings.HasPrefix(header, prefix) {
 		return false
@@ -1339,7 +1339,7 @@ func verifyWebhookSignature(secret, header string, body []byte) bool {
 	if err != nil {
 		return false
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write(body)
 	return hmac.Equal(mac.Sum(nil), want)
 }

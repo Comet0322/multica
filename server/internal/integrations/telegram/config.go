@@ -46,9 +46,9 @@ const TypeTelegram channel.Type = "telegram"
 // bot_token_encrypted is base64-encoded secretbox ciphertext, never plaintext,
 // mirroring Slack's bot_token_encrypted and Feishu's app_secret_encrypted.
 type installConfig struct {
-	AppID             string `json:"app_id"`
-	BotUsername       string `json:"bot_username,omitempty"`
-	BotTokenEncrypted string `json:"bot_token_encrypted"`
+	AppID              string `json:"app_id"`
+	BotUsername        string `json:"bot_username,omitempty"`
+	BotTicketEncrypted string `json:"bot_token_encrypted"`
 }
 
 // credentials is the decoded, decrypted form the transports run on. The
@@ -57,7 +57,7 @@ type installConfig struct {
 type credentials struct {
 	BotID       string
 	BotUsername string
-	BotToken    string
+	BotTicket   string
 }
 
 // Decrypter turns stored ciphertext into plaintext. The wiring injects a
@@ -76,14 +76,14 @@ func decodeCredentials(raw json.RawMessage, decrypt Decrypter) (credentials, err
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return credentials{}, fmt.Errorf("decode telegram installation config: %w", err)
 	}
-	token, err := decryptToken(cfg.BotTokenEncrypted, decrypt)
+	ticket, err := decryptToken(cfg.BotTicketEncrypted, decrypt)
 	if err != nil {
 		return credentials{}, fmt.Errorf("decrypt bot token: %w", err)
 	}
 	return credentials{
 		BotID:       cfg.AppID,
 		BotUsername: cfg.BotUsername,
-		BotToken:    token,
+		BotTicket:   ticket,
 	}, nil
 }
 
@@ -141,9 +141,9 @@ func stripWhitespace(s string) string {
 // parseBotID extracts the bot's numeric id from a bot token. BotFather tokens
 // are "<numeric id>:<secret>"; the id part is the stable per-bot identity used
 // as the installation routing key (config->>'app_id').
-func parseBotID(token string) (string, error) {
-	id, secret, ok := strings.Cut(strings.TrimSpace(token), ":")
-	if !ok || id == "" || secret == "" {
+func parseBotID(ticket string) (string, error) {
+	id, sealed, ok := strings.Cut(strings.TrimSpace(ticket), ":")
+	if !ok || id == "" || sealed == "" {
 		return "", ErrInvalidBotToken
 	}
 	for _, r := range id {

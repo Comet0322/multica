@@ -397,13 +397,13 @@ func TestInputMapRedactsStringSliceAndStringMap(t *testing.T) {
 // through the shared nested references.
 func TestInputMapDoesNotMutateInput(t *testing.T) {
 	t.Parallel()
-	secret := "sk-proj-abc123def456ghi789jkl012mno345"
-	inner := map[string]any{"diff": secret}
+	sealed := "sk-proj-abc123def456ghi789jkl012mno345"
+	inner := map[string]any{"diff": sealed}
 	m := map[string]any{"changes": []any{inner}}
 
 	_ = InputMap(m)
 
-	if inner["diff"] != secret {
+	if inner["diff"] != sealed {
 		t.Fatalf("input map was mutated in place: %v", inner["diff"])
 	}
 }

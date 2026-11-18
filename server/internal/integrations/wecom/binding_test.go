@@ -30,7 +30,7 @@ type fakeMintQueries struct {
 func (f *fakeMintQueries) CreateChannelBindingToken(_ context.Context, arg db.CreateChannelBindingTokenParams) (db.ChannelBindingToken, error) {
 	f.creates++
 	row := db.ChannelBindingToken{
-		TokenHash:      arg.TokenHash,
+		TicketHash:     arg.TicketHash,
 		WorkspaceID:    arg.WorkspaceID,
 		InstallationID: arg.InstallationID,
 		ChannelType:    arg.ChannelType,
@@ -72,10 +72,10 @@ func (f *fakeMintQueries) FindLiveChannelBindingToken(_ context.Context, arg db.
 	return best, nil
 }
 
-func (f *fakeMintQueries) ConsumeChannelBindingToken(_ context.Context, tokenHash string) (db.ChannelBindingToken, error) {
+func (f *fakeMintQueries) ConsumeChannelBindingToken(_ context.Context, ticketHash string) (db.ChannelBindingToken, error) {
 	for i := range f.rows {
 		r := &f.rows[i]
-		if r.TokenHash == tokenHash && !r.ConsumedAt.Valid && r.ExpiresAt.Time.After(f.now()) {
+		if r.TicketHash == ticketHash && !r.ConsumedAt.Valid && r.ExpiresAt.Time.After(f.now()) {
 			r.ConsumedAt = pgtype.Timestamptz{Time: f.now(), Valid: true}
 			return *r, nil
 		}

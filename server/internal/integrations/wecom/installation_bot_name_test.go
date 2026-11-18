@@ -62,7 +62,7 @@ func botNameParams(bot, displayName string) InstallationParams {
 		AgentID:         mustUUID(wcNameAgent),
 		InstallerUserID: mustUUID(wcNameUser),
 		BotID:           bot,
-		Secret:          "s3cr3t",
+		Sealed:          "s3cr3t",
 		BotDisplayName:  displayName,
 	}
 }

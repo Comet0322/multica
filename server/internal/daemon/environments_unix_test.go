@@ -75,13 +75,13 @@ func TestEnvironmentHandlersStartListAndStop(t *testing.T) {
 // The full output stays in the local log; only a short excerpt of a crash is
 // reported, which the server redacts before storing.
 func TestEnvironmentReportSendsOnlyACrashExcerpt(t *testing.T) {
-	const secret = "fake-password-for-tests"
+	const sealed = "fake-password-for-tests"
 	s, reporter := newTestEnvironmentService(t)
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".multica"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := "[environments.api]\nstart = \"echo 'cannot reach postgres://demo:" + secret + "@db.invalid/app'; exit 3\"\nurl = \"\"\n"
+	config := "[environments.api]\nstart = \"echo 'cannot reach postgres://demo:" + sealed + "@db.invalid/app'; exit 3\"\nurl = \"\"\n"
 	if err := os.WriteFile(filepath.Join(root, ".multica", "environments.toml"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestEnvironmentReportSendsOnlyACrashExcerpt(t *testing.T) {
 		!strings.HasPrefix(got.Excerpt, "cannot reach postgres://") {
 		t.Fatalf("reported %+v, want exited with its exit status and last output line", got)
 	}
-	if log, _ := os.ReadFile(env.LogPath); !strings.Contains(string(log), secret) {
+	if log, _ := os.ReadFile(env.LogPath); !strings.Contains(string(log), sealed) {
 		t.Fatalf("local log = %q, want the command's output kept there", log)
 	}
 }

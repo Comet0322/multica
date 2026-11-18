@@ -118,16 +118,16 @@ type messageItem struct {
 }
 
 type message struct {
-	ID           id            `json:"message_id,omitempty"`
-	From         string        `json:"from_user_id"`
-	To           string        `json:"to_user_id"`
-	ClientID     string        `json:"client_id,omitempty"`
-	Type         int           `json:"message_type"`
-	State        *int          `json:"message_state,omitempty"`
-	GroupID      string        `json:"group_id,omitempty"`
-	CreatedAt    int64         `json:"create_time_ms,omitempty"`
-	ContextToken string        `json:"context_token,omitempty"`
-	Items        []messageItem `json:"item_list"`
+	ID            id            `json:"message_id,omitempty"`
+	From          string        `json:"from_user_id"`
+	To            string        `json:"to_user_id"`
+	ClientID      string        `json:"client_id,omitempty"`
+	Type          int           `json:"message_type"`
+	State         *int          `json:"message_state,omitempty"`
+	GroupID       string        `json:"group_id,omitempty"`
+	CreatedAt     int64         `json:"create_time_ms,omitempty"`
+	ContextTicket string        `json:"context_token,omitempty"`
+	Items         []messageItem `json:"item_list"`
 }
 
 type qrResult struct {
@@ -139,7 +139,7 @@ type qrResult struct {
 type qrStatus struct {
 	apiResult
 	Status       string `json:"status"`
-	Token        string `json:"bot_token"`
+	Ticket       string `json:"bot_token"`
 	BotID        string `json:"ilink_bot_id"`
 	UserID       string `json:"ilink_user_id"`
 	BaseURL      string `json:"baseurl"`
@@ -155,11 +155,11 @@ type updates struct {
 
 type apiClient struct {
 	baseURL string
-	token   string
+	ticket  string
 	http    *http.Client
 }
 
-func newAPI(baseURL, token string, client *http.Client) *apiClient {
+func newAPI(baseURL, ticket string, client *http.Client) *apiClient {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
@@ -168,7 +168,7 @@ func newAPI(baseURL, token string, client *http.Client) *apiClient {
 	}
 	copy := *client
 	copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &apiClient{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: &copy}
+	return &apiClient{baseURL: strings.TrimRight(baseURL, "/"), ticket: ticket, http: &copy}
 }
 
 // The provider can move an account to another WeChat IDC during QR login.
@@ -210,10 +210,10 @@ func (c *apiClient) request(ctx context.Context, method, endpoint string, body a
 		req.Header.Set("X-WECHAT-UIN", base64.StdEncoding.EncodeToString([]byte(strconv.FormatUint(uint64(binary.BigEndian.Uint32(random[:])), 10))))
 	}
 	if authenticated {
-		if c.token == "" {
+		if c.ticket == "" {
 			return ErrTokenExpired
 		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Authorization", "Bearer "+c.ticket)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -244,14 +244,14 @@ func baseInfo() map[string]string {
 	return map[string]string{"channel_version": protocolVersion, "bot_agent": "Multica"}
 }
 
-func (c *apiClient) QRCode(ctx context.Context, tokens ...string) (qrResult, error) {
+func (c *apiClient) QRCode(ctx context.Context, tickets ...string) (qrResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
 	var result qrResult
-	if tokens == nil {
-		tokens = []string{}
+	if tickets == nil {
+		tickets = []string{}
 	}
-	err := c.request(ctx, http.MethodPost, "get_bot_qrcode?bot_type=3", map[string]any{"local_token_list": tokens}, false, &result)
+	err := c.request(ctx, http.MethodPost, "get_bot_qrcode?bot_type=3", map[string]any{"local_token_list": tickets}, false, &result)
 	if err != nil {
 		return result, err
 	}
@@ -289,7 +289,7 @@ func (c *apiClient) QRStatus(ctx context.Context, qr, verifyCode string) (qrStat
 			return result, err
 		}
 	case "confirmed":
-		if result.Token == "" || result.BotID == "" || result.UserID == "" {
+		if result.Ticket == "" || result.BotID == "" || result.UserID == "" {
 			return result, ErrProtocol
 		}
 		if result.BaseURL == "" {
@@ -326,7 +326,7 @@ func (c *apiClient) Updates(ctx context.Context, cursor string) (updates, error)
 }
 
 func (c *apiClient) Send(ctx context.Context, msg message) (string, error) {
-	if msg.ContextToken == "" {
+	if msg.ContextTicket == "" {
 		return "", ErrNoContext
 	}
 	ctx, cancel := context.WithTimeout(ctx, apiTimeout)
@@ -350,13 +350,13 @@ func (c *apiClient) Send(ctx context.Context, msg message) (string, error) {
 	return string(result.MessageID), nil
 }
 
-func textMessage(to, token, clientID, text string) message {
+func textMessage(to, ticket, clientID, text string) message {
 	finished := 2
 	item := messageItem{Type: 1}
 	item.Text = &struct {
 		Text string `json:"text"`
 	}{Text: text}
-	return message{To: to, ClientID: clientID, Type: 2, State: &finished, ContextToken: token, Items: []messageItem{item}}
+	return message{To: to, ClientID: clientID, Type: 2, State: &finished, ContextTicket: ticket, Items: []messageItem{item}}
 }
 
 func (c *apiClient) notify(ctx context.Context, start bool) error {

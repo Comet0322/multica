@@ -76,24 +76,24 @@ func TestDecide(t *testing.T) {
 func TestTaskToken(t *testing.T) {
 	secret := DeriveTokenSecret([]byte("service-secret"))
 	now := time.Unix(1_800_000_000, 0)
-	token, err := SignTaskToken(secret, "task-1", now.Add(time.Hour))
+	ticket, err := SignTaskToken(secret, "task-1", now.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := VerifyTaskToken(secret, token, now)
+	got, err := VerifyTaskToken(secret, ticket, now)
 	if err != nil || got != "task-1" {
 		t.Fatalf("verify = %q, %v", got, err)
 	}
-	if _, err := VerifyTaskToken(secret, token, now.Add(2*time.Hour)); err != ErrTokenExpired {
+	if _, err := VerifyTaskToken(secret, ticket, now.Add(2*time.Hour)); err != ErrTokenExpired {
 		t.Fatalf("expired token: %v", err)
 	}
-	if _, err := VerifyTaskToken(DeriveTokenSecret([]byte("other")), token, now); err != ErrTokenSignature {
+	if _, err := VerifyTaskToken(DeriveTokenSecret([]byte("other")), ticket, now); err != ErrTokenSignature {
 		t.Fatalf("foreign secret: %v", err)
 	}
-	if _, err := VerifyTaskToken(secret, token[:len(token)-2]+"xx", now); err != ErrTokenSignature {
+	if _, err := VerifyTaskToken(secret, ticket[:len(ticket)-2]+"xx", now); err != ErrTokenSignature {
 		t.Fatalf("tampered token: %v", err)
 	}
-	if _, err := VerifyTaskToken(secret, "Bearer "+token, now); err != ErrTokenMalformed {
+	if _, err := VerifyTaskToken(secret, "Bearer "+ticket, now); err != ErrTokenMalformed {
 		t.Fatalf("unprefixed token: %v", err)
 	}
 }

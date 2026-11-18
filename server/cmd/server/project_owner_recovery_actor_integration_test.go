@@ -55,9 +55,9 @@ func TestPrivateProjectOwnerRecoveryRejectsMachineCredentials(t *testing.T) {
 	cloud := "mcn_" + uuid.NewString()
 	fleet := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
-			Token string `json:"token"`
+			Ticket string `json:"token"`
 		}
-		if r.URL.Path != "/api/v1/pat/verify" || json.NewDecoder(r.Body).Decode(&request) != nil || request.Token != cloud {
+		if r.URL.Path != "/api/v1/pat/verify" || json.NewDecoder(r.Body).Decode(&request) != nil || request.Ticket != cloud {
 			http.Error(w, "invalid verification request", http.StatusBadRequest)
 			return
 		}
@@ -67,10 +67,10 @@ func TestPrivateProjectOwnerRecoveryRejectsMachineCredentials(t *testing.T) {
 	t.Setenv("MULTICA_CLOUD_URL", fleet.URL)
 	router, _ := NewRouterWithOptions(testPool, realtime.NewHub(), events.New(), analytics.NoopClient{}, nil, RouterOptions{})
 
-	call := func(t *testing.T, method, path, token string) *dbfx.Response {
+	call := func(t *testing.T, method, path, ticket string) *dbfx.Response {
 		t.Helper()
 		req := dbfx.JSONRequest(method, path, nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		req.Header.Set("X-Workspace-ID", f.WorkspaceID)
 		// Auth must discard this client assertion and stamp its own.
 		req.Header.Set("X-Actor-Source", "member")
@@ -81,10 +81,10 @@ func TestPrivateProjectOwnerRecoveryRejectsMachineCredentials(t *testing.T) {
 	}
 	listPath, joinPath := "/api/projects/private", "/api/projects/"+projectID+"/join"
 
-	for name, token := range map[string]string{"task token": task, "cloud PAT": cloud} {
+	for name, ticket := range map[string]string{"task token": task, "cloud PAT": cloud} {
 		t.Run(name, func(t *testing.T) {
-			call(t, http.MethodGet, listPath, token).Want(http.StatusForbidden)
-			call(t, http.MethodPost, joinPath, token).Want(http.StatusForbidden)
+			call(t, http.MethodGet, listPath, ticket).Want(http.StatusForbidden)
+			call(t, http.MethodPost, joinPath, ticket).Want(http.StatusForbidden)
 			if ownerIsMember() {
 				t.Fatal("a rejected join added the owner to the project")
 			}
@@ -97,7 +97,7 @@ func TestPrivateProjectOwnerRecoveryRejectsMachineCredentials(t *testing.T) {
 				ID string `json:"id"`
 			} `json:"projects"`
 		}
-		call(t, http.MethodGet, listPath, testToken).Want(http.StatusOK).JSON(&resp)
+		call(t, http.MethodGet, listPath, testTicket).Want(http.StatusOK).JSON(&resp)
 		if len(resp.Projects) != 1 || resp.Projects[0].ID != projectID {
 			t.Fatalf("projects = %+v, want the one private project", resp.Projects)
 		}

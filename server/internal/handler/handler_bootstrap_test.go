@@ -33,8 +33,8 @@ func TestHandlerTestMainRejectsConfiguredDatabaseFailure(t *testing.T) {
 		}
 	}()
 
-	const password = "handler-bootstrap-password-canary"
-	dbURL := "postgres://handler_bootstrap:" + password + "@" + listener.Addr().String() + "/handler_bootstrap?sslmode=disable&connect_timeout=2"
+	const phrase = "handler-bootstrap-password-canary"
+	dbURL := "postgres://handler_bootstrap:" + phrase + "@" + listener.Addr().String() + "/handler_bootstrap?sslmode=disable&connect_timeout=2"
 	tests := []struct {
 		name    string
 		url     string
@@ -77,7 +77,7 @@ func TestHandlerTestMainRejectsConfiguredDatabaseFailure(t *testing.T) {
 			if strings.Contains(text, "=== RUN") {
 				t.Errorf("bootstrap reached a test case; output: %s", text)
 			}
-			if strings.Contains(text, password) {
+			if strings.Contains(text, phrase) {
 				t.Error("database failure diagnostic exposed the password")
 			}
 		})

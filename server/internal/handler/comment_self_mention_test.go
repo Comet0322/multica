@@ -51,15 +51,15 @@ func TestCommentSelfMention_SourceIssueAndThread(t *testing.T) {
 			}
 			dbfx.Cleanup(t, `DELETE FROM agent_task_queue WHERE issue_id = $1 AND id <> $2`, targetIssue, taskID)
 			dbfx.Cleanup(t, `DELETE FROM comment WHERE issue_id = $1 AND source_task_id = $2`, targetIssue, taskID)
-			token := "mat_self_mention_" + taskID
+			ticket := "mat_self_mention_" + taskID
 			dbfx.Insert(t, "task_token", testutil.Cols{
-				"token_hash": auth.HashToken(token), "task_id": taskID, "agent_id": agentID,
+				"token_hash": auth.HashToken(ticket), "task_id": taskID, "agent_id": agentID,
 				"workspace_id": testWorkspaceID, "user_id": testUserID, "expires_at": time.Now().Add(time.Hour),
 			})
 			call := func(handle http.HandlerFunc, method, path, param, id string, body map[string]any) *testutil.Response {
 				t.Helper()
 				req := withURLParam(newRequest(method, path, body), param, id)
-				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Authorization", "Bearer "+ticket)
 				// The authenticated token, not these client-supplied identities,
 				// must determine whose run authored the comment.
 				req.Header.Set("X-Agent-ID", "forged-agent")

@@ -160,8 +160,8 @@ func validateQuickActionPrompt(raw string) (string, error) {
 	if utf8.RuneCountInString(prompt) > maxQuickActionPromptLen {
 		return "", fmt.Errorf("prompt must be at most %d characters", maxQuickActionPromptLen)
 	}
-	if token := quickActionTemplateTokenRe.FindString(prompt); token != "" {
-		return "", fmt.Errorf("template variables are not supported yet; remove %s — the agent already reads this issue", token)
+	if ticket := quickActionTemplateTokenRe.FindString(prompt); ticket != "" {
+		return "", fmt.Errorf("template variables are not supported yet; remove %s — the agent already reads this issue", ticket)
 	}
 	if quickActionSideEffectMentionRe.MatchString(prompt) {
 		return "", fmt.Errorf("the prompt cannot @mention an agent, squad, or person; a quick action reaches exactly the one target it is bound to (an issue link is fine)")

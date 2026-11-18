@@ -106,7 +106,7 @@ func TestRunTaskListsAllocatedSkillInvocationName(t *testing.T) {
 	task := Task{
 		ID: "task-skill-collision", WorkspaceID: "workspace-skill-collision",
 		RuntimeID: "runtime-skill-collision", IssueID: "issue-skill-collision", AgentID: "agent-skill-collision",
-		AuthToken:        "mat_skill_collision_test",
+		AuthTicket:       "mat_skill_collision_test",
 		ProjectResources: []ProjectResourceData{{ID: "local-resource", ResourceType: localDirectoryResourceType, ResourceRef: ref}},
 		Agent: &AgentData{
 			ID: "agent-skill-collision", Name: "test-agent",

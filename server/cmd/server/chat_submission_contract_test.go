@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func submissionHTTP(serverURL, token, workspaceID, method, path string, body any) (int, map[string]any, error) {
+func submissionHTTP(serverURL, ticket, workspaceID, method, path string, body any) (int, map[string]any, error) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		return 0, nil, err
@@ -31,7 +31,7 @@ func submissionHTTP(serverURL, token, workspaceID, method, path string, body any
 	if err != nil {
 		return 0, nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	req.Header.Set("X-Workspace-ID", workspaceID)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
@@ -46,19 +46,19 @@ func submissionHTTP(serverURL, token, workspaceID, method, path string, body any
 	return resp.StatusCode, out, nil
 }
 
-func submissionStatus(t *testing.T, serverURL, token, workspaceID, method, path string, body any, want int) map[string]any {
+func submissionStatus(t *testing.T, serverURL, ticket, workspaceID, method, path string, body any, want int) map[string]any {
 	t.Helper()
-	status, out, err := submissionHTTP(serverURL, token, workspaceID, method, path, body)
+	status, out, err := submissionHTTP(serverURL, ticket, workspaceID, method, path, body)
 	if err != nil || status != want {
 		t.Fatalf("%s %s status=%d want=%d response=%v error=%v", method, path, status, want, out, err)
 	}
 	return out
 }
 
-func cleanupSubmissionSession(t *testing.T, token, workspaceID, sessionID string) {
+func cleanupSubmissionSession(t *testing.T, ticket, workspaceID, sessionID string) {
 	t.Helper()
 	t.Cleanup(func() {
-		status, body, err := submissionHTTP(testServer.URL, token, workspaceID, "DELETE", "/api/chat/sessions/"+sessionID, nil)
+		status, body, err := submissionHTTP(testServer.URL, ticket, workspaceID, "DELETE", "/api/chat/sessions/"+sessionID, nil)
 		if err != nil || (status != http.StatusNoContent && status != http.StatusNotFound) {
 			t.Errorf("cleanup session=%s status=%d body=%v error=%v", sessionID, status, body, err)
 		}
@@ -91,9 +91,9 @@ func TestChatSubmissionIdentityAndConflict(t *testing.T) {
 		}
 	}
 	for _, content := range []string{"exact content", "different content", ""} {
-		submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, map[string]any{"content": content, "submission_id": id}, http.StatusConflict)
+		submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, map[string]any{"content": content, "submission_id": id}, http.StatusConflict)
 	}
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, map[string]any{"content": "exact content\n", "submission_id": id, "attachment_ids": []string{uuid.NewString()}}, http.StatusConflict)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, map[string]any{"content": "exact content\n", "submission_id": id, "attachment_ids": []string{uuid.NewString()}}, http.StatusConflict)
 	submissionCounts(t, sessionID, 1, 1, 1)
 	body["submission_id"] = uuid.NewString()
 	second := submissionSend(t, sessionID, body)
@@ -101,7 +101,7 @@ func TestChatSubmissionIdentityAndConflict(t *testing.T) {
 		t.Fatalf("new submission identity response=%v", second)
 	}
 	for _, invalid := range []string{"", "malformed", "1234"} {
-		submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, map[string]any{"content": "new", "submission_id": invalid}, http.StatusBadRequest)
+		submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, map[string]any{"content": "new", "submission_id": invalid}, http.StatusBadRequest)
 	}
 	for i := 0; i < 2; i++ {
 		submissionSend(t, sessionID, map[string]any{"content": "legacy null", "submission_id": nil})
@@ -142,7 +142,7 @@ func TestChatSubmissionConcurrentFirstSendAndPersistentReplay(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			status, result, err := submissionHTTP(server.URL, testToken, testWorkspaceID, "POST", path, body)
+			status, result, err := submissionHTTP(server.URL, testTicket, testWorkspaceID, "POST", path, body)
 			if err != nil || status != http.StatusCreated {
 				errors <- fmt.Errorf("status=%d response=%v error=%v", status, result, err)
 				return
@@ -177,7 +177,7 @@ func TestChatSubmissionConcurrentFirstSendAndPersistentReplay(t *testing.T) {
 	restartedHandler.TaskService.Wakeup = wakeups
 	restarted := httptest.NewServer(restartedRouter)
 	t.Cleanup(restarted.Close)
-	replay := submissionStatus(t, restarted.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	replay := submissionStatus(t, restarted.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	if !reflect.DeepEqual(original, replay) || messageEvents.Load() != 1 || queuedEvents.Load() != 1 {
 		t.Fatalf("fresh instance replay=%v original=%v events=%d/%d", replay, original, messageEvents.Load(), queuedEvents.Load())
 	}
@@ -231,7 +231,7 @@ func TestChatSubmissionAttachmentSnapshotAndCanonicalRequest(t *testing.T) {
 		t.Fatal("replay rebound an attachment")
 	}
 	body["attachment_ids"] = []string{b}
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusConflict)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusConflict)
 	submissionCounts(t, sessionID, 1, 1, 1)
 }
 
@@ -249,9 +249,9 @@ func TestChatSubmissionReplayAfterArchiveAndDelete(t *testing.T) {
 		t.Fatalf("archive changed historical acceptance %v", replay)
 	}
 	path := "/api/chat/sessions/" + sessionID
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "DELETE", path, nil, http.StatusNoContent)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "DELETE", path, nil, http.StatusNoContent)
 	submissionCounts(t, sessionID, 0, 0, 0)
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path+"/messages", body, http.StatusNotFound)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path+"/messages", body, http.StatusNotFound)
 }
 
 func TestChatSubmissionTransactionFailureRollsBackTurn(t *testing.T) {
@@ -264,7 +264,7 @@ func TestChatSubmissionTransactionFailureRollsBackTurn(t *testing.T) {
 	t.Cleanup(server.Close)
 	h.TaskService.TxStarter = membershipFailCommitPool{testPool}
 	path := "/api/chat/sessions/" + sessionID + "/messages"
-	submissionStatus(t, server.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusInternalServerError)
+	submissionStatus(t, server.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusInternalServerError)
 	submissionCounts(t, sessionID, 0, 0, 0)
 	var title string
 	workspaceFixture(t).QueryRow(t, `SELECT title FROM chat_session WHERE id=$1`, sessionID).Scan(&title)
@@ -272,10 +272,10 @@ func TestChatSubmissionTransactionFailureRollsBackTurn(t *testing.T) {
 		t.Fatalf("failed transaction left a title=%q", title)
 	}
 	h.TaskService.TxStarter = nil
-	submissionStatus(t, server.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusInternalServerError)
+	submissionStatus(t, server.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusInternalServerError)
 	submissionCounts(t, sessionID, 0, 0, 0)
 	h.TaskService.TxStarter = testPool
-	submissionStatus(t, server.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	submissionStatus(t, server.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	submissionCounts(t, sessionID, 1, 1, 1)
 }
 
@@ -284,8 +284,8 @@ func TestChatSubmissionActorAndSessionNamespaces(t *testing.T) {
 	path := "/api/chat/sessions/" + sessionID + "/messages"
 	body := map[string]any{"content": "scoped identity", "submission_id": uuid.NewString()}
 	member := submissionSend(t, sessionID, body)
-	tokenA := mintAgentTaskToken(t, agentID, member["task_id"].(string), testUserID)
-	agent := submissionStatus(t, testServer.URL, tokenA, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	ticketA := mintAgentTaskToken(t, agentID, member["task_id"].(string), testUserID)
+	agent := submissionStatus(t, testServer.URL, ticketA, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	if member["task_id"] == agent["task_id"] {
 		t.Fatal("member and agent shared an acceptance namespace")
 	}
@@ -294,15 +294,15 @@ func TestChatSubmissionActorAndSessionNamespaces(t *testing.T) {
 	var runtimeID string
 	fx.QueryRow(t, `SELECT runtime_id::text FROM agent WHERE id=$1`, agentID).Scan(&runtimeID)
 	taskID := fx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, "originator_user_id": testUserID, "accountable_user_id": testUserID})
-	tokenB := mintAgentTaskToken(t, agentID, taskID, testUserID)
-	replay := submissionStatus(t, testServer.URL, tokenB, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	ticketB := mintAgentTaskToken(t, agentID, taskID, testUserID)
+	replay := submissionStatus(t, testServer.URL, ticketB, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	if !reflect.DeepEqual(agent, replay) {
 		t.Fatalf("token rotation changed logical caller agent=%v replay=%v", agent, replay)
 	}
 	otherAgent := fx.Agent(t, "Other submission actor", runtimeID)
 	otherTask := fx.Task(t, otherAgent, testutil.Cols{"runtime_id": runtimeID, "originator_user_id": testUserID, "accountable_user_id": testUserID})
-	otherToken := mintAgentTaskToken(t, otherAgent, otherTask, testUserID)
-	other := submissionStatus(t, testServer.URL, otherToken, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	otherTicket := mintAgentTaskToken(t, otherAgent, otherTask, testUserID)
+	other := submissionStatus(t, testServer.URL, otherTicket, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	if other["task_id"] == agent["task_id"] || other["task_id"] == member["task_id"] {
 		t.Fatal("different logical agent reused an acceptance")
 	}
@@ -320,38 +320,38 @@ func TestChatSubmissionCurrentAuthorizationBeforeReplay(t *testing.T) {
 	fx := workspaceFixture(t)
 	body := map[string]any{"content": "private acceptance", "submission_id": uuid.NewString()}
 	first := submissionSend(t, sessionID, body)
-	agentToken := mintAgentTaskToken(t, agentID, first["task_id"].(string), testUserID)
-	submissionStatus(t, testServer.URL, agentToken, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusCreated)
+	agentTicket := mintAgentTaskToken(t, agentID, first["task_id"].(string), testUserID)
+	submissionStatus(t, testServer.URL, agentTicket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusCreated)
 	path := "/api/chat/sessions/" + sessionID + "/messages"
 	otherID := fx.User(t, "Other submission user", uuid.NewString()+"@example.test")
 	fx.Member(t, testWorkspaceID, otherID, "member")
-	otherToken, err := generateTestJWT(otherID, "other@example.test", "Other")
+	otherTicket, err := generateTestJWT(otherID, "other@example.test", "Other")
 	if err != nil {
 		t.Fatal(err)
 	}
-	submissionStatus(t, testServer.URL, otherToken, testWorkspaceID, "POST", path, body, http.StatusForbidden)
+	submissionStatus(t, testServer.URL, otherTicket, testWorkspaceID, "POST", path, body, http.StatusForbidden)
 	foreign := fx.Workspace(t, "Foreign submission", "foreign-"+uuid.NewString())
 	fx.Member(t, foreign, testUserID, "owner")
-	submissionStatus(t, testServer.URL, testToken, foreign, "POST", path, body, http.StatusNotFound)
+	submissionStatus(t, testServer.URL, testTicket, foreign, "POST", path, body, http.StatusNotFound)
 	fx.Exec(t, `UPDATE agent SET visibility='private', permission_mode='private', owner_id=$2 WHERE id=$1`, agentID, otherID)
 	t.Cleanup(func() {
 		fx.Exec(t, `UPDATE agent SET visibility='workspace', owner_id=$2 WHERE id=$1`, agentID, testUserID)
 	})
 	// Workspace owners retain view access but cannot invoke another owner's private agent.
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusForbidden)
-	submissionStatus(t, testServer.URL, agentToken, testWorkspaceID, "POST", path, body, http.StatusForbidden)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusForbidden)
+	submissionStatus(t, testServer.URL, agentTicket, testWorkspaceID, "POST", path, body, http.StatusForbidden)
 	fx.Exec(t, `UPDATE member SET role='member' WHERE workspace_id=$1 AND user_id=$2`, testWorkspaceID, testUserID)
 	t.Cleanup(func() {
 		fx.Exec(t, `UPDATE member SET role='owner' WHERE workspace_id=$1 AND user_id=$2`, testWorkspaceID, testUserID)
 	})
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusForbidden)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusForbidden)
 	fx.Exec(t, `UPDATE agent SET visibility='workspace', owner_id=$2 WHERE id=$1`, agentID, testUserID)
 	fx.Exec(t, `DELETE FROM member WHERE workspace_id=$1 AND user_id=$2`, testWorkspaceID, testUserID)
 	t.Cleanup(func() {
 		fx.Exec(t, `INSERT INTO member (workspace_id,user_id,role) VALUES ($1,$2,'owner') ON CONFLICT DO NOTHING`, testWorkspaceID, testUserID)
 	})
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, body, http.StatusNotFound)
-	submissionStatus(t, testServer.URL, agentToken, testWorkspaceID, "POST", path, body, http.StatusNotFound)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, body, http.StatusNotFound)
+	submissionStatus(t, testServer.URL, agentTicket, testWorkspaceID, "POST", path, body, http.StatusNotFound)
 	fx.Exec(t, `INSERT INTO member (workspace_id,user_id,role) VALUES ($1,$2,'owner')`, testWorkspaceID, testUserID)
 	if replay := submissionSend(t, sessionID, body); !reflect.DeepEqual(first, replay) {
 		t.Fatalf("restored authorization changed acceptance=%v", replay)
@@ -363,7 +363,7 @@ func TestChatSubmissionCancelAndExplicitRestore(t *testing.T) {
 	sessionID, _ := submissionSession(t)
 	body := map[string]any{"content": "draft to restore", "submission_id": uuid.NewString()}
 	first := submissionSend(t, sessionID, body)
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", "/api/tasks/"+first["task_id"].(string)+"/cancel", nil, http.StatusOK)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", "/api/tasks/"+first["task_id"].(string)+"/cancel", nil, http.StatusOK)
 	// Unstarted empty turns are removed immediately. A replay acknowledges the
 	// original accepted task without bringing that cancelled message back.
 	if replay := submissionSend(t, sessionID, body); !reflect.DeepEqual(first, replay) {
@@ -390,12 +390,12 @@ func TestChatSubmissionQueueEditPreservesAcceptance(t *testing.T) {
 	body := map[string]any{"content": "original follow-up", "submission_id": uuid.NewString()}
 	accepted := submissionSend(t, sessionID, body)
 	path := "/api/tasks/" + accepted["task_id"].(string) + "/cancel?expected_status=queued&chat_session_id=" + sessionID + "&queue_action=edit"
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", path, nil, http.StatusOK)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", path, nil, http.StatusOK)
 	if replay := submissionSend(t, sessionID, body); !reflect.DeepEqual(accepted, replay) || replay["queued"] != true {
 		t.Fatalf("queue edit changed acceptance=%v", replay)
 	}
 	body["content"] = "edited follow-up"
-	submissionStatus(t, testServer.URL, testToken, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusConflict)
+	submissionStatus(t, testServer.URL, testTicket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusConflict)
 	body["submission_id"] = uuid.NewString()
 	submissionSend(t, sessionID, body)
 	submissionCounts(t, sessionID, 2, 3, 2)
@@ -413,7 +413,7 @@ func TestChatSubmissionIgnoresSpoofedActorHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Authorization", "Bearer "+testTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	req.Header.Set("X-Agent-ID", agentID)
 	req.Header.Set("X-Task-ID", accepted["task_id"].(string))
@@ -438,30 +438,30 @@ func TestChatSubmissionPreservesProjectContextContract(t *testing.T) {
 	fx := workspaceFixture(t)
 	caller := fx.User(t, "Submission project member", uuid.NewString()+"@example.test")
 	fx.Member(t, testWorkspaceID, caller, "member")
-	token, err := generateTestJWT(caller, "project-member@example.test", "Project member")
+	ticket, err := generateTestJWT(caller, "project-member@example.test", "Project member")
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime := fx.Runtime(t, "Submission project runtime", testutil.Cols{"owner_id": caller})
 	agent := fx.Agent(t, "Submission project agent", runtime, testutil.Cols{"owner_id": caller})
 	project := fx.Project(t, "Submission project context")
-	created := submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", "/api/chat/sessions", map[string]any{"agent_id": agent, "project_id": project}, http.StatusCreated)
+	created := submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", "/api/chat/sessions", map[string]any{"agent_id": agent, "project_id": project}, http.StatusCreated)
 	sessionID := created["id"].(string)
-	cleanupSubmissionSession(t, token, testWorkspaceID, sessionID)
+	cleanupSubmissionSession(t, ticket, testWorkspaceID, sessionID)
 	path := "/api/chat/sessions/" + sessionID + "/messages"
 	body := map[string]any{"content": "project conversation", "submission_id": uuid.NewString()}
-	accepted := submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	accepted := submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	fx.Exec(t, `UPDATE project SET visibility='private' WHERE id=$1`, project)
-	submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", "/api/chat/sessions", map[string]any{"agent_id": agent, "project_id": project}, http.StatusNotFound)
-	submissionStatus(t, testServer.URL, token, testWorkspaceID, "PATCH", "/api/chat/sessions/"+sessionID, map[string]any{"project_id": project}, http.StatusNotFound)
+	submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", "/api/chat/sessions", map[string]any{"agent_id": agent, "project_id": project}, http.StatusNotFound)
+	submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "PATCH", "/api/chat/sessions/"+sessionID, map[string]any{"project_id": project}, http.StatusNotFound)
 	// The existing send path retains the selected project until claim time.
 	// Both legacy and keyed sends keep that behavior after visibility changes.
-	submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", path, map[string]any{"content": "legacy after visibility change"}, http.StatusCreated)
-	if replay := submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", path, body, http.StatusCreated); !reflect.DeepEqual(accepted, replay) {
+	submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", path, map[string]any{"content": "legacy after visibility change"}, http.StatusCreated)
+	if replay := submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", path, body, http.StatusCreated); !reflect.DeepEqual(accepted, replay) {
 		t.Fatalf("project visibility changed historical acceptance=%v", replay)
 	}
 	body["submission_id"] = uuid.NewString()
-	submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", path, body, http.StatusCreated)
+	submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", path, body, http.StatusCreated)
 	var stored string
 	fx.QueryRow(t, `SELECT project_id::text FROM chat_session WHERE id=$1`, sessionID).Scan(&stored)
 	if stored != project {
@@ -482,8 +482,8 @@ func TestChatSubmissionAttachmentOwnershipPerActor(t *testing.T) {
 	if bound, ok := member["attachment_ids"].([]any); !ok || len(bound) != 0 {
 		t.Fatalf("member bound another actor's attachment=%v", member)
 	}
-	token := mintAgentTaskToken(t, agentID, member["task_id"].(string), testUserID)
-	agent := submissionStatus(t, testServer.URL, token, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusCreated)
+	ticket := mintAgentTaskToken(t, agentID, member["task_id"].(string), testUserID)
+	agent := submissionStatus(t, testServer.URL, ticket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", body, http.StatusCreated)
 	if bound, ok := agent["attachment_ids"].([]any); !ok || len(bound) != 1 || bound[0] != attachment {
 		t.Fatalf("agent failed to bind its own attachment=%v", agent)
 	}

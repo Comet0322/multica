@@ -109,7 +109,7 @@ func TestARefusedHandshakeIsNotCountedAsAConnectFailure(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: refusingConn(40001, "invalid credential")},
 		wsURL:          "wss://example.test/ws",
@@ -150,7 +150,7 @@ func TestAnUnverifiableHandshakeIsNotCountedAsACredentialFailure(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: refusingConn(45009, "api freq out of limit")},
 		wsURL:          "wss://example.test/ws",
@@ -184,7 +184,7 @@ func TestADialThatNeverLandsIsAConnectFailure(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         failingDialer{err: errors.New("dial tcp: connection refused")},
 		wsURL:          "wss://example.test/ws",
@@ -212,7 +212,7 @@ func TestAHandshakeThatIsNeverAnsweredIsAConnectFailure(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: &silentSubscribeConn{}},
 		wsURL:          "wss://example.test/ws",
@@ -262,7 +262,7 @@ func TestAFullIngestQueueIsReportedAsBackpressure(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler: func(context.Context, channel.InboundMessage) error {
 			if calls.Add(1) == 1 {
 				<-release
@@ -316,7 +316,7 @@ func TestAChannelWithNoSinkStillRuns(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: refusingConn(40001, "invalid credential")},
 		wsURL:          "wss://example.test/ws",
@@ -355,7 +355,7 @@ func TestTheFactorySubstitutesTheNoOpSink(t *testing.T) {
 type fixedCredentials struct{}
 
 func (fixedCredentials) Credentials(inst Installation) (InstallationCredentials, error) {
-	return InstallationCredentials{BotID: inst.BotID, Secret: "secret-1"}, nil
+	return InstallationCredentials{BotID: inst.BotID, Sealed: "secret-1"}, nil
 }
 
 // rejectingSubscribeConn completes the handshake exchange and answers it with

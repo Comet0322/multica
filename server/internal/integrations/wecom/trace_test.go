@@ -151,7 +151,7 @@ func runOneCallback(t *testing.T, text string) string {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "THE_SMART_BOT_SECRET",
+		sealed:         "THE_SMART_BOT_SECRET",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: &callbackConn{callback: frame}},
 		wsURL:          "wss://example.test/ws",
@@ -246,7 +246,7 @@ func TestTraceNeverLogsTheSmartBotSecret(t *testing.T) {
 func TestTraceNeverLogsABindingToken(t *testing.T) {
 	withTrace(t, true)
 
-	rawToken := productionShapedToken(t)
+	rawTicket := productionShapedToken(t)
 	const senderID = "SENDER_USERID"
 
 	log, buf := capturingLogger()
@@ -258,7 +258,7 @@ func TestTraceNeverLogsABindingToken(t *testing.T) {
 	// this test reads is never written.
 	reg.set(inst.ID, conn.autoAck(newWSSender(conn, log)))
 	r := NewOutboundReplier(OutboundReplierConfig{Senders: reg, AppURL: "https://multica.example"})
-	r.binding = fakeBinder{raw: rawToken}
+	r.binding = fakeBinder{raw: rawTicket}
 
 	msg := channel.InboundMessage{Source: channel.Source{
 		ChatID:   "GROUP_CHAT_ID",
@@ -274,7 +274,7 @@ func TestTraceNeverLogsABindingToken(t *testing.T) {
 	if !strings.Contains(out, "dir=out") || !strings.Contains(out, "wecom/bind") {
 		t.Fatalf("the binding prompt was not traced, so this test proves nothing:\n%s", out)
 	}
-	if strings.Contains(out, rawToken) {
+	if strings.Contains(out, rawTicket) {
 		t.Errorf("the raw binding token reached the log:\n%s", out)
 	}
 	if !strings.Contains(out, "token=[redacted]") {
@@ -288,15 +288,15 @@ func TestTraceNeverLogsABindingToken(t *testing.T) {
 // character still falls inside tracePreviewRunes — i.e. an unredacted preview
 // would print the credential whole, not a useless fragment.
 func TestBindingPromptFitsInsideThePreviewCap(t *testing.T) {
-	rawToken := productionShapedToken(t)
-	if len(rawToken) != 43 {
-		t.Fatalf("token length = %d, want the 43 chars Mint produces", len(rawToken))
+	rawTicket := productionShapedToken(t)
+	if len(rawTicket) != 43 {
+		t.Fatalf("token length = %d, want the 43 chars Mint produces", len(rawTicket))
 	}
 	// Mirrors replier.go sendBindingPrompt.
-	bindURL := "https://multica.example" + "/wecom/bind" + "?token=" + url.QueryEscape(rawToken)
-	upToTokenEnd := "👋 请先绑定你的 Multica 账号，才能与我对话：\n" + bindURL
+	bindURL := "https://multica.example" + "/wecom/bind" + "?token=" + url.QueryEscape(rawTicket)
+	upToTicketEnd := "👋 请先绑定你的 Multica 账号，才能与我对话：\n" + bindURL
 
-	if n := utf8.RuneCountInString(upToTokenEnd); n > tracePreviewRunes {
+	if n := utf8.RuneCountInString(upToTicketEnd); n > tracePreviewRunes {
 		t.Fatalf("the token ends at rune %d, past the %d-rune cap — the leak this "+
 			"PR redacts would not be reachable and the redaction rationale needs revisiting",
 			n, tracePreviewRunes)

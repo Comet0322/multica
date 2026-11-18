@@ -62,7 +62,7 @@ func BackfillBotUnionIDs(
 			continue
 		}
 		attempted++
-		secret, err := creds.DecryptAppSecret(row)
+		sealed, err := creds.DecryptAppSecret(row)
 		if err != nil {
 			log.Warn("lark backfill: decrypt app_secret failed",
 				"installation_id", uuidString(row.ID),
@@ -77,7 +77,7 @@ func BackfillBotUnionIDs(
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		info, err := api.GetBotInfo(fetchCtx, InstallationCredentials{
 			AppID:     row.AppID,
-			AppSecret: secret,
+			AppSealed: sealed,
 			TenantKey: row.TenantKey.String,
 			Region:    RegionOrDefault(row.Region),
 		})

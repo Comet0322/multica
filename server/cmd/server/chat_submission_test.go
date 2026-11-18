@@ -29,7 +29,7 @@ func submissionSession(t *testing.T) (string, string) {
 		ID string `json:"id"`
 	}
 	readJSON(t, resp, &session)
-	cleanupSubmissionSession(t, testToken, testWorkspaceID, session.ID)
+	cleanupSubmissionSession(t, testTicket, testWorkspaceID, session.ID)
 	return session.ID, agentID
 }
 
@@ -62,8 +62,8 @@ func TestChatSubmissionNormalControl(t *testing.T) {
 	if len(history) != 1 {
 		t.Fatalf("visible history count=%d", len(history))
 	}
-	agentToken := mintAgentTaskToken(t, agentID, first["task_id"].(string), testUserID)
-	submissionStatus(t, testServer.URL, agentToken, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", map[string]any{"content": "task token turn"}, http.StatusCreated)
+	agentTicket := mintAgentTaskToken(t, agentID, first["task_id"].(string), testUserID)
+	submissionStatus(t, testServer.URL, agentTicket, testWorkspaceID, "POST", "/api/chat/sessions/"+sessionID+"/messages", map[string]any{"content": "task token turn"}, http.StatusCreated)
 	fx := workspaceFixture(t)
 	attachmentID := fx.Insert(t, "attachment", testutil.Cols{
 		"workspace_id": testWorkspaceID, "chat_session_id": sessionID,
@@ -82,17 +82,17 @@ func TestChatSubmissionNormalControl(t *testing.T) {
 	}
 	otherID := fx.User(t, "Submission outsider", uuid.NewString()+"@example.test")
 	fx.Member(t, testWorkspaceID, otherID, "member")
-	otherToken, err := generateTestJWT(otherID, "outsider@example.test", "Outsider")
+	otherTicket, err := generateTestJWT(otherID, "outsider@example.test", "Outsider")
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkDenied := func(token, workspace string) {
+	checkDenied := func(ticket, workspace string) {
 		t.Helper()
 		req, err := http.NewRequest("POST", testServer.URL+"/api/chat/sessions/"+sessionID+"/messages", bytes.NewBufferString(`{"content":"denied"}`))
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		req.Header.Set("X-Workspace-ID", workspace)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -103,16 +103,16 @@ func TestChatSubmissionNormalControl(t *testing.T) {
 			t.Fatalf("denial status=%d", resp.StatusCode)
 		}
 	}
-	checkDenied(otherToken, testWorkspaceID)
+	checkDenied(otherTicket, testWorkspaceID)
 	foreignWorkspace := fx.Workspace(t, "Foreign submission", "submission-"+uuid.NewString())
 	fx.Member(t, foreignWorkspace, testUserID, "owner")
-	checkDenied(testToken, foreignWorkspace)
+	checkDenied(testTicket, foreignWorkspace)
 	fx.Exec(t, `UPDATE agent_runtime SET visibility='public' WHERE id=(SELECT runtime_id FROM agent WHERE id=$1)`, agentID)
 	fx.Exec(t, `UPDATE agent SET visibility='private', permission_mode='private', owner_id=$2 WHERE id=$1`, agentID, otherID)
-	checkDenied(testToken, testWorkspaceID)
+	checkDenied(testTicket, testWorkspaceID)
 	fx.Exec(t, `UPDATE agent SET visibility='workspace', owner_id=$2 WHERE id=$1`, agentID, testUserID)
 	fx.Exec(t, `DELETE FROM member WHERE workspace_id=$1 AND user_id=$2`, testWorkspaceID, otherID)
-	checkDenied(otherToken, testWorkspaceID)
+	checkDenied(otherTicket, testWorkspaceID)
 }
 
 type submissionLostResponse struct{ transport http.RoundTripper }
@@ -141,7 +141,7 @@ func TestChatSubmissionResponseLossReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Authorization", "Bearer "+testTicket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Transport: submissionLostResponse{http.DefaultTransport}}

@@ -18,8 +18,8 @@ import (
 )
 
 type api struct {
-	base, token, workspace string
-	client                 *http.Client
+	base, ticket, workspace string
+	client                  *http.Client
 }
 type apiError struct {
 	Status int
@@ -30,7 +30,7 @@ type apiError struct {
 
 func (e *apiError) Error() string { return fmt.Sprintf("remote API returned HTTP %d", e.Status) }
 
-func newAPI(base, token, workspace string) (*api, error) {
+func newAPI(base, ticket, workspace string) (*api, error) {
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, fmt.Errorf("invalid API base URL")
@@ -38,11 +38,11 @@ func newAPI(base, token, workspace string) (*api, error) {
 	if u.Scheme == "http" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" {
 		return nil, fmt.Errorf("API base URL must use HTTPS except on loopback")
 	}
-	if strings.TrimSpace(token) == "" {
+	if strings.TrimSpace(ticket) == "" {
 		return nil, fmt.Errorf("API token is required")
 	}
 	return &api{
-		base: strings.TrimRight(base, "/"), token: token, workspace: workspace,
+		base: strings.TrimRight(base, "/"), ticket: ticket, workspace: workspace,
 		client: &http.Client{
 			Timeout: 30 * time.Second, Transport: httptransport.CloneDefault(),
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -94,7 +94,7 @@ func (a *api) do(ctx context.Context, method, path, contentType string, body io.
 	if err != nil {
 		return fmt.Errorf("build API request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("Authorization", "Bearer "+a.ticket)
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 	if a.workspace != "" {
@@ -152,7 +152,7 @@ func (a *api) download(ctx context.Context, rawURL string, limit int64) ([]byte,
 		return nil, fmt.Errorf("invalid download URL")
 	}
 	if relative {
-		req.Header.Set("Authorization", "Bearer "+a.token)
+		req.Header.Set("Authorization", "Bearer "+a.ticket)
 		if a.workspace != "" {
 			req.Header.Set("X-Workspace-ID", a.workspace)
 		}

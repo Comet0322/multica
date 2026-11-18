@@ -12,7 +12,7 @@ func TestWeixinRoutesRequireWorkspaceAdminForQRAndDisconnect(t *testing.T) {
 	f := testutil.New(testPool, testWorkspaceID, testUserID)
 	user := f.User(t, "WeChat route member", "weixin-route-"+time.Now().Format("150405.000000000")+"@example.test")
 	f.Member(t, testWorkspaceID, user, "member")
-	token, err := generateTestJWT(user, "weixin-route@example.test", "WeChat route member")
+	ticket, err := generateTestJWT(user, "weixin-route@example.test", "WeChat route member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestWeixinRoutesRequireWorkspaceAdminForQRAndDisconnect(t *testing.T) {
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			req := testutil.JSONRequest(tc.method, tc.path, map[string]string{})
-			testutil.WithHeaders(req, "Authorization", "Bearer "+token, "X-Workspace-ID", testWorkspaceID)
+			testutil.WithHeaders(req, "Authorization", "Bearer "+ticket, "X-Workspace-ID", testWorkspaceID)
 			testutil.Call(t, testServer.Config.Handler.ServeHTTP, req).Want(tc.want)
 		})
 	}

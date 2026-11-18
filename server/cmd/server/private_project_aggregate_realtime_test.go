@@ -51,7 +51,7 @@ func TestRegisterListeners_PrivateProjectAggregateEvents(t *testing.T) {
 		{"deleted private issue", events.Event{Type: protocol.EventIssueDeleted,
 			Payload: map[string]any{"issue_id": "00000000-0000-0000-0000-00000000dead", "project_id": ppPrivate}}, memberScopes(ppMember, ppShared)},
 		{"pull request linked to a private and a public issue", events.Event{Type: protocol.EventPullRequestUpdated,
-			Payload: map[string]any{"pull_request": map[string]any{"id": "pr"}, "linked_issue_ids": []string{ppPublicIssue, ppSecretIssue}}}, memberScopes(ppMember, ppShared)},
+			Payload: map[string]any{"pull_request": map[string]any{"id": "pr"}, "linked_issue_ids": []string{ppPublicIssue, ppSealedIssue}}}, memberScopes(ppMember, ppShared)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fb := publishPrivateAudience(tc.e)

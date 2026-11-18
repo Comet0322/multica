@@ -233,7 +233,7 @@ func (b *devinBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 		// stored login. Never guess a method or preempt session/new's auth error.
 		if methodID := selectDevinAuthMethod(extractACPAuthMethods(initResult), envHasNonEmpty(cmd.Env, "WINDSURF_API_KEY")); methodID != "" {
 			authParams := map[string]any{"methodId": methodID}
-			if methodID == devinAuthMethodWindsurfAPIKey {
+			if methodID == devinAuthMethodWindsurfApilock {
 				authParams["_meta"] = map[string]any{"headless": true}
 			}
 			if _, err := c.request(runCtx, "authenticate", authParams); err != nil {
@@ -416,7 +416,7 @@ func devinSessionNotFound(err error) bool {
 }
 
 const (
-	devinAuthMethodWindsurfAPIKey = "windsurf-api-key"
+	devinAuthMethodWindsurfApilock = "windsurf-api-key"
 )
 
 // Only opt into the advertised API-key handshake when its credential exists.
@@ -424,8 +424,8 @@ const (
 func selectDevinAuthMethod(methods []string, haveWindsurfKey bool) string {
 	if haveWindsurfKey {
 		for _, method := range methods {
-			if strings.TrimSpace(method) == devinAuthMethodWindsurfAPIKey {
-				return devinAuthMethodWindsurfAPIKey
+			if strings.TrimSpace(method) == devinAuthMethodWindsurfApilock {
+				return devinAuthMethodWindsurfApilock
 			}
 		}
 	}
@@ -465,9 +465,9 @@ func discoverDevinModels(ctx context.Context, runtimeCmd Command) ([]Model, erro
 // away from the field name that identifies it to the shared sanitizer.
 func devinDiagnostic(value string, env []string) string {
 	for _, entry := range env {
-		key, secret, ok := strings.Cut(entry, "=")
-		if ok && strings.EqualFold(key, "WINDSURF_API_KEY") && secret != "" {
-			value = strings.ReplaceAll(value, secret, "[REDACTED]")
+		key, sealed, ok := strings.Cut(entry, "=")
+		if ok && strings.EqualFold(key, "WINDSURF_API_KEY") && sealed != "" {
+			value = strings.ReplaceAll(value, sealed, "[REDACTED]")
 		}
 	}
 	value = strings.TrimSpace(sanitizeAgentDiagnostic(value))

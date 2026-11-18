@@ -38,14 +38,14 @@ type PersonalAccessTokenResponse struct {
 
 type CreatePATResponse struct {
 	PersonalAccessTokenResponse
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 func patToResponse(pat db.PersonalAccessToken) PersonalAccessTokenResponse {
 	return PersonalAccessTokenResponse{
 		ID:         uuidToString(pat.ID),
 		Name:       pat.Name,
-		Prefix:     pat.TokenPrefix,
+		Prefix:     pat.TicketPrefix,
 		ExpiresAt:  timestampToPtr(pat.ExpiresAt),
 		LastUsedAt: timestampToPtr(pat.LastUsedAt),
 		CreatedAt:  timestampToString(pat.CreatedAt),
@@ -81,7 +81,7 @@ func (h *Handler) CreatePersonalAccessToken(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	rawToken, err := auth.GeneratePATToken()
+	rawTicket, err := auth.GeneratePATToken()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate token")
 		return
@@ -95,17 +95,17 @@ func (h *Handler) CreatePersonalAccessToken(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	prefix := rawToken
+	prefix := rawTicket
 	if len(prefix) > 12 {
 		prefix = prefix[:12]
 	}
 
 	pat, err := h.Queries.CreatePersonalAccessToken(r.Context(), db.CreatePersonalAccessTokenParams{
-		UserID:      parseUUID(userID),
-		Name:        req.Name,
-		TokenHash:   auth.HashToken(rawToken),
-		TokenPrefix: prefix,
-		ExpiresAt:   expiresAt,
+		UserID:       parseUUID(userID),
+		Name:         req.Name,
+		TicketHash:   auth.HashToken(rawTicket),
+		TicketPrefix: prefix,
+		ExpiresAt:    expiresAt,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create token")
@@ -114,7 +114,7 @@ func (h *Handler) CreatePersonalAccessToken(w http.ResponseWriter, r *http.Reque
 
 	writeJSON(w, http.StatusCreated, CreatePATResponse{
 		PersonalAccessTokenResponse: patToResponse(pat),
-		Token:                       rawToken,
+		Ticket:                      rawTicket,
 	})
 }
 
@@ -174,13 +174,13 @@ func (h *Handler) RenewCurrentPersonalAccessToken(w http.ResponseWriter, r *http
 	// middleware resolves it to a userID but doesn't pass the hash forward,
 	// and we need the row, not just the user.
 	authHeader := r.Header.Get("Authorization")
-	rawToken := strings.TrimPrefix(authHeader, "Bearer ")
-	if rawToken == "" || rawToken == authHeader || !strings.HasPrefix(rawToken, "mul_") {
+	rawTicket := strings.TrimPrefix(authHeader, "Bearer ")
+	if rawTicket == "" || rawTicket == authHeader || !strings.HasPrefix(rawTicket, "mul_") {
 		writeError(w, http.StatusBadRequest, "only personal access tokens can be renewed")
 		return
 	}
 
-	hash := auth.HashToken(rawToken)
+	hash := auth.HashToken(rawTicket)
 	pat, err := h.Queries.GetPersonalAccessTokenByHash(r.Context(), hash)
 	if err != nil {
 		// The Auth middleware already validated the token, so reaching here

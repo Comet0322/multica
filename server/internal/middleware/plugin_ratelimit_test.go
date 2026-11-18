@@ -16,9 +16,9 @@ func TestPluginRateLimitIsPerCredentialAndUsesStableProblem(t *testing.T) {
 	rdb := newRedisTestClient(t)
 	handler := PluginRateLimit(rdb, 1, time.Minute)(okHandler)
 
-	call := func(token string) *httptest.ResponseRecorder {
+	call := func(ticket string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodGet, "/v1/issues/MUL-1", nil)
-		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("Authorization", "Bearer "+ticket)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		return response

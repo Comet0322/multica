@@ -72,7 +72,7 @@ func gitLabCIWebhookFixture(t *testing.T, event string, actions []string) (strin
 	dbfx.Cleanup(t, `DELETE FROM webhook_delivery WHERE autopilot_id = $1`, apID)
 	dbfx.Cleanup(t, `DELETE FROM autopilot_run WHERE autopilot_id = $1`, apID)
 	dbfx.Cleanup(t, `DELETE FROM agent_task_queue WHERE agent_id = $1`, agentID)
-	setSigningSecretViaHandler(t, apID, trig.ID, testSigningSecret)
+	setSigningSecretViaHandler(t, apID, trig.ID, testSigningSealed)
 	return apID, trig
 }
 
@@ -108,8 +108,8 @@ func TestWebhookGitLabCI_IngressAndRecoveredWorker(t *testing.T) {
 						}
 						deliveryID = uuidToString(row.ID)
 					} else {
-						w := postWebhook(t, *trig.WebhookToken, body, map[string]string{
-							"X-Gitlab-Event": event, "X-Hub-Signature-256": signBody(testSigningSecret, body),
+						w := postWebhook(t, *trig.WebhookTicket, body, map[string]string{
+							"X-Gitlab-Event": event, "X-Hub-Signature-256": signBody(testSigningSealed, body),
 						})
 						if tc.allowed {
 							deliveryID = requireAcceptedWebhookResponse(t, w)
@@ -151,7 +151,7 @@ func TestWebhookGitLabCI_SignatureBeforeFiltering(t *testing.T) {
 			for _, signature := range []string{"", "sha256=deadbeef"} {
 				t.Run(fmt.Sprintf("%s/%s/signature=%q", event, status, signature), func(t *testing.T) {
 					apID, trig := gitLabCIWebhookFixture(t, event, []string{"failed"})
-					w := postWebhook(t, *trig.WebhookToken, gitLabCIWebhookBody(event, status), map[string]string{
+					w := postWebhook(t, *trig.WebhookTicket, gitLabCIWebhookBody(event, status), map[string]string{
 						"X-Gitlab-Event": event, "X-Hub-Signature-256": signature,
 					})
 					var resp map[string]any

@@ -45,12 +45,12 @@ func (gitlabProvider) EventKind(h http.Header, body []byte) EventKind {
 // VerifySignature compares the X-Gitlab-Token header to the stored secret in
 // constant time. GitLab does not HMAC-sign webhook bodies; the shared token is
 // the whole authentication, so an empty stored secret never validates.
-func (gitlabProvider) VerifySignature(secret string, h http.Header, _ []byte) bool {
-	if secret == "" {
+func (gitlabProvider) VerifySignature(sealed string, h http.Header, _ []byte) bool {
+	if sealed == "" {
 		return false
 	}
 	got := h.Get("X-Gitlab-Token")
-	return subtle.ConstantTimeCompare([]byte(got), []byte(secret)) == 1
+	return subtle.ConstantTimeCompare([]byte(got), []byte(sealed)) == 1
 }
 
 type glMergeRequestPayload struct {
@@ -209,13 +209,13 @@ func normalizeGitLabPipelineState(s string) string {
 	}
 }
 
-func (gitlabProvider) ValidateToken(ctx context.Context, instanceURL, token string) (Account, error) {
+func (gitlabProvider) ValidateToken(ctx context.Context, instanceURL, ticket string) (Account, error) {
 	endpoint := NormalizeInstanceURL(instanceURL) + "/api/v4/user"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return Account{}, fmt.Errorf("gitlab: build request: %w", err)
 	}
-	req.Header.Set("PRIVATE-TOKEN", token)
+	req.Header.Set("PRIVATE-TOKEN", ticket)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := httpClient.Do(req)
@@ -246,7 +246,7 @@ func (gitlabProvider) ValidateToken(ctx context.Context, instanceURL, token stri
 // RepositoryReadable checks the exact project named by a system-hook event.
 // /user validation only proves that the token is valid, not that it can read
 // every private project listed in a workspace.
-func (gitlabProvider) RepositoryReadable(ctx context.Context, instanceURL, owner, name, token string) (bool, error) {
+func (gitlabProvider) RepositoryReadable(ctx context.Context, instanceURL, owner, name, ticket string) (bool, error) {
 	// Finish authorization before GitLab's webhook delivery window expires.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -256,7 +256,7 @@ func (gitlabProvider) RepositoryReadable(ctx context.Context, instanceURL, owner
 	if err != nil {
 		return false, fmt.Errorf("gitlab: build project request: %w", err)
 	}
-	req.Header.Set("PRIVATE-TOKEN", token)
+	req.Header.Set("PRIVATE-TOKEN", ticket)
 	req.Header.Set("Accept", "application/json")
 	resp, err := httpClient.Do(req)
 	if err != nil {

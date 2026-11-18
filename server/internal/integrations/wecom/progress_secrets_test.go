@@ -83,7 +83,7 @@ func TestACredentialNeverReachesTheBubble(t *testing.T) {
 			if !strings.Contains(got, tc.intact) {
 				t.Fatalf("the line no longer says what the agent is doing: %q", got)
 			}
-			if !strings.Contains(got, secretMask) {
+			if !strings.Contains(got, sealedMask) {
 				t.Fatalf("the value vanished with no sign it was redacted: %q", got)
 			}
 		})
@@ -111,7 +111,7 @@ func TestOrdinaryArgumentsSurviveIntact(t *testing.T) {
 		`sk-*`,
 	} {
 		t.Run(in, func(t *testing.T) {
-			if got := safeFragment(in); strings.Contains(got, secretMask) {
+			if got := safeFragment(in); strings.Contains(got, sealedMask) {
 				t.Fatalf("an ordinary argument was redacted: %q -> %q", in, got)
 			}
 		})
@@ -194,7 +194,7 @@ func TestAnEnvironmentVariableAssignmentIsRedacted(t *testing.T) {
 			if strings.Contains(got, tc.gone) {
 				t.Fatalf("the credential reached the bubble: %q", got)
 			}
-			if !strings.Contains(got, secretMask) {
+			if !strings.Contains(got, sealedMask) {
 				t.Fatalf("the value vanished with no sign it was redacted: %q", got)
 			}
 		})
@@ -244,7 +244,7 @@ func TestTheWiderKeyPatternDoesNotEatProse(t *testing.T) {
 		`PWD=/srv/app`,
 	} {
 		t.Run(in, func(t *testing.T) {
-			if got := safeFragment(in); strings.Contains(got, secretMask) {
+			if got := safeFragment(in); strings.Contains(got, sealedMask) {
 				t.Fatalf("ordinary text was redacted: %q -> %q", in, got)
 			}
 		})
@@ -266,23 +266,23 @@ func TestASecretSplitAcrossIncrementsIsCaught(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		chunks []string
-		secret string
+		sealed string
 	}{
 		{
 			name:   "a value arriving after its key",
 			chunks: []string{"I'll connect with password=", "hunter2 and see."},
-			secret: "hunter2",
+			sealed: "hunter2",
 		},
 		{
 			name:   "a key split after its prefix",
 			chunks: []string{"I'll try the key sk-proj-AbC1", "23dEfGh456IjKlMn789OpQrSt012UvWx345Yz to call the API."},
-			secret: "23dEfGh456",
+			sealed: "23dEfGh456",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for i, frame := range thinkingFrames(t, tc.chunks...) {
-				if strings.Contains(frame, tc.secret) {
-					t.Errorf("frame %d carries %q: %q", i, tc.secret, frame)
+				if strings.Contains(frame, tc.sealed) {
+					t.Errorf("frame %d carries %q: %q", i, tc.sealed, frame)
 				}
 			}
 		})
@@ -319,7 +319,7 @@ func TestACredentialInsideAURLIsRedacted(t *testing.T) {
 		`open https://github.com/multica-ai/multica/pull/9155`,
 		`curl https://api.example.com/v1/users/7f3c2a9e-1b4d-4e8a-9c2f-3d5e6f7a8b9c?expand=teams`,
 	} {
-		if got := safeFragment(in); strings.Contains(got, secretMask) {
+		if got := safeFragment(in); strings.Contains(got, sealedMask) {
 			t.Errorf("an ordinary URL was redacted: %q -> %q", in, got)
 		}
 	}

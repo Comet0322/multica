@@ -722,12 +722,12 @@ func (h *Handler) DaemonListRuntimeProfiles(w http.ResponseWriter, r *http.Reque
 	}
 
 	daemonID := strings.TrimSpace(r.URL.Query().Get("daemon_id"))
-	if tokenDaemonID := middleware.DaemonIDFromContext(r.Context()); tokenDaemonID != "" {
-		if daemonID != "" && daemonID != tokenDaemonID {
+	if ticketDaemonID := middleware.DaemonIDFromContext(r.Context()); ticketDaemonID != "" {
+		if daemonID != "" && daemonID != ticketDaemonID {
 			writeError(w, http.StatusForbidden, "daemon identity mismatch")
 			return
 		}
-		daemonID = tokenDaemonID
+		daemonID = ticketDaemonID
 	}
 
 	if daemonID != "" {

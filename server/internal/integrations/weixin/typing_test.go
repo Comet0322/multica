@@ -81,7 +81,7 @@ func TestTypingKeepaliveCacheAndTerminalCleanup(t *testing.T) {
 			defer server.Close()
 			box := testBox(t)
 			encrypted, _ := box.Seal([]byte("token"))
-			cfg, _ := json.Marshal(installConfig{AppID: "bot", UserID: "owner", BaseURL: DefaultBaseURL, TokenEncrypted: base64.StdEncoding.EncodeToString(encrypted)})
+			cfg, _ := json.Marshal(installConfig{AppID: "bot", UserID: "owner", BaseURL: DefaultBaseURL, TicketEncrypted: base64.StdEncoding.EncodeToString(encrypted)})
 			contextToken, _ := box.Seal([]byte("reply-context"))
 			store := &memoryTypingStore{state: db.WeixinAccountState{ContextTokenEncrypted: contextToken}}
 			store.active.Store(true)
@@ -162,7 +162,7 @@ func TestTypingContinuesAfterTransientSendFailure(t *testing.T) {
 			defer server.Close()
 			box := testBox(t)
 			encrypted, _ := box.Seal([]byte("token"))
-			cfg, _ := json.Marshal(installConfig{AppID: "bot", UserID: "owner", BaseURL: DefaultBaseURL, TokenEncrypted: base64.StdEncoding.EncodeToString(encrypted)})
+			cfg, _ := json.Marshal(installConfig{AppID: "bot", UserID: "owner", BaseURL: DefaultBaseURL, TicketEncrypted: base64.StdEncoding.EncodeToString(encrypted)})
 			store := &memoryTypingStore{}
 			store.active.Store(true)
 			n := NewTypingNotifier(store, box, nil)
@@ -206,7 +206,7 @@ func TestTypingSkipsUnavailableTicketsAndAlreadySettledInput(t *testing.T) {
 			defer server.Close()
 			box := testBox(t)
 			encrypted, _ := box.Seal([]byte("token"))
-			cfg, _ := json.Marshal(installConfig{AppID: "bot", UserID: "owner", BaseURL: DefaultBaseURL, TokenEncrypted: base64.StdEncoding.EncodeToString(encrypted)})
+			cfg, _ := json.Marshal(installConfig{AppID: "bot", UserID: "owner", BaseURL: DefaultBaseURL, TicketEncrypted: base64.StdEncoding.EncodeToString(encrypted)})
 			store := &memoryTypingStore{}
 			store.active.Store(!strings.Contains(body, `"ret":0,"typing_ticket"`))
 			n := NewTypingNotifier(store, box, nil)

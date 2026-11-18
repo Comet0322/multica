@@ -124,9 +124,9 @@ func makeDue(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id string) {
 	}
 }
 
-func claimParams(token string, ttl time.Duration) db.ClaimDueWecomInstallSessionParams {
+func claimParams(ticket string, ttl time.Duration) db.ClaimDueWecomInstallSessionParams {
 	return db.ClaimDueWecomInstallSessionParams{
-		LeaseToken:     pgtype.Text{String: token, Valid: true},
+		LeaseToken:     pgtype.Text{String: ticket, Valid: true},
 		LeaseExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(ttl), Valid: true},
 	}
 }
@@ -439,7 +439,7 @@ func TestInstallDB_WorkerWalksASessionToSuccess(t *testing.T) {
 	}
 
 	// Scanned.
-	provider.query = QueryResult{Status: QueryStatusSuccess, BotInfo: &BotInfo{BotID: "bot_scan_walk", Secret: "s3cret"}}
+	provider.query = QueryResult{Status: QueryStatusSuccess, BotInfo: &BotInfo{BotID: "bot_scan_walk", Sealed: "s3cret"}}
 	makeDue(t, ctx, pool, begun.SessionID)
 	if worked, err := w.processOne(ctx); err != nil || !worked {
 		t.Fatalf("success poll: worked=%v err=%v", worked, err)
@@ -508,7 +508,7 @@ VALUES ($1, $2, 'wecom', '{"app_id":"bot_scan_held","bot_id":"bot_scan_held","ap
 			if worked, err := w.processOne(ctx); err != nil || !worked {
 				t.Fatalf("generate step: worked=%v err=%v", worked, err)
 			}
-			provider.query = QueryResult{Status: QueryStatusSuccess, BotInfo: &BotInfo{BotID: tc.bot, Secret: "s3cret"}}
+			provider.query = QueryResult{Status: QueryStatusSuccess, BotInfo: &BotInfo{BotID: tc.bot, Sealed: "s3cret"}}
 			makeDue(t, ctx, pool, begun.SessionID)
 			if worked, err := w.processOne(ctx); err != nil || !worked {
 				t.Fatalf("success poll: worked=%v err=%v", worked, err)

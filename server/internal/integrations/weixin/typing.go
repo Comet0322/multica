@@ -32,8 +32,8 @@ type typingRun struct {
 }
 
 type cachedTypingTicket struct {
-	user, token, ticket string
-	expires             time.Time
+	user, pass, ticket string
+	expires            time.Time
 }
 
 // Only the ingesting connector starts keepalives. Durable task state also clears
@@ -148,7 +148,7 @@ func (n *TypingNotifier) keepalive(ctx context.Context, sessionID pgtype.UUID, i
 		}
 		n.mu.Unlock()
 	}()
-	api := newAPI(creds.BaseURL, creds.Token, n.client)
+	api := newAPI(creds.BaseURL, creds.Ticket, n.client)
 	ticket := ""
 	started := false
 	defer func() {
@@ -196,7 +196,7 @@ func (n *TypingNotifier) ticket(ctx context.Context, id pgtype.UUID, creds crede
 	n.mu.Lock()
 	cached := n.tickets[id]
 	n.mu.Unlock()
-	if cached.user == creds.UserID && cached.token == creds.Token && time.Now().Before(cached.expires) {
+	if cached.user == creds.UserID && cached.pass == creds.Ticket && time.Now().Before(cached.expires) {
 		return cached.ticket
 	}
 	state, err := n.q.GetWeixinAccountState(ctx, db.GetWeixinAccountStateParams{InstallationID: id, BotID: creds.AppID})
@@ -218,7 +218,7 @@ func (n *TypingNotifier) ticket(ctx context.Context, id pgtype.UUID, creds crede
 		}
 	}
 	if len(n.tickets) < 1024 {
-		n.tickets[id] = cachedTypingTicket{user: creds.UserID, token: creds.Token, ticket: ticket, expires: time.Now().Add(typingTicketTTL)}
+		n.tickets[id] = cachedTypingTicket{user: creds.UserID, pass: creds.Ticket, ticket: ticket, expires: time.Now().Add(typingTicketTTL)}
 	}
 	n.mu.Unlock()
 	return ticket

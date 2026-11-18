@@ -107,7 +107,7 @@ func TestHTTPClient_ResolvesHostFromRegion(t *testing.T) {
 			// No BaseURL → region resolution governs the host.
 			c := NewHTTPAPIClient(HTTPClientConfig{HTTPClient: &http.Client{Transport: rt}})
 			if _, err := c.GetBotInfo(context.Background(), InstallationCredentials{
-				AppID: "cli_x", AppSecret: "s", Region: tc.region,
+				AppID: "cli_x", AppSealed: "s", Region: tc.region,
 			}); err != nil {
 				t.Fatalf("GetBotInfo: %v", err)
 			}
@@ -133,7 +133,7 @@ func TestHTTPClient_BaseURLOverridesRegion(t *testing.T) {
 		HTTPClient: &http.Client{Transport: rt},
 	})
 	if _, err := c.GetBotInfo(context.Background(), InstallationCredentials{
-		AppID: "cli_x", AppSecret: "s", Region: RegionLark, // would be larksuite, but override wins
+		AppID: "cli_x", AppSealed: "s", Region: RegionLark, // would be larksuite, but override wins
 	}); err != nil {
 		t.Fatalf("GetBotInfo: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestWSEndpoint_ResolvesHostFromRegion(t *testing.T) {
 			t.Fatalf("NewHTTPConnectionTokenFetcher: %v", err)
 		}
 		if _, err := f.Endpoint(context.Background(), InstallationCredentials{
-			AppID: "cli_x", AppSecret: "s", Region: tc.region,
+			AppID: "cli_x", AppSealed: "s", Region: tc.region,
 		}); err != nil {
 			t.Fatalf("Endpoint(region=%q): %v", tc.region, err)
 		}

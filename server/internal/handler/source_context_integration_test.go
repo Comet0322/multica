@@ -187,8 +187,8 @@ func TestCommentSourceContextLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rebuild after revision-only change: %v", err)
 	}
-	if rebuilt.Token != preview.CaptureToken {
-		t.Fatalf("revision-only change altered token: %q != %q", rebuilt.Token, preview.CaptureToken)
+	if rebuilt.Ticket != preview.CaptureTicket {
+		t.Fatalf("revision-only change altered token: %q != %q", rebuilt.Ticket, preview.CaptureTicket)
 	}
 
 	// Canonical content changes reject the stale preview without creating a
@@ -198,7 +198,7 @@ func TestCommentSourceContextLifecycle(t *testing.T) {
 	}
 	staleRecorder := httptest.NewRecorder()
 	staleRequest := withURLParam(newRequest(http.MethodPost, "/api/comments/"+selectedID+"/sub-issues", map[string]any{
-		"mode": "manual", "capture_token": preview.CaptureToken,
+		"mode": "manual", "capture_token": preview.CaptureTicket,
 		"issue": map[string]any{"title": "must not be created", "status": "todo", "priority": "none"},
 	}), "commentId", selectedID)
 	testHandler.CreateCommentSubIssue(staleRecorder, staleRequest)
@@ -244,7 +244,7 @@ func TestCommentSourceContextLifecycle(t *testing.T) {
 	createRecorder := httptest.NewRecorder()
 	createRequest := withURLParam(newRequest(http.MethodPost, "/api/comments/"+selectedID+"/sub-issues", map[string]any{
 		"mode":          "manual",
-		"capture_token": preview.CaptureToken,
+		"capture_token": preview.CaptureTicket,
 		"issue": map[string]any{
 			"title": "new independent task", "description": "new instructions", "status": "todo", "priority": "none", "stage": 2,
 		},

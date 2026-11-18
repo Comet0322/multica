@@ -64,8 +64,8 @@ func byoParams(ws, agent string) RegisterBYOParams {
 		WorkspaceID: pgtypeUUID(ws),
 		AgentID:     pgtypeUUID(agent),
 		InitiatorID: pgtypeUUID("33333333-3333-3333-3333-333333333333"),
-		BotToken:    "xoxb-real-bot-token",
-		AppToken:    "xapp-1-A0BCXGVCS7R-111-appsecret",
+		BotTicket:   "xoxb-real-bot-token",
+		AppTicket:   "xapp-1-A0BCXGVCS7R-111-appsecret",
 	}
 }
 
@@ -81,7 +81,7 @@ func pgtypeUUID(s string) pgtype.UUID {
 
 func TestParseSlackAppID(t *testing.T) {
 	cases := []struct {
-		token   string
+		ticket  string
 		want    string
 		wantErr bool
 	}{
@@ -93,15 +93,15 @@ func TestParseSlackAppID(t *testing.T) {
 		{"", "", true},
 	}
 	for _, c := range cases {
-		got, err := parseSlackAppID(c.token)
+		got, err := parseSlackAppID(c.ticket)
 		if c.wantErr {
 			if err == nil {
-				t.Errorf("parseSlackAppID(%q) = %q, want error", c.token, got)
+				t.Errorf("parseSlackAppID(%q) = %q, want error", c.ticket, got)
 			}
 			continue
 		}
 		if err != nil || got != c.want {
-			t.Errorf("parseSlackAppID(%q) = %q, %v; want %q", c.token, got, err, c.want)
+			t.Errorf("parseSlackAppID(%q) = %q, %v; want %q", c.ticket, got, err, c.want)
 		}
 	}
 }
@@ -141,17 +141,17 @@ func TestRegisterBYO_PersistsEncryptedTokensKeyedByAppID(t *testing.T) {
 		t.Errorf("config team/bot = %q/%q, want T999/UBOTBYO", cfg.TeamID, cfg.BotUserID)
 	}
 	// Both tokens stored encrypted (never plaintext) and both decrypt back.
-	if cfg.BotTokenEncrypted == "" || cfg.AppTokenEncrypted == "" {
+	if cfg.BotTicketEncrypted == "" || cfg.AppTicketEncrypted == "" {
 		t.Fatalf("both tokens must be stored: %+v", cfg)
 	}
-	if strings.Contains(cfg.BotTokenEncrypted, "xoxb-") || strings.Contains(cfg.AppTokenEncrypted, "xapp-") {
+	if strings.Contains(cfg.BotTicketEncrypted, "xoxb-") || strings.Contains(cfg.AppTicketEncrypted, "xapp-") {
 		t.Error("tokens must be stored encrypted, not plaintext")
 	}
-	botTok, err := decryptToken(cfg.BotTokenEncrypted, svc.box.Open)
+	botTok, err := decryptToken(cfg.BotTicketEncrypted, svc.box.Open)
 	if err != nil || botTok != "xoxb-real-bot-token" {
 		t.Errorf("decrypted bot token = %q, %v", botTok, err)
 	}
-	appTok, err := decryptToken(cfg.AppTokenEncrypted, svc.box.Open)
+	appTok, err := decryptToken(cfg.AppTicketEncrypted, svc.box.Open)
 	if err != nil || appTok != "xapp-1-A0BCXGVCS7R-111-appsecret" {
 		t.Errorf("decrypted app token = %q, %v", appTok, err)
 	}
@@ -163,13 +163,13 @@ func TestRegisterBYO_InvalidTokens(t *testing.T) {
 
 	// Bad bot token prefix — rejected before any network call or upsert.
 	p := byoParams("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
-	p.BotToken = "nope-not-a-bot-token"
+	p.BotTicket = "nope-not-a-bot-token"
 	if _, err := svc.RegisterBYO(context.Background(), p); err != ErrInvalidBotToken {
 		t.Errorf("bad bot token = %v, want ErrInvalidBotToken", err)
 	}
 	// Bad app token.
 	p = byoParams("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
-	p.AppToken = "xapp-broken"
+	p.AppTicket = "xapp-broken"
 	if _, err := svc.RegisterBYO(context.Background(), p); err != ErrInvalidAppToken {
 		t.Errorf("bad app token = %v, want ErrInvalidAppToken", err)
 	}

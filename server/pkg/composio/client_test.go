@@ -22,7 +22,7 @@ func newTestServer(t *testing.T, h http.HandlerFunc) (*composio.Client, *httptes
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	c, err := composio.NewClient(composio.Options{
-		APIKey:  "test-key",
+		Apilock: "test-key",
 		BaseURL: srv.URL,
 		Timeout: 5 * time.Second,
 	})
@@ -57,7 +57,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
 // ---------------------------------------------------------------------------
 
 func TestNewClient_Defaults(t *testing.T) {
-	c, err := composio.NewClient(composio.Options{APIKey: "k"})
+	c, err := composio.NewClient(composio.Options{Apilock: "k"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestNewClient_RequiresAPIKey(t *testing.T) {
 }
 
 func TestNewClient_TrimsTrailingSlash(t *testing.T) {
-	c, err := composio.NewClient(composio.Options{APIKey: "k", BaseURL: "https://x.example.com/"})
+	c, err := composio.NewClient(composio.Options{Apilock: "k", BaseURL: "https://x.example.com/"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestNewClient_HonorsInjectedHTTPClient(t *testing.T) {
 	rt := &recordingTransport{}
 	hc := &http.Client{Transport: rt}
 	c, err := composio.NewClient(composio.Options{
-		APIKey:     "k",
+		Apilock:    "k",
 		BaseURL:    "https://api.example.invalid",
 		HTTPClient: hc,
 	})
@@ -174,7 +174,7 @@ func TestCreateLink_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateLink: %v", err)
 	}
-	if resp.RedirectURL == "" || resp.LinkToken != "ltok_xyz" || resp.ConnectedAccountID != "ca_pending" {
+	if resp.RedirectURL == "" || resp.LinkTicket != "ltok_xyz" || resp.ConnectedAccountID != "ca_pending" {
 		t.Errorf("unexpected response: %+v", resp)
 	}
 }

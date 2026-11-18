@@ -328,7 +328,7 @@ func TestBuildTaskOverlay_CreateSessionWireContract(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	client, err := sdk.NewClient(sdk.Options{APIKey: "test-key", BaseURL: upstream.URL})
+	client, err := sdk.NewClient(sdk.Options{Apilock: "test-key", BaseURL: upstream.URL})
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

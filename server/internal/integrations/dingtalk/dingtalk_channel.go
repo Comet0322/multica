@@ -30,7 +30,7 @@ type dingtalkChannel struct {
 	appID     string // AppKey — routing key stamped into each inbound envelope
 	robotCode string
 	appKey    string
-	appSecret string // decrypted — opens the Stream connection + mints tokens
+	appSealed string // decrypted — opens the Stream connection + mints tokens
 	client    *Client
 	botNames  *BotNameResolver
 	handler   channel.InboundHandler
@@ -106,7 +106,7 @@ func (c *dingtalkChannel) releaseClosedDispatchSlot() {
 // satisfies the Channel contract; the primary reply paths (EventChatDone
 // subscriber and OutboundReplier) build their own sender with a full target.
 func (c *dingtalkChannel) Send(ctx context.Context, out channel.OutboundMessage) (channel.SendResult, error) {
-	s := &sender{client: c.client, robotCode: c.robotCode, appKey: c.appKey, appSecret: c.appSecret}
+	s := &sender{client: c.client, robotCode: c.robotCode, appKey: c.appKey, appSealed: c.appSealed}
 	key, err := s.send(ctx, sendTarget{ConversationType: convTypeGroup, ConversationID: out.ChatID}, out.Text)
 	if err != nil {
 		return channel.SendResult{}, err
@@ -128,14 +128,14 @@ func (c *dingtalkChannel) Connect(ctx context.Context) (err error) {
 	if c.handler == nil {
 		return errors.New("dingtalk: inbound handler not configured")
 	}
-	if c.appSecret == "" {
+	if c.appSealed == "" {
 		return errors.New("dingtalk: app secret not configured")
 	}
 	conn := &wsConnector{
 		httpClient: c.client.httpClient,
 		apiBase:    c.client.apiBase,
 		appKey:     c.appKey,
-		appSecret:  c.appSecret,
+		appSealed:  c.appSealed,
 		onMessage:  c.onMessage,
 		logger:     c.logger,
 	}
@@ -182,7 +182,7 @@ func (c *dingtalkChannel) runInbound(ctx context.Context, job inboundJob) {
 	botName := ""
 	if data.ConversationType == convTypeGroup && data.IsInAtList && c.botNames != nil {
 		resolved, err := c.botNames.resolveCredentials(ctx, credentials{
-			AppKey: c.appKey, AppSecret: c.appSecret, RobotCode: c.robotCode,
+			AppKey: c.appKey, AppSealed: c.appSealed, RobotCode: c.robotCode,
 		}, data.ConversationId)
 		if err != nil {
 			if errors.Is(err, errMissingChatManagePermission) {
@@ -226,7 +226,7 @@ func (c *dingtalkChannel) notifyIssueDispatchError(msg channel.InboundMessage) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), issueErrorReplyTimeout)
 		defer cancel()
-		s := &sender{client: c.client, robotCode: c.robotCode, appKey: c.appKey, appSecret: c.appSecret}
+		s := &sender{client: c.client, robotCode: c.robotCode, appKey: c.appKey, appSealed: c.appSealed}
 		if _, err := s.send(ctx, targetFromMessage(msg), issueDispatchFailedText); err != nil {
 			c.logger.WarnContext(ctx, "dingtalk: issue dispatch-error reply failed",
 				"error", err, "app_id", c.appID)
@@ -337,18 +337,18 @@ func newDingTalkFactoryWithRegistry(deps ChannelDeps, slots *dispatchSlotRegistr
 		if err := json.Unmarshal(cfg.Raw, &ic); err != nil {
 			return nil, fmt.Errorf("dingtalk: decode installation config: %w", err)
 		}
-		appSecret, err := decryptToken(ic.AppSecretEncrypted, deps.Decrypt)
+		appSealed, err := decryptToken(ic.AppSealedEncrypted, deps.Decrypt)
 		if err != nil {
 			return nil, fmt.Errorf("dingtalk: decrypt app secret: %w", err)
 		}
-		if appSecret == "" {
+		if appSealed == "" {
 			return nil, errors.New("dingtalk: installation has no app secret")
 		}
 		ch := &dingtalkChannel{
 			appID:     ic.AppID,
 			robotCode: ic.robotCodeOrAppID(),
 			appKey:    ic.AppID,
-			appSecret: appSecret,
+			appSealed: appSealed,
 			client:    dtClient,
 			botNames:  deps.BotNames,
 			handler:   cfg.Handler,

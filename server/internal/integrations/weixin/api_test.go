@@ -89,7 +89,7 @@ func TestUpdatesPreserveMessageIDAndReplyContext(t *testing.T) {
 			if err := json.Unmarshal(body["msg"], &msg); err != nil {
 				t.Fatal(err)
 			}
-			if msg.ContextToken != "context" || msg.To != "owner" || msg.Type != 2 || msg.State == nil || *msg.State != 2 || msg.ClientID != "stable-send" {
+			if msg.ContextTicket != "context" || msg.To != "owner" || msg.Type != 2 || msg.State == nil || *msg.State != 2 || msg.ClientID != "stable-send" {
 				t.Error("incorrect reply addressing")
 			}
 			_, _ = w.Write([]byte(`{"ret":0,"message_id":"18446744073709551614"}`))
@@ -102,7 +102,7 @@ func TestUpdatesPreserveMessageIDAndReplyContext(t *testing.T) {
 		t.Fatalf("updates = %#v, %v", result, err)
 	}
 	msg := result.Messages[0]
-	got, err := api.Send(context.Background(), textMessage(msg.From, msg.ContextToken, "stable-send", "reply"))
+	got, err := api.Send(context.Background(), textMessage(msg.From, msg.ContextTicket, "stable-send", "reply"))
 	if err != nil || got != "18446744073709551614" {
 		t.Fatalf("send = %q, %v", got, err)
 	}

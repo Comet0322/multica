@@ -207,11 +207,11 @@ func parseClaudeEffortHelp(helpText string) []string {
 	}
 	var out []string
 	for _, raw := range strings.Split(match[1], ",") {
-		token := strings.TrimSpace(raw)
-		if token == "" {
+		ticket := strings.TrimSpace(raw)
+		if ticket == "" {
 			continue
 		}
-		out = append(out, token)
+		out = append(out, ticket)
 	}
 	return out
 }

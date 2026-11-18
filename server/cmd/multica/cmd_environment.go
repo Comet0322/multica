@@ -218,8 +218,8 @@ func callDaemonEnvironment(parent context.Context, path string, body, out any, t
 	if daemonPort == "" {
 		return fmt.Errorf("MULTICA_DAEMON_PORT not set (this command is intended to be run by an agent inside a daemon task)")
 	}
-	taskToken := os.Getenv("MULTICA_TOKEN")
-	if taskToken == "" {
+	taskTicket := os.Getenv("MULTICA_TOKEN")
+	if taskTicket == "" {
 		return fmt.Errorf("MULTICA_TOKEN not set (environment commands require the active task credential)")
 	}
 	data, err := json.Marshal(body)
@@ -236,7 +236,7 @@ func callDaemonEnvironment(parent context.Context, path string, body, out any, t
 		return fmt.Errorf("create daemon request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+taskToken)
+	req.Header.Set("Authorization", "Bearer "+taskTicket)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("connect to daemon: %w", err)

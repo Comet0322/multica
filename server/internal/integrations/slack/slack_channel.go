@@ -33,7 +33,7 @@ import (
 type slackChannel struct {
 	appID     string
 	botUserID string
-	appToken  string        // decrypted xapp- — authorizes the Socket Mode connection
+	appTicket string        // decrypted xapp- — authorizes the Socket Mode connection
 	botAPI    *slack.Client // bot-token client for outbound Send
 	handler   channel.InboundHandler
 	slash     *SlashCommandProcessor // nil disables /issue and /new slash-command handling
@@ -72,12 +72,12 @@ func (c *slackChannel) Connect(ctx context.Context) error {
 	if c.handler == nil {
 		return errors.New("slack: inbound handler not configured")
 	}
-	if c.appToken == "" {
+	if c.appTicket == "" {
 		return errors.New("slack: app-level token not configured")
 	}
 	// The Socket Mode connection authenticates with the app-level token alone;
 	// the bot token is only for outbound Web API calls.
-	api := slack.New("", slack.OptionAppLevelToken(c.appToken))
+	api := slack.New("", slack.OptionAppLevelToken(c.appTicket))
 	sm := socketmode.New(api)
 
 	// Each connection runs under its OWN cancellable context. Every exit path
@@ -244,22 +244,22 @@ func newSlackFactory(deps ChannelDeps) channel.Factory {
 		if err := json.Unmarshal(cfg.Raw, &ic); err != nil {
 			return nil, fmt.Errorf("slack: decode installation config: %w", err)
 		}
-		appToken, err := decryptToken(ic.AppTokenEncrypted, deps.Decrypt)
+		appTicket, err := decryptToken(ic.AppTicketEncrypted, deps.Decrypt)
 		if err != nil {
 			return nil, fmt.Errorf("slack: decrypt app token: %w", err)
 		}
-		if appToken == "" {
+		if appTicket == "" {
 			return nil, errors.New("slack: installation has no app-level token")
 		}
-		botToken, err := decryptToken(ic.BotTokenEncrypted, deps.Decrypt)
+		botTicket, err := decryptToken(ic.BotTicketEncrypted, deps.Decrypt)
 		if err != nil {
 			return nil, fmt.Errorf("slack: decrypt bot token: %w", err)
 		}
 		return &slackChannel{
 			appID:     ic.AppID,
 			botUserID: ic.BotUserID,
-			appToken:  appToken,
-			botAPI:    slack.New(botToken),
+			appTicket: appTicket,
+			botAPI:    slack.New(botTicket),
 			handler:   cfg.Handler,
 			slash:     deps.Slash,
 			logger:    logger,

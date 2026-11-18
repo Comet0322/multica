@@ -130,7 +130,7 @@ func TestClaimTasksByRuntime_DeadlineRecoveryOverWebSocket(t *testing.T) {
 		t.Fatalf("undelivered claim was not released: task=%+v err=%v", task, err)
 	}
 	retried := claim("retry")
-	if len(retried.Tasks) != 1 || retried.Tasks[0].ID != taskID || retried.Tasks[0].AuthToken == "" {
+	if len(retried.Tasks) != 1 || retried.Tasks[0].ID != taskID || retried.Tasks[0].AuthTicket == "" {
 		t.Fatalf("immediate retry did not deliver the task: %+v", retried)
 	}
 	if duplicate := claim("no-duplicate"); len(duplicate.Tasks) != 0 {

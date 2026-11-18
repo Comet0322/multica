@@ -20,7 +20,7 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 	if (t.IssueID != "") == (chat || quickCreate) || t.IsLeaderTask && t.IssueID == "" {
 		return nil, fmt.Errorf("Qoder bridge currently supports issue, squad leader, chat and quick-create runs only")
 	}
-	if !strings.HasPrefix(t.AuthToken, "mat_") {
+	if !strings.HasPrefix(t.AuthTicket, "mat_") {
 		return nil, fmt.Errorf("claim is missing a task-scoped credential")
 	}
 	if len(t.RemoteMCPConnections) > 0 || len(t.ConnectedApps) > 0 || len(t.PluginHookTools) > 0 {
@@ -48,7 +48,7 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 	if chat {
 		p.WriteString("You are chatting with a user of a Multica workspace. Reply directly to their message; your final message is shown to them as your reply. This bridge does not expose a local Multica daemon.\n")
 		p.WriteString(chatAudience(t.ChatChannelType, t.ChatType))
-		r.Reply = &replyFiles{Locale: t.ChatNoticeLocale, token: t.AuthToken}
+		r.Reply = &replyFiles{Locale: t.ChatNoticeLocale, ticket: t.AuthTicket}
 		fmt.Fprintf(&p, "Multica attempts to attach files you deliver with DeliverArtifacts to your reply and adds a delivery notice if a transfer fails or cannot be confirmed. A file over %d MB is not attached; tell the user so instead of saying it was sent.\n", maxReplyFileBytes>>20)
 		if t.PriorSessionID != "" {
 			r.PriorSessionID = t.PriorSessionID
@@ -57,7 +57,7 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 		fmt.Fprintf(&p, "\nRun: %s\n\nUser message:\n%s\n", t.ID, t.ChatMessage)
 		if len(t.ChatAttachments) > 0 {
 			taskAPI := *b.multica
-			taskAPI.token = t.AuthToken
+			taskAPI.ticket = t.AuthTicket
 			attachments := chatAttachments(t.ChatAttachments)
 			// Each message mounts under its own run, so files with the same
 			// name from earlier turns of a continued session stay intact.
@@ -144,7 +144,7 @@ func chatAudience(channelType, chatType string) string {
 
 func (b *Bridge) issuePrompt(ctx context.Context, t *claimedTask, r *run, p *strings.Builder) error {
 	taskAPI := *b.multica
-	taskAPI.token = t.AuthToken
+	taskAPI.ticket = t.AuthTicket
 	var issue struct {
 		Title       string       `json:"title"`
 		Description string       `json:"description"`
@@ -154,7 +154,7 @@ func (b *Bridge) issuePrompt(ctx context.Context, t *claimedTask, r *run, p *str
 		return fmt.Errorf("read issue: %w", err)
 	}
 	if t.IsLeaderTask {
-		r.Leader = &squadLeader{IssueID: t.IssueID, TriggerCommentID: t.TriggerCommentID, token: t.AuthToken}
+		r.Leader = &squadLeader{IssueID: t.IssueID, TriggerCommentID: t.TriggerCommentID, ticket: t.AuthTicket}
 		p.WriteString("You lead a Multica squad on the following issue. Follow the Squad Operating Protocol in your agent instructions: coordinate, do not do the work yourself. This bridge does not expose a local Multica daemon.\n")
 	} else {
 		p.WriteString("Complete the following Multica issue in your Qoder environment. Return a final summary including code changes, tests and branch/PR/MR links when available. This bridge does not expose a local Multica daemon.\n")

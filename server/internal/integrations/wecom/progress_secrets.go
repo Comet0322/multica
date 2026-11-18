@@ -31,13 +31,13 @@ import (
 
 // secretMask is what replaces a secret. Distinctive enough that a reader
 // recognises the redaction rather than reading it as part of the command.
-const secretMask = "███"
+const sealedMask = "███"
 
 // Known credential prefixes. These are worth naming individually because they
 // are unambiguous: a token beginning `sk-` or `ghp_` or `xoxb-` is a
 // credential and nothing else, whatever key it arrived under and however
 // short it is.
-var secretPrefixes = []string{
+var sealedPrefixes = []string{
 	"sk-",      // OpenAI and everything that copied it
 	"sk_live_", // Stripe
 	"sk_test_", //
@@ -133,16 +133,16 @@ func redactSecrets(s string) string {
 	if s == "" {
 		return s
 	}
-	s = urlCredentialPattern.ReplaceAllString(s, "${1}${2}:"+secretMask+"@")
-	s = webhookPattern.ReplaceAllString(s, "${1}"+secretMask)
-	s = queryParamPattern.ReplaceAllString(s, "${1}"+secretMask)
-	s = flagPattern.ReplaceAllString(s, "${1}"+secretMask)
-	s = basicAuthPattern.ReplaceAllString(s, "${1}${2}:"+secretMask)
+	s = urlCredentialPattern.ReplaceAllString(s, "${1}${2}:"+sealedMask+"@")
+	s = webhookPattern.ReplaceAllString(s, "${1}"+sealedMask)
+	s = queryParamPattern.ReplaceAllString(s, "${1}"+sealedMask)
+	s = flagPattern.ReplaceAllString(s, "${1}"+sealedMask)
+	s = basicAuthPattern.ReplaceAllString(s, "${1}${2}:"+sealedMask)
 	// bearerPattern first: "Authorization: Bearer <token>" is an assignment
 	// whose value is the SCHEME, not the secret. Letting the assignment rule
 	// have it turns a readable header into "Authorization: ███ ███" and hides
 	// which scheme was in use — the one piece of that line worth keeping.
-	s = bearerPattern.ReplaceAllString(s, "${1}${2}"+secretMask)
+	s = bearerPattern.ReplaceAllString(s, "${1}${2}"+sealedMask)
 	s = assignmentPattern.ReplaceAllStringFunc(s, func(m string) string {
 		g := assignmentPattern.FindStringSubmatch(m)
 		if g == nil {
@@ -151,7 +151,7 @@ func redactSecrets(s string) string {
 		if _, scheme := schemeOnlyValue[strings.ToLower(g[5])]; scheme {
 			return m
 		}
-		return g[1] + g[2] + g[3] + g[4] + secretMask
+		return g[1] + g[2] + g[3] + g[4] + sealedMask
 	})
 	return redactSecretTokens(s)
 }
@@ -178,7 +178,7 @@ func redactSecretTokens(s string) string {
 		word := s[start:end]
 		if trimmed, lead, trail := trimDelimiters(word); looksLikeSecret(trimmed) {
 			b.WriteString(lead)
-			b.WriteString(secretMask)
+			b.WriteString(sealedMask)
 			b.WriteString(trail)
 		} else {
 			b.WriteString(redactWordParts(word))
@@ -227,7 +227,7 @@ const wordPartDelimiters = "?&=/:@#" + "|;<>()$,'\"`"
 
 func maskIfSecret(part string) string {
 	if trimmed, lead, trail := trimDelimiters(part); looksLikeSecret(trimmed) {
-		return lead + secretMask + trail
+		return lead + sealedMask + trail
 	}
 	return part
 }
@@ -261,7 +261,7 @@ func looksLikeSecret(word string) bool {
 	// the shape an agent types when it is hunting for leaked ones — and
 	// masking it hides the very work the bubble exists to report.
 	if isTokenRun(word) {
-		for _, p := range secretPrefixes {
+		for _, p := range sealedPrefixes {
 			if strings.HasPrefix(word, p) && len(word) > len(p)+6 {
 				return true
 			}

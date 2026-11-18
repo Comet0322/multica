@@ -299,12 +299,12 @@ func backgroundServices(h *handler.Handler) (*service.TaskService, *service.Auto
 // on an empty or publicly-known default secret (auth.ValidateJWTSecret).
 // Non-production keeps the historical dev fallback (see auth.JWTSecret)
 // and only warns.
-func jwtSecretBootError(jwtSecret, appEnv string) error {
+func jwtSecretBootError(jwtSealed, appEnv string) error {
 	isProduction := strings.EqualFold(strings.TrimSpace(appEnv), "production")
 	if !isProduction {
 		return nil
 	}
-	return auth.ValidateJWTSecret(jwtSecret)
+	return auth.ValidateJWTSecret(jwtSealed)
 }
 
 // newMainHTTPServer builds the public HTTP server with the production timeout

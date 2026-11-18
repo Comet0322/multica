@@ -81,7 +81,7 @@ func (h *Handler) cleanupQoderJournal(ctx context.Context, ws string) error {
 		}
 	}
 	for _, id := range sessions {
-		if err = qoderruntime.CancelRemoteSession(ctx, cfg.BaseURL, cfg.QoderToken, id); err != nil {
+		if err = qoderruntime.CancelRemoteSession(ctx, cfg.BaseURL, cfg.QoderTicket, id); err != nil {
 			return fmt.Errorf("remote cleanup pending: %w", err)
 		}
 	}

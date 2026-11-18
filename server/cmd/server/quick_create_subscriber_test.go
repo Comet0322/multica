@@ -297,9 +297,9 @@ func TestQuickCreateFailure_RedactsAgentOutput(t *testing.T) {
 	}
 
 	// Fake, non-functional token shaped like a real GitHub PAT.
-	const fakeToken = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"
+	const fakeTicket = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"
 	result, _ := json.Marshal(map[string]any{
-		"output": "Error: create failed while authenticating with " + fakeToken,
+		"output": "Error: create failed while authenticating with " + fakeTicket,
 	})
 	if _, err := taskSvc.CompleteTask(ctx, task.ID, result, "", "", "", false, "", ""); err != nil {
 		t.Fatalf("CompleteTask: %v", err)
@@ -307,7 +307,7 @@ func TestQuickCreateFailure_RedactsAgentOutput(t *testing.T) {
 
 	body, errDetail, _ := requireQuickCreateOutcomeInbox(t, task.ID, "quick_create_failed")
 
-	if strings.Contains(body, fakeToken) || strings.Contains(errDetail, fakeToken) {
+	if strings.Contains(body, fakeTicket) || strings.Contains(errDetail, fakeTicket) {
 		t.Fatal("agent output reached the inbox row unredacted")
 	}
 	if !strings.Contains(body, "[REDACTED GITHUB TOKEN]") {

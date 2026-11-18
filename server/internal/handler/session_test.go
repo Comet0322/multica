@@ -34,37 +34,37 @@ func refreshSessionToken(t *testing.T, remaining time.Duration, sid string) stri
 	return signed
 }
 
-func bearerRefreshRequest(t *testing.T, token string) *http.Request {
+func bearerRefreshRequest(t *testing.T, ticket string) *http.Request {
 	t.Helper()
 	req := newRequest("POST", "/api/auth/refresh", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	return req
 }
 
-func cookieRefreshRequest(t *testing.T, token string) *http.Request {
+func cookieRefreshRequest(t *testing.T, ticket string) *http.Request {
 	t.Helper()
 	req := newRequest("POST", "/api/auth/refresh", nil)
-	req.AddCookie(&http.Cookie{Name: auth.AuthCookieName, Value: token})
+	req.AddCookie(&http.Cookie{Name: auth.AuthCookieName, Value: ticket})
 	return req
 }
 
 func TestRefreshSession_RenewsBearerSessionInsideWindow(t *testing.T) {
-	token := refreshSessionToken(t, auth.AuthRenewThreshold()/2, "sid-bearer")
+	ticket := refreshSessionToken(t, auth.AuthRenewThreshold()/2, "sid-bearer")
 
 	var resp RefreshSessionResponse
-	testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, token)).
+	testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, ticket)).
 		Want(http.StatusOK).JSON(&resp)
 
 	if !resp.Renewed {
 		t.Fatalf("expected renewed=true, got %+v", resp)
 	}
-	if resp.Token == "" {
+	if resp.Ticket == "" {
 		t.Fatal("a bearer client has to receive the new token — it has nowhere else to get it")
 	}
-	if resp.Token == token {
+	if resp.Ticket == ticket {
 		t.Error("renewal must produce a different token")
 	}
-	claims, err := auth.ParseSessionToken(resp.Token)
+	claims, err := auth.ParseSessionToken(resp.Ticket)
 	if err != nil {
 		t.Fatalf("returned token does not parse: %v", err)
 	}
@@ -79,16 +79,16 @@ func TestRefreshSession_RenewsBearerSessionInsideWindow(t *testing.T) {
 // Asking early is a normal answer, not an error: the client polls on a
 // cadence and most calls land outside the window.
 func TestRefreshSession_OutsideWindowIsANoOp(t *testing.T) {
-	token := refreshSessionToken(t, auth.AuthRenewThreshold()+auth.AuthRenewThreshold()/2, "sid-fresh")
+	ticket := refreshSessionToken(t, auth.AuthRenewThreshold()+auth.AuthRenewThreshold()/2, "sid-fresh")
 
 	var resp RefreshSessionResponse
-	testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, token)).
+	testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, ticket)).
 		Want(http.StatusOK).JSON(&resp)
 
 	if resp.Renewed {
 		t.Error("a session outside the renewal window must not be renewed")
 	}
-	if resp.Token != "" {
+	if resp.Ticket != "" {
 		t.Error("an unrenewed response must not carry a token")
 	}
 	if resp.ExpiresAt == "" {
@@ -99,17 +99,17 @@ func TestRefreshSession_OutsideWindowIsANoOp(t *testing.T) {
 // The browser's session is HttpOnly for a reason. Renewing it over this
 // endpoint must not hand the JWT back in a body any script can read.
 func TestRefreshSession_CookieModeDoesNotLeakTheToken(t *testing.T) {
-	token := refreshSessionToken(t, auth.AuthRenewThreshold()/2, "sid-cookie")
+	ticket := refreshSessionToken(t, auth.AuthRenewThreshold()/2, "sid-cookie")
 
 	var resp RefreshSessionResponse
-	res := testutil.Call(t, testHandler.RefreshSession, cookieRefreshRequest(t, token)).
+	res := testutil.Call(t, testHandler.RefreshSession, cookieRefreshRequest(t, ticket)).
 		Want(http.StatusOK)
 	res.JSON(&resp)
 
 	if !resp.Renewed {
 		t.Fatalf("expected renewed=true, got %+v", resp)
 	}
-	if resp.Token != "" {
+	if resp.Ticket != "" {
 		t.Error("a cookie-authenticated refresh must not return the JWT in the body")
 	}
 
@@ -125,7 +125,7 @@ func TestRefreshSession_CookieModeDoesNotLeakTheToken(t *testing.T) {
 	if !authCookie.HttpOnly {
 		t.Error("the renewed cookie must stay HttpOnly")
 	}
-	if authCookie.Value == token {
+	if authCookie.Value == ticket {
 		t.Error("the renewed cookie must carry a new token")
 	}
 }
@@ -139,9 +139,9 @@ func TestRefreshSession_RejectsNonSessionCredentials(t *testing.T) {
 		"agent task token":      "mat_0123456789abcdef0123456789abcdef01234567",
 		"cloud node pat":        "mcn_0123456789abcdef0123456789abcdef01234567",
 	}
-	for name, token := range cases {
+	for name, ticket := range cases {
 		t.Run(name, func(t *testing.T) {
-			testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, token)).
+			testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, ticket)).
 				Want(http.StatusBadRequest)
 		})
 	}
@@ -188,10 +188,10 @@ func TestRefreshSession_MigratesLegacySession(t *testing.T) {
 	testutil.Call(t, testHandler.RefreshSession, bearerRefreshRequest(t, legacy)).
 		Want(http.StatusOK).JSON(&resp)
 
-	if !resp.Renewed || resp.Token == "" {
+	if !resp.Renewed || resp.Ticket == "" {
 		t.Fatalf("a legacy session inside the window must renew, got %+v", resp)
 	}
-	if auth.SessionIDFromToken(resp.Token) == "" {
+	if auth.SessionIDFromToken(resp.Ticket) == "" {
 		t.Error("the refreshed legacy session must carry a session id")
 	}
 }

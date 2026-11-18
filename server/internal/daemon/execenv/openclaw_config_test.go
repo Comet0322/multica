@@ -1729,10 +1729,10 @@ func TestBuildPerTaskOpenclawConfigWritesGatewayBlock(t *testing.T) {
 	t.Parallel()
 
 	pin := OpenclawGatewayPin{
-		Host:  "gw.internal",
-		Port:  18789,
-		Token: "secret-token",
-		TLS:   true,
+		Host:   "gw.internal",
+		Port:   18789,
+		Ticket: "secret-token",
+		TLS:    true,
 	}
 	cfg := buildPerTaskOpenclawConfig(
 		"", false, "", nil, "", "/workdir", nil, false,

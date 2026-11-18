@@ -540,7 +540,7 @@ func TestProjectUpdateMemberIDsAreNeverDropped(t *testing.T) {
 		assertUnchanged(t)
 
 		agent := dbfx.Agent(t, f.marker+" insider agent", testRuntimeID, testutil.Cols{"owner_id": f.insider})
-		task := dbfx.Task(t, agent, testutil.Cols{"runtime_id": testRuntimeID, "issue_id": f.secretIssue, "status": "running",
+		task := dbfx.Task(t, agent, testutil.Cols{"runtime_id": testRuntimeID, "issue_id": f.sealedIssue, "status": "running",
 			"originator_user_id": f.insider, "accountable_user_id": f.insider})
 		req := asUser(newRequest(http.MethodPut, "/api/projects/"+f.projectID, refused), f.insider)
 		req.Header.Set("X-Actor-Source", "task_token")

@@ -23,7 +23,7 @@ func TestPrivateProjectDashboardsKeepWorkspaceTotals(t *testing.T) {
 	runtimeID := handlerTestRuntimeID(t)
 	for _, status := range []string{"completed", "failed"} {
 		dbfx.Task(t, agentID, testutil.Cols{
-			"runtime_id": runtimeID, "issue_id": f.secretIssue, "status": status,
+			"runtime_id": runtimeID, "issue_id": f.sealedIssue, "status": status,
 			"failure_reason": "agent_error.process_failure",
 			"started_at":     testutil.Raw("now() - interval '2 minutes'"),
 			"completed_at":   testutil.Raw("now() - interval '1 minute'"),
@@ -65,7 +65,7 @@ func TestPrivateProjectDashboardsKeepWorkspaceTotals(t *testing.T) {
 		return false
 	}
 	missing := "&project_id=00000000-0000-0000-0000-0000000000ff"
-	secret := "&project_id=" + f.projectID
+	sealed := "&project_id=" + f.projectID
 	for _, ep := range []struct {
 		path    string
 		h       http.HandlerFunc
@@ -80,15 +80,15 @@ func TestPrivateProjectDashboardsKeepWorkspaceTotals(t *testing.T) {
 		{"/api/dashboard/failures/by-agent", testHandler.GetDashboardFailuresByAgent, true, "task_count"},
 	} {
 		t.Run(ep.path, func(t *testing.T) {
-			share := sum(get(ep.h, ep.path, f.insider, secret), ep.count)
+			share := sum(get(ep.h, ep.path, f.insider, sealed), ep.count)
 			if share == 0 {
 				t.Fatal("project member: the project rollup is empty")
 			}
-			if rows := get(ep.h, ep.path, f.outsider, secret); len(rows) != len(get(ep.h, ep.path, f.outsider, missing)) || len(rows) != 0 {
+			if rows := get(ep.h, ep.path, f.outsider, sealed); len(rows) != len(get(ep.h, ep.path, f.outsider, missing)) || len(rows) != 0 {
 				t.Fatalf("outsider: hidden project_id returned %d rows, want the missing-project answer (0)", len(rows))
 			}
 			outside := get(ep.h, ep.path, f.outsider, "")
-			if rows := get(ep.h, ep.path, f.outsideAdmin, secret); len(rows) != 0 {
+			if rows := get(ep.h, ep.path, f.outsideAdmin, sealed); len(rows) != 0 {
 				t.Fatalf("workspace admin outside the project: hidden project_id returned %d rows, want 0", len(rows))
 			}
 			for name, userID := range map[string]string{"project member": f.insider, "workspace admin outside the project": f.outsideAdmin} {

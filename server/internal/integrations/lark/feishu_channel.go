@@ -105,13 +105,13 @@ func installationCredentialsFor(inst Installation, resolver CredentialsResolver)
 	if resolver == nil {
 		return InstallationCredentials{}, errors.New("lark: credentials resolver missing")
 	}
-	secret, err := resolver.DecryptAppSecret(inst)
+	sealed, err := resolver.DecryptAppSecret(inst)
 	if err != nil {
 		return InstallationCredentials{}, fmt.Errorf("decrypt app_secret: %w", err)
 	}
 	creds := InstallationCredentials{
 		AppID:     inst.AppID,
-		AppSecret: secret,
+		AppSealed: sealed,
 		Region:    RegionOrDefault(inst.Region),
 	}
 	if inst.TenantKey.Valid {
@@ -291,7 +291,7 @@ func (s *channelInstallationStore) RenewWSLease(ctx context.Context, arg engine.
 
 func (s *channelInstallationStore) acquireOrRenewWSLease(ctx context.Context, arg engine.AcquireLeaseParams) error {
 	_, err := s.q.AcquireChannelWSLease(ctx, db.AcquireChannelWSLeaseParams{
-		NewToken:     pgtype.Text{String: arg.Token, Valid: true},
+		NewToken:     pgtype.Text{String: arg.Ticket, Valid: true},
 		NewExpiresAt: pgtype.Timestamptz{Time: arg.ExpiresAt, Valid: true},
 		ID:           arg.ID,
 	})
@@ -307,7 +307,7 @@ func (s *channelInstallationStore) acquireOrRenewWSLease(ctx context.Context, ar
 func (s *channelInstallationStore) ReleaseWSLease(ctx context.Context, arg engine.ReleaseLeaseParams) error {
 	return s.q.ReleaseChannelWSLease(ctx, db.ReleaseChannelWSLeaseParams{
 		ID:           arg.ID,
-		CurrentToken: pgtype.Text{String: arg.Token, Valid: true},
+		CurrentToken: pgtype.Text{String: arg.Ticket, Valid: true},
 	})
 }
 

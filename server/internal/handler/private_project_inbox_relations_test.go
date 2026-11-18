@@ -25,7 +25,7 @@ func insertSecretInboxItem(t *testing.T, f privateProjectFixture, recipient stri
 	t.Helper()
 	return dbfx.Insert(t, "inbox_item", testutil.Cols{
 		"workspace_id": testWorkspaceID, "recipient_type": "member", "recipient_id": recipient,
-		"type": "mentioned", "severity": "info", "title": f.marker + " secret notification", "issue_id": f.secretIssue,
+		"type": "mentioned", "severity": "info", "title": f.marker + " secret notification", "issue_id": f.sealedIssue,
 	})
 }
 
@@ -102,7 +102,7 @@ func TestPrivateProjectSubscribedIssueIDsHidden(t *testing.T) {
 		}, "issue_id = $1 AND user_id = $2", issueID, userID)
 	}
 	for _, userID := range []string{testUserID, f.insider, f.outsider, f.outsideAdmin} {
-		subscribe(f.secretIssue, userID)
+		subscribe(f.sealedIssue, userID)
 		subscribe(f.publicIssue, userID)
 	}
 	subscribed := func(userID string) map[string]bool {
@@ -121,8 +121,8 @@ func TestPrivateProjectSubscribedIssueIDsHidden(t *testing.T) {
 	check := func(who, userID string, wantSecret bool) {
 		t.Helper()
 		got := subscribed(userID)
-		if got[f.secretIssue] != wantSecret || !got[f.publicIssue] {
-			t.Errorf("%s: subscribed secret=%v public=%v, want secret=%v public=true", who, got[f.secretIssue], got[f.publicIssue], wantSecret)
+		if got[f.sealedIssue] != wantSecret || !got[f.publicIssue] {
+			t.Errorf("%s: subscribed secret=%v public=%v, want secret=%v public=true", who, got[f.sealedIssue], got[f.publicIssue], wantSecret)
 		}
 	}
 	check("workspace owner in the member list", testUserID, true)
@@ -140,7 +140,7 @@ func TestPrivateProjectLabelUsageCountHidden(t *testing.T) {
 		"workspace_id": testWorkspaceID, "name": f.marker + " label", "color": "#f00", "resource_type": "issue",
 	})
 	dbfx.Cleanup(t, `DELETE FROM issue_to_label WHERE label_id = $1`, labelID)
-	dbfx.Exec(t, `INSERT INTO issue_to_label (issue_id, label_id) VALUES ($1, $3), ($2, $3)`, f.secretIssue, f.publicIssue, labelID)
+	dbfx.Exec(t, `INSERT INTO issue_to_label (issue_id, label_id) VALUES ($1, $3), ($2, $3)`, f.sealedIssue, f.publicIssue, labelID)
 
 	usage := func(userID string) int64 {
 		t.Helper()

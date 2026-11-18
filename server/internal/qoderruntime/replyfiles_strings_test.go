@@ -64,8 +64,8 @@ func TestReplyFileNoticeLocaleSurvivesClaimAndJournal(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := restored.output("Report")
-			if !strings.Contains(output, tc.title) || strings.Count(output, "report.pdf") != len(reasons) || restored.token != "" || restored.Locale != tc.locale {
-				t.Fatalf("wrong restored notice: locale=%q token persisted=%v output=%s", restored.Locale, restored.token != "", output)
+			if !strings.Contains(output, tc.title) || strings.Count(output, "report.pdf") != len(reasons) || restored.ticket != "" || restored.Locale != tc.locale {
+				t.Fatalf("wrong restored notice: locale=%q token persisted=%v output=%s", restored.Locale, restored.ticket != "", output)
 			}
 			if tc.locale != "en" && tc.locale != "" && tc.locale != "unknown" {
 				for _, reason := range reasons {

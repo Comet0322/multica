@@ -23,12 +23,12 @@ import (
 
 func inboxTaskCredential(t *testing.T, taskID, agentID, workspaceID, userID string) string {
 	t.Helper()
-	token := "mat_" + uuid.NewString()
+	ticket := "mat_" + uuid.NewString()
 	dbfx.Insert(t, "task_token", testutil.Cols{
-		"token_hash": auth.HashToken(token), "task_id": taskID, "agent_id": agentID,
+		"token_hash": auth.HashToken(ticket), "task_id": taskID, "agent_id": agentID,
 		"workspace_id": workspaceID, "user_id": userID, "expires_at": time.Now().Add(time.Hour),
 	})
-	return token
+	return ticket
 }
 
 // Every Inbox read that returns the owner's notifications is gated by
@@ -53,9 +53,9 @@ func (e inboxOwnerRead) serve(h *Handler, cloud *auth.CloudPATVerifier) http.Han
 	).ServeHTTP
 }
 
-func (e inboxOwnerRead) request(token, workspaceID string) *http.Request {
+func (e inboxOwnerRead) request(ticket, workspaceID string) *http.Request {
 	return testutil.WithHeaders(testutil.JSONRequest(http.MethodGet, e.path, nil),
-		"Authorization", "Bearer "+token, "X-Workspace-ID", workspaceID)
+		"Authorization", "Bearer "+ticket, "X-Workspace-ID", workspaceID)
 }
 
 type inboxAccessFailureDB struct {
@@ -89,7 +89,7 @@ func TestListInboxAccessLookupErrors(t *testing.T) {
 		"runtime_id": runtimeID, "status": "running",
 		"originator_user_id": testUserID, "accountable_user_id": testUserID,
 	})
-	token := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
+	ticket := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
 	const privateDetails = "private-inbox-database-host-and-query"
 	for _, e := range inboxOwnerReads {
 		for _, query := range []string{"GetAgentTask", "GetAgentRuntimeForWorkspace"} {
@@ -108,7 +108,7 @@ func TestListInboxAccessLookupErrors(t *testing.T) {
 					faults := &inboxAccessFailureDB{DBTX: testPool, query: query, err: tc.err}
 					h := *testHandler
 					h.Queries = db.New(faults)
-					response := testutil.Call(t, e.serve(&h, nil), e.request(token, testWorkspaceID)).Want(tc.status)
+					response := testutil.Call(t, e.serve(&h, nil), e.request(ticket, testWorkspaceID)).Want(tc.status)
 					if tc.status == http.StatusServiceUnavailable && response.Header().Get("Retry-After") != "1" {
 						t.Fatal("temporary access-lookup failure must supply Retry-After")
 					}
@@ -133,9 +133,9 @@ func inboxAccessHandler(cloud *auth.CloudPATVerifier) http.HandlerFunc {
 	return inboxOwnerReads[0].serve(testHandler, cloud)
 }
 
-func inboxCredentialRequest(token, workspaceID string) *http.Request {
+func inboxCredentialRequest(ticket, workspaceID string) *http.Request {
 	return testutil.WithHeaders(testutil.JSONRequest(http.MethodGet, "/api/inbox", nil),
-		"Authorization", "Bearer "+token, "X-Workspace-ID", workspaceID)
+		"Authorization", "Bearer "+ticket, "X-Workspace-ID", workspaceID)
 }
 
 func TestListInboxTaskCredentialAccess(t *testing.T) {
@@ -181,10 +181,10 @@ func TestListInboxTaskCredentialAccess(t *testing.T) {
 			case "agent":
 				agentID = dbfx.Agent(t, "Token agent", runtimeID)
 			}
-			token := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
+			ticket := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
 			for _, e := range inboxOwnerReads {
 				t.Run(e.name, func(t *testing.T) {
-					testutil.Call(t, e.serve(testHandler, nil), e.request(token, testWorkspaceID)).Want(tc.want)
+					testutil.Call(t, e.serve(testHandler, nil), e.request(ticket, testWorkspaceID)).Want(tc.want)
 				})
 			}
 		})
@@ -197,18 +197,18 @@ func TestListInboxRejectsForgedTaskIdentityAndWorkspace(t *testing.T) {
 	agentID := dbfx.Agent(t, "Inbox agent", runtimeID)
 	allowedTask := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, "status": "running", "originator_user_id": testUserID, "accountable_user_id": testUserID})
 	deniedTask := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, "status": "running", "originator_user_id": other, "accountable_user_id": other})
-	token := inboxTaskCredential(t, deniedTask, agentID, testWorkspaceID, testUserID)
+	ticket := inboxTaskCredential(t, deniedTask, agentID, testWorkspaceID, testUserID)
 	foreignWorkspace := dbfx.Workspace(t, "Foreign inbox", "inbox-forged-ws-"+uuid.NewString())
 	dbfx.Member(t, foreignWorkspace, testUserID, "owner")
-	allowedToken := inboxTaskCredential(t, allowedTask, agentID, testWorkspaceID, testUserID)
+	allowedTicket := inboxTaskCredential(t, allowedTask, agentID, testWorkspaceID, testUserID)
 	for _, e := range inboxOwnerReads {
 		t.Run(e.name, func(t *testing.T) {
-			req := testutil.WithHeaders(e.request(token, testWorkspaceID), "X-Task-ID", allowedTask, "X-Agent-ID", agentID,
+			req := testutil.WithHeaders(e.request(ticket, testWorkspaceID), "X-Task-ID", allowedTask, "X-Agent-ID", agentID,
 				"X-Actor-Source", "member", "X-User-ID", other, "X-Originator-User-ID", testUserID)
 			req.URL.RawQuery = "originator_user_id=" + testUserID + "&recipient_id=" + other
 			testutil.Call(t, e.serve(testHandler, nil), req).Want(http.StatusForbidden)
 
-			testutil.Call(t, e.serve(testHandler, nil), e.request(allowedToken, foreignWorkspace)).Want(http.StatusForbidden)
+			testutil.Call(t, e.serve(testHandler, nil), e.request(allowedTicket, foreignWorkspace)).Want(http.StatusForbidden)
 		})
 	}
 }
@@ -244,25 +244,25 @@ func TestListInboxHumanCredentialsAndReadOnlyIsolation(t *testing.T) {
 	foreign := newItem(foreignWorkspace, testUserID)
 	pat := "mul_" + uuid.NewString()
 	dbfx.Insert(t, "personal_access_token", testutil.Cols{"user_id": testUserID, "name": "Inbox test", "token_hash": auth.HashToken(pat), "token_prefix": pat[:12]})
-	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": testUserID, "exp": time.Now().Add(time.Hour).Unix()}).SignedString(auth.JWTSecret())
+	jwtTicket, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": testUserID, "exp": time.Now().Add(time.Hour).Unix()}).SignedString(auth.JWTSecret())
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtimeID := dbfx.Runtime(t, "Own inbox runtime")
 	agentID := dbfx.Agent(t, "Own inbox agent", runtimeID)
 	taskID := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, "status": "running", "originator_user_id": testUserID, "accountable_user_id": testUserID})
-	taskToken := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
+	taskTicket := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
 	for _, tc := range []struct {
-		name, token string
-		cookie      bool
+		name, ticket string
+		cookie       bool
 	}{
-		{"personal PAT", pat, false}, {"login session", jwtToken, true}, {"self-triggered task", taskToken, false},
+		{"personal PAT", pat, false}, {"login session", jwtTicket, true}, {"self-triggered task", taskTicket, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req := inboxCredentialRequest(tc.token, testWorkspaceID)
+			req := inboxCredentialRequest(tc.ticket, testWorkspaceID)
 			if tc.cookie {
 				req.Header.Del("Authorization")
-				req.AddCookie(&http.Cookie{Name: auth.AuthCookieName, Value: tc.token})
+				req.AddCookie(&http.Cookie{Name: auth.AuthCookieName, Value: tc.ticket})
 			}
 			req.Header.Set("X-User-ID", other)
 			req.URL.RawQuery = "recipient_id=" + other
@@ -305,32 +305,32 @@ func TestListInboxDelegatedOriginatorAndProjectVisibility(t *testing.T) {
 	runTo(t, taskID)
 	// Delegation normally has a runtime selected when claimed.
 	dbfx.Exec(t, `UPDATE agent_task_queue SET runtime_id=$2 WHERE id=$1`, taskID, testRuntimeID)
-	token := inboxTaskCredential(t, taskID, worker, testWorkspaceID, testUserID)
+	ticket := inboxTaskCredential(t, taskID, worker, testWorkspaceID, testUserID)
 	// Allocate delegation issue numbers before introducing the fixture's random high numbers.
 	f := newPrivateProjectFixture(t)
-	secret := insertSecretInboxItem(t, f, testUserID)
+	sealed := insertSecretInboxItem(t, f, testUserID)
 	list := func() map[string]bool {
 		var items []InboxItemResponse
-		testutil.Call(t, inboxAccessHandler(nil), inboxCredentialRequest(token, testWorkspaceID)).Want(http.StatusOK).JSON(&items)
+		testutil.Call(t, inboxAccessHandler(nil), inboxCredentialRequest(ticket, testWorkspaceID)).Want(http.StatusOK).JSON(&items)
 		ids := map[string]bool{}
 		for _, item := range items {
 			ids[item.ID] = true
 		}
 		return ids
 	}
-	if !list()[secret] {
+	if !list()[sealed] {
 		t.Fatal("delegated own run cannot see permitted private notification")
 	}
 	removeProjectMemberRow(t, f.projectID, testUserID)
-	if list()[secret] {
+	if list()[sealed] {
 		t.Fatal("private notification survived membership revocation")
 	}
-	if state := loadInboxItemState(t, secret); state != (inboxItemState{}) {
+	if state := loadInboxItemState(t, sealed); state != (inboxItemState{}) {
 		t.Fatalf("GET mutated hidden notification: %+v", state)
 	}
 	// Loss of an upstream human must never borrow the accountable owner.
 	dbfx.Exec(t, `UPDATE agent_task_queue SET originator_user_id=NULL,accountable_user_id=$2 WHERE id=$1`, taskID, testUserID)
-	testutil.Call(t, inboxAccessHandler(nil), inboxCredentialRequest(token, testWorkspaceID)).Want(http.StatusForbidden)
+	testutil.Call(t, inboxAccessHandler(nil), inboxCredentialRequest(ticket, testWorkspaceID)).Want(http.StatusForbidden)
 
 	var counterAfter int64
 	dbfx.QueryRow(t, `SELECT issue_counter FROM workspace WHERE id=$1`, testWorkspaceID).Scan(&counterAfter)
@@ -357,7 +357,7 @@ func TestArchivedInboxOwnerReadIsolation(t *testing.T) {
 	runtimeID := dbfx.Runtime(t, "Own archived inbox runtime")
 	agentID := dbfx.Agent(t, "Own archived inbox agent", runtimeID)
 	taskID := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, "status": "running", "originator_user_id": testUserID, "accountable_user_id": testUserID})
-	taskToken := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
+	taskTicket := inboxTaskCredential(t, taskID, agentID, testWorkspaceID, testUserID)
 	reads := map[string]func(*testing.T, *http.Request) []InboxItemResponse{
 		"archived": func(t *testing.T, req *http.Request) []InboxItemResponse {
 			var items []InboxItemResponse
@@ -371,11 +371,11 @@ func TestArchivedInboxOwnerReadIsolation(t *testing.T) {
 		},
 	}
 	paths := map[string]string{"archived": inboxOwnerReads[1].path, "archived page": inboxOwnerReads[2].path}
-	for _, cred := range []struct{ name, token string }{{"personal PAT", pat}, {"self-triggered task", taskToken}} {
+	for _, cred := range []struct{ name, ticket string }{{"personal PAT", pat}, {"self-triggered task", taskTicket}} {
 		for name, read := range reads {
 			t.Run(cred.name+"/"+name, func(t *testing.T) {
 				req := testutil.WithHeaders(testutil.JSONRequest(http.MethodGet, paths[name]+"?recipient_id="+other, nil),
-					"Authorization", "Bearer "+cred.token, "X-Workspace-ID", testWorkspaceID, "X-User-ID", other)
+					"Authorization", "Bearer "+cred.ticket, "X-Workspace-ID", testWorkspaceID, "X-User-ID", other)
 				found := false
 				for _, item := range read(t, req) {
 					if item.ID == otherItem || item.ID == foreign {

@@ -76,7 +76,7 @@ func TestSchedulePulseExampleManifestDrivesDurableRetry(t *testing.T) {
 	var (
 		mu            sync.Mutex
 		hookCalls     int
-		signingSecret string
+		signingSealed string
 		callbacks     = service.NewCallbackTokens()
 	)
 
@@ -88,8 +88,8 @@ func TestSchedulePulseExampleManifestDrivesDurableRetry(t *testing.T) {
 	plugins.Callbacks = callbacks
 
 	action := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		grant, err := callbacks.Resolve(token)
+		ticket := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		grant, err := callbacks.Resolve(ticket)
 		if err != nil || grant.Trigger != plugincontract.TriggerSchedule || grant.Actor.Type != "plugin" {
 			http.Error(w, "callback grant", http.StatusUnauthorized)
 			return
@@ -145,10 +145,10 @@ func TestSchedulePulseExampleManifestDrivesDurableRetry(t *testing.T) {
 			return
 		}
 		mu.Lock()
-		secret := signingSecret
+		sealed := signingSealed
 		mu.Unlock()
 		if err := service.VerifyHookSignature(
-			secret,
+			sealed,
 			r.Header.Get("X-Multica-Timestamp"),
 			raw,
 			r.Header.Get("X-Multica-Signature"),
@@ -283,12 +283,12 @@ func TestSchedulePulseExampleManifestDrivesDurableRetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create plugin installation: %v", err)
 	}
-	derivedSigningSecret, err := plugins.HookSigningSecret(installation.ID)
+	derivedSigningSealed, err := plugins.HookSigningSecret(installation.ID)
 	if err != nil {
 		t.Fatalf("derive signing secret: %v", err)
 	}
 	mu.Lock()
-	signingSecret = derivedSigningSecret
+	signingSealed = derivedSigningSealed
 	mu.Unlock()
 	scheduleRow, err := queries.CreatePluginHookSchedule(ctx, db.CreatePluginHookScheduleParams{
 		InstallationID: installation.ID,

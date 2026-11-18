@@ -116,14 +116,14 @@ func TestAutopilotTriggerBroadcastsCarryNoWebhookCredential(t *testing.T) {
 			// The authorized caller still gets the live credential; without
 			// this the redaction assertion below would pass on an endpoint
 			// that had simply stopped issuing tokens.
-			if resp.WebhookToken == nil || *resp.WebhookToken == "" {
+			if resp.WebhookTicket == nil || *resp.WebhookTicket == "" {
 				t.Fatalf("HTTP response carries no webhook token; the broadcast assertion would prove nothing")
 			}
 
 			event := lastBroadcast(t)
-			if event.WebhookToken != nil || event.WebhookPath != nil || event.WebhookURL != nil {
+			if event.WebhookTicket != nil || event.WebhookPath != nil || event.WebhookURL != nil {
 				t.Errorf("broadcast leaked the webhook credential: token=%v path=%v url=%v — every workspace member receives this event",
-					derefStr(event.WebhookToken), derefStr(event.WebhookPath), derefStr(event.WebhookURL))
+					derefStr(event.WebhookTicket), derefStr(event.WebhookPath), derefStr(event.WebhookURL))
 			}
 			// The event must still identify what changed: clients react by
 			// refetching through the authenticated detail endpoint, which is

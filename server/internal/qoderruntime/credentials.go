@@ -53,9 +53,9 @@ func (b *Bridge) sessionResources(ctx context.Context, resources []map[string]an
 		if err != nil {
 			return nil, "", false, err
 		}
-		token := b.cfg.GitHubTokens[key]
+		ticket := b.cfg.GitHubTickets[key]
 		path := ""
-		for configured, file := range b.cfg.GitHubTokenFiles {
+		for configured, file := range b.cfg.GitHubTicketFiles {
 			candidate, err := repositoryKey(configured)
 			if err != nil {
 				return nil, "", false, fmt.Errorf("invalid GitHub credential repository binding")
@@ -67,14 +67,14 @@ func (b *Bridge) sessionResources(ctx context.Context, resources []map[string]an
 				path = file
 			}
 		}
-		credential := token
-		if credential == "" && path != "" {
-			if credential, err = readRepositoryToken(path); err != nil {
+		badge := ticket
+		if badge == "" && path != "" {
+			if badge, err = readRepositoryToken(path); err != nil {
 				return nil, "", false, err
 			}
 		}
-		identity := credential
-		if credential == "" {
+		identity := badge
+		if badge == "" {
 			if b.cfg.GitHubAppToken == nil {
 				return nil, "", false, fmt.Errorf("no GitHub credential configured for project repository")
 			}
@@ -92,7 +92,7 @@ func (b *Bridge) sessionResources(ctx context.Context, resources []map[string]an
 			if issued == "" || installation == 0 {
 				return nil, "", false, fmt.Errorf("GitHub App token issuer returned no credential")
 			}
-			credential = issued
+			badge = issued
 			identity = fmt.Sprintf("github_app:%d", installation)
 			rotating = true
 		}
@@ -100,9 +100,9 @@ func (b *Bridge) sessionResources(ctx context.Context, resources []map[string]an
 		for k, v := range resource {
 			copy[k] = v
 		}
-		copy["authorization_token"] = credential
+		copy["authorization_token"] = badge
 		out = append(out, copy)
-		entries = append(entries, fingerprintEntry{key: key, branch: checkoutBranch(resource["checkout"]), credential: identity})
+		entries = append(entries, fingerprintEntry{key: key, branch: checkoutBranch(resource["checkout"]), badge: identity})
 	}
 	return out, resourceFingerprint(entries), rotating, nil
 }
@@ -130,11 +130,11 @@ func readRepositoryToken(path string) (string, error) {
 	if err != nil || len(raw) > 16384 {
 		return "", fmt.Errorf("cannot read GitHub credential file or file too large")
 	}
-	token := strings.TrimSpace(string(raw))
-	if token == "" || strings.ContainsAny(token, "\r\n\t ") {
+	ticket := strings.TrimSpace(string(raw))
+	if ticket == "" || strings.ContainsAny(ticket, "\r\n\t ") {
 		return "", fmt.Errorf("GitHub credential file must contain one non-empty token")
 	}
-	return token, nil
+	return ticket, nil
 }
 
 // RepositoryKey validates and canonicalizes a repository credential binding.

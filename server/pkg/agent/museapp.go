@@ -72,7 +72,7 @@ var ErrMuseAppProtocolSkew = fmt.Errorf("museapp backend: protocol skew")
 
 const (
 	museappEnvEndpoint = "MULTICA_MUSEAPP_ENDPOINT"
-	museappEnvToken    = "MULTICA_MUSEAPP_TOKEN"
+	museappEnvTicket   = "MULTICA_MUSEAPP_TOKEN"
 	museappEnvModel    = "MULTICA_MUSEAPP_MODEL"
 )
 
@@ -95,7 +95,7 @@ func init() {
 
 type museappEndpointConfig struct {
 	endpoint string
-	token    string
+	ticket   string
 }
 
 func resolveMuseAppConfig() (museappEndpointConfig, error) {
@@ -109,13 +109,13 @@ func resolveMuseAppConfig() (museappEndpointConfig, error) {
 	}
 	return museappEndpointConfig{
 		endpoint: endpoint,
-		token:    strings.TrimSpace(os.Getenv(museappEnvToken)),
+		ticket:   strings.TrimSpace(os.Getenv(museappEnvTicket)),
 	}, nil
 }
 
-func (b *museappBackend) authHeader(req *http.Request, token string) {
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+func (b *museappBackend) authHeader(req *http.Request, ticket string) {
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 }
 
@@ -138,7 +138,7 @@ type museappExecuteRequest struct {
 	// receptionist hands it to the worker so the worker can call the Multica
 	// API (read issues, post comments) with the same scoped identity a CLI
 	// backend gets via MULTICA_TOKEN. Omitted when the daemon has none.
-	TaskToken string `json:"task_token,omitempty"`
+	TaskTicket string `json:"task_token,omitempty"`
 	// ServerURL is the Multica API base URL. The worker needs it to know
 	// where to call; CLI backends get it as MULTICA_SERVER_URL.
 	ServerURL string `json:"server_url,omitempty"`
@@ -198,7 +198,7 @@ type museappHealthResponse struct {
 // equivalent of CLI version detection and backs the daemon's availability
 // probe (no binary exists to --version). A protocol skew is a hard error so
 // it surfaces at probe time rather than mid-task.
-func ProbeMuseAppReceptionist(ctx context.Context, endpoint, token string) (string, error) {
+func ProbeMuseAppReceptionist(ctx context.Context, endpoint, ticket string) (string, error) {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if endpoint == "" {
 		return "", fmt.Errorf("museapp backend: empty endpoint")
@@ -210,8 +210,8 @@ func ProbeMuseAppReceptionist(ctx context.Context, endpoint, token string) (stri
 	if err != nil {
 		return "", fmt.Errorf("museapp backend: build health request: %w", err)
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	resp, err := museappHTTPClient.Do(req)
 	if err != nil {
@@ -288,7 +288,7 @@ func (b *museappBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 		SessionID:       opts.ResumeSessionID,
 		TimeoutS:        timeoutS,
 		WorkDir:         opts.Cwd,
-		TaskToken:       opts.TaskToken,
+		TaskTicket:      opts.TaskTicket,
 		ServerURL:       opts.MulticaServerURL,
 		WorkspaceID:     opts.MulticaWorkspaceID,
 		ProtocolVersion: museappProtocolVersion,
@@ -587,7 +587,7 @@ func (b *museappBackend) doJSONWithConfig(ctx context.Context, mc museappEndpoin
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	b.authHeader(req, mc.token)
+	b.authHeader(req, mc.ticket)
 	resp, err := museappHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("museapp backend: request %s %s: %w", method, path, err)

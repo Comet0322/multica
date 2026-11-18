@@ -128,13 +128,13 @@ func (h *Handler) HandleVCSWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret, err := h.openVCSSecret(conn.WebhookSecretEncrypted)
+	sealed, err := h.openVCSSecret(conn.WebhookSealedEncrypted)
 	if err != nil {
 		slog.Error("vcs: decrypt webhook secret failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "secret error")
 		return
 	}
-	if !provider.VerifySignature(secret, r.Header, body) {
+	if !provider.VerifySignature(sealed, r.Header, body) {
 		writeError(w, http.StatusUnauthorized, "invalid signature")
 		return
 	}
@@ -156,13 +156,13 @@ func (h *Handler) HandleVCSWebhook(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				if checker, ok := provider.(vcs.RepositoryAccessChecker); ok {
-					token, err := h.openVCSSecret(conn.AccessTokenEncrypted)
-					if err != nil || token == "" {
+					ticket, err := h.openVCSSecret(conn.AccessTicketEncrypted)
+					if err != nil || ticket == "" {
 						slog.Warn("vcs: open access token for system hook failed", "err", err)
 						writeError(w, http.StatusInternalServerError, "access token error")
 						return
 					}
-					readable, err := checker.RepositoryReadable(r.Context(), conn.InstanceUrl, pr.RepoOwner, pr.RepoName, token)
+					readable, err := checker.RepositoryReadable(r.Context(), conn.InstanceUrl, pr.RepoOwner, pr.RepoName, ticket)
 					if err != nil {
 						slog.Warn("vcs: system-hook repository access lookup failed", "provider", conn.Provider, "err", err)
 						writeError(w, http.StatusServiceUnavailable, "repository access lookup failed")

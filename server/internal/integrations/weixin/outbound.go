@@ -285,17 +285,17 @@ func (o *Outbound) deliverReply(ctx context.Context, reply outboundReply) error 
 	for i := int(lease.ChunksSent); i < len(chunks)+len(attachments); i++ {
 		// Revalidate revocation and the current context before every provider
 		// call. The 15s send budget fits inside the renewed 60s owner lease.
-		api, token, err := o.sender(ctx, inst.ID, creds.AppID, creds.UserID)
+		api, ticket, err := o.sender(ctx, inst.ID, creds.AppID, creds.UserID)
 		if err != nil {
 			return err
 		}
-		msg := textMessage(creds.UserID, token, util.UUIDToString(dbid.NewV7()), "")
+		msg := textMessage(creds.UserID, ticket, util.UUIDToString(dbid.NewV7()), "")
 		if i < len(chunks) {
-			msg = textMessage(creds.UserID, token, msg.ClientID, chunks[i])
+			msg = textMessage(creds.UserID, ticket, msg.ClientID, chunks[i])
 		} else {
 			item, prepErr := o.attachment(ctx, api, creds.UserID, attachments[i-len(chunks)])
 			if prepErr != nil {
-				msg = textMessage(creds.UserID, token, msg.ClientID, "This file could not be sent to WeChat. It is still attached to the reply in Multica.")
+				msg = textMessage(creds.UserID, ticket, msg.ClientID, "This file could not be sent to WeChat. It is still attached to the reply in Multica.")
 				o.logger.WarnContext(ctx, "weixin: attachment unavailable", "error", prepErr)
 			} else {
 				msg.Items = []messageItem{item}
@@ -303,11 +303,11 @@ func (o *Outbound) deliverReply(ctx context.Context, reply outboundReply) error 
 		}
 		// Upload preparation may take longer than a lease. Recheck installation
 		// and ownership after it, before posting anything into the conversation.
-		api, token, err = o.sender(ctx, inst.ID, creds.AppID, creds.UserID)
+		api, ticket, err = o.sender(ctx, inst.ID, creds.AppID, creds.UserID)
 		if err != nil {
 			return err
 		}
-		msg.ContextToken = token
+		msg.ContextTicket = ticket
 		rows, err := o.q.RenewChannelReplyDelivery(ctx, db.RenewChannelReplyDeliveryParams{TurnID: turn.TurnID, OwnerToken: owner, LeaseSeconds: 60})
 		if err != nil || rows != 1 {
 			return err
@@ -364,7 +364,7 @@ func (o *Outbound) sender(ctx context.Context, installationID pgtype.UUID, botID
 	if err != nil || len(token) == 0 {
 		return nil, "", ErrNoContext
 	}
-	return newAPI(creds.BaseURL, creds.Token, o.client), string(token), nil
+	return newAPI(creds.BaseURL, creds.Ticket, o.client), string(token), nil
 }
 
 func splitText(text string, limit int) []string {

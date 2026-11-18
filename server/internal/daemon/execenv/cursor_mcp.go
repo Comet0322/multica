@@ -221,8 +221,8 @@ func cursorMcpAuthLogins(path string) map[string]bool {
 	}
 	var entries map[string]struct {
 		Tokens *struct {
-			AccessToken  string `json:"access_token"`
-			RefreshToken string `json:"refresh_token"`
+			AccessTicket  string `json:"access_token"`
+			RefreshTicket string `json:"refresh_token"`
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal(data, &entries); err != nil {
@@ -230,7 +230,7 @@ func cursorMcpAuthLogins(path string) map[string]bool {
 	}
 	logins := make(map[string]bool, len(entries))
 	for name, entry := range entries {
-		logins[name] = entry.Tokens != nil && (entry.Tokens.AccessToken != "" || entry.Tokens.RefreshToken != "")
+		logins[name] = entry.Tokens != nil && (entry.Tokens.AccessTicket != "" || entry.Tokens.RefreshTicket != "")
 	}
 	return logins
 }

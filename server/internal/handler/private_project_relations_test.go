@@ -38,15 +38,15 @@ func getIssueAs(t *testing.T, userID, issueID string) *testutil.Response {
 
 func TestPrivateProjectDuplicateMarkNeedsVisibleTarget(t *testing.T) {
 	f := newPrivateProjectFixture(t)
-	secretTitle := f.marker + " secret issue"
+	sealedTitle := f.marker + " secret issue"
 
-	hidden := putIssueAs(t, f.outsider, f.publicIssue, map[string]any{"duplicate_of_issue_id": f.secretIssue})
+	hidden := putIssueAs(t, f.outsider, f.publicIssue, map[string]any{"duplicate_of_issue_id": f.sealedIssue})
 	missing := putIssueAs(t, f.outsider, f.publicIssue, map[string]any{"duplicate_of_issue_id": uuid.NewString()})
 	hidden.Want(http.StatusBadRequest)
 	if hidden.Code != missing.Code || hidden.Text() != missing.Text() {
 		t.Errorf("hidden target answers %d %s, missing target %d %s", hidden.Code, hidden.Text(), missing.Code, missing.Text())
 	}
-	if strings.Contains(hidden.Text(), secretTitle) {
+	if strings.Contains(hidden.Text(), sealedTitle) {
 		t.Errorf("refused mark leaks the hidden original: %s", hidden.Text())
 	}
 	// A second invalid field must not let the two answers drift apart: the
@@ -57,7 +57,7 @@ func TestPrivateProjectDuplicateMarkNeedsVisibleTarget(t *testing.T) {
 			"duplicate_of_issue_id": target, "assignee_type": "agent", "assignee_id": uuid.NewString(),
 		})
 	}
-	hiddenWithAssignee, missingWithAssignee := badAssignee(f.secretIssue), badAssignee(uuid.NewString())
+	hiddenWithAssignee, missingWithAssignee := badAssignee(f.sealedIssue), badAssignee(uuid.NewString())
 	hiddenWithAssignee.Want(http.StatusBadRequest)
 	if hiddenWithAssignee.Code != missingWithAssignee.Code || hiddenWithAssignee.Text() != missingWithAssignee.Text() {
 		t.Errorf("with an invalid assignee, hidden target answers %d %s, missing target %d %s",
@@ -73,8 +73,8 @@ func TestPrivateProjectDuplicateMarkNeedsVisibleTarget(t *testing.T) {
 	// The insider can mark, and sees the original.
 	own := dbfx.Issue(t, f.marker+" insider duplicate", testutil.Cols{"number": relationIssueNumber()})
 	var marked IssueResponse
-	putIssueAs(t, f.insider, own, map[string]any{"duplicate_of_issue_id": f.secretIssue}).Want(http.StatusOK).JSON(&marked)
-	if marked.DuplicateOf == nil || marked.DuplicateOf.ID != f.secretIssue {
+	putIssueAs(t, f.insider, own, map[string]any{"duplicate_of_issue_id": f.sealedIssue}).Want(http.StatusOK).JSON(&marked)
+	if marked.DuplicateOf == nil || marked.DuplicateOf.ID != f.sealedIssue {
 		t.Fatalf("insider mark response duplicate_of = %+v, want the secret issue", marked.DuplicateOf)
 	}
 
@@ -82,16 +82,16 @@ func TestPrivateProjectDuplicateMarkNeedsVisibleTarget(t *testing.T) {
 	removeProjectMemberAsOwner(t, f, f.insider)
 	var detail IssueResponse
 	body := getIssueAs(t, f.insider, own).Want(http.StatusOK).JSON(&detail).Text()
-	if detail.DuplicateOf != nil || strings.Contains(body, secretTitle) {
+	if detail.DuplicateOf != nil || strings.Contains(body, sealedTitle) {
 		t.Errorf("revoked member's issue detail still names the hidden original: %s", body)
 	}
 	var edited IssueResponse
 	body = putIssueAs(t, f.outsider, own, map[string]any{"title": f.marker + " retitled duplicate"}).Want(http.StatusOK).JSON(&edited).Text()
-	if edited.DuplicateOf != nil || strings.Contains(body, secretTitle) {
+	if edited.DuplicateOf != nil || strings.Contains(body, sealedTitle) {
 		t.Errorf("outsider update response names the hidden original: %s", body)
 	}
 	getIssueAs(t, testUserID, own).Want(http.StatusOK).JSON(&detail)
-	if detail.DuplicateOf == nil || detail.DuplicateOf.ID != f.secretIssue {
+	if detail.DuplicateOf == nil || detail.DuplicateOf.ID != f.sealedIssue {
 		t.Errorf("workspace owner lost the duplicate_of on %s: %+v", own, detail.DuplicateOf)
 	}
 }
@@ -121,17 +121,17 @@ func TestPrivateProjectUploadToHiddenComment(t *testing.T) {
 	origStorage := testHandler.Storage
 	testHandler.Storage = &mockStorage{}
 	t.Cleanup(func() { testHandler.Storage = origStorage })
-	dbfx.Cleanup(t, `DELETE FROM attachment WHERE comment_id = $1`, f.secretComment)
+	dbfx.Cleanup(t, `DELETE FROM attachment WHERE comment_id = $1`, f.sealedComment)
 	count := func() int {
-		return dbfx.Count(t, `SELECT count(*) FROM attachment WHERE comment_id = $1`, f.secretComment)
+		return dbfx.Count(t, `SELECT count(*) FROM attachment WHERE comment_id = $1`, f.sealedComment)
 	}
 
-	uploadAs(t, f.outsider, map[string]string{"comment_id": f.secretComment}).Want(http.StatusForbidden)
-	uploadAs(t, f.outsider, map[string]string{"issue_id": f.publicIssue, "comment_id": f.secretComment}).Want(http.StatusForbidden)
+	uploadAs(t, f.outsider, map[string]string{"comment_id": f.sealedComment}).Want(http.StatusForbidden)
+	uploadAs(t, f.outsider, map[string]string{"issue_id": f.publicIssue, "comment_id": f.sealedComment}).Want(http.StatusForbidden)
 	if n := count(); n != 0 {
 		t.Fatalf("outsider uploads attached %d files to the hidden comment", n)
 	}
-	uploadAs(t, f.insider, map[string]string{"comment_id": f.secretComment}).Want(http.StatusOK)
+	uploadAs(t, f.insider, map[string]string{"comment_id": f.sealedComment}).Want(http.StatusOK)
 	if n := count(); n != 1 {
 		t.Fatalf("insider upload attached %d files, want 1", n)
 	}
@@ -162,14 +162,14 @@ func attachmentIssueID(t *testing.T, attachmentID string) *string {
 // issue; an issue write must not adopt it past the comment's project.
 func TestPrivateProjectAttachmentAdoptionSkipsHidden(t *testing.T) {
 	f := newPrivateProjectFixture(t)
-	secretFile := f.marker + "-secret-file.txt"
-	hiddenAtt := insertCommentOnlyAttachment(t, f.secretComment, secretFile)
+	sealedFile := f.marker + "-secret-file.txt"
+	hiddenAtt := insertCommentOnlyAttachment(t, f.sealedComment, sealedFile)
 
 	putIssueAs(t, f.outsider, f.publicIssue, map[string]any{"attachment_ids": []string{hiddenAtt}}).Want(http.StatusOK)
 	if got := attachmentIssueID(t, hiddenAtt); got != nil {
 		t.Fatalf("outsider update adopted the hidden attachment into %s", *got)
 	}
-	if body := getIssueAs(t, f.outsider, f.publicIssue).Want(http.StatusOK).Text(); strings.Contains(body, secretFile) {
+	if body := getIssueAs(t, f.outsider, f.publicIssue).Want(http.StatusOK).Text(); strings.Contains(body, sealedFile) {
 		t.Fatalf("public issue exposes the hidden attachment: %s", body)
 	}
 
@@ -183,7 +183,7 @@ func TestPrivateProjectAttachmentAdoptionSkipsHidden(t *testing.T) {
 	}
 
 	// A caller who can see the comment keeps the existing adoption behavior.
-	visibleAtt := insertCommentOnlyAttachment(t, f.secretComment, f.marker+"-insider-file.txt")
+	visibleAtt := insertCommentOnlyAttachment(t, f.sealedComment, f.marker+"-insider-file.txt")
 	own := dbfx.Issue(t, f.marker+" insider adopter", testutil.Cols{"number": relationIssueNumber()})
 	putIssueAs(t, f.insider, own, map[string]any{"attachment_ids": []string{visibleAtt}}).Want(http.StatusOK)
 	if got := attachmentIssueID(t, visibleAtt); got == nil || *got != own {
@@ -197,9 +197,9 @@ func TestPrivateProjectTableParentGroupHidden(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	publicProject := dbfx.Project(t, f.marker+" public project")
 	dbfx.Issue(t, f.marker+" public child", testutil.Cols{
-		"project_id": publicProject, "parent_issue_id": f.secretIssue, "number": relationIssueNumber(),
+		"project_id": publicProject, "parent_issue_id": f.sealedIssue, "number": relationIssueNumber(),
 	})
-	secretTitle := f.marker + " secret issue"
+	sealedTitle := f.marker + " secret issue"
 	groups := func(userID string) string {
 		t.Helper()
 		req := asUser(newRequest(http.MethodPost, "/api/issues/table/groups", issueTableGroupsRequest{
@@ -213,7 +213,7 @@ func TestPrivateProjectTableParentGroupHidden(t *testing.T) {
 		return testutil.Call(t, testHandler.ListIssueTableGroups, req).Want(http.StatusOK).Text()
 	}
 	outsiderBody := groups(f.outsider)
-	if strings.Contains(outsiderBody, secretTitle) {
+	if strings.Contains(outsiderBody, sealedTitle) {
 		t.Errorf("outsider parent group names the hidden parent: %s", outsiderBody)
 	}
 	var outsider issueTableGroupsResponse
@@ -221,12 +221,12 @@ func TestPrivateProjectTableParentGroupHidden(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, g := range outsider.Groups {
-		if g.Value.ParentID != nil && *g.Value.ParentID == f.secretIssue && (g.Value.Parent != nil || g.Value.ValueState != "unavailable") {
+		if g.Value.ParentID != nil && *g.Value.ParentID == f.sealedIssue && (g.Value.Parent != nil || g.Value.ValueState != "unavailable") {
 			t.Errorf("outsider hidden parent group = %+v, want unavailable with no parent ref", g.Value)
 		}
 	}
 	for _, userID := range []string{f.insider, testUserID} {
-		if body := groups(userID); !strings.Contains(body, secretTitle) {
+		if body := groups(userID); !strings.Contains(body, sealedTitle) {
 			t.Errorf("authorized reader %s lost the parent group title: %s", userID, body)
 		}
 	}
@@ -257,7 +257,7 @@ func TestPrivateProjectSourceContextLiveThreadHidden(t *testing.T) {
 	t.Cleanup(func() { testHandler.Storage = origStorage })
 
 	publicProject := dbfx.Project(t, f.marker+" source target project")
-	anchor := dbfx.Comment(t, f.secretIssue, f.marker+" anchor reply", testutil.Cols{"parent_id": f.secretComment})
+	anchor := dbfx.Comment(t, f.sealedIssue, f.marker+" anchor reply", testutil.Cols{"parent_id": f.sealedComment})
 
 	var preview sourceContextPreviewResponse
 	previewReq := withURLParam(asUser(newRequest(http.MethodGet, "/api/comments/"+anchor+"/sub-issue-preview", nil), f.insider), "commentId", anchor)
@@ -265,7 +265,7 @@ func TestPrivateProjectSourceContextLiveThreadHidden(t *testing.T) {
 
 	var target IssueResponse
 	createReq := withURLParam(asUser(newRequest(http.MethodPost, "/api/comments/"+anchor+"/sub-issues", map[string]any{
-		"mode": "manual", "capture_token": preview.CaptureToken,
+		"mode": "manual", "capture_token": preview.CaptureTicket,
 		"issue": map[string]any{"title": f.marker + " public target", "status": "todo", "priority": "none", "project_id": publicProject},
 	}), f.insider), "commentId", anchor)
 	testutil.Call(t, testHandler.CreateCommentSubIssue, createReq).Want(http.StatusCreated).JSON(&target)
@@ -277,14 +277,14 @@ func TestPrivateProjectSourceContextLiveThreadHidden(t *testing.T) {
 	// captured part of the thread.
 	liveFile := f.marker + "-live-plan.pdf"
 	liveAtt := dbfx.Insert(t, "attachment", testutil.Cols{
-		"workspace_id": testWorkspaceID, "issue_id": f.secretIssue, "uploader_type": "member", "uploader_id": testUserID,
+		"workspace_id": testWorkspaceID, "issue_id": f.sealedIssue, "uploader_type": "member", "uploader_id": testUserID,
 		"filename": liveFile, "url": "https://example.invalid/" + liveFile, "content_type": "application/pdf", "size_bytes": 1,
 	})
-	dbfx.Exec(t, `UPDATE issue SET description = $1 WHERE id = $2`, "!file["+liveFile+"](/api/attachments/"+liveAtt+"/download)", f.secretIssue)
+	dbfx.Exec(t, `UPDATE issue SET description = $1 WHERE id = $2`, "!file["+liveFile+"](/api/attachments/"+liveAtt+"/download)", f.sealedIssue)
 	live := f.marker + " live reply after capture"
-	dbfx.Comment(t, f.secretIssue, live, testutil.Cols{
-		"parent_id":  f.secretComment,
-		"created_at": testutil.Raw("(SELECT created_at + interval '1 microsecond' FROM comment WHERE id = '" + f.secretComment + "')"),
+	dbfx.Comment(t, f.sealedIssue, live, testutil.Cols{
+		"parent_id":  f.sealedComment,
+		"created_at": testutil.Raw("(SELECT created_at + interval '1 microsecond' FROM comment WHERE id = '" + f.sealedComment + "')"),
 	})
 
 	type detail struct {
@@ -331,12 +331,12 @@ func TestPrivateProjectRelationExistenceOracles(t *testing.T) {
 		return testutil.Call(t, testHandler.MoveIssue, req)
 	}
 	same("move anchor",
-		move(f.outsider, map[string]any{"before_id": f.secretIssue, "after_id": nil}),
+		move(f.outsider, map[string]any{"before_id": f.sealedIssue, "after_id": nil}),
 		move(f.outsider, map[string]any{"before_id": uuid.NewString(), "after_id": nil}))
 	same("move project",
 		move(f.outsider, map[string]any{"project_id": f.projectID, "before_id": uuid.NewString(), "after_id": nil}),
 		move(f.outsider, map[string]any{"project_id": uuid.NewString(), "before_id": uuid.NewString(), "after_id": nil}))
-	if body := move(testUserID, map[string]any{"before_id": f.secretIssue, "after_id": nil}).Text(); strings.Contains(body, "move anchor not found") {
+	if body := move(testUserID, map[string]any{"before_id": f.sealedIssue, "after_id": nil}).Text(); strings.Contains(body, "move anchor not found") {
 		t.Errorf("workspace owner cannot anchor on the private issue: %s", body)
 	}
 
@@ -346,33 +346,33 @@ func TestPrivateProjectRelationExistenceOracles(t *testing.T) {
 			"title": title, "parent_issue_id": parentID, "assignee_type": "agent", "assignee_id": uuid.NewString(),
 		}), f.outsider))
 	}
-	same("create parent with invalid assignee", create(f.secretIssue), create(uuid.NewString()))
+	same("create parent with invalid assignee", create(f.sealedIssue), create(uuid.NewString()))
 	if n := dbfx.Count(t, `SELECT count(*) FROM issue WHERE title = $1`, title); n != 0 {
 		t.Errorf("refused creates wrote %d issues", n)
 	}
 
-	subIssue := func(tokenIssueID string) *testutil.Response {
+	subIssue := func(ticketIssueID string) *testutil.Response {
 		anchor := uuid.NewString()
-		token := "sha256:" + strings.Repeat("0", 64) + ":" + tokenIssueID
+		ticket := "sha256:" + strings.Repeat("0", 64) + ":" + ticketIssueID
 		req := withURLParam(asUser(newRequest(http.MethodPost, "/api/comments/"+anchor+"/sub-issues", map[string]any{
-			"mode": "manual", "capture_token": token, "issue": map[string]any{"title": title, "status": "todo", "priority": "none"},
+			"mode": "manual", "capture_token": ticket, "issue": map[string]any{"title": title, "status": "todo", "priority": "none"},
 		}), f.outsider), "commentId", anchor)
 		return testutil.Call(t, testHandler.CreateCommentSubIssue, req)
 	}
-	same("comment sub-issue token issue", subIssue(f.secretIssue), subIssue(uuid.NewString()))
+	same("comment sub-issue token issue", subIssue(f.sealedIssue), subIssue(uuid.NewString()))
 
 	agentID := seededReadyAgentID(t)
 	preview := func(userID string) IssueTriggerPreviewResponse {
 		var resp IssueTriggerPreviewResponse
 		testutil.Call(t, testHandler.PreviewIssueTrigger, asUser(newRequest(http.MethodPost, "/api/issues/preview-trigger", map[string]any{
-			"issue_ids": []string{f.secretIssue}, "assignee_type": "agent", "assignee_id": agentID,
+			"issue_ids": []string{f.sealedIssue}, "assignee_type": "agent", "assignee_id": agentID,
 		}), userID)).Want(http.StatusOK).JSON(&resp)
 		return resp
 	}
 	if got := preview(f.outsider); got.TotalCount != 0 {
 		t.Errorf("outsider preview evaluates the hidden issue: %+v", got)
 	}
-	if got := preview(testUserID); got.TotalCount != 1 || got.Triggers[0].IssueID != f.secretIssue {
+	if got := preview(testUserID); got.TotalCount != 1 || got.Triggers[0].IssueID != f.sealedIssue {
 		t.Errorf("workspace owner preview = %+v, want one run on the private issue", got)
 	}
 }

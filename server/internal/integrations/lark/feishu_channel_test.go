@@ -128,9 +128,9 @@ func ownAllKeys(l *fakeMediaLedger) map[string]bool {
 	return l.ownedKeys
 }
 
-type fakeCreds struct{ secret string }
+type fakeCreds struct{ sealed string }
 
-func (f fakeCreds) DecryptAppSecret(_ Installation) (string, error) { return f.secret, nil }
+func (f fakeCreds) DecryptAppSecret(_ Installation) (string, error) { return f.sealed, nil }
 
 func testMediaInstallation(t *testing.T) engine.ResolvedInstallation {
 	t.Helper()
@@ -208,7 +208,7 @@ func TestFeishuChannel_SendMapsTextAndReplyTarget(t *testing.T) {
 	fc := &feishuChannel{
 		inst:   Installation{AppID: "cli", Region: "feishu"},
 		sender: sender,
-		creds:  fakeCreds{secret: "plain"},
+		creds:  fakeCreds{sealed: "plain"},
 	}
 	res, err := fc.Send(context.Background(), channel.OutboundMessage{
 		ChatID:   "oc_chat",
@@ -225,7 +225,7 @@ func TestFeishuChannel_SendMapsTextAndReplyTarget(t *testing.T) {
 	if sender.last.ChatID != "oc_chat" || sender.last.Text != "hi there" {
 		t.Fatalf("unexpected send params: %+v", sender.last)
 	}
-	if sender.last.InstallationID.AppID != "cli" || sender.last.InstallationID.AppSecret != "plain" {
+	if sender.last.InstallationID.AppID != "cli" || sender.last.InstallationID.AppSealed != "plain" {
 		t.Fatalf("credentials not threaded into send: %+v", sender.last.InstallationID)
 	}
 	// ReplyTo present -> route through the reply endpoint, threaded.
@@ -235,7 +235,7 @@ func TestFeishuChannel_SendMapsTextAndReplyTarget(t *testing.T) {
 }
 
 func TestFeishuMediaResolver_HasMedia(t *testing.T) {
-	resolver := NewFeishuMediaResolver(&fakeSender{}, fakeCreds{secret: "plain"}, &fakeMediaStorage{}, &fakeMediaLedger{}, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(&fakeSender{}, fakeCreds{sealed: "plain"}, &fakeMediaStorage{}, &fakeMediaLedger{}, newDiscardLogger())
 	cases := []struct {
 		name string
 		lm   InboundMessage
@@ -332,7 +332,7 @@ func TestFeishuMediaResolver_AttachesStandaloneFileAndAudioMediaRefs(t *testing.
 				SizeBytes:   7,
 			}}
 			storage := &fakeMediaStorage{}
-			resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, &fakeMediaLedger{}, newDiscardLogger())
+			resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, &fakeMediaLedger{}, newDiscardLogger())
 			lm := InboundMessage{
 				MessageID:   "om_" + tc.name,
 				MessageType: tc.messageType,
@@ -374,7 +374,7 @@ func TestFeishuMediaResolver_RecordsIntentBeforeUpload(t *testing.T) {
 	sender := &fakeSender{downloaded: DownloadedResource{Data: []byte{1}, ContentType: "image/png", SizeBytes: 1}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		MessageID:   "om_intent",
 		MessageType: "image",
@@ -419,7 +419,7 @@ func TestFeishuMediaResolver_KeyIsPerChatMessageSoReingestIsNotBlocked(t *testin
 	sessionID := uuidFromString(t, "22222222-2222-2222-2222-222222222222")
 	newResolver := func(ledger *fakeMediaLedger, storage *fakeMediaStorage) engine.MediaResolver {
 		sender := &fakeSender{downloaded: DownloadedResource{Data: []byte{1}, ContentType: "image/png", SizeBytes: 1}}
-		return NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+		return NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	}
 
 	firstStorage := &fakeMediaStorage{}
@@ -452,7 +452,7 @@ func TestFeishuMediaResolver_ReconcilerOwnedKeySkipsUpload(t *testing.T) {
 	sender := &fakeSender{downloaded: DownloadedResource{Data: []byte{1}, ContentType: "image/png", SizeBytes: 1}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{ownedKeys: map[string]bool{}}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		MessageID:   "om_owned",
 		MessageType: "image",
@@ -481,7 +481,7 @@ func TestFeishuMediaResolver_AttachesImageMediaRef(t *testing.T) {
 	}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		EventID:      "evt-image",
 		AppID:        "cli_app",
@@ -533,7 +533,7 @@ func TestFeishuMediaResolver_UnknownLengthUsesBufferedUpload(t *testing.T) {
 	}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		MessageID:   "om_unknown_length",
 		MessageType: "image",
@@ -559,7 +559,7 @@ func TestFeishuMediaResolver_AttachesPostEmbeddedImageMediaRef(t *testing.T) {
 	}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	rawPost := `{"content":[[{"tag":"img","image_key":"img_post_key"}],[{"tag":"text","text":"识别一下图片"}]]}`
 	lm := InboundMessage{
 		EventID:      "evt-post-image",
@@ -606,7 +606,7 @@ func TestFeishuMediaResolver_AttachesPostEmbeddedVideoMediaRef(t *testing.T) {
 	}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	rawPost := `{"content":[[{"tag":"text","text":"看一下视频"},{"tag":"media","file_key":"file_post_key","file_name":"demo.mp4"}]]}`
 	lm := InboundMessage{
 		EventID:      "evt-post-video",
@@ -641,7 +641,7 @@ func TestFeishuMediaResolver_AttachesVideoMediaRef(t *testing.T) {
 	}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		EventID:      "evt-video",
 		AppID:        "cli_app",
@@ -675,7 +675,7 @@ func TestFeishuMediaResolver_RetryReusesObjectKey(t *testing.T) {
 	}}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		MessageID:   "om_retry",
 		MessageType: "image",
@@ -702,7 +702,7 @@ func TestFeishuMediaResolver_DownloadFailurePreservesMessage(t *testing.T) {
 	sender := &fakeSender{downloadErr: errors.New("download unavailable")}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		MessageID:   "om_download_failure",
 		MessageType: "image",
@@ -725,7 +725,7 @@ func TestFeishuMediaResolver_UploadFailurePreservesMessage(t *testing.T) {
 	sender := &fakeSender{downloaded: DownloadedResource{Data: []byte{1}, ContentType: "image/png"}}
 	storage := &fakeMediaStorage{err: errors.New("storage unavailable")}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	lm := InboundMessage{
 		MessageID:   "om_upload_failure",
 		MessageType: "image",
@@ -759,7 +759,7 @@ func TestFeishuMediaResolver_PostPartialFailureKeepsTextAndSuccessfulMedia(t *te
 	}
 	storage := &fakeMediaStorage{}
 	ledger := &fakeMediaLedger{}
-	resolver := NewFeishuMediaResolver(sender, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+	resolver := NewFeishuMediaResolver(sender, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 	rawPost := `{"content":[[{"tag":"text","text":"inspect"},{"tag":"img","image_key":"img_ok"},{"tag":"media","file_key":"video_failed","file_name":"failed.mp4"}]]}`
 	lm := InboundMessage{
 		MessageID:   "om_partial",

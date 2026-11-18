@@ -29,7 +29,7 @@ func TestHTTPConnectionTokenFetcherCallbackEndpointSuccess(t *testing.T) {
 		}
 		var body bootstrapRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body.AppID != "cli_app_x" || body.AppSecret != "secret-xyz" {
+		if body.AppID != "cli_app_x" || body.AppSealed != "secret-xyz" {
 			t.Errorf("body = %+v", body)
 		}
 		_, _ = io.WriteString(w, `{
@@ -54,7 +54,7 @@ func TestHTTPConnectionTokenFetcherCallbackEndpointSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("constructor: %v", err)
 	}
-	ep, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "cli_app_x", AppSecret: "secret-xyz"})
+	ep, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "cli_app_x", AppSealed: "secret-xyz"})
 	if err != nil {
 		t.Fatalf("Endpoint: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestHTTPConnectionTokenFetcherSurfacesLarkErrorCode(t *testing.T) {
 	f, _ := NewHTTPConnectionTokenFetcher(HTTPConnectionTokenConfig{
 		BaseURL: srv.URL,
 	})
-	_, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "a", AppSecret: "s"})
+	_, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "a", AppSealed: "s"})
 	if err == nil {
 		t.Fatal("expected error for non-zero Lark code")
 	}
@@ -111,7 +111,7 @@ func TestHTTPConnectionTokenFetcherRejectsHTTPErrorStatus(t *testing.T) {
 	f, _ := NewHTTPConnectionTokenFetcher(HTTPConnectionTokenConfig{
 		BaseURL: srv.URL,
 	})
-	_, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "a", AppSecret: "s"})
+	_, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "a", AppSealed: "s"})
 	if err == nil {
 		t.Fatal("expected error on 5xx")
 	}
@@ -139,7 +139,7 @@ func TestHTTPConnectionTokenFetcherRejectsURLWithoutServiceID(t *testing.T) {
 	defer srv.Close()
 
 	f, _ := NewHTTPConnectionTokenFetcher(HTTPConnectionTokenConfig{BaseURL: srv.URL})
-	_, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "a", AppSecret: "s"})
+	_, err := f.Endpoint(context.Background(), InstallationCredentials{AppID: "a", AppSealed: "s"})
 	if err == nil {
 		t.Fatal("expected error when service_id is missing from response URL")
 	}

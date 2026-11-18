@@ -215,7 +215,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"session_id
 		RuntimeID:   "rt-1",
 		IssueID:     "issue-private-temp",
 		AgentID:     "agent-private-temp",
-		AuthToken:   "mat_private_temp",
+		AuthTicket:  "mat_private_temp",
 		Agent: &AgentData{
 			ID:   "agent-private-temp",
 			Name: "test-agent",
@@ -449,7 +449,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"session_id
 		RuntimeID:   "rt-1",
 		IssueID:     "issue-temp-base",
 		AgentID:     "agent-temp-base",
-		AuthToken:   "mat_temp_base",
+		AuthTicket:  "mat_temp_base",
 		Agent: &AgentData{
 			ID:   "agent-temp-base",
 			Name: "test-agent",
@@ -547,7 +547,7 @@ printf 'ran\n' > "$CAPTURE_FILE"
 		RuntimeID:   "rt-1",
 		IssueID:     "issue-temp-base-invalid",
 		AgentID:     "agent-temp-base-invalid",
-		AuthToken:   "mat_temp_base_invalid",
+		AuthTicket:  "mat_temp_base_invalid",
 		Agent: &AgentData{
 			ID:        "agent-temp-base-invalid",
 			Name:      "test-agent",

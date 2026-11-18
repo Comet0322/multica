@@ -55,15 +55,15 @@ func TestPluginBearerOnlyRejectsNonPluginCredentials(t *testing.T) {
 }
 
 func TestPluginBearerOnlyPassesPluginTokenKindsToTheHandler(t *testing.T) {
-	for _, token := range []string{"mpi_installation", "mpc_callback"} {
-		t.Run(token[:3], func(t *testing.T) {
+	for _, ticket := range []string{"mpi_installation", "mpc_callback"} {
+		t.Run(ticket[:3], func(t *testing.T) {
 			called := false
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				called = true
 				w.WriteHeader(http.StatusNoContent)
 			})
 			req := httptest.NewRequest(http.MethodGet, "/v1/context", nil)
-			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Authorization", "Bearer "+ticket)
 			response := httptest.NewRecorder()
 
 			PluginBearerOnly(next).ServeHTTP(response, req)

@@ -48,7 +48,7 @@ func newLegacyTokenFixture(t *testing.T, label string) legacyTokenFixture {
 // mintLegacyClaimTokens reproduces a v0.6.5 claim: one transaction inserts a
 // task_token per (taskID, userID) pair and an unbound daemon token. It
 // returns the raw daemon token.
-func mintLegacyClaimTokens(t *testing.T, daemonID string, taskTokens ...[2]string) string {
+func mintLegacyClaimTokens(t *testing.T, daemonID string, taskTickets ...[2]string) string {
 	t.Helper()
 	ctx := context.Background()
 	raw, err := auth.GenerateDaemonToken()
@@ -60,7 +60,7 @@ func mintLegacyClaimTokens(t *testing.T, daemonID string, taskTokens ...[2]strin
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	for _, tt := range taskTokens {
+	for _, tt := range taskTickets {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO task_token (token_hash, task_id, agent_id, workspace_id, user_id, expires_at)
 			SELECT $1, q.id, q.agent_id, $2, $3, now() + interval '1 hour'
@@ -69,18 +69,18 @@ func mintLegacyClaimTokens(t *testing.T, daemonID string, taskTokens ...[2]strin
 			t.Fatal(err)
 		}
 	}
-	var tokenID string
+	var ticketID string
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO daemon_token (token_hash, workspace_id, daemon_id, expires_at)
 		VALUES ($1, $2, $3, now() + interval '24 hours') RETURNING id`,
-		auth.HashToken(raw), testWorkspaceID, daemonID).Scan(&tokenID); err != nil {
+		auth.HashToken(raw), testWorkspaceID, daemonID).Scan(&ticketID); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id = $1`, tokenID)
+		testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id = $1`, ticketID)
 	})
 	return raw
 }

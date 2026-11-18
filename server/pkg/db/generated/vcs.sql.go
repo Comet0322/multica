@@ -105,8 +105,8 @@ func (q *Queries) GetVCSConnectionByID(ctx context.Context, id pgtype.UUID) (Vcs
 		&i.Provider,
 		&i.InstanceUrl,
 		&i.AccountLogin,
-		&i.AccessTokenEncrypted,
-		&i.WebhookSecretEncrypted,
+		&i.AccessTicketEncrypted,
+		&i.WebhookSealedEncrypted,
 		&i.ConnectedByID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -368,8 +368,8 @@ func (q *Queries) ListVCSConnectionsByWorkspace(ctx context.Context, workspaceID
 			&i.Provider,
 			&i.InstanceUrl,
 			&i.AccountLogin,
-			&i.AccessTokenEncrypted,
-			&i.WebhookSecretEncrypted,
+			&i.AccessTicketEncrypted,
+			&i.WebhookSealedEncrypted,
 			&i.ConnectedByID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -500,7 +500,7 @@ func (q *Queries) ListVCSPullRequestsByIssue(ctx context.Context, issueID pgtype
 	return items, nil
 }
 
-const rotateVCSConnectionWebhookSecret = `-- name: RotateVCSConnectionWebhookSecret :one
+const rotateVCSConnectionWebhookSealed = `-- name: RotateVCSConnectionWebhookSecret :one
 UPDATE vcs_connection
 SET webhook_secret_encrypted = $3,
     updated_at = now()
@@ -511,11 +511,11 @@ RETURNING id, workspace_id, provider, instance_url, account_login, access_token_
 type RotateVCSConnectionWebhookSecretParams struct {
 	ID                     pgtype.UUID `json:"id"`
 	WorkspaceID            pgtype.UUID `json:"workspace_id"`
-	WebhookSecretEncrypted string      `json:"webhook_secret_encrypted"`
+	WebhookSealedEncrypted string      `json:"webhook_secret_encrypted"`
 }
 
 func (q *Queries) RotateVCSConnectionWebhookSecret(ctx context.Context, arg RotateVCSConnectionWebhookSecretParams) (VcsConnection, error) {
-	row := q.db.QueryRow(ctx, rotateVCSConnectionWebhookSecret, arg.ID, arg.WorkspaceID, arg.WebhookSecretEncrypted)
+	row := q.db.QueryRow(ctx, rotateVCSConnectionWebhookSealed, arg.ID, arg.WorkspaceID, arg.WebhookSealedEncrypted)
 	var i VcsConnection
 	err := row.Scan(
 		&i.ID,
@@ -523,8 +523,8 @@ func (q *Queries) RotateVCSConnectionWebhookSecret(ctx context.Context, arg Rota
 		&i.Provider,
 		&i.InstanceUrl,
 		&i.AccountLogin,
-		&i.AccessTokenEncrypted,
-		&i.WebhookSecretEncrypted,
+		&i.AccessTicketEncrypted,
+		&i.WebhookSealedEncrypted,
 		&i.ConnectedByID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -616,8 +616,8 @@ type UpsertVCSConnectionParams struct {
 	Provider               string      `json:"provider"`
 	InstanceUrl            string      `json:"instance_url"`
 	AccountLogin           string      `json:"account_login"`
-	AccessTokenEncrypted   string      `json:"access_token_encrypted"`
-	WebhookSecretEncrypted string      `json:"webhook_secret_encrypted"`
+	AccessTicketEncrypted  string      `json:"access_token_encrypted"`
+	WebhookSealedEncrypted string      `json:"webhook_secret_encrypted"`
 	ConnectedByID          pgtype.UUID `json:"connected_by_id"`
 }
 
@@ -629,8 +629,8 @@ func (q *Queries) UpsertVCSConnection(ctx context.Context, arg UpsertVCSConnecti
 		arg.Provider,
 		arg.InstanceUrl,
 		arg.AccountLogin,
-		arg.AccessTokenEncrypted,
-		arg.WebhookSecretEncrypted,
+		arg.AccessTicketEncrypted,
+		arg.WebhookSealedEncrypted,
 		arg.ConnectedByID,
 	)
 	var i VcsConnection
@@ -640,8 +640,8 @@ func (q *Queries) UpsertVCSConnection(ctx context.Context, arg UpsertVCSConnecti
 		&i.Provider,
 		&i.InstanceUrl,
 		&i.AccountLogin,
-		&i.AccessTokenEncrypted,
-		&i.WebhookSecretEncrypted,
+		&i.AccessTicketEncrypted,
+		&i.WebhookSealedEncrypted,
 		&i.ConnectedByID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

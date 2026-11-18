@@ -348,13 +348,13 @@ func isMessageTooOld(createTime string) bool {
 }
 
 func (m *TypingIndicatorManager) resolveCredentials(inst Installation) (InstallationCredentials, error) {
-	secret, err := m.credentials.DecryptAppSecret(inst)
+	sealed, err := m.credentials.DecryptAppSecret(inst)
 	if err != nil {
 		return InstallationCredentials{}, err
 	}
 	creds := InstallationCredentials{
 		AppID:     inst.AppID,
-		AppSecret: secret,
+		AppSealed: sealed,
 		Region:    RegionOrDefault(inst.Region),
 	}
 	if inst.TenantKey.Valid {

@@ -50,7 +50,7 @@ func TestWSConnectorEnrichesBeforeEmit(t *testing.T) {
 		FrameDecoder: decoder,
 		Enricher:     enr,
 		CredentialsProvider: CredentialsProviderFunc(func(context.Context, Installation) (InstallationCredentials, error) {
-			return InstallationCredentials{AppID: "test_app", AppSecret: "secret"}, nil
+			return InstallationCredentials{AppID: "test_app", AppSealed: "secret"}, nil
 		}),
 		PingInterval:  time.Hour,
 		ReadDeadline:  time.Second,
@@ -110,7 +110,7 @@ func TestWSConnectorEnrichesBeforeEmit(t *testing.T) {
 	if len(enr.msgs) != 1 || enr.msgs[0].Body != "raw-evt-1" {
 		t.Errorf("enricher received %+v", enr.msgs)
 	}
-	if len(enr.creds) != 1 || enr.creds[0].AppID != "test_app" || enr.creds[0].AppSecret != "secret" {
+	if len(enr.creds) != 1 || enr.creds[0].AppID != "test_app" || enr.creds[0].AppSealed != "secret" {
 		t.Errorf("enricher got wrong creds: %+v", enr.creds)
 	}
 }

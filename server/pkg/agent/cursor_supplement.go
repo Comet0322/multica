@@ -30,8 +30,8 @@ import (
 const CursorHookHelperArg = "__multica_cursor_hook"
 
 const (
-	cursorHookURLEnv   = "MULTICA_CURSOR_HOOK_URL"
-	cursorHookTokenEnv = "MULTICA_CURSOR_HOOK_TOKEN"
+	cursorHookURLEnv    = "MULTICA_CURSOR_HOOK_URL"
+	cursorHookTicketEnv = "MULTICA_CURSOR_HOOK_TOKEN"
 	// Cursor drops, rather than truncates, additional_context longer than
 	// 10,000 JavaScript string units.
 	cursorHookContextLimit    = 10000
@@ -73,7 +73,7 @@ type cursorSupplementSession struct {
 	ctx       context.Context
 	logger    *slog.Logger
 	nonce     string
-	token     string
+	ticket    string
 	url       string
 	server    *http.Server
 	hooksPath string
@@ -109,7 +109,7 @@ func startCursorSupplementSession(ctx context.Context, cwd string, hookCommand [
 	if err != nil {
 		return nil, err
 	}
-	token, err := randomHex(32)
+	ticket, err := randomHex(32)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func startCursorSupplementSession(ctx context.Context, cwd string, hookCommand [
 		ctx:       ctx,
 		logger:    logger,
 		nonce:     nonce,
-		token:     token,
+		ticket:    ticket,
 		hooksPath: filepath.Join(cwd, ".cursor", "hooks.json"),
 		hooksData: hooksData,
 	}
@@ -189,7 +189,7 @@ func (s *cursorSupplementSession) removeHooksFile() {
 
 // env returns the variables Cursor passes on to the hook relay.
 func (s *cursorSupplementSession) env() []string {
-	return []string{cursorHookURLEnv + "=" + s.url, cursorHookTokenEnv + "=" + s.token}
+	return []string{cursorHookURLEnv + "=" + s.url, cursorHookTicketEnv + "=" + s.ticket}
 }
 
 func (s *cursorSupplementSession) tag() string {
@@ -365,7 +365,7 @@ func (s *cursorSupplementSession) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		http.NotFound(w, r)
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.token)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.ticket)) != 1 {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -451,8 +451,8 @@ func RunCursorHookRelay(stdin io.Reader, stdout io.Writer, getenv func(string) s
 }
 
 func cursorHookRelay(stdin io.Reader, getenv func(string) string) string {
-	endpoint, token := getenv(cursorHookURLEnv), getenv(cursorHookTokenEnv)
-	if endpoint == "" || token == "" || !loopbackHTTPURL(endpoint) {
+	endpoint, ticket := getenv(cursorHookURLEnv), getenv(cursorHookTicketEnv)
+	if endpoint == "" || ticket == "" || !loopbackHTTPURL(endpoint) {
 		return cursorHookRelayEmptyReply
 	}
 	var req cursorHookRequest
@@ -469,7 +469,7 @@ func cursorHookRelay(stdin io.Reader, getenv func(string) string) string {
 	if err != nil {
 		return cursorHookRelayEmptyReply
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+token)
+	httpReq.Header.Set("Authorization", "Bearer "+ticket)
 	httpReq.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Transport: &http.Transport{Proxy: nil}}
 	resp, err := client.Do(httpReq)

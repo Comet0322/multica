@@ -52,7 +52,7 @@ func TestRedisLeaseStoreAtomicOperationsAreTokenFenced(t *testing.T) {
 	}
 	id := uuidFromString(t, "12121212-1212-1212-1212-121212121212")
 	key := "multica:channel-lease:v1:prod:12121212-1212-1212-1212-121212121212"
-	arg := AcquireLeaseParams{ID: id, Token: "node-g1", TTL: 180 * time.Second}
+	arg := AcquireLeaseParams{ID: id, Ticket: "node-g1", TTL: 180 * time.Second}
 
 	mock.ExpectEvalSha(redisTryAcquireLease.Hash(), []string{key}, "node-g1", int64(180000)).SetVal(int64(1))
 	if err := store.TryAcquireWSLease(context.Background(), arg); err != nil {
@@ -67,7 +67,7 @@ func TestRedisLeaseStoreAtomicOperationsAreTokenFenced(t *testing.T) {
 		t.Fatalf("mismatched renewal error = %v, want ErrLeaseNotAcquired", err)
 	}
 	mock.ExpectEvalSha(redisReleaseLease.Hash(), []string{key}, "node-g1").SetVal(int64(0))
-	if err := store.ReleaseWSLease(context.Background(), ReleaseLeaseParams{ID: id, Token: "node-g1"}); err != nil {
+	if err := store.ReleaseWSLease(context.Background(), ReleaseLeaseParams{ID: id, Ticket: "node-g1"}); err != nil {
 		t.Fatalf("stale release should be a fenced no-op: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

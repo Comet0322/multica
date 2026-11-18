@@ -104,7 +104,7 @@ type ExecOptions struct {
 	// subprocess environment. Backends that delegate remotely (museapp) forward
 	// it in their wire request so the remote worker can call the Multica API
 	// with the same scoped identity. Empty when the server did not provide one.
-	TaskToken string
+	TaskTicket string
 	// MulticaServerURL is the Multica API base URL (e.g.
 	// https://multica.example.com). Remote backends forward it so the worker
 	// knows where to call; CLI backends get it as MULTICA_SERVER_URL.

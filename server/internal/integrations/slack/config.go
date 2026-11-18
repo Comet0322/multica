@@ -37,11 +37,11 @@ import (
 // (mirroring Feishu's app_secret_encrypted). Both are pasted by the admin at
 // BYO install time.
 type installConfig struct {
-	AppID             string `json:"app_id"`
-	TeamID            string `json:"team_id,omitempty"`
-	BotUserID         string `json:"bot_user_id,omitempty"`
-	BotTokenEncrypted string `json:"bot_token_encrypted"`
-	AppTokenEncrypted string `json:"app_token_encrypted,omitempty"`
+	AppID              string `json:"app_id"`
+	TeamID             string `json:"team_id,omitempty"`
+	BotUserID          string `json:"bot_user_id,omitempty"`
+	BotTicketEncrypted string `json:"bot_token_encrypted"`
+	AppTicketEncrypted string `json:"app_token_encrypted,omitempty"`
 }
 
 // credentials is the decoded, decrypted form the outbound sender runs on. The
@@ -51,7 +51,7 @@ type installConfig struct {
 type credentials struct {
 	TeamID    string
 	BotUserID string
-	BotToken  string
+	BotTicket string
 }
 
 // Decrypter turns stored ciphertext into plaintext. The wiring injects a
@@ -69,7 +69,7 @@ func decodeCredentials(raw json.RawMessage, decrypt Decrypter) (credentials, err
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return credentials{}, fmt.Errorf("decode slack installation config: %w", err)
 	}
-	botToken, err := decryptToken(cfg.BotTokenEncrypted, decrypt)
+	botTicket, err := decryptToken(cfg.BotTicketEncrypted, decrypt)
 	if err != nil {
 		return credentials{}, fmt.Errorf("decrypt bot token: %w", err)
 	}
@@ -80,7 +80,7 @@ func decodeCredentials(raw json.RawMessage, decrypt Decrypter) (credentials, err
 	return credentials{
 		TeamID:    teamID,
 		BotUserID: cfg.BotUserID,
-		BotToken:  botToken,
+		BotTicket: botTicket,
 	}, nil
 }
 

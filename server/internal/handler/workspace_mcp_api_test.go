@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-const workspaceMcpTestSecret = "sk-live-workspace-should-never-be-echoed"
+const workspaceMcpTestSealed = "sk-live-workspace-should-never-be-echoed"
 
-var workspaceMcpTestEntry = `{"url":"https://linear.example","headers":{"Authorization":"Bearer ` + workspaceMcpTestSecret + `"}}`
+var workspaceMcpTestEntry = `{"url":"https://linear.example","headers":{"Authorization":"Bearer ` + workspaceMcpTestSealed + `"}}`
 
 // createWorkspaceMcpServerForTest seeds one library entry and removes it (plus
 // any bindings) afterwards, so these tests can share the fixture workspace.
@@ -71,7 +71,7 @@ func TestListWorkspaceMcpServers_NeverEchoesSecrets(t *testing.T) {
 	}
 	// The workspace owner is the most privileged caller there is; if anyone
 	// could read the credential back it would be this request.
-	if strings.Contains(raw, workspaceMcpTestSecret) {
+	if strings.Contains(raw, workspaceMcpTestSealed) {
 		t.Fatalf("response echoed the shared credential: %s", raw)
 	}
 	if strings.Contains(raw, "linear.example") {
@@ -174,7 +174,7 @@ func TestCreateWorkspaceMcpServer_BindsToNoAgent(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", code, raw)
 	}
-	if strings.Contains(raw, workspaceMcpTestSecret) {
+	if strings.Contains(raw, workspaceMcpTestSealed) {
 		t.Fatalf("create response echoed the entry: %s", raw)
 	}
 
@@ -440,7 +440,7 @@ func TestAgentMcpServerBinding_ResponseIsSecretFreeAndAgentActorsCannotWrite(t *
 	req = withURLParam(req, "id", agentID)
 	w := httptest.NewRecorder()
 	testHandler.ListAgentMcpServers(w, req)
-	if strings.Contains(w.Body.String(), workspaceMcpTestSecret) {
+	if strings.Contains(w.Body.String(), workspaceMcpTestSealed) {
 		t.Fatalf("agent binding list echoed the entry: %s", w.Body.String())
 	}
 

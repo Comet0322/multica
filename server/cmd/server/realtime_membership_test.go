@@ -41,11 +41,11 @@ func (membershipFailCommitTx) Commit(context.Context) error {
 
 func realtimeMembershipConn(t *testing.T, server *httptest.Server, userID, workspaceID string) (*websocket.Conn, string) {
 	t.Helper()
-	token, err := generateTestJWT(userID, "realtime@example.test", "Realtime")
+	ticket, err := generateTestJWT(userID, "realtime@example.test", "Realtime")
 	if err != nil {
 		t.Fatal(err)
 	}
-	headers := http.Header{"Cookie": []string{auth.AuthCookieName + "=" + token}}
+	headers := http.Header{"Cookie": []string{auth.AuthCookieName + "=" + ticket}}
 	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws?workspace_id="+workspaceID, headers)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func realtimeMembershipConn(t *testing.T, server *httptest.Server, userID, works
 		t.Fatal(err)
 	}
 	wantRealtimeMembershipFrame(t, conn, "pong")
-	return conn, token
+	return conn, ticket
 }
 
 func wantRealtimeMembershipFrame(t *testing.T, conn *websocket.Conn, typ string) {
@@ -109,7 +109,7 @@ func TestRealtimeMemberRevocation(t *testing.T) {
 				router, h := NewRouterWithOptions(testPool, hub, bus, analytics.NoopClient{}, nil, RouterOptions{})
 				server := httptest.NewServer(router)
 				t.Cleanup(server.Close)
-				old, token := realtimeMembershipConn(t, server, userID, wsID)
+				old, ticket := realtimeMembershipConn(t, server, userID, wsID)
 				second, _ := realtimeMembershipConn(t, server, userID, wsID)
 				other, _ := realtimeMembershipConn(t, server, userID, otherWS)
 				current, _ := realtimeMembershipConn(t, server, testUserID, wsID)
@@ -144,7 +144,7 @@ func TestRealtimeMemberRevocation(t *testing.T) {
 					wantRealtimeMembershipClosed(t, second)
 					wantRealtimeMembershipFrame(t, current, protocol.EventMemberRemoved)
 					fresh, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws?workspace_id="+wsID,
-						http.Header{"Cookie": []string{auth.AuthCookieName + "=" + token}})
+						http.Header{"Cookie": []string{auth.AuthCookieName + "=" + ticket}})
 					if fresh != nil {
 						fresh.Close()
 					}

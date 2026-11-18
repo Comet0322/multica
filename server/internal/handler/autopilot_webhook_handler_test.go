@@ -163,7 +163,7 @@ func TestWebhookHandler_FiltersUndeclaredEvent(t *testing.T) {
 		{Event: "check_suite", Actions: []string{"completed"}},
 	})
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"action":       "in_progress",
 		"workflow_run": map[string]any{"id": 123},
 	}, map[string]string{"X-GitHub-Event": "workflow_run"})
@@ -201,7 +201,7 @@ func TestWebhookHandler_AllowsDeclaredEvent(t *testing.T) {
 		{Event: "workflow_run", Actions: []string{"completed"}},
 	})
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"action":       "completed",
 		"workflow_run": map[string]any{"id": 123},
 	}, map[string]string{"X-GitHub-Event": "workflow_run"})
@@ -227,7 +227,7 @@ func TestWebhookHandler_PayloadConditionsGateRuns(t *testing.T) {
 	}
 	headers := map[string]string{"X-GitHub-Event": "issues"}
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"action": "labeled", "label": map[string]any{"name": "bug"}, "sender": map[string]any{"type": "User"},
 	}, headers)
 	var resp map[string]any
@@ -238,7 +238,7 @@ func TestWebhookHandler_PayloadConditionsGateRuns(t *testing.T) {
 		t.Fatalf("expected ignored/payload_filtered, got %d %#v", w.Code, resp)
 	}
 
-	w = postWebhook(t, *trig.WebhookToken, map[string]any{
+	w = postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"action": "labeled", "label": map[string]any{"name": "agent"}, "sender": map[string]any{"type": "User"},
 	}, headers)
 	delivery := processQueuedWebhookDelivery(t, requireAcceptedWebhookResponse(t, w))
@@ -271,7 +271,7 @@ func TestWebhookHandler_EmptyFiltersAllowsAll(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"action":       "in_progress",
 		"workflow_run": map[string]any{"id": 123},
 	}, map[string]string{"X-GitHub-Event": "workflow_run"})
@@ -481,7 +481,7 @@ func TestCreateAutopilotTrigger_RejectsEventFiltersOnSchedule(t *testing.T) {
 	}
 }
 
-func postWebhook(t *testing.T, token string, body any, headers map[string]string) *httptest.ResponseRecorder {
+func postWebhook(t *testing.T, ticket string, body any, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	switch v := body.(type) {
@@ -494,14 +494,14 @@ func postWebhook(t *testing.T, token string, body any, headers map[string]string
 			t.Fatalf("encode: %v", err)
 		}
 	}
-	req := httptest.NewRequest("POST", "/api/webhooks/autopilots/"+token, &buf)
+	req := httptest.NewRequest("POST", "/api/webhooks/autopilots/"+ticket, &buf)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	if req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req = withURLParam(req, "token", token)
+	req = withURLParam(req, "token", ticket)
 	w := httptest.NewRecorder()
 	testHandler.HandleAutopilotWebhook(w, req)
 	return w
@@ -562,17 +562,17 @@ func TestCreateWebhookTrigger_GeneratesToken(t *testing.T) {
 	if resp.Kind != "webhook" {
 		t.Fatalf("kind: %q", resp.Kind)
 	}
-	if resp.WebhookToken == nil || *resp.WebhookToken == "" {
+	if resp.WebhookTicket == nil || *resp.WebhookTicket == "" {
 		t.Fatal("webhook_token should be present and non-empty")
 	}
-	if !strings.HasPrefix(*resp.WebhookToken, "awt_") {
-		t.Fatalf("token prefix: %q", *resp.WebhookToken)
+	if !strings.HasPrefix(*resp.WebhookTicket, "awt_") {
+		t.Fatalf("token prefix: %q", *resp.WebhookTicket)
 	}
 	if resp.WebhookPath == nil {
 		t.Fatal("webhook_path should be present")
 	}
-	if !strings.HasSuffix(*resp.WebhookPath, *resp.WebhookToken) {
-		t.Fatalf("webhook_path %q should contain token %q", *resp.WebhookPath, *resp.WebhookToken)
+	if !strings.HasSuffix(*resp.WebhookPath, *resp.WebhookTicket) {
+		t.Fatalf("webhook_path %q should contain token %q", *resp.WebhookPath, *resp.WebhookTicket)
 	}
 }
 
@@ -582,11 +582,11 @@ func TestCreateWebhookTrigger_TwoUniqueTokens(t *testing.T) {
 
 	a := createWebhookTriggerViaHandler(t, apID)
 	b := createWebhookTriggerViaHandler(t, apID)
-	if a.WebhookToken == nil || b.WebhookToken == nil {
+	if a.WebhookTicket == nil || b.WebhookTicket == nil {
 		t.Fatal("missing tokens")
 	}
-	if *a.WebhookToken == *b.WebhookToken {
-		t.Fatalf("tokens should differ: %q == %q", *a.WebhookToken, *b.WebhookToken)
+	if *a.WebhookTicket == *b.WebhookTicket {
+		t.Fatalf("tokens should differ: %q == %q", *a.WebhookTicket, *b.WebhookTicket)
 	}
 }
 
@@ -625,7 +625,7 @@ func TestWebhookHandler_RejectsInvalidJSON(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, []byte(`not json`), nil)
+	w := postWebhook(t, *trig.WebhookTicket, []byte(`not json`), nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -636,7 +636,7 @@ func TestWebhookHandler_RejectsScalarBody(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, []byte(`"hello"`), nil)
+	w := postWebhook(t, *trig.WebhookTicket, []byte(`"hello"`), nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -654,7 +654,7 @@ func TestWebhookHandler_RejectsOversized(t *testing.T) {
 	body := append([]byte(`{"x":"`), big...)
 	body = append(body, []byte(`"}`)...)
 
-	w := postWebhook(t, *trig.WebhookToken, body, nil)
+	w := postWebhook(t, *trig.WebhookTicket, body, nil)
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -672,7 +672,7 @@ func TestWebhookHandler_DisabledTriggerReturnsIgnored(t *testing.T) {
 		t.Fatalf("disable trigger: %v", err)
 	}
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{"hello": "world"}, nil)
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{"hello": "world"}, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -691,7 +691,7 @@ func TestWebhookHandler_PausedAutopilotReturnsIgnored(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "paused", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{"x": 1}, nil)
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{"x": 1}, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -707,7 +707,7 @@ func TestWebhookHandler_ActiveDispatchesRunWithPayload(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"event":        "demo.received",
 		"eventPayload": map[string]any{"k": "v"},
 	}, nil)
@@ -785,7 +785,7 @@ func TestWebhookHandler_ActiveSkippedRunReturnsLegacyContract(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{"event": "demo.skipped"}, nil)
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{"event": "demo.skipped"}, nil)
 	deliveryID := requireAcceptedWebhookResponse(t, w)
 	var resp map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -817,7 +817,7 @@ func TestWebhookHandler_GitHubHeaderInferredEvent(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"action": "opened",
 		"pull_request": map[string]any{
 			"number": 42,
@@ -848,7 +848,7 @@ func TestWebhookHandler_ValidBurstPersistsWithoutHTTP429(t *testing.T) {
 	t.Cleanup(func() { testHandler.WebhookRateLimiter = prev })
 
 	for i := 0; i < 3; i++ {
-		w := postWebhook(t, *trig.WebhookToken, map[string]any{"i": i}, nil)
+		w := postWebhook(t, *trig.WebhookTicket, map[string]any{"i": i}, nil)
 		requireAcceptedWebhookResponse(t, w)
 	}
 	if got := len(listDeliveries(t, apID)); got != 3 {
@@ -860,7 +860,7 @@ func TestRotateWebhookToken_ReplacesOldToken(t *testing.T) {
 	agentID := createWebhookTestAgent(t, "WebhookRotate Agent")
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
-	oldToken := *trig.WebhookToken
+	oldTicket := *trig.WebhookTicket
 
 	w := httptest.NewRecorder()
 	req := newRequest("POST", fmt.Sprintf("/api/autopilots/%s/triggers/%s/rotate-webhook-token", apID, trig.ID), nil)
@@ -871,17 +871,17 @@ func TestRotateWebhookToken_ReplacesOldToken(t *testing.T) {
 	}
 	var rotated AutopilotTriggerResponse
 	json.Unmarshal(w.Body.Bytes(), &rotated)
-	if rotated.WebhookToken == nil || *rotated.WebhookToken == oldToken {
-		t.Fatalf("rotate did not change token: old=%q new=%v", oldToken, rotated.WebhookToken)
+	if rotated.WebhookTicket == nil || *rotated.WebhookTicket == oldTicket {
+		t.Fatalf("rotate did not change token: old=%q new=%v", oldTicket, rotated.WebhookTicket)
 	}
 
 	// Old token should now 404.
-	resOld := postWebhook(t, oldToken, map[string]any{"x": 1}, nil)
+	resOld := postWebhook(t, oldTicket, map[string]any{"x": 1}, nil)
 	if resOld.Code != http.StatusNotFound {
 		t.Fatalf("old token should be 404, got %d", resOld.Code)
 	}
 	// New token should accept.
-	resNew := postWebhook(t, *rotated.WebhookToken, map[string]any{"x": 1}, nil)
+	resNew := postWebhook(t, *rotated.WebhookTicket, map[string]any{"x": 1}, nil)
 	requireAcceptedWebhookResponse(t, resNew)
 }
 
@@ -892,7 +892,7 @@ func TestWebhookHandler_EmptyBodyReturns400(t *testing.T) {
 	apID := createWebhookTestAutopilot(t, agentID, "active", "run_only")
 	trig := createWebhookTriggerViaHandler(t, apID)
 
-	w := postWebhook(t, *trig.WebhookToken, []byte(``), nil)
+	w := postWebhook(t, *trig.WebhookTicket, []byte(``), nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty body, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -908,7 +908,7 @@ func TestWebhookHandler_ArchivedAutopilotReturnsIgnored(t *testing.T) {
 		t.Fatalf("archive autopilot: %v", err)
 	}
 
-	w := postWebhook(t, *trig.WebhookToken, map[string]any{"x": 1}, nil)
+	w := postWebhook(t, *trig.WebhookTicket, map[string]any{"x": 1}, nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
@@ -930,12 +930,12 @@ func TestWebhookHandler_IPRateLimitReturns429BeforeDBLookup(t *testing.T) {
 	testHandler.WebhookIPRateLimiter = NewMemoryWebhookIPRateLimiter(WebhookRateLimit{Limit: 2, Window: 60_000_000_000})
 	t.Cleanup(func() { testHandler.WebhookIPRateLimiter = prev })
 
-	post := func(token string) int {
-		req := httptest.NewRequest("POST", "/api/webhooks/autopilots/"+token,
+	post := func(ticket string) int {
+		req := httptest.NewRequest("POST", "/api/webhooks/autopilots/"+ticket,
 			bytes.NewBufferString(`{"x":1}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.RemoteAddr = "192.0.2.7:1234" // stable source, three calls = same bucket
-		req = withURLParam(req, "token", token)
+		req = withURLParam(req, "token", ticket)
 		w := httptest.NewRecorder()
 		testHandler.HandleAutopilotWebhook(w, req)
 		return w.Code
@@ -961,13 +961,13 @@ func TestWebhookHandler_IPRateLimitNotBypassedByXFFSpoof(t *testing.T) {
 	testHandler.WebhookIPRateLimiter = NewMemoryWebhookIPRateLimiter(WebhookRateLimit{Limit: 2, Window: 60_000_000_000})
 	t.Cleanup(func() { testHandler.WebhookIPRateLimiter = prev })
 
-	post := func(token, xff string) int {
-		req := httptest.NewRequest("POST", "/api/webhooks/autopilots/"+token,
+	post := func(ticket, xff string) int {
+		req := httptest.NewRequest("POST", "/api/webhooks/autopilots/"+ticket,
 			bytes.NewBufferString(`{"x":1}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Forwarded-For", xff) // <-- attacker-controlled
 		req.RemoteAddr = "198.51.100.42:5555"  // real (untrusted) source
-		req = withURLParam(req, "token", token)
+		req = withURLParam(req, "token", ticket)
 		w := httptest.NewRecorder()
 		testHandler.HandleAutopilotWebhook(w, req)
 		return w.Code
@@ -996,8 +996,8 @@ func TestWebhookHandler_AbsoluteIPRateLimitRetainsEmergencyCeiling(t *testing.T)
 	testHandler.WebhookAbsoluteIPRateLimiter = NewMemoryWebhookAbsoluteIPRateLimiter(WebhookRateLimit{Limit: 1, Window: time.Minute})
 	t.Cleanup(func() { testHandler.WebhookAbsoluteIPRateLimiter = prev })
 
-	requireAcceptedWebhookResponse(t, postWebhook(t, *trig.WebhookToken, map[string]any{"n": 1}, nil))
-	second := postWebhook(t, *trig.WebhookToken, map[string]any{"n": 2}, nil)
+	requireAcceptedWebhookResponse(t, postWebhook(t, *trig.WebhookTicket, map[string]any{"n": 1}, nil))
+	second := postWebhook(t, *trig.WebhookTicket, map[string]any{"n": 2}, nil)
 	if second.Code != http.StatusTooManyRequests {
 		t.Fatalf("absolute ceiling: expected 429, got %d body=%s", second.Code, second.Body.String())
 	}
@@ -1108,7 +1108,7 @@ func TestGetAutopilotRun_ReturnsFullPayload(t *testing.T) {
 	trig := createWebhookTriggerViaHandler(t, apID)
 
 	// Fire one webhook so there's a run with a payload.
-	post := postWebhook(t, *trig.WebhookToken, map[string]any{
+	post := postWebhook(t, *trig.WebhookTicket, map[string]any{
 		"event":        "demo.x",
 		"eventPayload": map[string]any{"answer": 42},
 	}, nil)

@@ -144,7 +144,7 @@ func TestGoogleLoginInvitationSignup(t *testing.T) {
 			if invited {
 				var login LoginResponse
 				resp.JSON(&login)
-				if login.Token == "" || login.User.Email != email {
+				if login.Ticket == "" || login.User.Email != email {
 					t.Fatalf("expected authenticated invited account, got %+v", login.User)
 				}
 			} else if len(resp.Result().Cookies()) != 0 || dbfx.Count(t, `SELECT count(*) FROM "user" WHERE email = $1`, email) != 0 {

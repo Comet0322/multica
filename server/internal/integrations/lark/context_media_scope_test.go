@@ -14,7 +14,7 @@ func TestRecentMediaStaysPlaceholderAcrossRepeatedTurns(t *testing.T) {
 			fake.byChat["group"] = []LarkMessage{budgetImage("recent"), textMsg("text", "source", "recent text", "1100")}
 			fake.byID["parent"] = []LarkMessage{budgetImage("parent")}
 			api, storage, ledger := &fakeSender{}, &fakeMediaStorage{}, &fakeMediaLedger{}
-			resolver := NewFeishuMediaResolver(api, fakeCreds{secret: "plain"}, storage, ledger, newDiscardLogger())
+			resolver := NewFeishuMediaResolver(api, fakeCreds{sealed: "plain"}, storage, ledger, newDiscardLogger())
 			for _, id := range []string{"turn-one", "turn-two"} {
 				in := InboundMessage{MessageID: id, MessageType: "text", Body: "inspect", ChatID: "group", ChatType: ChatTypeGroup, AddressedToBot: true, CreateTime: "2000"}
 				if quote {

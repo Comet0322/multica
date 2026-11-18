@@ -49,9 +49,9 @@ func (o *Outbound) Reply(ctx context.Context, inst engine.ResolvedInstallation, 
 		return
 	}
 	info := DecodePublicConfig(row.Config)
-	api, token, err := o.sender(ctx, inst.ID, info.BotID, msg.Source.SenderID)
+	api, ticket, err := o.sender(ctx, inst.ID, info.BotID, msg.Source.SenderID)
 	if err == nil {
-		_, err = api.Send(ctx, textMessage(msg.Source.ChatID, token, util.UUIDToString(dbid.NewV7()), text))
+		_, err = api.Send(ctx, textMessage(msg.Source.ChatID, ticket, util.UUIDToString(dbid.NewV7()), text))
 	}
 	if err != nil {
 		o.logger.WarnContext(ctx, "weixin: status reply failed", "error", err)

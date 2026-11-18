@@ -16,30 +16,30 @@ func TestIssueSearch_ProjectFilter(t *testing.T) {
 		t.Skip("requires DB")
 	}
 
-	token := fmt.Sprintf("mulprojsearch%d", time.Now().UnixNano())
-	targetProjectID := dbfx.Project(t, "Target search project "+token)
-	otherProjectID := dbfx.Project(t, "Other search project "+token)
+	ticket := fmt.Sprintf("mulprojsearch%d", time.Now().UnixNano())
+	targetProjectID := dbfx.Project(t, "Target search project "+ticket)
+	otherProjectID := dbfx.Project(t, "Other search project "+ticket)
 
-	targetTitleIssueID := dbfx.Issue(t, token+" target title hit", testutil.Cols{
+	targetTitleIssueID := dbfx.Issue(t, ticket+" target title hit", testutil.Cols{
 		"project_id": targetProjectID,
 	})
 	targetCommentIssueID := dbfx.Issue(t, "issue with comment hit in target project", testutil.Cols{
 		"project_id": targetProjectID,
 	})
-	dbfx.Comment(t, targetCommentIssueID, token+" target comment hit")
+	dbfx.Comment(t, targetCommentIssueID, ticket+" target comment hit")
 
-	otherTitleIssueID := dbfx.Issue(t, token+" other project title hit", testutil.Cols{
+	otherTitleIssueID := dbfx.Issue(t, ticket+" other project title hit", testutil.Cols{
 		"project_id": otherProjectID,
 	})
 	otherCommentIssueID := dbfx.Issue(t, "issue with comment hit in other project", testutil.Cols{
 		"project_id": otherProjectID,
 	})
-	dbfx.Comment(t, otherCommentIssueID, token+" other project comment hit")
+	dbfx.Comment(t, otherCommentIssueID, ticket+" other project comment hit")
 
-	noProjectIssueID := dbfx.Issue(t, token+" unassigned project hit")
+	noProjectIssueID := dbfx.Issue(t, ticket+" unassigned project hit")
 
 	params := url.Values{
-		"q":          {token},
+		"q":          {ticket},
 		"project_id": {targetProjectID},
 	}
 	req := newRequest("GET", "/api/issues/search?"+params.Encode(), nil)

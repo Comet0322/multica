@@ -51,15 +51,15 @@ func TestPrivateProjectDaemonIssueGCChecks(t *testing.T) {
 				if !tc.wantFound {
 					want = http.StatusNotFound
 				}
-				secret := get(f.secretIssue, want)
+				sealed := get(f.sealedIssue, want)
 				missing := get(missingID, http.StatusNotFound)
-				if !tc.wantFound && secret != missing {
-					t.Fatalf("hidden issue response %s differs from missing %s", secret, missing)
+				if !tc.wantFound && sealed != missing {
+					t.Fatalf("hidden issue response %s differs from missing %s", sealed, missing)
 				}
 				get(f.publicIssue, http.StatusOK)
 			})
 			t.Run("batch", func(t *testing.T) {
-				ids := []string{f.secretIssue, missingID, f.publicIssue, f.secretIssue}
+				ids := []string{f.sealedIssue, missingID, f.publicIssue, f.sealedIssue}
 				r := withURLParam(request(http.MethodPost, "/api/daemon/workspaces/"+testWorkspaceID+"/issues/gc-check", map[string]any{"issue_ids": ids}), "workspaceId", testWorkspaceID)
 				var out struct {
 					Issues []batchIssueGCCheckItem `json:"issues"`

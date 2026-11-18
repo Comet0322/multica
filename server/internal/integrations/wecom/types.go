@@ -80,7 +80,7 @@ type Installation struct {
 // so a plaintext secret never lives on the durable Installation itself.
 type InstallationCredentials struct {
 	BotID  string
-	Secret string
+	Sealed string
 }
 
 // installConfig is the on-disk (JSONB) shape of channel_installation.config

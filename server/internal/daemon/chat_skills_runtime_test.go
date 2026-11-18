@@ -70,7 +70,7 @@ cat >/dev/null
 	message := "[/untrusted label](slash://skill/selected-id) USER_REQUEST"
 	task := Task{
 		ID: "first-task", WorkspaceID: "test-ws", RuntimeID: "test-rt",
-		AgentID: "test-agent", AuthToken: "mat_test_skills", ChatSessionID: "test-chat",
+		AgentID: "test-agent", AuthTicket: "mat_test_skills", ChatSessionID: "test-chat",
 		ChatMessage: message, ChatSkillMessage: &message,
 		Agent: &AgentData{ID: "test-agent", Name: "test", Skills: []SkillData{
 			{ID: "selected-id", Name: "Review Code", Content: "---\ndisable-model-invocation: true\n---\nSELECTED_BODY"},

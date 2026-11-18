@@ -201,7 +201,7 @@ func (r *OutboundReplier) post(ctx context.Context, inst engine.ResolvedInstalla
 	if messageID := parseMessageRef(msg.MessageID); messageID != 0 {
 		reply = &replyParameters{MessageID: messageID, AllowSendingWithoutReply: true}
 	}
-	if _, err := newBotAPI(r.apiBase, creds.BotToken, r.client).SendMessage(ctx, sendMessageParams{
+	if _, err := newBotAPI(r.apiBase, creds.BotTicket, r.client).SendMessage(ctx, sendMessageParams{
 		ChatID:          chatID,
 		Text:            text,
 		MessageThreadID: threadID,
