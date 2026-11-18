@@ -53,7 +53,7 @@ spec:
         # lookup returns empty during `helm template`/`--dry-run`, so the
         # rendered value there is a placeholder; on a real install/upgrade it
         # reflects the actual Secret and rolls pods on rotation.
-        checksum/secret: {{ (lookup "v1" "Secret" .Release.Namespace .Values.existingSecret).data | toYaml | sha256sum }}
+        checksum/secret: {{ (lookup "v1" "Secret" .Release.Namespace (include "multica.secretName" .)).data | toYaml | sha256sum }}
         {{- if $extraCACerts }}
         # Same lookup pattern: the backend reads extra CAs only at startup.
         checksum/extra-ca-certs: {{ (lookup "v1" "ConfigMap" .Release.Namespace $extraCACerts).data | toYaml | sha256sum }}
@@ -80,7 +80,7 @@ spec:
             - configMapRef:
                 name: {{ .Release.Name }}-config
             - secretRef:
-                name: {{ .Values.existingSecret }}
+                name: {{ include "multica.secretName" . }}
           {{- if or (not .Values.postgres.external.enabled) $extraCACerts }}
           env:
             {{- if not .Values.postgres.external.enabled }}
