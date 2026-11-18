@@ -37,10 +37,15 @@ spec:
         {{- include "multica.labels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: "{{ .Values.images.postgres.repository }}:{{ .Values.images.postgres.tag }}"
           imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - containerPort: 5432
               name: postgres

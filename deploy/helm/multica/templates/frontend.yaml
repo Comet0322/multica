@@ -20,10 +20,17 @@ spec:
         {{- include "multica.labels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: "{{ .Values.images.frontend.repository }}:{{ $frontendImageTag }}"
           imagePullPolicy: {{ .Values.images.frontend.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 3000
               name: http
