@@ -152,7 +152,7 @@ func run() error {
 	defer stop()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		return fmt.Errorf("DATABASE_URL is not set")
 	}
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
