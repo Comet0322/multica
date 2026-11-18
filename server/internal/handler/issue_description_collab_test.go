@@ -354,7 +354,7 @@ func TestIssueCollabTicketFollowsTheFlag(t *testing.T) {
 	}
 	withFeatureFlag(t, testHandler, featureflags.IssueDescriptionLive, true)
 	resp := ticket()
-	if !resp.Enabled || resp.Document != "issue:"+id || resp.Token == "" {
+	if !resp.Enabled || resp.Document != "issue:"+id || resp.Ticket == "" {
 		t.Fatalf("ticket = %+v", resp)
 	}
 	// Edits fall back to a direct write while the service is unreachable.

@@ -142,9 +142,9 @@ func TestCodebuddyFailureDiagnosticsAreBoundedAndRedacted(t *testing.T) {
 	result := runCodebuddyFailureFixture(t, `printf '%s\n' '{"type":"result","is_error":true,"errors":["unknown model review-model; api_key=private-key"]}'
 printf '%s\n' 'Authorization: Bearer private-token' >&2
 `)
-	for _, secret := range []string{"private-key", "private-token"} {
-		if strings.Contains(result.Error, secret) {
-			t.Errorf("persisted error contains %q: %s", secret, result.Error)
+	for _, sealed := range []string{"private-key", "private-token"} {
+		if strings.Contains(result.Error, sealed) {
+			t.Errorf("persisted error contains %q: %s", sealed, result.Error)
 		}
 	}
 	if !strings.Contains(result.Error, "[REDACTED]") || !strings.Contains(result.Error, "stderr_bytes=36") {

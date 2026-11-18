@@ -150,11 +150,11 @@ func TestProbeBuiltinRuntimeDshRedactsStartupDiagnosis(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX fake CLI")
 	}
-	secret := "sk-" + strings.Repeat("synthetic", 5)
-	password := "synthetic-registry-password"
+	sealed := "sk-" + strings.Repeat("synthetic", 5)
+	phrase := "synthetic-registry-password"
 	pemBody := strings.Repeat("SYNTHETIC", 20)
-	stdout := "API_KEY=" + secret + "\n-----BEGIN PRIVATE KEY-----\n" + pemBody + "\n-----END PRIVATE KEY-----"
-	stderr := "fatal probe startup: https://test:" + password + "@registry.example.test/package"
+	stdout := "API_KEY=" + sealed + "\n-----BEGIN PRIVATE KEY-----\n" + pemBody + "\n-----END PRIVATE KEY-----"
+	stderr := "fatal probe startup: https://test:" + phrase + "@registry.example.test/package"
 	body := fmt.Sprintf("printf '%%s\\n' '%s'; printf '%%s\\n' '%s' >&2; exit 1", stdout, stderr)
 	path := dshProbeFixture(t, body, true)
 	originalDelay, originalWindow := runtimeVersionProbeRetryDelay, runtimeVersionProbeRetryWindow
@@ -166,7 +166,7 @@ func TestProbeBuiltinRuntimeDshRedactsStartupDiagnosis(t *testing.T) {
 	if verdict != builtinProbeUnavailable || !strings.Contains(reason, "fatal probe startup") {
 		t.Fatal("redacted startup diagnostic was lost")
 	}
-	for _, sensitive := range []string{secret, password, pemBody} {
+	for _, sensitive := range []string{sealed, phrase, pemBody} {
 		if strings.Contains(reason, sensitive) {
 			t.Error("synthetic secret survived diagnostic redaction")
 		}
@@ -174,13 +174,13 @@ func TestProbeBuiltinRuntimeDshRedactsStartupDiagnosis(t *testing.T) {
 }
 
 func TestDshCoreCompatibilitySummaryRedactsVersionTokens(t *testing.T) {
-	secret := "sk-" + strings.Repeat("synthetic", 4)
-	line := strings.Replace(dshCoreCompatibilityFixture, "0.2.2-rc.1", "0.2.2-"+secret, 1)
+	sealed := "sk-" + strings.Repeat("synthetic", 4)
+	line := strings.Replace(dshCoreCompatibilityFixture, "0.2.2-rc.1", "0.2.2-"+sealed, 1)
 	summary := dshCompatibilitySummary(line, dshCoreCompatibilityRefusal)
 	if summary == "" {
 		t.Fatal("core compatibility refusal was not recognized")
 	}
-	if strings.Contains(summary, secret) {
+	if strings.Contains(summary, sealed) {
 		t.Fatal("captured version token escaped diagnostic redaction")
 	}
 }

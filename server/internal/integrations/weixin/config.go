@@ -14,13 +14,13 @@ type installConfig struct {
 	AppID                string `json:"app_id"`
 	UserID               string `json:"user_id"`
 	BaseURL              string `json:"base_url"`
-	TokenEncrypted       string `json:"bot_token_encrypted"`
+	TicketEncrypted      string `json:"bot_token_encrypted"`
 	AuthorizationExpired bool   `json:"authorization_expired,omitempty"`
 }
 
 type credentials struct {
 	installConfig
-	Token string
+	Ticket string
 }
 
 type PublicConfig struct {
@@ -43,7 +43,7 @@ func decodeCredentials(raw json.RawMessage, box *secretbox.Box) (credentials, er
 	if err != nil {
 		return credentials{}, err
 	}
-	sealed, err := base64.StdEncoding.DecodeString(cfg.TokenEncrypted)
+	sealed, err := base64.StdEncoding.DecodeString(cfg.TicketEncrypted)
 	if err != nil {
 		return credentials{}, ErrProtocol
 	}
@@ -55,5 +55,5 @@ func decodeCredentials(raw json.RawMessage, box *secretbox.Box) (credentials, er
 		return credentials{}, ErrTokenExpired
 	}
 	cfg.BaseURL = base
-	return credentials{installConfig: cfg, Token: string(plain)}, nil
+	return credentials{installConfig: cfg, Ticket: string(plain)}, nil
 }

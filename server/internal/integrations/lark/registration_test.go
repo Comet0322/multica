@@ -574,8 +574,8 @@ func TestRegistrationClient_Poll_Success(t *testing.T) {
 	if res.ClientID != "cli_personal_42" {
 		t.Errorf("ClientID: got %q", res.ClientID)
 	}
-	if res.ClientSecret != "secret_42" {
-		t.Errorf("ClientSecret: got %q", res.ClientSecret)
+	if res.ClientSealed != "secret_42" {
+		t.Errorf("ClientSecret: got %q", res.ClientSealed)
 	}
 	if string(res.OpenID) != "ou_installer_42" {
 		t.Errorf("OpenID: got %q", res.OpenID)

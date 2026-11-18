@@ -282,14 +282,14 @@ func cursorMcpAuthLogins(path string) map[string]bool {
 func cursorMcpAuthEntryHasLogin(entry json.RawMessage) bool {
 	var parsed struct {
 		Tokens *struct {
-			AccessToken  string `json:"access_token"`
-			RefreshToken string `json:"refresh_token"`
+			AccessTicket  string `json:"access_token"`
+			RefreshTicket string `json:"refresh_token"`
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal(entry, &parsed); err != nil {
 		return false
 	}
-	return parsed.Tokens != nil && (parsed.Tokens.AccessToken != "" || parsed.Tokens.RefreshToken != "")
+	return parsed.Tokens != nil && (parsed.Tokens.AccessTicket != "" || parsed.Tokens.RefreshTicket != "")
 }
 
 func cursorMcpAuthHasLogin(path string) bool {

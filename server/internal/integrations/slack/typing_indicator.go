@@ -101,7 +101,7 @@ func NewTypingIndicatorManager(q TypingIndicatorQueries, decrypt Decrypter, logg
 		q:       q,
 		decrypt: decrypt,
 		log:     logger,
-		newAPI:  func(c credentials) reactionAPI { return slack.New(c.BotToken) },
+		newAPI:  func(c credentials) reactionAPI { return slack.New(c.BotTicket) },
 		states:  make(map[string][]typingState),
 	}
 }

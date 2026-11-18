@@ -39,8 +39,8 @@ const (
 // also requires GitHub to confirm the installing user's control; visibility
 // through a read-only repository collaboration is insufficient.
 func verifyGitHubInstallationOwnership(ctx context.Context, code string, installationID int64) error {
-	clientID, clientSecret := githubAppClientID(), githubAppClientSecret()
-	if clientID == "" || clientSecret == "" {
+	clientID, clientSealed := githubAppClientID(), githubAppClientSecret()
+	if clientID == "" || clientSealed == "" {
 		return errors.New("github: user authorization credentials are not configured")
 	}
 	if strings.TrimSpace(code) == "" {
@@ -49,14 +49,14 @@ func verifyGitHubInstallationOwnership(ctx context.Context, code string, install
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	client := &http.Client{Timeout: 15 * time.Second}
-	userToken, err := exchangeGitHubUserCode(ctx, client, clientID, clientSecret, code)
+	userTicket, err := exchangeGitHubUserCode(ctx, client, clientID, clientSealed, code)
 	if err != nil {
 		return err
 	}
 	// The token never leaves this function and is never stored; revoking it
 	// mirrors how installation tokens are handled elsewhere in this file.
-	defer revokeGitHubUserToken(client, clientID, clientSecret, userToken)
-	return assertUserCanManageInstallation(ctx, client, userToken, installationID)
+	defer revokeGitHubUserToken(client, clientID, clientSealed, userTicket)
+	return assertUserCanManageInstallation(ctx, client, userTicket, installationID)
 }
 
 // githubOwnershipErrorCode maps a verification failure to the `github_error`
@@ -79,11 +79,11 @@ func githubOwnershipErrorCode(err error) string {
 func exchangeGitHubUserCode(
 	ctx context.Context,
 	client *http.Client,
-	clientID, clientSecret, code string,
+	clientID, clientSealed, code string,
 ) (string, error) {
 	form := url.Values{}
 	form.Set("client_id", clientID)
-	form.Set("client_secret", clientSecret)
+	form.Set("client_secret", clientSealed)
 	form.Set("code", code)
 	endpoint := strings.TrimRight(githubOAuthBase, "/") + "/login/oauth/access_token"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
@@ -102,8 +102,8 @@ func exchangeGitHubUserCode(
 		return "", fmt.Errorf("exchange github user code: github status %d", resp.StatusCode)
 	}
 	var body struct {
-		AccessToken string `json:"access_token"`
-		Error       string `json:"error"`
+		AccessTicket string `json:"access_token"`
+		Error        string `json:"error"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, githubAPIResponseLimit)).Decode(&body); err != nil {
 		return "", fmt.Errorf("decode github user token: %w", err)
@@ -111,10 +111,10 @@ func exchangeGitHubUserCode(
 	if body.Error != "" {
 		return "", errors.New("github refused the user authorization code")
 	}
-	if body.AccessToken == "" {
+	if body.AccessTicket == "" {
 		return "", errors.New("github returned an empty user access token")
 	}
-	return body.AccessToken, nil
+	return body.AccessTicket, nil
 }
 
 // GitHub includes collaborator installations in this list, so finding an ID
@@ -122,7 +122,7 @@ func exchangeGitHubUserCode(
 func assertUserCanManageInstallation(
 	ctx context.Context,
 	client *http.Client,
-	userToken string,
+	userTicket string,
 	installationID int64,
 ) error {
 	for page := 1; page <= githubUserInstallationsMaxPages; page++ {
@@ -136,7 +136,7 @@ func assertUserCanManageInstallation(
 		if err != nil {
 			return err
 		}
-		setGitHubAPIHeaders(req, userToken)
+		setGitHubAPIHeaders(req, userTicket)
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("list user installations: %w", err)
@@ -167,14 +167,14 @@ func assertUserCanManageInstallation(
 					var user struct {
 						ID int64 `json:"id"`
 					}
-					if err := getGitHubOwnershipJSON(ctx, client, "/user", userToken, &user); err != nil {
+					if err := getGitHubOwnershipJSON(ctx, client, "/user", userTicket, &user); err != nil {
 						return err
 					}
 					if user.ID > 0 && user.ID == installation.Account.ID {
 						return nil
 					}
 				case "Organization":
-					return assertUserAdministersInstallationRepositories(ctx, client, userToken, installationID)
+					return assertUserAdministersInstallationRepositories(ctx, client, userTicket, installationID)
 				}
 				return errGitHubInstallationNotAuthorized
 			}
@@ -186,12 +186,12 @@ func assertUserCanManageInstallation(
 	return errGitHubInstallationNotAuthorized
 }
 
-func getGitHubOwnershipJSON(ctx context.Context, client *http.Client, path, token string, out any) error {
+func getGitHubOwnershipJSON(ctx context.Context, client *http.Client, path, ticket string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/")+path, nil)
 	if err != nil {
 		return err
 	}
-	setGitHubAPIHeaders(req, token)
+	setGitHubAPIHeaders(req, ticket)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("github ownership request: %w", err)
@@ -206,9 +206,9 @@ func getGitHubOwnershipJSON(ctx context.Context, client *http.Client, path, toke
 	return nil
 }
 
-func assertUserAdministersInstallationRepositories(ctx context.Context, client *http.Client, userToken string, installationID int64) error {
+func assertUserAdministersInstallationRepositories(ctx context.Context, client *http.Client, userTicket string, installationID int64) error {
 	userRepos, err := githubOwnershipRepositoryIDs(ctx, client,
-		fmt.Sprintf("/user/installations/%d/repositories", installationID), userToken, true)
+		fmt.Sprintf("/user/installations/%d/repositories", installationID), userTicket, true)
 	if err != nil {
 		return err
 	}
@@ -216,8 +216,8 @@ func assertUserAdministersInstallationRepositories(ctx context.Context, client *
 	if err != nil {
 		return err
 	}
-	defer revokeGitHubInstallationToken(client, token.Token)
-	appRepos, err := githubOwnershipRepositoryIDs(ctx, client, "/installation/repositories", token.Token, false)
+	defer revokeGitHubInstallationToken(client, token.Ticket)
+	appRepos, err := githubOwnershipRepositoryIDs(ctx, client, "/installation/repositories", token.Ticket, false)
 	if err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ func assertUserAdministersInstallationRepositories(ctx context.Context, client *
 // A complete, nonempty repository set is required. Reject partial pages,
 // missing permissions/counts, and changing pagination rather than proving
 // control over only the subset a collaborator can see.
-func githubOwnershipRepositoryIDs(ctx context.Context, client *http.Client, path, token string, requireAdmin bool) (map[int64]struct{}, error) {
+func githubOwnershipRepositoryIDs(ctx context.Context, client *http.Client, path, ticket string, requireAdmin bool) (map[int64]struct{}, error) {
 	ids := make(map[int64]struct{})
 	total := int64(-1)
 	for page := 1; page <= githubUserInstallationsMaxPages; page++ {
@@ -249,7 +249,7 @@ func githubOwnershipRepositoryIDs(ctx context.Context, client *http.Client, path
 			} `json:"repositories"`
 		}
 		endpoint := fmt.Sprintf("%s?per_page=%d&page=%d", path, githubUserInstallationsPageSize, page)
-		if err := getGitHubOwnershipJSON(ctx, client, endpoint, token, &body); err != nil {
+		if err := getGitHubOwnershipJSON(ctx, client, endpoint, ticket, &body); err != nil {
 			return nil, err
 		}
 		if body.TotalCount == nil || *body.TotalCount <= 0 || (total >= 0 && total != *body.TotalCount) {
@@ -277,8 +277,8 @@ func githubOwnershipRepositoryIDs(ctx context.Context, client *http.Client, path
 
 // revokeGitHubUserToken drops the short-lived user token as soon as the
 // ownership check is done, even if the caller cancelled. Revocation is best-effort.
-func revokeGitHubUserToken(client *http.Client, clientID, clientSecret, token string) {
-	if token == "" {
+func revokeGitHubUserToken(client *http.Client, clientID, clientSealed, ticket string) {
+	if ticket == "" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -288,7 +288,7 @@ func revokeGitHubUserToken(client *http.Client, clientID, clientSecret, token st
 		strings.TrimRight(githubAPIBase, "/"),
 		url.PathEscape(clientID),
 	)
-	payload, err := json.Marshal(map[string]string{"access_token": token})
+	payload, err := json.Marshal(map[string]string{"access_token": ticket})
 	if err != nil {
 		return
 	}
@@ -299,7 +299,7 @@ func revokeGitHubUserToken(client *http.Client, clientID, clientSecret, token st
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(clientID, clientSecret)
+	req.SetBasicAuth(clientID, clientSealed)
 	resp, err := client.Do(req)
 	if err != nil {
 		return

@@ -12,8 +12,8 @@ import (
 )
 
 func TestTaskFailedFieldsTerminalFailure(t *testing.T) {
-	secret := "sk-" + strings.Repeat("a", 24)
-	fields := taskFailedFields("provider rejected "+secret, "agent_error", false)
+	sealed := "sk-" + strings.Repeat("a", 24)
+	fields := taskFailedFields("provider rejected "+sealed, "agent_error", false)
 
 	if fields["failure_reason"] != "agent_error" {
 		t.Fatalf("failure_reason = %v, want agent_error", fields["failure_reason"])
@@ -25,7 +25,7 @@ func TestTaskFailedFieldsTerminalFailure(t *testing.T) {
 	if !ok || errorText == "" {
 		t.Fatal("terminal failure must include deliverable error text")
 	}
-	if strings.Contains(errorText, secret) {
+	if strings.Contains(errorText, sealed) {
 		t.Fatal("terminal failure payload leaked an API key")
 	}
 	if !strings.Contains(errorText, "[REDACTED API KEY]") {

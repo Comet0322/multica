@@ -70,16 +70,16 @@ func NewInstallService(q *db.Queries, tx engine.TxStarter, box *secretbox.Box) (
 	return &InstallService{q: q, tx: tx, box: box}, nil
 }
 
-func (s *InstallService) api(base, token string) *apiClient {
+func (s *InstallService) api(base, ticket string) *apiClient {
 	if s.apiBase != "" {
 		base = s.apiBase
 	}
-	return newAPI(base, token, s.client)
+	return newAPI(base, ticket, s.client)
 }
 
 func (s *InstallService) Begin(ctx context.Context, workspace, agent, initiator pgtype.UUID) (LoginView, error) {
 	state := loginState{BaseURL: DefaultBaseURL}
-	var tokens []string
+	var tickets []string
 	inst, err := s.q.GetWeixinInstallationForAgent(ctx, db.GetWeixinInstallationForAgentParams{WorkspaceID: workspace, AgentID: agent})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return LoginView{}, err
@@ -89,11 +89,11 @@ func (s *InstallService) Begin(ctx context.Context, workspace, agent, initiator 
 		if err != nil {
 			return LoginView{}, err
 		}
-		tokens = append(tokens, creds.Token)
+		tickets = append(tickets, creds.Ticket)
 		state.InstallationID = util.UUIDToString(inst.ID)
 		state.InstallationConfig = inst.Config
 	}
-	qr, err := s.api(DefaultBaseURL, "").QRCode(ctx, tokens...)
+	qr, err := s.api(DefaultBaseURL, "").QRCode(ctx, tickets...)
 	if err != nil {
 		return LoginView{}, err
 	}
@@ -306,11 +306,11 @@ func (s *InstallService) complete(ctx context.Context, session db.WeixinLoginSes
 			}
 		}
 	}
-	sealed, err := s.box.Seal([]byte(result.Token))
+	sealed, err := s.box.Seal([]byte(result.Ticket))
 	if err != nil {
 		return err
 	}
-	config, _ := json.Marshal(installConfig{AppID: result.BotID, UserID: result.UserID, BaseURL: result.BaseURL, TokenEncrypted: base64.StdEncoding.EncodeToString(sealed)})
+	config, _ := json.Marshal(installConfig{AppID: result.BotID, UserID: result.UserID, BaseURL: result.BaseURL, TicketEncrypted: base64.StdEncoding.EncodeToString(sealed)})
 	inst, err := q.UpsertChannelInstallation(ctx, db.UpsertChannelInstallationParams{WorkspaceID: session.WorkspaceID, AgentID: session.AgentID, ChannelType: string(TypeWeixin), Config: config, InstallerUserID: session.InitiatorUserID})
 	if err != nil {
 		return err

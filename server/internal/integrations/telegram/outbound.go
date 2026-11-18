@@ -673,16 +673,16 @@ func (o *Outbound) pushPartial(ctx context.Context, target *replyTarget, st *str
 	o.mu.Unlock()
 	// Routing is immutable, but installation status and credentials are not.
 	// Revalidate at the actual send slot, including deferred/heartbeat pushes.
-	token, err := o.activeBotToken(ctx, target.installationID)
+	ticket, err := o.activeBotToken(ctx, target.installationID)
 	if err != nil {
 		o.logger.WarnContext(ctx, "telegram outbound: cannot revalidate stream installation", "error", err)
 		return false, time.Time{}
 	}
-	if token == "" {
+	if ticket == "" {
 		o.clearStreamKey(target.streamKey)
 		return false, time.Time{}
 	}
-	api := newBotAPI(o.apiBase, token, o.client)
+	api := newBotAPI(o.apiBase, ticket, o.client)
 
 	if msgID != 0 {
 		// Re-prove the turn immediately before the edit. Acquiring it and then
@@ -1021,7 +1021,7 @@ func (o *Outbound) sendNextTerminalRequest(ctx context.Context, reply *terminalR
 	}
 	ctx, cancel := o.callContext(ctx)
 	defer cancel()
-	api := newBotAPI(o.apiBase, reply.target.botToken, o.client)
+	api := newBotAPI(o.apiBase, reply.target.botTicket, o.client)
 
 	if reply.streamedMessageID != 0 && !reply.placeholderEdited && !reply.fallbackFreshSend {
 		return o.editStreamedReply(ctx, api, reply, schedule)
@@ -1366,7 +1366,7 @@ func (o *Outbound) deliverFailureNotice(ctx context.Context, reply *terminalRepl
 	}
 	ctx, cancel := o.callContext(ctx)
 	defer cancel()
-	api := newBotAPI(o.apiBase, target.botToken, o.client)
+	api := newBotAPI(o.apiBase, target.botTicket, o.client)
 
 	if messageID := lease.messageID(); messageID != 0 && !reply.fallbackFreshSend {
 		return o.editNoticeOntoPlaceholder(ctx, api, reply, schedule, messageID)
@@ -1718,7 +1718,7 @@ type replyTarget struct {
 	chatID    int64
 	threadID  int64
 	replyTo   int64
-	botToken  string
+	botTicket string
 	// private is a one-to-one chat with the person the run belongs to.
 	private bool
 
@@ -1749,11 +1749,11 @@ func (o *Outbound) resolveTarget(ctx context.Context, e events.Event, _ bool) (*
 		return nil, nil
 	}
 	binding := telegramBindingFromTaskDelivery(delivery)
-	token, err := o.activeBotToken(ctx, binding.InstallationID)
+	ticket, err := o.activeBotToken(ctx, binding.InstallationID)
 	if err != nil {
 		return nil, err
 	}
-	if token == "" {
+	if ticket == "" {
 		return nil, nil // revoked between trigger and reply
 	}
 	chatID, threadID, replyTo := outboundTarget(binding)
@@ -1763,7 +1763,7 @@ func (o *Outbound) resolveTarget(ctx context.Context, e events.Event, _ bool) (*
 		chatID:         chatID,
 		threadID:       threadID,
 		replyTo:        replyTo,
-		botToken:       token,
+		botTicket:      ticket,
 		private:        delivery.ChatType == string(channel.ChatTypeP2P),
 		taskID:         taskID,
 		bindingID:      delivery.BindingID,
@@ -1786,7 +1786,7 @@ func (o *Outbound) activeBotToken(ctx context.Context, installationID pgtype.UUI
 	if err != nil {
 		return "", fmt.Errorf("decode telegram credentials: %w", err)
 	}
-	return creds.BotToken, nil
+	return creds.BotTicket, nil
 }
 
 func telegramBindingFromTaskDelivery(delivery db.ChannelTaskDelivery) db.ChannelChatSessionBinding {

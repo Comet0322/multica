@@ -23,23 +23,23 @@ const remoteTestBase = "https://api.multica.test"
 
 // remoteFakeUpstream is a remote MCP app and its authorization server.
 type remoteFakeUpstream struct {
-	mu            sync.Mutex
-	verifiers     []string
-	refreshed     []string
-	calls         []string
-	tokens        []string
-	issued        int
-	refreshErr    error
-	rejectTokenOf string
-	registered    int
-	onRefresh     func()
+	mu             sync.Mutex
+	verifiers      []string
+	refreshed      []string
+	calls          []string
+	tickets        []string
+	issued         int
+	refreshErr     error
+	rejectTicketOf string
+	registered     int
+	onRefresh      func()
 }
 
 func (f *remoteFakeUpstream) DiscoverOAuth(context.Context, string) (remotemcp.OAuthMetadata, error) {
 	return remotemcp.OAuthMetadata{
 		ResourceEndpoint:      "https://api.mobbin.com/mcp",
 		AuthorizationEndpoint: "https://auth.mobbin.test/authorize",
-		TokenEndpoint:         "https://auth.mobbin.test/token",
+		TicketEndpoint:        "https://auth.mobbin.test/token",
 		RegistrationEndpoint:  "https://auth.mobbin.test/register",
 		Scopes:                []string{"openid"},
 	}, nil
@@ -49,13 +49,13 @@ func (f *remoteFakeUpstream) Register(context.Context, remotemcp.OAuthMetadata, 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.registered++
-	return remotemcp.OAuthClientRegistration{ClientID: "client-1", TokenEndpointAuthMethod: "none"}, nil
+	return remotemcp.OAuthClientRegistration{ClientID: "client-1", TicketEndpointAuthMethod: "none"}, nil
 }
 
 func (f *remoteFakeUpstream) issue() remotemcp.OAuthTokenResponse {
 	f.issued++
 	n := string(rune('0' + f.issued))
-	return remotemcp.OAuthTokenResponse{AccessToken: "access-" + n, RefreshToken: "refresh-" + n, ExpiresIn: 3600, TokenType: "Bearer"}
+	return remotemcp.OAuthTokenResponse{AccessTicket: "access-" + n, RefreshTicket: "refresh-" + n, ExpiresIn: 3600, TicketType: "Bearer"}
 }
 
 func (f *remoteFakeUpstream) Exchange(_ context.Context, _, _, code, _, verifier string, _ remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
@@ -65,10 +65,10 @@ func (f *remoteFakeUpstream) Exchange(_ context.Context, _, _, code, _, verifier
 	return f.issue(), nil
 }
 
-func (f *remoteFakeUpstream) Refresh(_ context.Context, _, _, refreshToken string, _ remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
+func (f *remoteFakeUpstream) Refresh(_ context.Context, _, _, refreshTicket string, _ remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.refreshed = append(f.refreshed, refreshToken)
+	f.refreshed = append(f.refreshed, refreshTicket)
 	if f.onRefresh != nil {
 		f.onRefresh()
 	}
@@ -78,19 +78,19 @@ func (f *remoteFakeUpstream) Refresh(_ context.Context, _, _, refreshToken strin
 	return f.issue(), nil
 }
 
-func (f *remoteFakeUpstream) ListTools(_ context.Context, _, token string) ([]json.RawMessage, error) {
+func (f *remoteFakeUpstream) ListTools(_ context.Context, _, ticket string) ([]json.RawMessage, error) {
 	return []json.RawMessage{
 		json.RawMessage(`{"name":"search_screens","description":"Search app screens","inputSchema":{"type":"object"},"annotations":{"readOnlyHint":true}}`),
 		json.RawMessage(`{"name":"save_screen","description":"Save a screen to a collection","inputSchema":{"type":"object"}}`),
 	}, nil
 }
 
-func (f *remoteFakeUpstream) CallTool(_ context.Context, _, token, name string, _ map[string]any) (json.RawMessage, error) {
+func (f *remoteFakeUpstream) CallTool(_ context.Context, _, ticket, name string, _ map[string]any) (json.RawMessage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, name)
-	f.tokens = append(f.tokens, token)
-	if f.rejectTokenOf != "" && token == f.rejectTokenOf {
+	f.tickets = append(f.tickets, ticket)
+	if f.rejectTicketOf != "" && ticket == f.rejectTicketOf {
 		return nil, &remotemcp.StatusError{Code: http.StatusUnauthorized}
 	}
 	return json.RawMessage(`{"content":[{"type":"image","data":"AAA","mimeType":"image/png"}]}`), nil
@@ -174,17 +174,17 @@ func (f *remoteAppsFixture) callback(t *testing.T, rawQuery string) string {
 }
 
 // remote sends one JSON-RPC request to the app's gateway server.
-func (f *remoteAppsFixture) remote(t *testing.T, token, method string, params any) (int, json.RawMessage) {
+func (f *remoteAppsFixture) remote(t *testing.T, ticket, method string, params any) (int, json.RawMessage) {
 	t.Helper()
-	return f.remoteCtx(t, context.Background(), token, method, params)
+	return f.remoteCtx(t, context.Background(), ticket, method, params)
 }
 
-func (f *remoteAppsFixture) remoteCtx(t *testing.T, ctx context.Context, token, method string, params any) (int, json.RawMessage) {
+func (f *remoteAppsFixture) remoteCtx(t *testing.T, ctx context.Context, ticket, method string, params any) (int, json.RawMessage) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, connectedapps.GatewayPath+"/mobbin", bytes.NewReader(body))
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	w := httptest.NewRecorder()
 	f.h.AppsRemoteGateway(w, withURLParam(req, "app", "mobbin"))
@@ -200,9 +200,9 @@ func (f *remoteAppsFixture) remoteCtx(t *testing.T, ctx context.Context, token, 
 	return w.Code, resp.Result
 }
 
-func (f *remoteAppsFixture) toolNames(t *testing.T, token string) []string {
+func (f *remoteAppsFixture) toolNames(t *testing.T, ticket string) []string {
 	t.Helper()
-	_, raw := f.remote(t, token, "tools/list", map[string]any{})
+	_, raw := f.remote(t, ticket, "tools/list", map[string]any{})
 	var result struct {
 		Tools []struct {
 			Name string `json:"name"`
@@ -290,19 +290,19 @@ func TestRemoteApps_ConnectMountAndRun(t *testing.T) {
 		t.Fatalf("authorized overlay = %s", authorized)
 	}
 
-	token := f.token(t)
+	ticket := f.token(t)
 	if code, _ := f.remote(t, "", "tools/list", map[string]any{}); code != http.StatusUnauthorized {
 		t.Fatalf("remote gateway without token: %d, want 401", code)
 	}
 	// A read-level agent sees only the read tool.
-	if names := f.toolNames(t, token); len(names) != 1 || names[0] != "search_screens" {
+	if names := f.toolNames(t, ticket); len(names) != 1 || names[0] != "search_screens" {
 		t.Fatalf("read-level tools = %v", names)
 	}
-	_, result := f.remote(t, token, "tools/call", map[string]any{"name": "search_screens", "arguments": map[string]any{"query": "onboarding"}})
+	_, result := f.remote(t, ticket, "tools/call", map[string]any{"name": "search_screens", "arguments": map[string]any{"query": "onboarding"}})
 	if !strings.Contains(string(result), `"type":"image"`) {
 		t.Fatalf("result must pass through unchanged: %s", result)
 	}
-	_, blocked := f.remote(t, token, "tools/call", map[string]any{"name": "save_screen", "arguments": map[string]any{}})
+	_, blocked := f.remote(t, ticket, "tools/call", map[string]any{"name": "save_screen", "arguments": map[string]any{}})
 	if !strings.Contains(string(blocked), "blocked") {
 		t.Fatalf("write at read level = %s", blocked)
 	}
@@ -318,7 +318,7 @@ func TestRemoteApps_ConnectMountAndRun(t *testing.T) {
 		t.Fatalf("recorded calls = %v", outcomes)
 	}
 
-	if _, text, _ := f.gateway(t, token, "apps_list", nil); !strings.Contains(text, `"server": "mobbin"`) {
+	if _, text, _ := f.gateway(t, ticket, "apps_list", nil); !strings.Contains(text, `"server": "mobbin"`) {
 		t.Fatalf("apps_list = %s", text)
 	}
 }
@@ -327,9 +327,9 @@ func TestRemoteApps_RefreshExpiryAndReconnect(t *testing.T) {
 	f := newRemoteAppsFixture(t)
 	f.connect(t, testUserID)
 	f.putAgentApps(t, testUserID, []map[string]string{{"toolkit_slug": "mobbin", "account_scope": "personal", "level": "write"}})
-	token := f.token(t)
+	ticket := f.token(t)
 	call := func() string {
-		_, result := f.remote(t, token, "tools/call", map[string]any{"name": "search_screens", "arguments": map[string]any{}})
+		_, result := f.remote(t, ticket, "tools/call", map[string]any{"name": "search_screens", "arguments": map[string]any{}})
 		return string(result)
 	}
 
@@ -339,17 +339,17 @@ func TestRemoteApps_RefreshExpiryAndReconnect(t *testing.T) {
 	if res := call(); !strings.Contains(res, "image") {
 		t.Fatalf("call after refresh = %s", res)
 	}
-	if len(f.up.refreshed) != 1 || f.up.refreshed[0] != "refresh-1" || f.up.tokens[len(f.up.tokens)-1] != "access-2" {
-		t.Fatalf("refreshed = %v tokens = %v", f.up.refreshed, f.up.tokens)
+	if len(f.up.refreshed) != 1 || f.up.refreshed[0] != "refresh-1" || f.up.tickets[len(f.up.tickets)-1] != "access-2" {
+		t.Fatalf("refreshed = %v tokens = %v", f.up.refreshed, f.up.tickets)
 	}
 
 	// The app rejects a token it should accept: one refresh, then a retry.
-	f.up.rejectTokenOf = "access-2"
+	f.up.rejectTicketOf = "access-2"
 	if res := call(); !strings.Contains(res, "image") {
 		t.Fatalf("call after 401 = %s", res)
 	}
-	if len(f.up.refreshed) != 2 || f.up.refreshed[1] != "refresh-2" || f.up.tokens[len(f.up.tokens)-1] != "access-3" {
-		t.Fatalf("refreshed = %v tokens = %v", f.up.refreshed, f.up.tokens)
+	if len(f.up.refreshed) != 2 || f.up.refreshed[1] != "refresh-2" || f.up.tickets[len(f.up.tickets)-1] != "access-3" {
+		t.Fatalf("refreshed = %v tokens = %v", f.up.refreshed, f.up.tickets)
 	}
 
 	// The refresh token is refused: the account expires and the agent is
@@ -367,11 +367,11 @@ func TestRemoteApps_RefreshExpiryAndReconnect(t *testing.T) {
 	if leftover != nil {
 		t.Fatal("an expired account must not keep its refresh token")
 	}
-	if names := f.toolNames(t, token); len(names) != 0 {
+	if names := f.toolNames(t, ticket); len(names) != 0 {
 		t.Fatalf("tools of an expired account = %v", names)
 	}
 
-	_, text, isErr := f.gateway(t, token, "apps_request_connection", map[string]any{"app": "mobbin", "summary": "Find onboarding patterns"})
+	_, text, isErr := f.gateway(t, ticket, "apps_request_connection", map[string]any{"app": "mobbin", "summary": "Find onboarding patterns"})
 	if isErr || !strings.HasPrefix(text, "requested") {
 		t.Fatalf("request connection = %s (error %v)", text, isErr)
 	}
@@ -398,7 +398,7 @@ func TestRemoteApps_RefreshSurvivesCallerAndDeadClient(t *testing.T) {
 	f := newRemoteAppsFixture(t)
 	f.connect(t, testUserID)
 	f.putAgentApps(t, testUserID, []map[string]string{{"toolkit_slug": "mobbin", "account_scope": "personal", "level": "write"}})
-	token := f.token(t)
+	ticket := f.token(t)
 	expireSoon := func() {
 		testPool.Exec(context.Background(), `UPDATE remote_app_connection SET expires_at = now() - interval '1 minute' WHERE owner_id = $1`, testUserID)
 	}
@@ -406,7 +406,7 @@ func TestRemoteApps_RefreshSurvivesCallerAndDeadClient(t *testing.T) {
 
 	// A Composio-style guess on multica_apps points at the app's own server.
 	for _, tool := range []string{"apps_get_tool", "apps_run_tool"} {
-		if _, text, _ := f.gateway(t, token, tool, map[string]any{"tool": "MOBBIN_SEARCH_SCREENS"}); !strings.Contains(text, `MCP server "mobbin"`) {
+		if _, text, _ := f.gateway(t, ticket, tool, map[string]any{"tool": "MOBBIN_SEARCH_SCREENS"}); !strings.Contains(text, `MCP server "mobbin"`) {
 			t.Fatalf("%s = %s", tool, text)
 		}
 	}
@@ -416,20 +416,20 @@ func TestRemoteApps_RefreshSurvivesCallerAndDeadClient(t *testing.T) {
 	expireSoon()
 	ctx, cancel := context.WithCancel(context.Background())
 	f.up.onRefresh = cancel
-	f.remoteCtx(t, ctx, token, "tools/call", search)
+	f.remoteCtx(t, ctx, ticket, "tools/call", search)
 	f.up.onRefresh = nil
-	if _, res := f.remote(t, token, "tools/call", search); !strings.Contains(string(res), "image") {
+	if _, res := f.remote(t, ticket, "tools/call", search); !strings.Contains(string(res), "image") {
 		t.Fatalf("call after a cancelled refresh = %s", res)
 	}
-	if len(f.up.refreshed) != 1 || f.up.tokens[len(f.up.tokens)-1] != "access-2" {
-		t.Fatalf("refreshed = %v tokens = %v; the rotated tokens were lost", f.up.refreshed, f.up.tokens)
+	if len(f.up.refreshed) != 1 || f.up.tickets[len(f.up.tickets)-1] != "access-2" {
+		t.Fatalf("refreshed = %v tokens = %v; the rotated tokens were lost", f.up.refreshed, f.up.tickets)
 	}
 
 	// The authorization server forgot the client: the account expires and the
 	// client is dropped, so reconnecting registers a new one.
 	f.up.refreshErr = &remotemcp.OAuthError{Status: http.StatusUnauthorized, Code: "invalid_client"}
 	expireSoon()
-	if _, res := f.remote(t, token, "tools/call", search); !strings.Contains(string(res), "apps_request_connection") {
+	if _, res := f.remote(t, ticket, "tools/call", search); !strings.Contains(string(res), "apps_request_connection") {
 		t.Fatalf("call with a dead client = %s", res)
 	}
 	var clients int
@@ -453,8 +453,8 @@ func TestRemoteApps_AccountIsolation(t *testing.T) {
 	if _, err := testPool.Exec(context.Background(), `UPDATE agent_task_queue SET originator_user_id = $1, accountable_user_id = $1 WHERE id = $2`, f.member, f.taskID); err != nil {
 		t.Fatal(err)
 	}
-	token := f.token(t)
-	_, result := f.remote(t, token, "tools/call", map[string]any{"name": "search_screens", "arguments": map[string]any{}})
+	ticket := f.token(t)
+	_, result := f.remote(t, ticket, "tools/call", map[string]any{"name": "search_screens", "arguments": map[string]any{}})
 	if !strings.Contains(string(result), "not connected") || len(f.up.calls) != 0 {
 		t.Fatalf("other member's run = %s, upstream calls %v", result, f.up.calls)
 	}

@@ -92,7 +92,7 @@ func TestConnectReturnsOnReadErrorWhileCtxLive(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: &scriptedConn{}},
 		wsURL:          "wss://example.test/ws",
@@ -124,7 +124,7 @@ func TestConnectReturnsOnCtxCancel(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler:        func(context.Context, channel.InboundMessage) error { return nil },
 		dialer:         scriptedDialer{conn: bc},
 		wsURL:          "wss://example.test/ws",
@@ -293,7 +293,7 @@ func TestConnectReturnsWhenCallbackWorkerDiesWithAFullQueue(t *testing.T) {
 	c := &wecomChannel{
 		installationID: mustTestUUID(t),
 		botID:          "bot-1",
-		secret:         "secret-1",
+		sealed:         "secret-1",
 		handler: func(context.Context, channel.InboundMessage) error {
 			if calls.Add(1) == 1 {
 				close(firstIn)

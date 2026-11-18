@@ -19,8 +19,8 @@ func TestMaskGatewayTokenReplacesNonEmpty(t *testing.T) {
 	}
 	maskGatewayToken(rc)
 	gw := rc["gateway"].(map[string]any)
-	if gw["token"] != runtimeConfigGatewayTokenMask {
-		t.Errorf("token: got %v, want %q", gw["token"], runtimeConfigGatewayTokenMask)
+	if gw["token"] != runtimeConfigGatewayTicketMask {
+		t.Errorf("token: got %v, want %q", gw["token"], runtimeConfigGatewayTicketMask)
 	}
 	if gw["host"] != "gw.internal" {
 		t.Errorf("host must not be touched, got %v", gw["host"])
@@ -66,7 +66,7 @@ func TestPreserveMaskedGatewayTokenRestoresFromPersisted(t *testing.T) {
 		"gateway": map[string]any{
 			"host":  "gw.internal",
 			"port":  float64(18789),
-			"token": runtimeConfigGatewayTokenMask,
+			"token": runtimeConfigGatewayTicketMask,
 		},
 	}
 	preserveMaskedGatewayToken(incoming, persisted)
@@ -100,7 +100,7 @@ func TestPreserveMaskedGatewayTokenDropsMaskWhenNoPersistedToken(t *testing.T) {
 	// landing the literal "***" string in the database as a fake bearer.
 	persisted := []byte(`{"gateway":{"host":"gw.internal"}}`)
 	incoming := map[string]any{
-		"gateway": map[string]any{"token": runtimeConfigGatewayTokenMask},
+		"gateway": map[string]any{"token": runtimeConfigGatewayTicketMask},
 	}
 	preserveMaskedGatewayToken(incoming, persisted)
 	gw := incoming["gateway"].(map[string]any)

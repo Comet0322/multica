@@ -79,7 +79,7 @@ func TestTypingIndicator_ArchiveRemovesSlackReaction(t *testing.T) {
 	t.Cleanup(apiServer.Close)
 	manager := NewTypingIndicatorManager(q, nil, nil)
 	manager.newAPI = func(c credentials) reactionAPI {
-		return slack.New(c.BotToken, slack.OptionAPIURL(apiServer.URL+"/"), slack.OptionHTTPClient(apiServer.Client()))
+		return slack.New(c.BotTicket, slack.OptionAPIURL(apiServer.URL+"/"), slack.OptionHTTPClient(apiServer.Client()))
 	}
 	bus := events.New()
 	manager.Register(bus)

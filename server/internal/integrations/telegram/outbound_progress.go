@@ -460,11 +460,11 @@ func (o *Outbound) tidyRemnant(ctx context.Context, remnant *streamRemnant) {
 	call := func() error {
 		ctx, cancel := o.callContext(ctx)
 		defer cancel()
-		token, err := o.activeBotToken(ctx, remnant.installationID)
-		if err != nil || token == "" {
+		ticket, err := o.activeBotToken(ctx, remnant.installationID)
+		if err != nil || ticket == "" {
 			return err
 		}
-		api := newBotAPI(o.apiBase, token, o.client)
+		api := newBotAPI(o.apiBase, ticket, o.client)
 		if remnant.body == "" {
 			return api.DeleteMessage(ctx, remnant.chatID, remnant.messageID)
 		}

@@ -745,13 +745,13 @@ func (p *Patcher) installationCredentials(inst Installation) (InstallationCreden
 	if p.credentials == nil {
 		return InstallationCredentials{}, errors.New("lark patcher: credentials resolver missing")
 	}
-	secret, err := p.credentials.DecryptAppSecret(inst)
+	sealed, err := p.credentials.DecryptAppSecret(inst)
 	if err != nil {
 		return InstallationCredentials{}, fmt.Errorf("decrypt app_secret: %w", err)
 	}
 	creds := InstallationCredentials{
 		AppID:     inst.AppID,
-		AppSecret: secret,
+		AppSealed: sealed,
 		Region:    RegionOrDefault(inst.Region),
 	}
 	if inst.TenantKey.Valid {

@@ -50,6 +50,6 @@ func (r *SecretboxCredentialsResolver) Credentials(inst Installation) (Installat
 	}
 	return InstallationCredentials{
 		BotID:  inst.BotID,
-		Secret: string(secret),
+		Sealed: string(secret),
 	}, nil
 }

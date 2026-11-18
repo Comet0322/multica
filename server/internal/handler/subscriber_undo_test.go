@@ -17,19 +17,19 @@ func TestUndoUnsubscribeRestoresTheSubscription(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM project_subscriber WHERE project_id = $1`, f.projectID)
-		testPool.Exec(context.Background(), `DELETE FROM issue_subscriber WHERE issue_id = $1`, f.secretIssue)
+		testPool.Exec(context.Background(), `DELETE FROM issue_subscriber WHERE issue_id = $1`, f.sealedIssue)
 	})
-	issuePath := "/api/issues/" + f.secretIssue
+	issuePath := "/api/issues/" + f.sealedIssue
 
 	call := func(h http.HandlerFunc, path, userID string) *testutil.Response {
 		t.Helper()
-		req := withURLParam(asUser(newRequest(http.MethodPost, path, nil), userID), "id", f.secretIssue)
+		req := withURLParam(asUser(newRequest(http.MethodPost, path, nil), userID), "id", f.sealedIssue)
 		return testutil.Call(t, h, req)
 	}
 	reasonOf := func(userID string) string {
 		t.Helper()
 		var resp []SubscriberResponse
-		req := withURLParam(asUser(newRequest(http.MethodGet, issuePath+"/subscribers", nil), testUserID), "id", f.secretIssue)
+		req := withURLParam(asUser(newRequest(http.MethodGet, issuePath+"/subscribers", nil), testUserID), "id", f.sealedIssue)
 		testutil.Call(t, testHandler.ListIssueSubscribers, req).Want(http.StatusOK).JSON(&resp)
 		for _, s := range resp {
 			if s.UserType == "member" && s.UserID == userID {
@@ -43,7 +43,7 @@ func TestUndoUnsubscribeRestoresTheSubscription(t *testing.T) {
 		var n int
 		if err := testPool.QueryRow(ctx,
 			`SELECT count(*) FROM issue_subscriber WHERE issue_id = $1 AND user_type = 'member' AND user_id = $2`,
-			f.secretIssue, userID).Scan(&n); err != nil {
+			f.sealedIssue, userID).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		return n
@@ -60,11 +60,11 @@ func TestUndoUnsubscribeRestoresTheSubscription(t *testing.T) {
 
 	for _, reason := range []string{"commenter", "delegated"} {
 		t.Run(reason, func(t *testing.T) {
-			testPool.Exec(ctx, `DELETE FROM issue_subscriber WHERE issue_id = $1 AND user_id = $2`, f.secretIssue, testUserID)
+			testPool.Exec(ctx, `DELETE FROM issue_subscriber WHERE issue_id = $1 AND user_id = $2`, f.sealedIssue, testUserID)
 			if _, err := testPool.Exec(ctx, `
 				INSERT INTO issue_subscriber (issue_id, user_type, user_id, reason, created_at)
 				VALUES ($1, 'member', $2, $3, now() - interval '1 hour')
-			`, f.secretIssue, testUserID, reason); err != nil {
+			`, f.sealedIssue, testUserID, reason); err != nil {
 				t.Fatal(err)
 			}
 			call(testHandler.UnsubscribeFromIssue, issuePath+"/unsubscribe", testUserID).Want(http.StatusOK)
@@ -106,14 +106,14 @@ func TestUndoUnsubscribeRestoresTheSubscription(t *testing.T) {
 	})
 
 	t.Run("subtree opt-out stays", func(t *testing.T) {
-		testPool.Exec(ctx, `DELETE FROM issue_subscriber WHERE issue_id = $1 AND user_id = $2`, f.secretIssue, testUserID)
+		testPool.Exec(ctx, `DELETE FROM issue_subscriber WHERE issue_id = $1 AND user_id = $2`, f.sealedIssue, testUserID)
 		call(testHandler.UnsubscribeFromIssueSubtree, issuePath+"/unsubscribe/subtree", testUserID).Want(http.StatusOK)
 		undo(testUserID, http.StatusConflict)
 		var scope string
 		if err := testPool.QueryRow(ctx, `
 			SELECT opt_out_scope FROM issue_subscriber
 			WHERE issue_id = $1 AND user_type = 'member' AND user_id = $2 AND unsubscribed_at IS NOT NULL
-		`, f.secretIssue, testUserID).Scan(&scope); err != nil || scope != "subtree" {
+		`, f.sealedIssue, testUserID).Scan(&scope); err != nil || scope != "subtree" {
 			t.Fatalf("subtree opt-out after undo: scope=%q err=%v", scope, err)
 		}
 	})

@@ -32,9 +32,9 @@ func sessionToken(t *testing.T, remaining time.Duration, sid string) string {
 	return generateToken(claims, auth.JWTSecret())
 }
 
-func cookieRequest(method, token string) *http.Request {
+func cookieRequest(method, ticket string) *http.Request {
 	req := httptest.NewRequest(method, "/api/issues", nil)
-	req.AddCookie(&http.Cookie{Name: auth.AuthCookieName, Value: token})
+	req.AddCookie(&http.Cookie{Name: auth.AuthCookieName, Value: ticket})
 	return req
 }
 
@@ -96,9 +96,9 @@ func TestAuth_RenewsCookieSessionInsideWindow(t *testing.T) {
 // Outside the window there is nothing to do, and a Set-Cookie on every
 // response would be pure noise.
 func TestAuth_DoesNotRenewOutsideWindow(t *testing.T) {
-	token := sessionToken(t, auth.AuthRenewThreshold()+auth.AuthRenewThreshold()/2, "sid-fresh")
+	ticket := sessionToken(t, auth.AuthRenewThreshold()+auth.AuthRenewThreshold()/2, "sid-fresh")
 
-	rec, called := runAuth(t, cookieRequest(http.MethodGet, token))
+	rec, called := runAuth(t, cookieRequest(http.MethodGet, ticket))
 	if !called {
 		t.Fatal("request must still be served")
 	}
@@ -113,11 +113,11 @@ func TestAuth_DoesNotRenewOutsideWindow(t *testing.T) {
 func TestAuth_DoesNotRenewOnStateChangingMethods(t *testing.T) {
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
-			token := sessionToken(t, auth.AuthRenewThreshold()/2, "sid-x")
-			req := cookieRequest(method, token)
+			ticket := sessionToken(t, auth.AuthRenewThreshold()/2, "sid-x")
+			req := cookieRequest(method, ticket)
 			// Cookie-mode writes need a valid CSRF token to get past the gate.
 			rec := httptest.NewRecorder()
-			if err := auth.SetAuthCookies(rec, token); err != nil {
+			if err := auth.SetAuthCookies(rec, ticket); err != nil {
 				t.Fatalf("SetAuthCookies: %v", err)
 			}
 			for _, c := range rec.Result().Cookies() {
@@ -141,9 +141,9 @@ func TestAuth_DoesNotRenewOnStateChangingMethods(t *testing.T) {
 // never reads would leave the server and the client disagreeing about when
 // the session ends; those clients call POST /api/auth/refresh instead.
 func TestAuth_DoesNotRenewBearerSessions(t *testing.T) {
-	token := sessionToken(t, auth.AuthRenewThreshold()/2, "sid-bearer")
+	ticket := sessionToken(t, auth.AuthRenewThreshold()/2, "sid-bearer")
 	req := httptest.NewRequest(http.MethodGet, "/api/issues", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 
 	rec, called := runAuth(t, req)
 	if !called {
@@ -259,17 +259,17 @@ func csrfHeadersFor(t *testing.T, req *http.Request, mintedFor string) {
 	}
 	// Clients prefer the session-bound cookie, so mirror that here: the one
 	// header carries it when present, and the token-bound value otherwise.
-	var tokenBound string
+	var ticketBound string
 	for _, c := range rec.Result().Cookies() {
 		switch c.Name {
 		case auth.CSRFCookieName:
-			tokenBound = c.Value
+			ticketBound = c.Value
 		case auth.SessionCSRFCookieName:
 			req.Header.Set(auth.CSRFHeaderName, c.Value)
 		}
 	}
 	if req.Header.Get(auth.CSRFHeaderName) == "" {
-		req.Header.Set(auth.CSRFHeaderName, tokenBound)
+		req.Header.Set(auth.CSRFHeaderName, ticketBound)
 	}
 }
 
@@ -341,15 +341,15 @@ func TestAuth_ExpiredLegacySessionFailsAuthenticationNotCSRF(t *testing.T) {
 // A live session still has to pass the CSRF gate on a write — the fix above
 // must not have turned the gate off.
 func TestAuth_LiveSessionStillRequiresCSRF(t *testing.T) {
-	token := sessionToken(t, auth.AuthRenewThreshold()*2, "sid-live")
+	ticket := sessionToken(t, auth.AuthRenewThreshold()*2, "sid-live")
 
-	withHeaders := cookieRequest(http.MethodPost, token)
-	csrfHeadersFor(t, withHeaders, token)
+	withHeaders := cookieRequest(http.MethodPost, ticket)
+	csrfHeadersFor(t, withHeaders, ticket)
 	if _, called := runAuth(t, withHeaders); !called {
 		t.Error("a live session with valid CSRF headers must be served")
 	}
 
-	if rec, called := runAuth(t, cookieRequest(http.MethodPost, token)); called || rec.Code != http.StatusForbidden {
+	if rec, called := runAuth(t, cookieRequest(http.MethodPost, ticket)); called || rec.Code != http.StatusForbidden {
 		t.Errorf("a write with no CSRF header must be 403, got %d (served=%v)", rec.Code, called)
 	}
 }

@@ -75,7 +75,7 @@ type wecomChannel struct {
 
 	installationID pgtype.UUID
 	botID          string
-	secret         string
+	sealed         string
 	// botDisplayName is what this bot is called in a chat, from the
 	// installation config. Empty on every installation that has not filled it
 	// in; see stripLeadingMentions for what an empty name falls back to.
@@ -137,7 +137,7 @@ func (c *wecomChannel) Connect(ctx context.Context) (err error) {
 	if c.handler == nil {
 		return errors.New("wecom: inbound handler not configured")
 	}
-	if c.botID == "" || c.secret == "" {
+	if c.botID == "" || c.sealed == "" {
 		return errors.New("wecom: bot_id / secret not configured")
 	}
 
@@ -375,7 +375,7 @@ func (c *wecomChannel) subscribe(ctx context.Context, conn wsConn, sender *wsSen
 	if err := sender.write(map[string]any{
 		"cmd":     cmdSubscribe,
 		"headers": frameHeaders{ReqID: reqID},
-		"body":    subscribeBody(c.botID, c.secret),
+		"body":    subscribeBody(c.botID, c.sealed),
 	}); err != nil {
 		c.mx().RecordConnectFailure()
 		return fmt.Errorf("wecom: send subscribe: %w", err)
@@ -766,7 +766,7 @@ func newWecomFactory(deps ChannelDeps) channel.Factory {
 			dedup:          deps.Dedup,
 			languages:      deps.Languages,
 			botID:          creds.BotID,
-			secret:         creds.Secret,
+			sealed:         creds.Sealed,
 			botDisplayName: ic.BotDisplayName,
 			handler:        cfg.Handler,
 			dialer:         deps.Dialer,

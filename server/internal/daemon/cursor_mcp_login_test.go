@@ -146,13 +146,13 @@ func storeAccessToken(t *testing.T, store, server string) string {
 	t.Helper()
 	var entries map[string]struct {
 		Tokens struct {
-			AccessToken string `json:"access_token"`
+			AccessTicket string `json:"access_token"`
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal([]byte(readTestFile(t, store)), &entries); err != nil {
 		t.Fatalf("parse store: %v", err)
 	}
-	return entries[server].Tokens.AccessToken
+	return entries[server].Tokens.AccessTicket
 }
 
 func TestStartCursorMcpAuthMirrorSyncsDuringAndAfterRun(t *testing.T) {

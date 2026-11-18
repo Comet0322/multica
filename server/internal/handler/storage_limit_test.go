@@ -280,7 +280,7 @@ func TestCommentSubIssueRefusedWhenCopyWouldExceedStorage(t *testing.T) {
 	useStorageLimit(t, workspaceID, entitlement.ActionEnforce, 990)
 	create := func() *testutil.Response {
 		req := newRequest(http.MethodPost, "/api/comments/"+commentID+"/sub-issues", map[string]any{
-			"mode": "manual", "capture_token": preview.CaptureToken,
+			"mode": "manual", "capture_token": preview.CaptureTicket,
 			"issue": map[string]any{"title": "Follow-up", "status": "todo", "priority": "none"},
 		})
 		req.Header.Set("X-Workspace-ID", workspaceID)

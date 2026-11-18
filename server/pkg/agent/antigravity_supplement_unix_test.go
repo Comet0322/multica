@@ -95,7 +95,7 @@ printf '%s\n' '{"event":"result","result":{"conversation_id":"conv-steer","statu
 		switch name {
 		case antigravityHookURLEnv:
 			return envLines[0]
-		case antigravityHookTokenEnv:
+		case antigravityHookTicketEnv:
 			return envLines[1]
 		}
 		return ""

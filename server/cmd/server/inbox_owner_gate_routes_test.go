@@ -89,13 +89,13 @@ func (f inboxOwnerGateFixture) requireItemUntouched(t *testing.T) {
 
 func mintInboxTaskToken(t *testing.T, f *dbfx.Fixture, taskID, agentID string) string {
 	t.Helper()
-	token := "mat_" + uuid.NewString()
+	ticket := "mat_" + uuid.NewString()
 	f.InsertNoID(t, "task_token", dbfx.Cols{
-		"token_hash": auth.HashToken(token), "task_id": taskID, "agent_id": agentID,
+		"token_hash": auth.HashToken(ticket), "task_id": taskID, "agent_id": agentID,
 		"workspace_id": f.WorkspaceID, "user_id": f.UserID,
 		"expires_at": dbfx.Raw("now() + interval '1 hour'"),
-	}, "token_hash = $1", auth.HashToken(token))
-	return token
+	}, "token_hash = $1", auth.HashToken(ticket))
+	return ticket
 }
 
 // Each handler under /api/inbox calls the owner gate itself, so a new route
@@ -120,12 +120,12 @@ func TestEveryInboxRouteDeniesMachineCredentialsWithoutOwnerTrigger(t *testing.T
 	ownerTriggered := mintInboxTaskToken(t, db, ownerTaskID, agentID)
 	otherTriggered := mintInboxTaskToken(t, db, runningTask(other), agentID)
 
-	cloudToken := "mcn_" + uuid.NewString()
+	cloudTicket := "mcn_" + uuid.NewString()
 	fleet := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
-			Token string `json:"token"`
+			Ticket string `json:"token"`
 		}
-		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Token != cloudToken {
+		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Ticket != cloudTicket {
 			http.Error(w, "unexpected verification request", http.StatusBadRequest)
 			return
 		}
@@ -150,7 +150,7 @@ func TestEveryInboxRouteDeniesMachineCredentialsWithoutOwnerTrigger(t *testing.T
 		headers []string
 	}{
 		{"agent run another human triggered", []string{"Authorization", "Bearer " + otherTriggered}},
-		{"cloud node claiming an owner-triggered run", []string{"Authorization", "Bearer " + cloudToken,
+		{"cloud node claiming an owner-triggered run", []string{"Authorization", "Bearer " + cloudTicket,
 			"X-Actor-Source", "task_token", "X-Task-ID", ownerTaskID, "X-Agent-ID", agentID}},
 	}
 

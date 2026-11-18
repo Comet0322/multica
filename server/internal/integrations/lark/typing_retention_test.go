@@ -18,7 +18,7 @@ func TestTypingTasklessCrashRecoveryDB(t *testing.T) {
 	f := newTypingDBFixture(t)
 	f.Exec(t, "UPDATE chat_message SET task_id=NULL WHERE id=$1", f.messageID)
 	api := &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: make(map[string][]MessageReaction)}
-	first := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	first := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	first.Add(context.Background(), f.inst, f.sessionID, "crashed", "", f.messageID)
 	f.Exec(t, "UPDATE channel_typing_reaction SET created_at=now()-interval '3 minutes' WHERE chat_message_id=$1", f.messageID)
 	next := f.Insert(t, "chat_message", dbfx.Cols{"chat_session_id": f.sessionID, "role": "user", "content": "next", "channel_ingested": true})
@@ -27,7 +27,7 @@ func TestTypingTasklessCrashRecoveryDB(t *testing.T) {
 	first.Add(context.Background(), f.inst, f.sessionID, "running", "", uuidFromString(t, running))
 	f.Exec(t, "UPDATE channel_typing_reaction SET created_at=now()-interval '3 minutes' WHERE chat_message_id=$1", running)
 	// A fresh process has no local states or timers, only the shared database.
-	fresh := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	fresh := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	fresh.Reconcile(context.Background(), pgtype.UUID{})
 	if len(api.remote["crashed"]) != 0 || len(api.remote["next"]) != 1 || len(api.remote["running"]) != 1 {
 		t.Fatalf("wrong cleanup scope: %+v", api.remote)
@@ -54,7 +54,7 @@ func TestTypingRetentionErasesCredentialsAndStopsRetriesDB(t *testing.T) {
    VALUES($1,$2,$3,$4,$5,'deleted','{"app_secret_enc":"synthetic-ciphertext"}',$6,$7,true,now()-interval '8 days',10000,1)`, id, ws, f.sessionID, f.messageID, f.inst.ID, reaction, known)
 			f.Cleanup(t, "DELETE FROM channel_typing_reaction WHERE id=$1", id)
 			api := &fakeTypingAPIClient{}
-			fresh := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+			fresh := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 			// Eligibility stops at the deadline even if maintenance has not run yet.
 			fresh.Reconcile(context.Background(), f.sessionID)
 			if len(api.deleteCalled)+len(api.listCalled) != 0 {
@@ -99,7 +99,7 @@ func TestTypingWorkspaceQuotaConcurrentDB(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger()).Add(context.Background(), f.inst, f.sessionID, uuid.NewString(), "", f.messageID)
+			NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger()).Add(context.Background(), f.inst, f.sessionID, uuid.NewString(), "", f.messageID)
 		}()
 	}
 	close(start)
@@ -110,12 +110,12 @@ func TestTypingWorkspaceQuotaConcurrentDB(t *testing.T) {
 		t.Fatalf("quota bypass: pending=%d remoteAdds=%d", pending, len(api.remote))
 	}
 	other := newTypingDBFixture(t)
-	NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, other.store, newDiscardLogger()).Add(context.Background(), other.inst, other.sessionID, "neighbor", "", other.messageID)
+	NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, other.store, newDiscardLogger()).Add(context.Background(), other.inst, other.sessionID, "neighbor", "", other.messageID)
 	if len(api.remote["neighbor"]) != 1 {
 		t.Fatal("workspace quota affected neighbor")
 	}
 	f.Exec(t, "UPDATE channel_typing_reaction SET created_at=now()-interval '8 days' WHERE workspace_id=$1", f.inst.WorkspaceID)
-	m := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	m := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	m.maintainCleanup(context.Background())
 	m.Add(context.Background(), f.inst, f.sessionID, "after-expiry", "", f.messageID)
 	if len(api.remote["after-expiry"]) != 1 {

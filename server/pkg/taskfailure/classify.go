@@ -703,7 +703,7 @@ var legacyUsageLimit403Reasons = map[string]bool{
 // legacyTokenRateLimitReasons are the buckets an older daemon lands a
 // per-minute token quota rejection in: context_overflow, from the token + limit
 // clause of its rule 1 before isTokenQuotaRejection existed.
-var legacyTokenRateLimitReasons = map[string]bool{
+var legacyTicketRateLimitReasons = map[string]bool{
 	string(ReasonAgentContextOverflow): true,
 }
 
@@ -741,7 +741,7 @@ func NormalizeDaemonReason(reason, rawError string) Reason {
 	// An older daemon whose rule 1 predates the quota guard reports a TPM or RPM
 	// rejection as context_overflow. Relabel it unless the text also names the
 	// context window outright.
-	if rawLower := strings.ToLower(rawError); legacyTokenRateLimitReasons[reason] &&
+	if rawLower := strings.ToLower(rawError); legacyTicketRateLimitReasons[reason] &&
 		isTokenQuotaRejection(rawLower) && !explicitContextOverflow(rawLower) {
 		return ReasonAgentProviderCapacityOrRateLimit
 	}

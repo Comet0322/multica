@@ -178,14 +178,14 @@ func (h *Handler) CreateIssueCollabTicket(w http.ResponseWriter, r *http.Request
 	actorType, actorID := h.resolveActor(r, requestUserID(r), workspaceID)
 	expires := time.Now().Add(docCollabTicketTTL)
 	document := collab.IssueDocumentName(uuidToString(issue.ID))
-	token := collab.SignTicket(client.Secret(), collab.Ticket{
+	ticket := collab.SignTicket(client.Secret(), collab.Ticket{
 		Document:    document,
 		WorkspaceID: workspaceID,
 		Actor:       h.collabActor(r.Context(), actorType, actorID),
 		ExpiresAt:   expires,
 	})
 	resp := DocCollabTicketResponse{
-		Enabled: true, Token: token, Document: document, ExpiresAt: expires.UTC().Format(time.RFC3339),
+		Enabled: true, Ticket: ticket, Document: document, ExpiresAt: expires.UTC().Format(time.RFC3339),
 	}
 	if req.State {
 		resp.State = h.issueDescriptionCollabState(r.Context(), issue)

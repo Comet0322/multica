@@ -55,7 +55,7 @@ type mountedResource struct {
 }
 
 type tokenUpdate struct {
-	session, resourceID, token string
+	session, resourceID, ticket string
 }
 
 // mountResource registers a created or added resource and hands out the next
@@ -69,7 +69,7 @@ func (h *multiHarness) mountResource(session string, res map[string]any) {
 }
 
 func newTask(id, prior string) *daemon.Task {
-	return &daemon.Task{ID: id, RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-" + id, IssueIdentifier: "MUL-42", AuthToken: "mat_task", PriorSessionID: prior, Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"qoder_agent_id":"agent_1"}`)}}
+	return &daemon.Task{ID: id, RuntimeID: "runtime-1", WorkspaceID: workspaceID, IssueID: "issue-" + id, IssueIdentifier: "MUL-42", AuthTicket: "mat_task", PriorSessionID: prior, Agent: &daemon.AgentData{Instructions: "Run tests", RuntimeConfig: json.RawMessage(`{"qoder_agent_id":"agent_1"}`)}}
 }
 
 func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
@@ -220,10 +220,10 @@ func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 				return
 			}
 			var body struct {
-				AuthorizationToken string `json:"authorization_token"`
+				AuthorizationTicket string `json:"authorization_token"`
 			}
 			json.NewDecoder(r.Body).Decode(&body)
-			h.tokenLog = append(h.tokenLog, tokenUpdate{session: parts[1], resourceID: parts[3], token: body.AuthorizationToken})
+			h.tokenLog = append(h.tokenLog, tokenUpdate{session: parts[1], resourceID: parts[3], ticket: body.AuthorizationTicket})
 			h.calls = append(h.calls, "credential "+parts[1])
 			io.WriteString(w, `{}`)
 		case len(parts) == 3 && parts[2] == "events" && r.Method == http.MethodPost:
@@ -253,7 +253,7 @@ func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 	}))
 	t.Cleanup(q.Close)
 	var err error
-	h.b, err = New(Config{MulticaURL: m.URL, MulticaToken: "multica-secret", WorkspaceID: workspaceID, QoderURL: q.URL, QoderToken: "qoder-secret", EnvironmentID: "env_1", StateDir: t.TempDir(), MaxConcurrency: limit}, nil)
+	h.b, err = New(Config{MulticaURL: m.URL, MulticaTicket: "multica-secret", WorkspaceID: workspaceID, QoderURL: q.URL, QoderTicket: "qoder-secret", EnvironmentID: "env_1", StateDir: t.TempDir(), MaxConcurrency: limit}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 	const repoA, repoB = "https://github.com/acme/a", "https://github.com/acme/b"
 	for name, tc := range map[string]struct {
 		followUp *daemon.Task
-		tokens   map[string]string
+		tickets  map[string]string
 		reuse    bool
 	}{
 		"unchanged":        {repoTask("task-2", "sess_new_1", repoA, "main"), map[string]string{repoA: "tok-a"}, true},
@@ -425,12 +425,12 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := setupMulti(t, 1, repoTask("task-1", "", repoA, "main"), tc.followUp)
-			h.b.cfg.GitHubTokens = map[string]string{repoA: "tok-a"}
+			h.b.cfg.GitHubTickets = map[string]string{repoA: "tok-a"}
 			ctx := context.Background()
 			if err := h.b.step(ctx); err != nil {
 				t.Fatal(err)
 			}
-			h.b.cfg.GitHubTokens = tc.tokens
+			h.b.cfg.GitHubTickets = tc.tickets
 			h.finish("sess_new_1")
 			if err := h.b.step(ctx); err != nil {
 				t.Fatal(err)
@@ -440,7 +440,7 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 			}
 			if !tc.reuse {
 				got := h.resources["sess_new_2"]
-				if len(got) != 1 || got[0]["authorization_token"] != tc.tokens[got[0]["url"].(string)] {
+				if len(got) != 1 || got[0]["authorization_token"] != tc.tickets[got[0]["url"].(string)] {
 					t.Fatalf("new session resources: %v", got)
 				}
 			}
@@ -451,12 +451,12 @@ func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
 func TestFollowUpFailsWhenRepositoryCredentialWasRemoved(t *testing.T) {
 	const repo = "https://github.com/acme/a"
 	h := setupMulti(t, 1, repoTask("task-1", "", repo, ""), repoTask("task-2", "sess_new_1", repo, ""))
-	h.b.cfg.GitHubTokens = map[string]string{repo: "tok-a"}
+	h.b.cfg.GitHubTickets = map[string]string{repo: "tok-a"}
 	ctx := context.Background()
 	if err := h.b.step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	h.b.cfg.GitHubTokens = nil
+	h.b.cfg.GitHubTickets = nil
 	h.finish("sess_new_1")
 	if err := h.b.step(ctx); err != nil {
 		t.Fatal(err)
@@ -545,7 +545,7 @@ func TestResourceFingerprintSurvivesJournalRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out = append(out, fingerprintEntry{key: key, branch: checkoutBranch(res["checkout"]), credential: "credential"})
+			out = append(out, fingerprintEntry{key: key, branch: checkoutBranch(res["checkout"]), badge: "credential"})
 		}
 		return out
 	}
@@ -566,7 +566,7 @@ func TestFollowUpRefreshesRotatingGitHubAppCredential(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	h.sessionStatus["sess_prev"] = "idle"
-	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", credential: "github_app:424242"}})}
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", badge: "github_app:424242"}})}
 	h.sessions["sess_prev"] = []map[string]any{
 		{"id": "evt_old_0", "type": "user.message", "content": []map[string]string{{"type": "text", "text": "earlier run"}}},
 		{"id": "evt_old_1", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}},
@@ -583,7 +583,7 @@ func TestFollowUpRefreshesRotatingGitHubAppCredential(t *testing.T) {
 	if h.creates != 0 || len(h.sentTo) != 1 || h.sentTo[0] != "sess_prev" {
 		t.Fatalf("follow-up did not continue: creates=%d sentTo=%v", h.creates, h.sentTo)
 	}
-	if len(h.tokenLog) != 1 || h.tokenLog[0].session != "sess_prev" || h.tokenLog[0].resourceID != "sesr_1" || h.tokenLog[0].token != "ghs_fresh" {
+	if len(h.tokenLog) != 1 || h.tokenLog[0].session != "sess_prev" || h.tokenLog[0].resourceID != "sesr_1" || h.tokenLog[0].ticket != "ghs_fresh" {
 		t.Fatalf("rotating credential not updated on the mounted resource: %+v", h.tokenLog)
 	}
 	if fmt.Sprint(h.calls) != "[credential sess_prev send sess_prev]" {
@@ -600,7 +600,7 @@ func TestFollowUpRefreshRetriesAfterDeferral(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	h.sessionStatus["sess_prev"] = "idle"
-	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", credential: "github_app:424242"}})}
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", badge: "github_app:424242"}})}
 	h.sessions["sess_prev"] = []map[string]any{
 		{"id": "evt_old_0", "type": "user.message", "content": []map[string]string{{"type": "text", "text": "earlier run"}}},
 		{"id": "evt_old_1", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}},
@@ -665,7 +665,7 @@ func TestFollowUpRefreshRetriesAfterDeferral(t *testing.T) {
 	if len(h.sentTo) != 1 || h.sentTo[0] != "sess_prev" || h.creates != 0 {
 		t.Fatalf("follow-up did not continue after retry: creates=%d sentTo=%v", h.creates, h.sentTo)
 	}
-	if len(h.tokenLog) != 1 || h.tokenLog[0].session != "sess_prev" || h.tokenLog[0].resourceID != "sesr_1" || h.tokenLog[0].token != "ghs_fresh" {
+	if len(h.tokenLog) != 1 || h.tokenLog[0].session != "sess_prev" || h.tokenLog[0].resourceID != "sesr_1" || h.tokenLog[0].ticket != "ghs_fresh" {
 		t.Fatalf("credential not refreshed on retry: %+v", h.tokenLog)
 	}
 	if fmt.Sprint(h.calls) != "[credential sess_prev send sess_prev]" {
@@ -681,11 +681,11 @@ func TestRunningSessionRefreshesRotatingCredential(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	issued := 0
-	tokens := []string{"ghs_first", "ghs_second"}
+	tickets := []string{"ghs_first", "ghs_second"}
 	h.b.cfg.GitHubAppToken = func(context.Context, string, string) (string, int64, error) {
-		token := tokens[issued]
+		ticket := tickets[issued]
 		issued++
-		return token, 424242, nil
+		return ticket, 424242, nil
 	}
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
@@ -713,7 +713,7 @@ func TestRunningSessionRefreshesRotatingCredential(t *testing.T) {
 	if issued != 2 || h.creates != 1 || len(h.sentTo) != 1 {
 		t.Fatalf("refresh spawned work: issued=%d creates=%d sentTo=%v", issued, h.creates, h.sentTo)
 	}
-	if len(h.tokenLog) != 1 || h.tokenLog[0].session != "sess_new_1" || h.tokenLog[0].resourceID != "sesr_1" || h.tokenLog[0].token != "ghs_second" {
+	if len(h.tokenLog) != 1 || h.tokenLog[0].session != "sess_new_1" || h.tokenLog[0].resourceID != "sesr_1" || h.tokenLog[0].ticket != "ghs_second" {
 		t.Fatalf("live session not refreshed: %+v", h.tokenLog)
 	}
 }
@@ -727,7 +727,7 @@ func TestDeferredRefreshFallsBackToFreshSession(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	chatFollowUp(h, [3]string{"notes.md", "text/markdown", "hello"})
-	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", credential: "github_app:424242"}})}
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", badge: "github_app:424242"}})}
 	h.mountResource("sess_prev", map[string]any{"type": "github_repository", "url": "https://github.com/acme/app"})
 	h.b.cfg.GitHubAppToken = func(context.Context, string, string) (string, int64, error) {
 		return "ghs_fresh", 424242, nil
@@ -766,7 +766,7 @@ func TestFollowUpRefreshFindsRepositoryBeyondFirstPage(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	h.sessionStatus["sess_prev"] = "idle"
-	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", credential: "github_app:424242"}})}
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", badge: "github_app:424242"}})}
 	h.sessions["sess_prev"] = []map[string]any{
 		{"id": "evt_old_0", "type": "user.message", "content": []map[string]string{{"type": "text", "text": "earlier run"}}},
 		{"id": "evt_old_1", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}},
@@ -783,7 +783,7 @@ func TestFollowUpRefreshFindsRepositoryBeyondFirstPage(t *testing.T) {
 	if h.creates != 0 || len(h.sentTo) != 1 || h.sentTo[0] != "sess_prev" {
 		t.Fatalf("follow-up did not continue: creates=%d sentTo=%v", h.creates, h.sentTo)
 	}
-	if len(h.tokenLog) != 1 || h.tokenLog[0].resourceID != "sesr_2" || h.tokenLog[0].token != "ghs_fresh" {
+	if len(h.tokenLog) != 1 || h.tokenLog[0].resourceID != "sesr_2" || h.tokenLog[0].ticket != "ghs_fresh" {
 		t.Fatalf("paged repository not refreshed: %+v", h.tokenLog)
 	}
 }
@@ -796,7 +796,7 @@ func TestFollowUpStartsFreshWhenRepositoryUnmounted(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	h.sessionStatus["sess_prev"] = "idle"
-	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", credential: "github_app:424242"}})}
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", badge: "github_app:424242"}})}
 	h.sessions["sess_prev"] = []map[string]any{
 		{"id": "evt_old_0", "type": "user.message", "content": []map[string]string{{"type": "text", "text": "earlier run"}}},
 		{"id": "evt_old_1", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}},
@@ -825,7 +825,7 @@ func TestFollowUpBlockedWhenInstallationRevoked(t *testing.T) {
 	task.Agent.RuntimeConfig = json.RawMessage(`{"qoder_agent_id":"agent_1","repository":{"url":"https://github.com/acme/app","ref":"main"}}`)
 	h := setupMulti(t, 1, task)
 	h.sessionStatus["sess_prev"] = "idle"
-	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", credential: "github_app:424242"}})}
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint([]fingerprintEntry{{key: "https://github.com/acme/app", branch: "main", badge: "github_app:424242"}})}
 	h.b.cfg.GitHubAppToken = func(context.Context, string, string) (string, int64, error) {
 		return "", 0, ErrGitHubAppNotCovered
 	}

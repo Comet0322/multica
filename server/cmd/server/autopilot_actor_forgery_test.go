@@ -104,7 +104,7 @@ func TestAutopilotWritesIgnoreForgedAgentIdentity(t *testing.T) {
 				detail.Autopilot.CanWrite != nil && *detail.Autopilot.CanWrite)
 		}
 		for _, tr := range detail.Triggers {
-			if tr.WebhookToken != nil || tr.WebhookPath != nil || tr.WebhookURL != nil {
+			if tr.WebhookTicket != nil || tr.WebhookPath != nil || tr.WebhookURL != nil {
 				t.Error("the forged pair yielded the webhook credential, which is a trigger this member cannot otherwise fire")
 			}
 		}
@@ -120,10 +120,10 @@ func TestAutopilotWritesIgnoreForgedAgentIdentity(t *testing.T) {
 	t.Run("a real task token is judged by its originator", func(t *testing.T) {
 		// Bound to the OUTSIDER as runtime owner: the machine's owner holds no
 		// grant here, so admission can only come from the task's originator.
-		token := mintAgentTaskToken(t, agentID, taskID, outsider)
+		ticket := mintAgentTaskToken(t, agentID, taskID, outsider)
 		resp := do(t, "PATCH", "/api/autopilots/"+autopilotID+"?workspace_id="+testWorkspaceID,
 			map[string]any{"status": "paused"}, func(req *http.Request) {
-				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Authorization", "Bearer "+ticket)
 			})
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {

@@ -70,9 +70,9 @@ func TestPluginActionRefusesGuests(t *testing.T) {
 	}
 
 	withCallbackTokens(t)
-	token := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(f.guest)})
+	ticket := issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(f.guest)})
 	cb := httptest.NewRecorder()
-	testHandler.GetPluginIssue(cb, callbackRequest(token, http.MethodGet, "/v1/issues/"+f.otherIssue, nil,
+	testHandler.GetPluginIssue(cb, callbackRequest(ticket, http.MethodGet, "/v1/issues/"+f.otherIssue, nil,
 		map[string]string{"issue_ref": f.otherIssue}))
 	if cb.Code != http.StatusForbidden || pluginProblemCode(t, cb) != "guest_not_allowed" {
 		t.Fatalf("guest callback read = %d %s, want 403 guest_not_allowed", cb.Code, cb.Body.String())
@@ -87,7 +87,7 @@ func TestPluginActionHidesPrivateProjectsFromMembers(t *testing.T) {
 	outsider := createPlainMember(t, f.marker+"-plugin-outsider@multica.test")
 
 	get := func(userID string) int {
-		req := pluginActionRequest(http.MethodGet, "/v1/issues/"+f.secretIssue, installationID, nil, map[string]string{"issue_ref": f.secretIssue})
+		req := pluginActionRequest(http.MethodGet, "/v1/issues/"+f.sealedIssue, installationID, nil, map[string]string{"issue_ref": f.sealedIssue})
 		req.Header.Set("X-User-ID", userID)
 		rec := httptest.NewRecorder()
 		testHandler.GetPluginIssue(rec, req)
@@ -665,7 +665,7 @@ func TestProjectSharingWithGuestFollowsThePlanAndFlag(t *testing.T) {
 
 	useGuestsFeature(t, entitlement.FeatureDecision{Action: entitlement.ActionEnforce})
 	wantGuestsLocked(t, addTo(f.other, f.guest))
-	wantGuestsLocked(t, update(f.secret, map[string]any{"member_ids": []string{f.guest}}))
+	wantGuestsLocked(t, update(f.sealed, map[string]any{"member_ids": []string{f.guest}}))
 	if got := guestProjectIDs(t, f.guest); fmt.Sprint(got) != fmt.Sprint([]string{f.shared}) {
 		t.Fatalf("guest projects after refused shares = %v, want only shared", got)
 	}
@@ -673,7 +673,7 @@ func TestProjectSharingWithGuestFollowsThePlanAndFlag(t *testing.T) {
 	addTo(f.shared, f.guest).Want(http.StatusOK)
 	// Members are not guests.
 	member := createPlainMember(t, f.marker+"-share-member@multica.test")
-	update(f.secret, map[string]any{"member_ids": []string{member}}).Want(http.StatusOK)
+	update(f.sealed, map[string]any{"member_ids": []string{member}}).Want(http.StatusOK)
 
 	// Cloud before the commercial launch: guests are not released yet.
 	useGuestsFeature(t, entitlement.FeatureDecision{Action: entitlement.ActionOff})

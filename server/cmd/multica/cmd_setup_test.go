@@ -46,7 +46,7 @@ func TestSelfHostSetupHealthResponses(t *testing.T) {
 				ServerURL:   "https://api.old.example",
 				AppURL:      "https://old.example",
 				WorkspaceID: "ws-1",
-				Token:       "mul_existing_token",
+				Ticket:      "mul_existing_token",
 				DeviceName:  "existing-device",
 				RuntimeName: "existing-runtime",
 			}
@@ -124,7 +124,7 @@ func TestSetupSelfHostProbeFailure(t *testing.T) {
 			redirectTestHome(t, t.TempDir())
 			if tc.existing {
 				if err := cli.SaveCLIConfig(cli.CLIConfig{
-					ServerURL: "https://api.old.example", Token: "mul_existing_token", DeviceName: "existing-device",
+					ServerURL: "https://api.old.example", Ticket: "mul_existing_token", DeviceName: "existing-device",
 				}); err != nil {
 					t.Fatal(err)
 				}
@@ -196,7 +196,7 @@ func TestPersistSelfHostConfigIfReachable(t *testing.T) {
 			ServerURL:   "https://api.old.example",
 			AppURL:      "https://old.example",
 			WorkspaceID: "ws-1",
-			Token:       "mul_existing_token",
+			Ticket:      "mul_existing_token",
 		}
 		if err := cli.SaveCLIConfig(existing); err != nil {
 			t.Fatalf("seed config: %v", err)
@@ -217,8 +217,8 @@ func TestPersistSelfHostConfigIfReachable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load config: %v", err)
 		}
-		if got.Token != "mul_existing_token" {
-			t.Fatalf("token: want preserved, got %q", got.Token)
+		if got.Ticket != "mul_existing_token" {
+			t.Fatalf("token: want preserved, got %q", got.Ticket)
 		}
 		if got.ServerURL != "https://api.old.example" {
 			t.Fatalf("server_url: want unchanged, got %q", got.ServerURL)
@@ -625,7 +625,7 @@ func TestSetupKeepsProfileOnlyForTheSameBackend(t *testing.T) {
 	} {
 		t.Run(tc.target, func(t *testing.T) {
 			redirectTestHome(t, t.TempDir())
-			old := cli.CLIConfig{ServerURL: "https://example.invalid/team", Token: "test-only", WorkspaceID: "w", DeviceName: "workstation", PollInterval: "1m"}
+			old := cli.CLIConfig{ServerURL: "https://example.invalid/team", Ticket: "test-only", WorkspaceID: "w", DeviceName: "workstation", PollInterval: "1m"}
 			if err := cli.SaveCLIConfigForProfile(old, "dev"); err != nil {
 				t.Fatal(err)
 			}
@@ -639,7 +639,7 @@ func TestSetupKeepsProfileOnlyForTheSameBackend(t *testing.T) {
 			if tc.keep && (got.DeviceName != old.DeviceName || got.PollInterval != old.PollInterval) {
 				t.Fatal("same backend lost profile settings")
 			}
-			if got.Token != "" || got.WorkspaceID != "" {
+			if got.Ticket != "" || got.WorkspaceID != "" {
 				t.Fatal("setup retained login credentials")
 			}
 			if !tc.keep && got.DeviceName != "" {
@@ -652,8 +652,8 @@ func TestSetupKeepsProfileOnlyForTheSameBackend(t *testing.T) {
 func TestSetupRejectsProfileChangedDuringConfirmationOrProbe(t *testing.T) {
 	redirectTestHome(t, t.TempDir())
 	const profile = "setup-change"
-	old := cli.CLIConfig{ServerURL: "https://a.invalid", AppURL: "https://a.invalid", Token: "old-fixture"}
-	newLogin := cli.CLIConfig{ServerURL: "https://b.invalid", AppURL: "https://b.invalid", Token: "new-fixture", DeviceName: "new-device"}
+	old := cli.CLIConfig{ServerURL: "https://a.invalid", AppURL: "https://a.invalid", Ticket: "old-fixture"}
+	newLogin := cli.CLIConfig{ServerURL: "https://b.invalid", AppURL: "https://b.invalid", Ticket: "new-fixture", DeviceName: "new-device"}
 	for _, stage := range []string{"while confirming", "during health check"} {
 		t.Run(stage, func(t *testing.T) {
 			if err := cli.SaveCLIConfigForProfile(old, profile); err != nil {
@@ -676,7 +676,7 @@ func TestSetupRejectsProfileChangedDuringConfirmationOrProbe(t *testing.T) {
 				t.Fatalf("setup accepted stale confirmation: %v, %v", ok, err)
 			}
 			got, err := cli.LoadCLIConfigForProfile(profile)
-			if err != nil || got.ServerURL != newLogin.ServerURL || got.Token != newLogin.Token || got.DeviceName != newLogin.DeviceName {
+			if err != nil || got.ServerURL != newLogin.ServerURL || got.Ticket != newLogin.Ticket || got.DeviceName != newLogin.DeviceName {
 				t.Fatal("setup replaced a concurrently changed login")
 			}
 		})

@@ -140,17 +140,17 @@ func TestHookRequestIsSignedAndVerifiableByTheReceiver(t *testing.T) {
 
 	select {
 	case received := <-harness.received:
-		secret, err := service.HookSigningSecret(installation.ID)
+		sealed, err := service.HookSigningSecret(installation.ID)
 		if err != nil {
 			t.Fatalf("derive secret: %v", err)
 		}
-		if err := VerifyHookSignature(secret, received.Timestamp, received.Body, received.Signature, time.Now()); err != nil {
+		if err := VerifyHookSignature(sealed, received.Timestamp, received.Body, received.Signature, time.Now()); err != nil {
 			t.Fatalf("the receiver must be able to verify the signature: %v", err)
 		}
 		// One byte changed anywhere in the body must break it.
 		tampered := append([]byte{}, received.Body...)
 		tampered[len(tampered)-2] ^= 0xff
-		if err := VerifyHookSignature(secret, received.Timestamp, tampered, received.Signature, time.Now()); err == nil {
+		if err := VerifyHookSignature(sealed, received.Timestamp, tampered, received.Signature, time.Now()); err == nil {
 			t.Fatal("a tampered body must not verify against the delivered signature")
 		}
 	default:
@@ -241,7 +241,7 @@ func TestHookCarriesAnInvocationScopedCallbackToken(t *testing.T) {
 	if err := json.Unmarshal(received.Body, &body); err != nil {
 		t.Fatalf("decode delivered body: %v", err)
 	}
-	if body.CallbackToken == "" {
+	if body.CallbackTicket == "" {
 		t.Fatal("the handler needs a callback token to answer with")
 	}
 	if body.CallbackURL != "https://plugin-api.multica.test/v1" {
@@ -253,7 +253,7 @@ func TestHookCarriesAnInvocationScopedCallbackToken(t *testing.T) {
 
 	// Re-issued here because callHookEndpoint revokes the grant once the call it
 	// was issued for has returned.
-	token, err := service.Callbacks.Issue(context.Background(), HookInvocation{
+	ticket, err := service.Callbacks.Issue(context.Background(), HookInvocation{
 		Installation: installation,
 		Hook:         hook,
 		Trigger:      plugincontract.TriggerManual,
@@ -263,7 +263,7 @@ func TestHookCarriesAnInvocationScopedCallbackToken(t *testing.T) {
 		t.Fatalf("issue: %v", err)
 	}
 
-	grant, err := service.Callbacks.Resolve(token)
+	grant, err := service.Callbacks.Resolve(ticket)
 	if err != nil {
 		t.Fatalf("first resolve must succeed: %v", err)
 	}
@@ -272,13 +272,13 @@ func TestHookCarriesAnInvocationScopedCallbackToken(t *testing.T) {
 	}
 	// The second call is the one that used to fail. A handler that read the
 	// issue and then wanted to comment on it got a 403 here.
-	if _, err := service.Callbacks.Resolve(token); err != nil {
+	if _, err := service.Callbacks.Resolve(ticket); err != nil {
 		t.Fatalf("a handler must be able to make more than one call with one grant: %v", err)
 	}
 
 	// Revoked when the invocation is over, so it does not linger for its TTL.
-	service.Callbacks.Revoke(token)
-	if _, err := service.Callbacks.Resolve(token); err == nil {
+	service.Callbacks.Revoke(ticket)
+	if _, err := service.Callbacks.Resolve(ticket); err == nil {
 		t.Fatal("a revoked grant must stop resolving")
 	}
 }

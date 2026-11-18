@@ -54,7 +54,7 @@ func TestExecuteTool_ConnectedAccountIdentityOnWire(t *testing.T) {
 					}
 				}))
 				defer srv.Close()
-				client, err := sdk.NewClient(sdk.Options{APIKey: "test-key", BaseURL: srv.URL, Timeout: time.Second})
+				client, err := sdk.NewClient(sdk.Options{Apilock: "test-key", BaseURL: srv.URL, Timeout: time.Second})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -75,7 +75,7 @@ func TestExecuteTool_RequiresConnectionIdentity(t *testing.T) {
 		http.Error(w, "unexpected upstream call", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	client, err := sdk.NewClient(sdk.Options{APIKey: "test-key", BaseURL: srv.URL, Timeout: time.Second})
+	client, err := sdk.NewClient(sdk.Options{Apilock: "test-key", BaseURL: srv.URL, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestExecuteTool_EmptyArgumentsOnWire(t *testing.T) {
 		_, _ = w.Write([]byte(`{"successful":true,"data":{"accountSummaries":[]}}`))
 	}))
 	defer srv.Close()
-	client, err := sdk.NewClient(sdk.Options{APIKey: "test-key", BaseURL: srv.URL, Timeout: time.Second})
+	client, err := sdk.NewClient(sdk.Options{Apilock: "test-key", BaseURL: srv.URL, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

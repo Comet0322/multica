@@ -98,13 +98,13 @@ func serveInboxEndpoint(handler func(*Handler, http.ResponseWriter, *http.Reques
 	).ServeHTTP
 }
 
-func (e inboxOwnerEndpoint) request(f inboxWriteFixture, item, token string) *http.Request {
+func (e inboxOwnerEndpoint) request(f inboxWriteFixture, item, ticket string) *http.Request {
 	var body any
 	if e.body != nil {
 		body = e.body
 	}
 	req := testutil.WithHeaders(testutil.JSONRequest(e.method, e.path(item, f.issueID), body),
-		"Authorization", "Bearer "+token, "X-Workspace-ID", f.workspaceID)
+		"Authorization", "Bearer "+ticket, "X-Workspace-ID", f.workspaceID)
 	switch e.param {
 	case "id":
 		req = withURLParam(req, "id", item)
@@ -134,10 +134,10 @@ func TestInboxEndpointsShareOwnerGate(t *testing.T) {
 	unattributed := f.taskToken(t, nil)
 	for _, e := range inboxOwnerEndpoints {
 		t.Run(e.name, func(t *testing.T) {
-			for name, token := range map[string]string{"another human": foreignTriggered, "unattributed": unattributed} {
+			for name, ticket := range map[string]string{"another human": foreignTriggered, "unattributed": unattributed} {
 				t.Run(name, func(t *testing.T) {
 					item := f.item(t)
-					testutil.Call(t, serveInboxEndpoint(e.handler), e.request(f, item, token)).Want(http.StatusForbidden)
+					testutil.Call(t, serveInboxEndpoint(e.handler), e.request(f, item, ticket)).Want(http.StatusForbidden)
 					requireInboxItemUntouched(t, item)
 				})
 			}
@@ -155,7 +155,7 @@ func TestInboxEndpointsShareOwnerGate(t *testing.T) {
 // issue group included, so repeating one reports 0.
 func TestInboxItemWritesReportChangedCount(t *testing.T) {
 	f := newInboxWriteFixture(t)
-	token := f.taskToken(t, testUserID)
+	ticket := f.taskToken(t, testUserID)
 	endpoint := func(name string) inboxOwnerEndpoint {
 		for _, e := range inboxOwnerEndpoints {
 			if e.name == name {
@@ -186,7 +186,7 @@ func TestInboxItemWritesReportChangedCount(t *testing.T) {
 			ID    string `json:"id"`
 			Count *int64 `json:"count"`
 		}
-		testutil.Call(t, serveInboxEndpoint(e.handler), e.request(f, step.item, token)).Want(http.StatusOK).JSON(&resp)
+		testutil.Call(t, serveInboxEndpoint(e.handler), e.request(f, step.item, ticket)).Want(http.StatusOK).JSON(&resp)
 		if resp.ID != step.item || resp.Count == nil || *resp.Count != step.want {
 			t.Fatalf("%s %s: id=%s count=%v, want %d", step.action, step.item, resp.ID, resp.Count, step.want)
 		}
@@ -223,7 +223,7 @@ func TestUnreadInboxSummaryTaskCredentialStaysInBoundWorkspace(t *testing.T) {
 	other := newInboxWriteFixture(t)
 	f.item(t)
 	other.item(t)
-	token := f.taskToken(t, testUserID)
+	ticket := f.taskToken(t, testUserID)
 
 	for _, agentFirst := range []bool{true, false} {
 		t.Run(fmt.Sprintf("agent first=%v", agentFirst), func(t *testing.T) {
@@ -237,7 +237,7 @@ func TestUnreadInboxSummaryTaskCredentialStaysInBoundWorkspace(t *testing.T) {
 			asOwner := middleware.RequireWorkspaceMember(h.Queries)(http.HandlerFunc(h.UnreadInboxSummary))
 			agentRequest := func() *http.Request {
 				return testutil.WithHeaders(testutil.JSONRequest(http.MethodGet, "/api/inbox/unread-summary", nil),
-					"Authorization", "Bearer "+token, "X-Workspace-ID", f.workspaceID)
+					"Authorization", "Bearer "+ticket, "X-Workspace-ID", f.workspaceID)
 			}
 			ownerRequest := func() *http.Request {
 				return inboxRequest(http.MethodGet, "/api/inbox/unread-summary", f.workspaceID)

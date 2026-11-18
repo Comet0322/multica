@@ -42,7 +42,7 @@ func TestGuestsFailClosedWhenCloudPlansAreUnavailable(t *testing.T) {
 		req := dbfx.JSONRequest(http.MethodPost, "/api/workspaces/"+f.WorkspaceID+"/members", map[string]any{
 			"email": "guest-" + uuid.NewString()[:8] + "@example.test", "role": "guest", "project_ids": []string{projectID},
 		})
-		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("Authorization", "Bearer "+testTicket)
 		req.Header.Set("X-Workspace-ID", f.WorkspaceID)
 		resp := dbfx.Call(t, router.ServeHTTP, req)
 		if wantOffered {

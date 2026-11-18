@@ -28,8 +28,8 @@ const (
 // object it should print. Every failure — no steering for this run, a stale
 // hooks file, an unreachable endpoint — returns empty, so the hook never
 // changes what the agent does.
-func forwardHookRequest(endpoint, token string, req any, empty string) string {
-	if endpoint == "" || token == "" || !loopbackHTTPURL(endpoint) {
+func forwardHookRequest(endpoint, ticket string, req any, empty string) string {
+	if endpoint == "" || ticket == "" || !loopbackHTTPURL(endpoint) {
 		return empty
 	}
 	body, err := json.Marshal(req)
@@ -42,7 +42,7 @@ func forwardHookRequest(endpoint, token string, req any, empty string) string {
 	if err != nil {
 		return empty
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+token)
+	httpReq.Header.Set("Authorization", "Bearer "+ticket)
 	httpReq.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Transport: &http.Transport{Proxy: nil}}
 	resp, err := client.Do(httpReq)

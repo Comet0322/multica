@@ -324,7 +324,7 @@ func TestChannelStore_RebindCleansDependentRows(t *testing.T) {
 
 	const (
 		app        = "cli_rb_cleanup"
-		tokenHash  = "rb_token_hash_cleanup"
+		ticketHash = "rb_token_hash_cleanup"
 		auditEvent = "ev_rb_cleanup"
 		dedupMsg   = "msg_rb_cleanup"
 	)
@@ -333,7 +333,7 @@ func TestChannelStore_RebindCleansDependentRows(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_user_binding WHERE multica_user_id = $1`, rbUser)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_chat_session_binding WHERE chat_session_id = $1`, rbChatSess)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_outbound_card_message WHERE chat_session_id = $1`, rbChatSess)
-		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = $1`, tokenHash)
+		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = $1`, ticketHash)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_message_dedup WHERE message_id = $1`, dedupMsg)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_audit WHERE channel_event_id = $1`, auditEvent)
 	}
@@ -363,7 +363,7 @@ VALUES ($1, $2, 'feishu', 'oc_rb_chat', 'p2p')`, rbChatSess, oldID)
 	seed(`INSERT INTO channel_outbound_card_message (chat_session_id, channel_type, channel_chat_id, channel_card_message_id, status)
 VALUES ($1, 'feishu', 'oc_rb_chat', 'om_rb_card', 'final')`, rbChatSess)
 	seed(`INSERT INTO channel_binding_token (token_hash, workspace_id, installation_id, channel_type, channel_user_id, expires_at)
-VALUES ($1, $2, $3, 'feishu', 'ou_rb_user', now() + interval '10 minutes')`, tokenHash, rbWS, oldID)
+VALUES ($1, $2, $3, 'feishu', 'ou_rb_user', now() + interval '10 minutes')`, ticketHash, rbWS, oldID)
 	seed(`INSERT INTO channel_inbound_message_dedup (installation_id, message_id)
 VALUES ($1, $2)`, oldID, dedupMsg)
 	seed(`INSERT INTO channel_inbound_audit (installation_id, channel_type, event_type, channel_event_id, drop_reason)
@@ -434,14 +434,14 @@ func TestChannelStore_RebindGuardedDeleteRaceWithReactivation(t *testing.T) {
 
 	const (
 		app        = "cli_rb_race"
-		tokenHash  = "rb_token_hash_race"
+		ticketHash = "rb_token_hash_race"
 		auditEvent = "ev_rb_race"
 	)
 	clean := func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_installation WHERE config->>'app_id' = $1`, app)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_user_binding WHERE multica_user_id = $1`, rbUser)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_chat_session_binding WHERE chat_session_id = $1`, rbChatSess)
-		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = $1`, tokenHash)
+		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = $1`, ticketHash)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_audit WHERE channel_event_id = $1`, auditEvent)
 	}
 	clean()
@@ -468,7 +468,7 @@ VALUES ($1, $2, $3, 'feishu', 'ou_rb_user')`, rbWS, rbUser, idStr)
 	seed(`INSERT INTO channel_chat_session_binding (chat_session_id, installation_id, channel_type, channel_chat_id, chat_type)
 VALUES ($1, $2, 'feishu', 'oc_rb_chat', 'p2p')`, rbChatSess, idStr)
 	seed(`INSERT INTO channel_binding_token (token_hash, workspace_id, installation_id, channel_type, channel_user_id, expires_at)
-VALUES ($1, $2, $3, 'feishu', 'ou_rb_user', now() + interval '10 minutes')`, tokenHash, rbWS, idStr)
+VALUES ($1, $2, $3, 'feishu', 'ou_rb_user', now() + interval '10 minutes')`, ticketHash, rbWS, idStr)
 	seed(`INSERT INTO channel_inbound_audit (installation_id, channel_type, event_type, channel_event_id, drop_reason)
 VALUES ($1, 'feishu', 'im.message.receive_v1', $2, 'revoked_installation')`, idStr, auditEvent)
 

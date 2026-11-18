@@ -32,7 +32,7 @@ func TestOutboundSealedImagesUseVisiblePlaceholders(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				d := newDingtalkSendServer(t)
-				config, err := json.Marshal(installConfig{AppID: "app", RobotCode: "robot", AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret"))})
+				config, err := json.Marshal(installConfig{AppID: "app", RobotCode: "robot", AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret"))})
 				if err != nil {
 					t.Fatal(err)
 				}

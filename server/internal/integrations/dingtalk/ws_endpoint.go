@@ -42,7 +42,7 @@ func chatbotSubscriptions() []streamSubscription {
 
 type openConnectionRequest struct {
 	ClientID      string               `json:"clientId"`
-	ClientSecret  string               `json:"clientSecret"`
+	ClientSealed  string               `json:"clientSecret"`
 	Subscriptions []streamSubscription `json:"subscriptions"`
 	UserAgent     string               `json:"ua"`
 }
@@ -55,13 +55,13 @@ type openConnectionResponse struct {
 // openConnection registers a Stream connection and returns the dial-ready wss
 // URL (endpoint?ticket=…). apiBase + httpClient come from the shared outbound
 // Client so tests can point them at an httptest server.
-func openConnection(ctx context.Context, httpClient *http.Client, apiBase, appKey, appSecret string) (string, error) {
+func openConnection(ctx context.Context, httpClient *http.Client, apiBase, appKey, appSealed string) (string, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
 	reqBody, err := json.Marshal(openConnectionRequest{
 		ClientID:      appKey,
-		ClientSecret:  appSecret,
+		ClientSealed:  appSealed,
 		Subscriptions: chatbotSubscriptions(),
 		UserAgent:     streamUserAgent,
 	})

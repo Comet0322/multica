@@ -257,9 +257,9 @@ func resolveProfile(cmd *cobra.Command) string {
 
 func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 	taskContext := inDaemonManagedExecutionContext()
-	token := resolveToken(cmd)
-	if taskContext && !strings.HasPrefix(token, "mat_") {
-		if hint := replacedTaskTokenHint(token); hint != "" {
+	ticket := resolveToken(cmd)
+	if taskContext && !strings.HasPrefix(ticket, "mat_") {
+		if hint := replacedTaskTokenHint(ticket); hint != "" {
 			return nil, fmt.Errorf("agent execution context requires MULTICA_TOKEN to be a task-scoped mat_ token%s", hint)
 		}
 		// When the ONLY daemon signal is a workdir marker (no MULTICA_AGENT_ID /
@@ -279,7 +279,7 @@ func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 		return nil, fmt.Errorf("server URL not set: use --server-url flag, MULTICA_SERVER_URL env, or 'multica config set server_url <url>'")
 	}
 
-	client := cli.NewAPIClient(serverURL, workspaceID, token)
+	client := cli.NewAPIClient(serverURL, workspaceID, ticket)
 	// When running inside a daemon task, attribute actions to the agent.
 	if agentID := os.Getenv("MULTICA_AGENT_ID"); agentID != "" {
 		client.AgentID = agentID
@@ -409,8 +409,8 @@ func daemonPortOnlyContextHint() string {
 // back after launch — typically by a secrets manager wrapping the runtime
 // command (`doppler run`) or a shell profile exporting MULTICA_TOKEN (#7666).
 // The hint names the prefix only, never the token.
-func replacedTaskTokenHint(token string) string {
-	if !strings.HasPrefix(token, "mul_") || strings.TrimSpace(os.Getenv("MULTICA_TASK_ID")) == "" {
+func replacedTaskTokenHint(ticket string) string {
+	if !strings.HasPrefix(ticket, "mul_") || strings.TrimSpace(os.Getenv("MULTICA_TASK_ID")) == "" {
 		return ""
 	}
 	return "; MULTICA_TOKEN holds a personal access token (mul_) although MULTICA_TASK_ID is set, so something between the daemon and this command replaced the task token — usually a secrets manager in the runtime's launch command or a shell profile exporting MULTICA_TOKEN. Let the daemon's MULTICA_* values win (Doppler: doppler run --preserve-env=MULTICA_TOKEN -- <agent command>); see https://multica.ai/docs/daemon-runtimes#secrets-managers"

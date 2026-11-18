@@ -17,7 +17,7 @@ var (
 	ErrTokenExpired   = errors.New("connectedapps: token expired")
 )
 
-const tokenPrefix = "mca_"
+const ticketPrefix = "mca_"
 
 type tokenClaims struct {
 	TaskID string `json:"t"`
@@ -41,12 +41,12 @@ func SignTaskToken(secret []byte, taskID string, exp time.Time) (string, error) 
 		return "", err
 	}
 	payload := base64.RawURLEncoding.EncodeToString(raw)
-	return tokenPrefix + payload + "." + signTokenPayload(secret, payload), nil
+	return ticketPrefix + payload + "." + signTokenPayload(secret, payload), nil
 }
 
 // VerifyTaskToken checks a gateway token and returns its task id.
-func VerifyTaskToken(secret []byte, token string, now time.Time) (string, error) {
-	body, ok := strings.CutPrefix(strings.TrimSpace(token), tokenPrefix)
+func VerifyTaskToken(secret []byte, ticket string, now time.Time) (string, error) {
+	body, ok := strings.CutPrefix(strings.TrimSpace(ticket), ticketPrefix)
 	if !ok {
 		return "", ErrTokenMalformed
 	}

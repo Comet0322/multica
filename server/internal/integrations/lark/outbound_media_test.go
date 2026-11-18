@@ -124,7 +124,7 @@ func newMediaTestPatcher(t *testing.T) (*Patcher, *fakePatcherQueries, *fakeMedi
 	api := &fakeMediaAPIClient{
 		fakeAPIClient: &fakeAPIClient{sendReturn: "lark_card_msg_1", textSendReturn: "lark_text_msg_1", mdCardReturn: "lark_card_msg_1"},
 	}
-	p := NewPatcher(q, fakeCredentials{secret: "shh"}, api, PatcherConfig{
+	p := NewPatcher(q, fakeCredentials{sealed: "shh"}, api, PatcherConfig{
 		Logger: newDiscardLogger(),
 		Now:    time.Now,
 	})

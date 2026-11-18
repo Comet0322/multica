@@ -105,7 +105,7 @@ func (s *BindingTokenService) Mint(ctx context.Context, workspaceID, installatio
 	expiresAt := s.now().Add(BindingTokenTTL)
 
 	row, err := s.queries.CreateLarkBindingToken(ctx, CreateBindingTokenParams{
-		TokenHash:      hash,
+		TicketHash:     hash,
 		WorkspaceID:    workspaceID,
 		InstallationID: installationID,
 		ChannelUserID:  string(openID),

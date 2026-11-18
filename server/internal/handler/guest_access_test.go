@@ -90,7 +90,7 @@ func TestGuestWorkspaceResponseOmitsConfiguration(t *testing.T) {
 func TestGuestProjectGrantsFollowTheViewersProjects(t *testing.T) {
 	clearInvitationsForTestWorkspace(t)
 	f := newGuestFixture(t)
-	addProjectMemberRow(t, f.secret, f.guest) // the owner (testUserID) is in secret
+	addProjectMemberRow(t, f.sealed, f.guest) // the owner (testUserID) is in secret
 	admin := createWorkspaceAdmin(t, f.marker+"-admin@multica.test")
 	member := createPlainMember(t, f.marker+"-member@multica.test")
 	dbfx.Insert(t, "workspace_invitation", testutil.Cols{
@@ -100,7 +100,7 @@ func TestGuestProjectGrantsFollowTheViewersProjects(t *testing.T) {
 		"role":          "guest",
 		"status":        "pending",
 		"expires_at":    testutil.Raw("now() + interval '1 day'"),
-		"project_ids":   testutil.Raw(fmt.Sprintf("ARRAY['%s', '%s']::uuid[]", f.shared, f.secret)),
+		"project_ids":   testutil.Raw(fmt.Sprintf("ARRAY['%s', '%s']::uuid[]", f.shared, f.sealed)),
 	})
 
 	listedGrants := func(viewer string) (member, invitation []string) {
@@ -125,7 +125,7 @@ func TestGuestProjectGrantsFollowTheViewersProjects(t *testing.T) {
 		}
 		return member, invitation
 	}
-	both := fmt.Sprint(sorted(f.shared, f.secret))
+	both := fmt.Sprint(sorted(f.shared, f.sealed))
 	for _, tc := range []struct {
 		name, viewer, want string
 	}{
@@ -154,13 +154,13 @@ func TestGuestProjectGrantsFollowTheViewersProjects(t *testing.T) {
 	// project the admin cannot see stays.
 	var resp MemberWithUserResponse
 	setProjects(admin, f.other).Want(http.StatusOK).JSON(&resp)
-	if got := guestProjectIDs(t, f.guest); fmt.Sprint(got) != fmt.Sprint(sorted(f.other, f.secret)) {
+	if got := guestProjectIDs(t, f.guest); fmt.Sprint(got) != fmt.Sprint(sorted(f.other, f.sealed)) {
 		t.Errorf("after the admin's change guest projects = %v, want other and secret", got)
 	}
 	if fmt.Sprint(resp.ProjectIDs) != fmt.Sprint([]string{f.other}) {
 		t.Errorf("admin's response project_ids = %v, want only other", resp.ProjectIDs)
 	}
-	setProjects(admin, f.secret).Want(http.StatusBadRequest)
+	setProjects(admin, f.sealed).Want(http.StatusBadRequest)
 
 	// The owner, a member of the private project, can take the guest out of it.
 	setProjects(testUserID, f.shared).Want(http.StatusOK)
@@ -170,13 +170,13 @@ func TestGuestProjectGrantsFollowTheViewersProjects(t *testing.T) {
 
 	// Demoting a member keeps it in the private projects the admin cannot see.
 	demoted := createPlainMember(t, f.marker+"-demoted@multica.test")
-	addProjectMemberRow(t, f.secret, demoted)
+	addProjectMemberRow(t, f.sealed, demoted)
 	var demotedMember string
 	dbfx.QueryRow(t, `SELECT id FROM member WHERE workspace_id = $1 AND user_id = $2`, testWorkspaceID, demoted).Scan(&demotedMember)
 	req := withURLParams(asUser(newRequest(http.MethodPatch, "/api/workspaces/"+testWorkspaceID+"/members/"+demotedMember,
 		UpdateMemberRequest{Role: "guest", ProjectIDs: []string{f.shared}}), admin), "id", testWorkspaceID, "memberId", demotedMember)
 	testutil.Call(t, testHandler.UpdateMember, req).Want(http.StatusOK)
-	if got := guestProjectIDs(t, demoted); fmt.Sprint(got) != fmt.Sprint(sorted(f.shared, f.secret)) {
+	if got := guestProjectIDs(t, demoted); fmt.Sprint(got) != fmt.Sprint(sorted(f.shared, f.sealed)) {
 		t.Errorf("demoted guest projects = %v, want shared and secret", got)
 	}
 }

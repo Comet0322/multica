@@ -61,7 +61,7 @@ func RegisterWeixin(reg *channel.Registry, deps ChannelDeps) {
 		if logger == nil {
 			logger = slog.Default()
 		}
-		c := &weixinChannel{id: cfg.ID, config: cfg.Raw, creds: creds, api: newAPI(creds.BaseURL, creds.Token, deps.Client), q: deps.Queries, box: deps.Box, handler: cfg.Handler, logger: logger, typing: deps.Typing}
+		c := &weixinChannel{id: cfg.ID, config: cfg.Raw, creds: creds, api: newAPI(creds.BaseURL, creds.Ticket, deps.Client), q: deps.Queries, box: deps.Box, handler: cfg.Handler, logger: logger, typing: deps.Typing}
 		if deps.Bus != nil {
 			c.onExpired = func(ctx context.Context) {
 				inst, err := deps.Queries.GetChannelInstallation(ctx, db.GetChannelInstallationParams{ID: cfg.ID, ChannelType: string(TypeWeixin)})
@@ -132,8 +132,8 @@ func (c *weixinChannel) Connect(ctx context.Context) error {
 			if !ok {
 				continue
 			}
-			if msg.ContextToken != "" {
-				sealed, err := c.box.Seal([]byte(msg.ContextToken))
+			if msg.ContextTicket != "" {
+				sealed, err := c.box.Seal([]byte(msg.ContextTicket))
 				if err != nil {
 					return err
 				}
@@ -227,7 +227,7 @@ func normalizeMessage(creds credentials, msg message) (channel.InboundMessage, b
 	if len(text) == 0 {
 		return channel.InboundMessage{}, false
 	}
-	msg.ContextToken = ""
+	msg.ContextTicket = ""
 	raw, _ := json.Marshal(weixinRawEvent{BotID: creds.AppID, EventType: "message", Message: msg})
 	return channel.InboundMessage{
 		Source:    channel.Source{ChannelType: TypeWeixin, ChatID: msg.From, ChatType: channel.ChatTypeP2P, SenderID: msg.From},

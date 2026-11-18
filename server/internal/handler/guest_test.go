@@ -20,10 +20,10 @@ type guestFixture struct {
 	guest       string
 	shared      string
 	other       string
-	secret      string
+	sealed      string
 	sharedIssue string
 	otherIssue  string
-	secretIssue string
+	sealedIssue string
 	looseIssue  string
 	guestMember string
 	marker      string
@@ -38,13 +38,13 @@ func newGuestFixture(t *testing.T) guestFixture {
 	dbfx.QueryRow(t, `SELECT id FROM member WHERE workspace_id = $1 AND user_id = $2`, testWorkspaceID, f.guest).Scan(&f.guestMember)
 	f.shared = dbfx.Project(t, marker+" shared")
 	f.other = dbfx.Project(t, marker+" other")
-	f.secret = dbfx.Project(t, marker+" secret", testutil.Cols{"visibility": projectaccess.VisibilityPrivate})
+	f.sealed = dbfx.Project(t, marker+" secret", testutil.Cols{"visibility": projectaccess.VisibilityPrivate})
 	addProjectMemberRow(t, f.shared, f.guest)
-	addProjectMemberRow(t, f.secret, testUserID)
+	addProjectMemberRow(t, f.sealed, testUserID)
 	base := 700000 + int(time.Now().UnixNano()%100000)*4
 	f.sharedIssue = dbfx.Issue(t, marker+" shared issue", testutil.Cols{"project_id": f.shared, "number": base})
 	f.otherIssue = dbfx.Issue(t, marker+" other issue", testutil.Cols{"project_id": f.other, "number": base + 1})
-	f.secretIssue = dbfx.Issue(t, marker+" secret issue", testutil.Cols{"project_id": f.secret, "number": base + 2})
+	f.sealedIssue = dbfx.Issue(t, marker+" secret issue", testutil.Cols{"project_id": f.sealed, "number": base + 2})
 	f.looseIssue = dbfx.Issue(t, marker+" loose issue", testutil.Cols{"number": base + 3})
 	return f
 }
@@ -71,7 +71,7 @@ func TestGuestSeesOnlyItsProjects(t *testing.T) {
 	}{
 		{"issue in its project", f.sharedIssue, http.StatusOK},
 		{"issue in another workspace project", f.otherIssue, http.StatusNotFound},
-		{"issue in a private project", f.secretIssue, http.StatusNotFound},
+		{"issue in a private project", f.sealedIssue, http.StatusNotFound},
 		{"issue outside any project", f.looseIssue, http.StatusNotFound},
 	} {
 		rec := guestRequest(t, testHandler.GetIssue, f.guest, http.MethodGet, "/api/issues/"+tc.issue, nil, "id", tc.issue)
@@ -158,7 +158,7 @@ func TestGuestRoutesAreDenyByDefault(t *testing.T) {
 // for its own project and nothing from the others.
 func TestGuestReadsProgressAndActivityOfItsProjectsOnly(t *testing.T) {
 	f := newGuestFixture(t)
-	for _, issue := range []string{f.sharedIssue, f.otherIssue, f.secretIssue} {
+	for _, issue := range []string{f.sharedIssue, f.otherIssue, f.sealedIssue} {
 		dbfx.Exec(t, `INSERT INTO activity_log (workspace_id, issue_id, actor_type, actor_id, action, details)
 			VALUES ($1, $2, 'member', $3, 'status_changed', '{"from":"todo","to":"in_progress"}'::jsonb)`,
 			testWorkspaceID, issue, testUserID)
@@ -171,7 +171,7 @@ func TestGuestReadsProgressAndActivityOfItsProjectsOnly(t *testing.T) {
 	}{
 		{"its project", f.shared, http.StatusOK},
 		{"another workspace project", f.other, http.StatusNotFound},
-		{"a private project", f.secret, http.StatusNotFound},
+		{"a private project", f.sealed, http.StatusNotFound},
 	} {
 		path := "/api/projects/" + tc.project
 		if rec := guestRequest(t, testHandler.GetProjectProgress, f.guest, http.MethodGet, path+"/progress", nil, "id", tc.project); rec.Code != tc.want {
@@ -245,7 +245,7 @@ func TestGuestInvitationAddsProjects(t *testing.T) {
 	// An admin outside the private project cannot share it.
 	admin := createWorkspaceAdmin(t, f.marker+"-admin@multica.test")
 	req = withURLParam(asUser(newRequest(http.MethodPost, "/api/workspaces/"+testWorkspaceID+"/members",
-		CreateMemberRequest{Email: email, Role: "guest", ProjectIDs: []string{f.secret}}), admin), "id", testWorkspaceID)
+		CreateMemberRequest{Email: email, Role: "guest", ProjectIDs: []string{f.sealed}}), admin), "id", testWorkspaceID)
 	testutil.Call(t, testHandler.CreateInvitation, req).Want(http.StatusBadRequest)
 
 	var inv InvitationResponse

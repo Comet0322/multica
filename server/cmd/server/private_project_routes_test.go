@@ -366,7 +366,7 @@ func (f *privateRouteFixture) captureToken() string {
 		if err != nil {
 			f.t.Fatalf("capture source context: %v", err)
 		}
-		return build.Token
+		return build.Ticket
 	})
 }
 
@@ -461,14 +461,14 @@ func TestEveryRouteByProjectObjectIDHidesPrivateProjects(t *testing.T) {
 		email := "private-routes-" + uuid.NewString() + "@example.test"
 		id := fx.User(t, name, email)
 		fx.Member(t, fx.WorkspaceID, id, "admin")
-		token, err := generateTestJWT(id, email, name)
+		ticket, err := generateTestJWT(id, email, name)
 		if err != nil {
 			t.Fatalf("sign %s token: %v", name, err)
 		}
-		return id, token
+		return id, ticket
 	}
-	insiderID, insiderToken := newAdmin("Private routes insider")
-	outsiderID, outsiderToken := newAdmin("Private routes outsider")
+	insiderID, insiderTicket := newAdmin("Private routes insider")
+	outsiderID, outsiderTicket := newAdmin("Private routes outsider")
 
 	shared := privateRouteShared{insiderID: insiderID}
 	shared.runtimeID = fx.Runtime(t, "Private routes runtime", dbfx.Cols{"owner_id": insiderID})
@@ -492,7 +492,7 @@ func TestEveryRouteByProjectObjectIDHidesPrivateProjects(t *testing.T) {
 	shared.uploadDir = t.TempDir()
 	t.Setenv("LOCAL_UPLOAD_DIR", shared.uploadDir)
 	router, _ := NewRouterWithOptions(testPool, realtime.NewHub(), events.New(), analytics.NoopClient{}, nil, RouterOptions{})
-	call := func(token, method, path, body string) routeAnswer {
+	call := func(ticket, method, path, body string) routeAnswer {
 		var req *http.Request
 		switch method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
@@ -504,7 +504,7 @@ func TestEveryRouteByProjectObjectIDHidesPrivateProjects(t *testing.T) {
 		default:
 			req = httptest.NewRequest(method, path, nil)
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		req.Header.Set("X-Workspace-ID", fx.WorkspaceID)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
@@ -547,8 +547,8 @@ func TestEveryRouteByProjectObjectIDHidesPrivateProjects(t *testing.T) {
 		}
 
 		existing, missing, body := request(outsiderID)
-		notFound := call(outsiderToken, method, routePath(pattern, missing), body)
-		hidden := call(outsiderToken, method, routePath(pattern, existing), body)
+		notFound := call(outsiderTicket, method, routePath(pattern, missing), body)
+		hidden := call(outsiderTicket, method, routePath(pattern, existing), body)
 		// An answer that echoes the id it was asked about still matches.
 		for i := range existing {
 			hidden.body = strings.ReplaceAll(hidden.body, existing[i], missing[i])
@@ -560,8 +560,8 @@ func TestEveryRouteByProjectObjectIDHidesPrivateProjects(t *testing.T) {
 		// Control: the same request from a project member must not look like
 		// a missing id, or the outsider's answer above proves nothing.
 		existing, missing, body = request(insiderID)
-		insiderNotFound := call(insiderToken, method, routePath(pattern, missing), body)
-		if visible := call(insiderToken, method, routePath(pattern, existing), body); visible == insiderNotFound {
+		insiderNotFound := call(insiderTicket, method, routePath(pattern, missing), body)
+		if visible := call(insiderTicket, method, routePath(pattern, existing), body); visible == insiderNotFound {
 			t.Errorf("a project member got the missing-id answer too, %v: the fixture does not reach the object, or the route needs a request in privateProjectRouteRequests", visible)
 		}
 	}

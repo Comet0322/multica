@@ -893,7 +893,7 @@ type revocationFixture struct {
 	AgentID      string
 	TaskID       string
 	DaemonID     string
-	TokenHash    string
+	TicketHash   string
 }
 
 func setupRevocationFixture(t *testing.T, slug, daemonID string) revocationFixture {
@@ -957,13 +957,13 @@ INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'owner')
 
 	// daemon_token row — paired with the runtime's daemon_id so the
 	// revocation should sweep its hash up via DeleteDaemonTokensByWorkspaceAndDaemons.
-	rawToken := "mdt_test_" + slug
-	sum := sha256.Sum256([]byte(rawToken))
-	tokenHash := hex.EncodeToString(sum[:])
+	rawTicket := "mdt_test_" + slug
+	sum := sha256.Sum256([]byte(rawTicket))
+	ticketHash := hex.EncodeToString(sum[:])
 	dbfx.Exec(t, `
 INSERT INTO daemon_token (token_hash, workspace_id, daemon_id, expires_at)
 VALUES ($1, $2, $3, now() + interval '1 day')
-`, tokenHash, wsID, daemonID)
+`, ticketHash, wsID, daemonID)
 
 	return revocationFixture{
 		WorkspaceID:  wsID,
@@ -973,7 +973,7 @@ VALUES ($1, $2, $3, now() + interval '1 day')
 		AgentID:      agentID,
 		TaskID:       taskID,
 		DaemonID:     daemonID,
-		TokenHash:    tokenHash,
+		TicketHash:   ticketHash,
 	}
 }
 
@@ -1005,7 +1005,7 @@ func assertRevoked(t *testing.T, fx revocationFixture) {
 	}
 
 	var tokenExists bool
-	dbfx.QueryRow(t, `SELECT EXISTS (SELECT 1 FROM daemon_token WHERE token_hash = $1)`, fx.TokenHash).Scan(&tokenExists)
+	dbfx.QueryRow(t, `SELECT EXISTS (SELECT 1 FROM daemon_token WHERE token_hash = $1)`, fx.TicketHash).Scan(&tokenExists)
 	if tokenExists {
 		t.Fatal("daemon_token row was not deleted")
 	}
@@ -1583,7 +1583,7 @@ func TestUpdateWorkspace_RejectsInvalidIssuePrefix(t *testing.T) {
 func TestListWorkspacesTaskCredentialSeesOnlyBoundWorkspace(t *testing.T) {
 	bound := newInboxWriteFixture(t)
 	other := newInboxWriteFixture(t)
-	token := bound.taskToken(t, testUserID)
+	ticket := bound.taskToken(t, testUserID)
 	ids := func(got []WorkspaceResponse) map[string]bool {
 		set := make(map[string]bool, len(got))
 		for _, ws := range got {
@@ -1601,7 +1601,7 @@ func TestListWorkspacesTaskCredentialSeesOnlyBoundWorkspace(t *testing.T) {
 
 	// The CLI lists workspaces without a workspace selector.
 	asAgent := middleware.Auth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.ListWorkspaces))
-	req := testutil.WithHeaders(testutil.JSONRequest(http.MethodGet, "/api/workspaces", nil), "Authorization", "Bearer "+token)
+	req := testutil.WithHeaders(testutil.JSONRequest(http.MethodGet, "/api/workspaces", nil), "Authorization", "Bearer "+ticket)
 	var agent []WorkspaceResponse
 	testutil.Call(t, asAgent.ServeHTTP, req).Want(http.StatusOK).JSON(&agent)
 	if len(agent) != 1 || agent[0].ID != bound.workspaceID {

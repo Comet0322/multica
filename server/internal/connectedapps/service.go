@@ -330,7 +330,7 @@ func (s *Service) AuthorizeOverlay(overlay []byte, taskID pgtype.UUID) ([]byte, 
 	if _, ok := parsed.MCPServers[GatewayServerName]; !ok {
 		return overlay, nil
 	}
-	token, err := SignTaskToken(s.secret, util.UUIDToString(taskID), s.now().Add(tokenTTL))
+	ticket, err := SignTaskToken(s.secret, util.UUIDToString(taskID), s.now().Add(tokenTTL))
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +344,7 @@ func (s *Service) AuthorizeOverlay(overlay []byte, taskID pgtype.UUID) ([]byte, 
 			url = server.URL
 		}
 		raw, err := json.Marshal(gatewayServer{
-			Type: "http", URL: url, Headers: map[string]string{"Authorization": "Bearer " + token},
+			Type: "http", URL: url, Headers: map[string]string{"Authorization": "Bearer " + ticket},
 		})
 		if err != nil {
 			return nil, err

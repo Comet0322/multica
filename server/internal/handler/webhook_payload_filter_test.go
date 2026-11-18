@@ -124,7 +124,7 @@ func TestWebhookPayloadFilter_PersistsIngressAndWorkerDecisions(t *testing.T) {
 					t.Fatalf("worker status=%s", row.Status)
 				}
 			} else {
-				w := postWebhook(t, *trig.WebhookToken, map[string]any{"action": "opened", "pull_request": map[string]any{"base": map[string]any{"ref": "dev"}}}, map[string]string{"X-GitHub-Event": "pull_request"})
+				w := postWebhook(t, *trig.WebhookTicket, map[string]any{"action": "opened", "pull_request": map[string]any{"base": map[string]any{"ref": "dev"}}}, map[string]string{"X-GitHub-Event": "pull_request"})
 				var resp map[string]any
 				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 					t.Fatal(err)

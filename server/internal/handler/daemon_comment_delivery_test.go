@@ -912,11 +912,11 @@ func TestClaimTaskByRuntime_FinalizationFailureRequeuesImmediately(t *testing.T)
 		t.Skip("database not available")
 	}
 	fixture := createCommentDeliveryFixture(t, "Claim finalization failure")
-	priorTokenHash := "prior-valid-token-" + fixture.taskID
+	priorTicketHash := "prior-valid-token-" + fixture.taskID
 	if _, err := testPool.Exec(context.Background(), `
 		INSERT INTO task_token (token_hash, task_id, agent_id, workspace_id, user_id, expires_at)
 		VALUES ($1, $2, $3, $4, $5, now() + interval '1 hour')
-	`, priorTokenHash, fixture.taskID, fixture.agentID, testWorkspaceID, testUserID); err != nil {
+	`, priorTicketHash, fixture.taskID, fixture.agentID, testWorkspaceID, testUserID); err != nil {
 		t.Fatalf("insert prior task token: %v", err)
 	}
 
@@ -963,7 +963,7 @@ func TestClaimTaskByRuntime_FinalizationFailureRequeuesImmediately(t *testing.T)
 		t.Fatalf("failed claim left %d task token(s), want only the prior valid token", tokens)
 	}
 	var priorStillExists bool
-	if err := testPool.QueryRow(context.Background(), `SELECT EXISTS(SELECT 1 FROM task_token WHERE token_hash = $1)`, priorTokenHash).Scan(&priorStillExists); err != nil {
+	if err := testPool.QueryRow(context.Background(), `SELECT EXISTS(SELECT 1 FROM task_token WHERE token_hash = $1)`, priorTicketHash).Scan(&priorStillExists); err != nil {
 		t.Fatalf("check prior task token: %v", err)
 	}
 	if !priorStillExists {
@@ -991,17 +991,17 @@ func TestFinalizeTaskClaim_ReceiptCASFailureRollsBackInsertedToken(t *testing.T)
 	if err != nil || task == nil {
 		t.Fatalf("claim fixture task: task=%v err=%v", task, err)
 	}
-	tokenHash := "rolled-back-token-" + fixture.taskID
-	daemonTokenHash := "rolled-back-daemon-token-" + fixture.taskID
+	ticketHash := "rolled-back-token-" + fixture.taskID
+	daemonTicketHash := "rolled-back-daemon-token-" + fixture.taskID
 	_, err = testHandler.TaskService.FinalizeTaskClaim(ctx, *task, db.CreateTaskTokenParams{
-		TokenHash:   tokenHash,
+		TicketHash:  ticketHash,
 		TaskID:      task.ID,
 		AgentID:     task.AgentID,
 		WorkspaceID: parseUUID(testWorkspaceID),
 		UserID:      parseUUID(testUserID),
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 	}, []pgtype.UUID{parseUUID("00000000-0000-0000-0000-000000000099")}, true, nil, nil, db.CreateDaemonTokenParams{
-		TokenHash:   daemonTokenHash,
+		TicketHash:  daemonTicketHash,
 		WorkspaceID: parseUUID(testWorkspaceID),
 		DaemonID:    "daemon-claim-rollback",
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
@@ -1010,14 +1010,14 @@ func TestFinalizeTaskClaim_ReceiptCASFailureRollsBackInsertedToken(t *testing.T)
 		t.Fatalf("FinalizeTaskClaim accepted an out-of-plan receipt")
 	}
 	var tokenCount int
-	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM task_token WHERE token_hash = $1`, tokenHash).Scan(&tokenCount); err != nil {
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM task_token WHERE token_hash = $1`, ticketHash).Scan(&tokenCount); err != nil {
 		t.Fatalf("count rolled-back token: %v", err)
 	}
 	if tokenCount != 0 {
 		t.Fatalf("receipt CAS failure committed %d generated token(s)", tokenCount)
 	}
 	var daemonTokenCount int
-	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM daemon_token WHERE token_hash = $1`, daemonTokenHash).Scan(&daemonTokenCount); err != nil {
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM daemon_token WHERE token_hash = $1`, daemonTicketHash).Scan(&daemonTokenCount); err != nil {
 		t.Fatalf("count rolled-back daemon token: %v", err)
 	}
 	if daemonTokenCount != 0 {
@@ -1045,9 +1045,9 @@ func TestFinalizeTaskClaim_TriggerDeletedAfterClaimRejectsStaleProvenance(t *tes
 		t.Fatalf("delete trigger after claim snapshot: %v", err)
 	}
 
-	tokenHash := "deleted-trigger-race-token-" + fixture.taskID
+	ticketHash := "deleted-trigger-race-token-" + fixture.taskID
 	_, err = testHandler.TaskService.FinalizeTaskClaim(ctx, *task, db.CreateTaskTokenParams{
-		TokenHash:   tokenHash,
+		TicketHash:  ticketHash,
 		TaskID:      task.ID,
 		AgentID:     task.AgentID,
 		WorkspaceID: parseUUID(testWorkspaceID),
@@ -1058,7 +1058,7 @@ func TestFinalizeTaskClaim_TriggerDeletedAfterClaimRejectsStaleProvenance(t *tes
 		t.Fatalf("FinalizeTaskClaim accepted a receipt after persisted trigger changed")
 	}
 	var tokenCount int
-	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM task_token WHERE token_hash = $1`, tokenHash).Scan(&tokenCount); err != nil {
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM task_token WHERE token_hash = $1`, ticketHash).Scan(&tokenCount); err != nil {
 		t.Fatalf("count stale-provenance token: %v", err)
 	}
 	if tokenCount != 0 {

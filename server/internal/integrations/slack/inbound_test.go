@@ -335,8 +335,8 @@ func TestDecodeCredentials(t *testing.T) {
 	if creds.TeamID != "T1" || creds.BotUserID != "UBOT" {
 		t.Errorf("creds = %+v", creds)
 	}
-	if creds.BotToken != "xoxb-bot" {
-		t.Errorf("bot token = %q", creds.BotToken)
+	if creds.BotTicket != "xoxb-bot" {
+		t.Errorf("bot token = %q", creds.BotTicket)
 	}
 	if _, err := decodeCredentials(nil, nil); err == nil {
 		t.Error("empty config should error")

@@ -22,10 +22,10 @@ func TestMuseAppTaskPromptRunsCLIWithTaskContext(t *testing.T) {
 		"MULTICA_MUSEAPP_ENDPOINT": "http://untrusted.invalid", "MULTICA_MUSEAPP_TOKEN": "private-receptionist-token",
 		"MULTICA_TOKEN": "private-config-token", "OTHER_SECRET": "private-custom-secret",
 	}
-	opts := ExecOptions{TaskToken: "private-task-token", MulticaServerURL: "http://127.0.0.1:8080", MulticaWorkspaceID: "ws-current"}
+	opts := ExecOptions{TaskTicket: "private-task-token", MulticaServerURL: "http://127.0.0.1:8080", MulticaWorkspaceID: "ws-current"}
 	prompt := museappTaskPrompt("check out the repository", env, opts, "linux")
-	for _, secret := range []string{opts.TaskToken, env["MULTICA_TOKEN"], env["MULTICA_MUSEAPP_TOKEN"], env["OTHER_SECRET"], env["MULTICA_MUSEAPP_ENDPOINT"]} {
-		if strings.Contains(prompt, secret) {
+	for _, sealed := range []string{opts.TaskTicket, env["MULTICA_TOKEN"], env["MULTICA_MUSEAPP_TOKEN"], env["OTHER_SECRET"], env["MULTICA_MUSEAPP_ENDPOINT"]} {
+		if strings.Contains(prompt, sealed) {
 			t.Fatal("credential or unapproved config leaked into task prompt")
 		}
 	}

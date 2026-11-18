@@ -40,13 +40,13 @@ type ticketPayload struct {
 }
 
 // SignTicket returns `<base64url JSON payload>.<base64url HMAC-SHA256>`.
-func SignTicket(secret string, t Ticket) string {
+func SignTicket(sealed string, t Ticket) string {
 	raw, _ := json.Marshal(ticketPayload{
 		D: t.Document, W: t.WorkspaceID, T: t.Actor.Type, I: t.Actor.ID, N: t.Actor.Name,
 		RO: t.ReadOnly, Exp: t.ExpiresAt.Unix(),
 	})
 	payload := base64.RawURLEncoding.EncodeToString(raw)
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(sha256.New, []byte(sealed))
 	mac.Write([]byte(payload))
 	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }

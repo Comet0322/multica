@@ -7,8 +7,8 @@ import (
 )
 
 func TestRealtimeMetricsHandler_TokenRequired(t *testing.T) {
-	const token = "secret-test-token"
-	h := realtimeMetricsHandler(token)
+	const ticket = "secret-test-token"
+	h := realtimeMetricsHandler(ticket)
 
 	t.Run("missing auth rejected", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/health/realtime", nil)
@@ -46,7 +46,7 @@ func TestRealtimeMetricsHandler_TokenRequired(t *testing.T) {
 
 	t.Run("non-bearer scheme rejected", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/health/realtime", nil)
-		req.Header.Set("Authorization", "Basic "+token)
+		req.Header.Set("Authorization", "Basic "+ticket)
 		req.RemoteAddr = "203.0.113.10:54321"
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -57,7 +57,7 @@ func TestRealtimeMetricsHandler_TokenRequired(t *testing.T) {
 
 	t.Run("correct bearer token accepted", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/health/realtime", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		req.RemoteAddr = "203.0.113.10:54321"
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)

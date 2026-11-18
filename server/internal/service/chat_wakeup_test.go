@@ -383,9 +383,9 @@ func TestChatWakeupHonorsPrivateProjects(t *testing.T) {
 	f.source.InitiatorUserID = util.MustParseUUID(member)
 	f.fx.Exec(t, "UPDATE agent SET owner_id = $1 WHERE id = $2", member, util.UUIDToString(f.source.AgentID))
 
-	secret := f.fx.Project(t, "Secret", testutil.Cols{"visibility": "private"})
-	hidden := f.fx.Issue(t, "Secret issue", testutil.Cols{"project_id": secret})
-	if access, err := projectaccess.ForPrincipals(ctx, f.q, util.MustParseUUID(f.fx.WorkspaceID), util.MustParseUUID(member)); err != nil || access.CanSeeProject(util.MustParseUUID(secret)) {
+	sealed := f.fx.Project(t, "Secret", testutil.Cols{"visibility": "private"})
+	hidden := f.fx.Issue(t, "Secret issue", testutil.Cols{"project_id": sealed})
+	if access, err := projectaccess.ForPrincipals(ctx, f.q, util.MustParseUUID(f.fx.WorkspaceID), util.MustParseUUID(member)); err != nil || access.CanSeeProject(util.MustParseUUID(sealed)) {
 		t.Fatalf("fixture: member can see the private project (err=%v)", err)
 	}
 	cond, _ := json.Marshal(map[string]any{"type": "issue_reply", "issue_id": hidden})

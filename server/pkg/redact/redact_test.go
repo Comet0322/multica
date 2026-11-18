@@ -232,9 +232,9 @@ func TestRedactMulticaTokens(t *testing.T) {
 	const hex40 = "0123456789abcdef0123456789abcdef01234567"
 	prefixes := []string{"mat_", "mul_", "mdt_", "mcn_"}
 	for _, prefix := range prefixes {
-		token := asm(prefix, hex40)
-		got := Text("retrying with --token " + token + " and moving on")
-		if strings.Contains(got, token) || strings.Contains(got, hex40) {
+		ticket := asm(prefix, hex40)
+		got := Text("retrying with --token " + ticket + " and moving on")
+		if strings.Contains(got, ticket) || strings.Contains(got, hex40) {
 			t.Fatalf("%s token not redacted: %s", prefix, got)
 		}
 		if got != "retrying with --token [REDACTED_MULTICA_TOKEN] and moving on" {
@@ -244,10 +244,10 @@ func TestRedactMulticaTokens(t *testing.T) {
 
 	// Nested JSON values are walked by InputMap through Text; a bare
 	// auth_token field must be masked the same way as a CLI flag.
-	token := asm("mat_", hex40)
+	ticket := asm("mat_", hex40)
 	got := InputMap(map[string]any{
-		"auth_token": token,
-		"args":       []any{"--token", token},
+		"auth_token": ticket,
+		"args":       []any{"--token", ticket},
 	})
 	if got["auth_token"] != "[REDACTED_MULTICA_TOKEN]" {
 		t.Fatalf("InputMap auth_token = %#v, want the Multica placeholder", got["auth_token"])
@@ -276,19 +276,19 @@ func TestRedactMulticaTokenContext(t *testing.T) {
 	t.Parallel()
 
 	const hex40 = "0123456789abcdef0123456789abcdef01234567"
-	token := asm("mat_", hex40)
+	ticket := asm("mat_", hex40)
 	tests := []struct {
 		name  string
 		input string
 		want  string
 	}{
-		{"environment assignment", "MULTICA_TOKEN=" + token, "MULTICA_[REDACTED CREDENTIAL]"},
+		{"environment assignment", "MULTICA_TOKEN=" + ticket, "MULTICA_[REDACTED CREDENTIAL]"},
 		{
 			name:  "escaped JSON",
-			input: `{"value":"line1\n` + token + `\t` + token + `"}`,
+			input: `{"value":"line1\n` + ticket + `\t` + ticket + `"}`,
 			want:  `{"value":"line1\n[REDACTED_MULTICA_TOKEN]\t[REDACTED_MULTICA_TOKEN]"}`,
 		},
-		{"embedded in an identifier", "prefix_" + token, "prefix_" + token},
+		{"embedded in an identifier", "prefix_" + ticket, "prefix_" + ticket},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -474,13 +474,13 @@ func TestInputMapRedactsStringSliceAndStringMap(t *testing.T) {
 // through the shared nested references.
 func TestInputMapDoesNotMutateInput(t *testing.T) {
 	t.Parallel()
-	secret := "sk-proj-abc123def456ghi789jkl012mno345"
-	inner := map[string]any{"diff": secret}
+	sealed := "sk-proj-abc123def456ghi789jkl012mno345"
+	inner := map[string]any{"diff": sealed}
 	m := map[string]any{"changes": []any{inner}}
 
 	_ = InputMap(m)
 
-	if inner["diff"] != secret {
+	if inner["diff"] != sealed {
 		t.Fatalf("input map was mutated in place: %v", inner["diff"])
 	}
 }

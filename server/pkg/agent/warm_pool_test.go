@@ -257,7 +257,7 @@ done
 	})
 	defer pool.Close()
 
-	runTurn := func(taskID, token, resumeID, model, briefHash string) Result {
+	runTurn := func(taskID, ticket, resumeID, model, briefHash string) Result {
 		t.Helper()
 		b, err := New("codex", Config{
 			ExecutablePath: fakeCodex,
@@ -266,7 +266,7 @@ done
 			WarmPool:       pool,
 			Env: map[string]string{
 				"CODEX_HOME":           codexHome,
-				"MULTICA_TOKEN":        token,
+				"MULTICA_TOKEN":        ticket,
 				"MULTICA_TASK_ID":      taskID,
 				"MULTICA_AGENT_ID":     "agent-1",
 				"MULTICA_WORKSPACE_ID": "ws-1",
@@ -401,7 +401,7 @@ done
 	})
 	defer pool.Close()
 
-	runTurn := func(taskID, token, resumeID, model string) (Result, []Message) {
+	runTurn := func(taskID, ticket, resumeID, model string) (Result, []Message) {
 		t.Helper()
 		b, err := New("claude", Config{
 			ExecutablePath: fakeClaude,
@@ -409,7 +409,7 @@ done
 			TaskID:         taskID,
 			WarmPool:       pool,
 			Env: map[string]string{
-				"MULTICA_TOKEN":        token,
+				"MULTICA_TOKEN":        ticket,
 				"MULTICA_TASK_ID":      taskID,
 				"MULTICA_AGENT_ID":     "agent-c1",
 				"MULTICA_WORKSPACE_ID": "ws-1",

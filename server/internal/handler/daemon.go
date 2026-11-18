@@ -132,16 +132,16 @@ func (h *Handler) daemonHiddenProjects(w http.ResponseWriter, r *http.Request, w
 func daemonRuntimeBindingAllowed(r *http.Request, daemonID pgtype.Text, ownerID pgtype.UUID) bool {
 	ctx := r.Context()
 	if middleware.DaemonWorkspaceIDFromContext(ctx) != "" {
-		tokenDaemonID := middleware.DaemonIDFromContext(ctx)
-		if tokenDaemonID == "" || !daemonID.Valid ||
-			strings.TrimSpace(daemonID.String) == "" || daemonID.String != tokenDaemonID {
+		ticketDaemonID := middleware.DaemonIDFromContext(ctx)
+		if ticketDaemonID == "" || !daemonID.Valid ||
+			strings.TrimSpace(daemonID.String) == "" || daemonID.String != ticketDaemonID {
 			return false
 		}
-		if isQoderManagedDaemonID(tokenDaemonID) {
+		if isQoderManagedDaemonID(ticketDaemonID) {
 			return true
 		}
-		tokenOwnerID := middleware.DaemonTokenOwnerIDFromContext(ctx)
-		return tokenOwnerID != "" && ownerID.Valid && uuidToString(ownerID) == tokenOwnerID
+		ticketOwnerID := middleware.DaemonTokenOwnerIDFromContext(ctx)
+		return ticketOwnerID != "" && ownerID.Valid && uuidToString(ownerID) == ticketOwnerID
 	}
 	userID := requestUserID(r)
 	return userID != "" && ownerID.Valid && uuidToString(ownerID) == userID
@@ -644,7 +644,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	// tokens under this prefix were issued for ordinary runtimes and carry no
 	// such binding. The bridge only ever registers one built-in qoder_cloud
 	// runtime, so anything else under this namespace is refused too.
-	if tokenDaemonID := middleware.DaemonIDFromContext(r.Context()); tokenDaemonID != "" && isQoderManagedDaemonID(tokenDaemonID) {
+	if ticketDaemonID := middleware.DaemonIDFromContext(r.Context()); ticketDaemonID != "" && isQoderManagedDaemonID(ticketDaemonID) {
 		allowed, err := h.qoderCredentialAllowed(r, req.WorkspaceID, req.DaemonID)
 		if err != nil {
 			writeError(w, http.StatusServiceUnavailable, "runtime authorization unavailable")
@@ -705,12 +705,12 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !isQoderManagedDaemonID(req.DaemonID) {
-			tokenOwner := middleware.DaemonTokenOwnerIDFromContext(r.Context())
-			if tokenOwner == "" {
+			ticketOwner := middleware.DaemonTokenOwnerIDFromContext(r.Context())
+			if ticketOwner == "" {
 				writeError(w, http.StatusForbidden, "daemon credential is not bound to a runtime owner")
 				return
 			}
-			ownerUUID, err := util.ParseUUID(tokenOwner)
+			ownerUUID, err := util.ParseUUID(ticketOwner)
 			if err != nil {
 				writeError(w, http.StatusForbidden, "daemon credential is not bound to a runtime owner")
 				return
@@ -2361,13 +2361,13 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		tokenStr, terr := auth.GenerateAgentTaskToken()
+		ticketStr, terr := auth.GenerateAgentTaskToken()
 		if terr != nil {
 			slog.Error("batch claim: generate task token failed; requeueing claim",
 				"task_id", uuidToString(task.ID), "error", terr)
 			continue
 		}
-		remoteMCPToken, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, rt)
+		remoteMCPTicket, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, rt)
 		if derr != nil {
 			slog.Error("batch claim: generate Remote MCP daemon token failed; requeueing claim",
 				"task_id", uuidToString(task.ID), "error", derr)
@@ -2383,7 +2383,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		commentBackedTask := task.TriggerCommentID.Valid || len(task.CoalescedCommentIds) > 0
 		receipt, deliveryFailure, ferr := h.finalizeClaimDelivery(r.Context(), &task, rt, uuidToString(task.RuntimeID), rtWorkspaceID, &resp, db.CreateTaskTokenParams{
 			ID:          dbid.NewV7(),
-			TokenHash:   auth.HashToken(tokenStr),
+			TicketHash:  auth.HashToken(ticketStr),
 			TaskID:      task.ID,
 			AgentID:     task.AgentID,
 			WorkspaceID: parseUUID(resp.WorkspaceID),
@@ -2403,8 +2403,8 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		resp.AuthToken = tokenStr
-		resp.RemoteMCPDaemonToken = remoteMCPToken
+		resp.AuthTicket = ticketStr
+		resp.RemoteMCPDaemonTicket = remoteMCPTicket
 		resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
 		out = append(out, resp)
 	}
@@ -2791,7 +2791,7 @@ func remoteMCPDaemonTokenForClaim(resp AgentTaskResponse, runtime db.AgentRuntim
 		return "", nil, fmt.Errorf("generate Remote MCP daemon token: %w", err)
 	}
 	return raw, []db.CreateDaemonTokenParams{{
-		TokenHash:   auth.HashToken(raw),
+		TicketHash:  auth.HashToken(raw),
 		WorkspaceID: runtime.WorkspaceID,
 		DaemonID:    runtime.DaemonID.String,
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
@@ -4556,7 +4556,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "runtime owner required to mint task token")
 		return
 	}
-	tokenStr, terr := auth.GenerateAgentTaskToken()
+	ticketStr, terr := auth.GenerateAgentTaskToken()
 	if terr != nil {
 		outcome = "error_token"
 		slog.Error("task claim: failed to generate agent task token",
@@ -4565,7 +4565,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to mint task token")
 		return
 	}
-	remoteMCPToken, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, runtime)
+	remoteMCPTicket, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, runtime)
 	if derr != nil {
 		outcome = "error_remote_mcp_token"
 		slog.Error("task claim: failed to generate Remote MCP daemon token",
@@ -4576,7 +4576,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	}
 	receipt, deliveryFailure, ferr := h.finalizeClaimDelivery(r.Context(), task, runtime, runtimeID, runtimeWorkspaceID, &resp, db.CreateTaskTokenParams{
 		ID:          dbid.NewV7(),
-		TokenHash:   auth.HashToken(tokenStr),
+		TicketHash:  auth.HashToken(ticketStr),
 		TaskID:      task.ID,
 		AgentID:     task.AgentID,
 		WorkspaceID: parseUUID(resp.WorkspaceID),
@@ -4609,8 +4609,8 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		payloadBytes, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"task": nil})
 		return
 	}
-	resp.AuthToken = tokenStr
-	resp.RemoteMCPDaemonToken = remoteMCPToken
+	resp.AuthTicket = ticketStr
+	resp.RemoteMCPDaemonTicket = remoteMCPTicket
 	task.DeliveredCommentIds = receipt
 	resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
 

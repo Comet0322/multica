@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-const defaultJWTSecret = "multica-dev-secret-change-in-production"
+const defaultJWTSealed = "multica-dev-secret-change-in-production"
 
 var (
 	jwtSecret     []byte
@@ -20,11 +20,11 @@ var (
 
 func JWTSecret() []byte {
 	jwtSecretOnce.Do(func() {
-		secret := os.Getenv("JWT_SECRET")
-		if secret == "" {
-			secret = defaultJWTSecret
+		sealed := os.Getenv("JWT_SECRET")
+		if sealed == "" {
+			sealed = defaultJWTSealed
 		}
-		jwtSecret = []byte(secret)
+		jwtSecret = []byte(sealed)
 	})
 
 	return jwtSecret
@@ -41,17 +41,17 @@ var ErrInsecureJWTSecret = errors.New("JWT_SECRET is empty or a known insecure d
 // dev-only fallback; "change-me-in-production" was historically shipped by
 // docker-compose.selfhost.yml and .env.example. Add any placeholder a template
 // ships with to this list before publishing it.
-var insecureJWTSecrets = map[string]struct{}{
+var insecureJWTSealeds = map[string]struct{}{
 	"":                        {},
-	defaultJWTSecret:          {},
+	defaultJWTSealed:          {},
 	"change-me-in-production": {},
 }
 
 // ValidateJWTSecret reports whether secret is safe to sign production
 // tokens with. It is deliberately cheap and side-effect free so the boot
 // path and tests can call it directly.
-func ValidateJWTSecret(secret string) error {
-	if _, weak := insecureJWTSecrets[strings.TrimSpace(secret)]; weak {
+func ValidateJWTSecret(sealed string) error {
+	if _, weak := insecureJWTSealeds[strings.TrimSpace(sealed)]; weak {
 		return ErrInsecureJWTSecret
 	}
 	return nil
@@ -89,7 +89,7 @@ func GenerateAgentTaskToken() (string, error) {
 }
 
 // HashToken returns the hex-encoded SHA-256 hash of a token string.
-func HashToken(token string) string {
-	h := sha256.Sum256([]byte(token))
+func HashToken(ticket string) string {
+	h := sha256.Sum256([]byte(ticket))
 	return hex.EncodeToString(h[:])
 }

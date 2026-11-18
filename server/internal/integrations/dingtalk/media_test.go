@@ -86,7 +86,7 @@ func newMediaTestEnv(t *testing.T, files map[string][]byte) *mediaTestEnv {
 	t.Cleanup(fileHost.Close)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case accessTokenPath:
+		case accessTicketPath:
 			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":7200}`))
 		case messageFilesDownloadPath:
 			resolves.Add(1)
@@ -114,7 +114,7 @@ func mediaFixture(resources ...dingtalkMediaResource) (engine.ResolvedInstallati
 	cfg, _ := json.Marshal(installConfig{
 		AppID:              "app-key",
 		RobotCode:          "robot-1",
-		AppSecretEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
+		AppSealedEncrypted: base64.StdEncoding.EncodeToString([]byte("secret")),
 	})
 	var ws, instID, messageID pgtype.UUID
 	ws.Bytes[0], instID.Bytes[0], messageID.Bytes[0] = 0xAB, 0xCD, 0xEF
@@ -321,7 +321,7 @@ func TestMediaResolver_PartialFailurePreservesOriginalInlineIndex(t *testing.T) 
 func TestMediaResolver_AltFailurePreservesPrimaryError(t *testing.T) {
 	env := newMediaTestEnv(t, nil)
 	_, _, err := env.resolver.fetchResource(context.Background(), credentials{
-		AppKey: "app-key", AppSecret: "secret", RobotCode: "robot-1",
+		AppKey: "app-key", AppSealed: "secret", RobotCode: "robot-1",
 	}, dingtalkMediaResource{Ref: "primary", Alt: "fallback"})
 	if err == nil || !strings.Contains(err.Error(), "primary media reference") || !strings.Contains(err.Error(), "fallback media reference") {
 		t.Fatalf("combined media error = %v", err)

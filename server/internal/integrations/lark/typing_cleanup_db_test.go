@@ -33,7 +33,7 @@ func TestTypingWithdrawalRetryAfterSourceDeletionDB(t *testing.T) {
 	f := newTypingDBFixture(t)
 	f.Exec(t, "UPDATE agent_task_queue SET status='cancelled' WHERE id=$1", f.taskID)
 	api := &retryTypingAPI{crossProcessReactionAPI: &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: map[string][]MessageReaction{"retry-input": {{ReactionID: "human", OperatorType: "user", EmojiType: typingEmoji}}}}, fail: true}
-	a := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	a := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	a.Add(context.Background(), f.inst, f.sessionID, "retry-input", "", f.messageID)
 	var pending int
 	f.QueryRow(t, "SELECT count(*) FROM channel_typing_reaction WHERE workspace_id=$1 AND cleanup_required AND cleaned_at IS NULL AND reaction_id<>''", f.inst.WorkspaceID).Scan(&pending)
@@ -44,7 +44,7 @@ func TestTypingWithdrawalRetryAfterSourceDeletionDB(t *testing.T) {
 	f.Exec(t, "DELETE FROM chat_message WHERE chat_session_id=$1", f.sessionID)
 	f.Exec(t, "DELETE FROM chat_session WHERE id=$1", f.sessionID)
 	f.Exec(t, "DELETE FROM channel_installation WHERE id=$1", f.inst.ID)
-	b := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	b := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	// First worker failure leases the record instead of spinning or dropping it.
 	b.Reconcile(context.Background(), f.sessionID)
 	f.QueryRow(t, "SELECT count(*) FROM channel_typing_reaction WHERE workspace_id=$1 AND cleaned_at IS NULL AND attempts=1 AND retry_after>now()", f.inst.WorkspaceID).Scan(&pending)
@@ -67,7 +67,7 @@ func TestTypingCleanupPreservesRollbackAndNextInputDB(t *testing.T) {
 	f := newTypingDBFixture(t)
 	next := f.Insert(t, "chat_message", dbfx.Cols{"chat_session_id": f.sessionID, "role": "user", "content": "next", "channel_ingested": true})
 	api := &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: make(map[string][]MessageReaction)}
-	a := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	a := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	a.Add(context.Background(), f.inst, f.sessionID, "old", "", f.messageID)
 	a.Add(context.Background(), f.inst, f.sessionID, "next", "", uuidFromString(t, next))
 	tx, err := f.Pool.Begin(context.Background())
@@ -78,7 +78,7 @@ func TestTypingCleanupPreservesRollbackAndNextInputDB(t *testing.T) {
 	if _, err = tx.Exec(context.Background(), "UPDATE agent_task_queue SET status='cancelled' WHERE id=$1", f.taskID); err != nil {
 		t.Fatal(err)
 	}
-	b := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	b := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	b.Reconcile(context.Background(), f.sessionID)
 	if len(api.remote["old"]) != 1 || len(api.remote["next"]) != 1 {
 		t.Fatalf("uncommitted terminal state removed reactions: %+v", api.remote)
@@ -108,13 +108,13 @@ func (q lostTypingFinish) FinishChannelTypingReactionAdd(context.Context, db.Fin
 func TestTypingUnrecordedAddRetainsRecoveryAnchorDB(t *testing.T) {
 	f := newTypingDBFixture(t)
 	api := &retryTypingAPI{crossProcessReactionAPI: &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: make(map[string][]MessageReaction)}, fail: true}
-	a := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, lostTypingFinish{f.store}, newDiscardLogger())
+	a := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, lostTypingFinish{f.store}, newDiscardLogger())
 	a.Add(context.Background(), f.inst, f.sessionID, "unknown", "", f.messageID)
 	f.Exec(t, "UPDATE channel_typing_reaction SET created_at=now()-interval '2 minutes',retry_after=now() WHERE workspace_id=$1", f.inst.WorkspaceID)
 	api.failureMu.Lock()
 	api.fail = false
 	api.failureMu.Unlock()
-	b := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	b := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	b.Reconcile(context.Background(), f.sessionID)
 	if len(api.remote["unknown"]) != 0 {
 		t.Fatal("unfinished Add was not compensated")
@@ -159,7 +159,7 @@ func TestTypingSettlementWorkspaceAndRollbackDB(t *testing.T) {
 func TestTypingCleanupAllBatchInputsDB(t *testing.T) {
 	f := newTypingDBFixture(t)
 	api := &crossProcessReactionAPI{fakeTypingAPIClient: &fakeTypingAPIClient{}, remote: make(map[string][]MessageReaction)}
-	a := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	a := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	for i, name := range []string{"first", "middle", "trigger"} {
 		id := f.messageID
 		if i > 0 {
@@ -171,7 +171,7 @@ func TestTypingCleanupAllBatchInputsDB(t *testing.T) {
 	next := f.Insert(t, "chat_message", dbfx.Cols{"chat_session_id": f.sessionID, "role": "user", "content": "next", "channel_ingested": true})
 	a.Add(context.Background(), f.inst, f.sessionID, "next", "", uuidFromString(t, next))
 	f.Exec(t, "UPDATE agent_task_queue SET status='completed' WHERE id=$1", f.taskID)
-	b := NewTypingIndicatorManager(api, fakeTypingCreds{secret: "test"}, f.store, newDiscardLogger())
+	b := NewTypingIndicatorManager(api, fakeTypingCreds{sealed: "test"}, f.store, newDiscardLogger())
 	b.Reconcile(context.Background(), f.sessionID)
 	for _, name := range []string{"first", "middle", "trigger"} {
 		if r := api.remote[name]; len(r) != 1 || r[0].ReactionID != "human" {

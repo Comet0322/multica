@@ -47,7 +47,7 @@ func writeDevEnvManifest(t *testing.T, name, body string) {
 
 func writeDevEnvProfile(t *testing.T, profile, serverURL string) {
 	t.Helper()
-	if err := cli.SaveCLIConfigForProfile(cli.CLIConfig{ServerURL: serverURL, Token: "mul_dev"}, profile); err != nil {
+	if err := cli.SaveCLIConfigForProfile(cli.CLIConfig{ServerURL: serverURL, Ticket: "mul_dev"}, profile); err != nil {
 		t.Fatal(err)
 	}
 }

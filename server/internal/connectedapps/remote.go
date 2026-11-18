@@ -73,10 +73,10 @@ type Sealer interface {
 type RemoteUpstream interface {
 	DiscoverOAuth(ctx context.Context, endpoint string) (remotemcp.OAuthMetadata, error)
 	Register(ctx context.Context, metadata remotemcp.OAuthMetadata, redirectURI string) (remotemcp.OAuthClientRegistration, error)
-	Exchange(ctx context.Context, tokenEndpoint, resource, code, redirectURI, verifier string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error)
-	Refresh(ctx context.Context, tokenEndpoint, resource, refreshToken string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error)
-	ListTools(ctx context.Context, endpoint, accessToken string) ([]json.RawMessage, error)
-	CallTool(ctx context.Context, endpoint, accessToken, name string, args map[string]any) (json.RawMessage, error)
+	Exchange(ctx context.Context, ticketEndpoint, resource, code, redirectURI, verifier string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error)
+	Refresh(ctx context.Context, ticketEndpoint, resource, refreshTicket string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error)
+	ListTools(ctx context.Context, endpoint, accessTicket string) ([]json.RawMessage, error)
+	CallTool(ctx context.Context, endpoint, accessTicket, name string, args map[string]any) (json.RawMessage, error)
 }
 
 type remotemcpUpstream struct{}
@@ -89,28 +89,28 @@ func (remotemcpUpstream) Register(ctx context.Context, metadata remotemcp.OAuthM
 	return remotemcp.RegisterOAuthClient(ctx, metadata, redirectURI)
 }
 
-func (remotemcpUpstream) Exchange(ctx context.Context, tokenEndpoint, resource, code, redirectURI, verifier string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
-	return remotemcp.ExchangeOAuthCode(ctx, tokenEndpoint, resource, code, redirectURI, verifier, client)
+func (remotemcpUpstream) Exchange(ctx context.Context, ticketEndpoint, resource, code, redirectURI, verifier string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
+	return remotemcp.ExchangeOAuthCode(ctx, ticketEndpoint, resource, code, redirectURI, verifier, client)
 }
 
-func (remotemcpUpstream) Refresh(ctx context.Context, tokenEndpoint, resource, refreshToken string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
-	return remotemcp.RefreshOAuthToken(ctx, tokenEndpoint, resource, refreshToken, client)
+func (remotemcpUpstream) Refresh(ctx context.Context, ticketEndpoint, resource, refreshTicket string, client remotemcp.OAuthClientRegistration) (remotemcp.OAuthTokenResponse, error) {
+	return remotemcp.RefreshOAuthToken(ctx, ticketEndpoint, resource, refreshTicket, client)
 }
 
-func bearer(token string) http.Header {
-	return http.Header{"Authorization": {"Bearer " + token}}
+func bearer(ticket string) http.Header {
+	return http.Header{"Authorization": {"Bearer " + ticket}}
 }
 
-func (remotemcpUpstream) ListTools(ctx context.Context, endpoint, accessToken string) ([]json.RawMessage, error) {
-	session, err := remotemcp.OpenSession(ctx, endpoint, bearer(accessToken))
+func (remotemcpUpstream) ListTools(ctx context.Context, endpoint, accessTicket string) ([]json.RawMessage, error) {
+	session, err := remotemcp.OpenSession(ctx, endpoint, bearer(accessTicket))
 	if err != nil {
 		return nil, err
 	}
 	return session.ListTools(ctx)
 }
 
-func (remotemcpUpstream) CallTool(ctx context.Context, endpoint, accessToken, name string, args map[string]any) (json.RawMessage, error) {
-	session, err := remotemcp.OpenSession(ctx, endpoint, bearer(accessToken))
+func (remotemcpUpstream) CallTool(ctx context.Context, endpoint, accessTicket, name string, args map[string]any) (json.RawMessage, error) {
+	session, err := remotemcp.OpenSession(ctx, endpoint, bearer(accessTicket))
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (s *Service) CompleteRemoteConnect(ctx context.Context, rawState, code, oau
 	if err != nil {
 		return result, err
 	}
-	tokens, err := s.remote.upstream.Exchange(ctx, client.TokenEndpoint, app.Endpoint, code, s.remote.redirectURI, st.Verifier, registration)
+	tokens, err := s.remote.upstream.Exchange(ctx, client.TicketEndpoint, app.Endpoint, code, s.remote.redirectURI, st.Verifier, registration)
 	if err != nil {
 		var oauthErr *remotemcp.OAuthError
 		if errors.As(err, &oauthErr) && oauthErr.Code == "invalid_client" {
@@ -323,11 +323,11 @@ func (s *Service) CompleteRemoteConnect(ctx context.Context, rawState, code, oau
 		}
 		admitted = gateAdmitted
 	}
-	access, err := s.seal(tokens.AccessToken)
+	access, err := s.seal(tokens.AccessTicket)
 	if err != nil {
 		return result, err
 	}
-	refresh, err := s.seal(tokens.RefreshToken)
+	refresh, err := s.seal(tokens.RefreshTicket)
 	if err != nil {
 		return result, err
 	}
@@ -384,15 +384,15 @@ func (s *Service) remoteOAuthClient(ctx context.Context, app RemoteApp) (db.Remo
 	if err != nil {
 		return row, fmt.Errorf("connectedapps: register oauth client: %w", err)
 	}
-	secret, err := s.seal(registration.ClientSecret)
+	secret, err := s.seal(registration.ClientSealed)
 	if err != nil {
 		return row, err
 	}
 	row, err = s.q.InsertRemoteAppOAuthClient(ctx, db.InsertRemoteAppOAuthClientParams{
 		AppSlug: app.Slug, RedirectUri: s.remote.redirectURI,
-		AuthorizationEndpoint: metadata.AuthorizationEndpoint, TokenEndpoint: metadata.TokenEndpoint,
+		AuthorizationEndpoint: metadata.AuthorizationEndpoint, TicketEndpoint: metadata.TicketEndpoint,
 		Scope: strings.Join(metadata.Scopes, " "), ClientID: registration.ClientID, ClientSecret: secret,
-		TokenEndpointAuthMethod: registration.TokenEndpointAuthMethod,
+		TicketEndpointAuthMethod: registration.TicketEndpointAuthMethod,
 	})
 	if isNoRows(err) {
 		return s.q.GetRemoteAppOAuthClient(ctx, key)
@@ -401,12 +401,12 @@ func (s *Service) remoteOAuthClient(ctx context.Context, app RemoteApp) (db.Remo
 }
 
 func (s *Service) registration(client db.RemoteAppOauthClient) (remotemcp.OAuthClientRegistration, error) {
-	secret, err := s.open(client.ClientSecret)
+	sealed, err := s.open(client.ClientSecret)
 	if err != nil {
 		return remotemcp.OAuthClientRegistration{}, fmt.Errorf("connectedapps: open client secret: %w", err)
 	}
 	return remotemcp.OAuthClientRegistration{
-		ClientID: client.ClientID, ClientSecret: secret, TokenEndpointAuthMethod: client.TokenEndpointAuthMethod,
+		ClientID: client.ClientID, ClientSealed: sealed, TicketEndpointAuthMethod: client.TicketEndpointAuthMethod,
 	}, nil
 }
 
@@ -421,8 +421,8 @@ func (s *Service) remoteAccessToken(ctx context.Context, id pgtype.UUID, stale s
 		return "", ErrAccountMissing
 	}
 	if stale == "" && s.tokenFresh(row) {
-		if token, err := s.open(row.AccessToken); err == nil && token != "" {
-			return token, nil
+		if ticket, err := s.open(row.AccessToken); err == nil && ticket != "" {
+			return ticket, nil
 		}
 	}
 	return s.refreshRemote(ctx, id, stale)
@@ -478,7 +478,7 @@ func (s *Service) refreshRemote(ctx context.Context, id pgtype.UUID, stale strin
 	// must be saved even if the caller has gone away.
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteRefreshTimeout)
 	defer cancel()
-	tokens, err := s.remote.upstream.Refresh(saveCtx, client.TokenEndpoint, app.Endpoint, refresh, registration)
+	tokens, err := s.remote.upstream.Refresh(saveCtx, client.TicketEndpoint, app.Endpoint, refresh, registration)
 	if err != nil {
 		var oauthErr *remotemcp.OAuthError
 		if errors.As(err, &oauthErr) && oauthErr.Rejected() {
@@ -493,13 +493,13 @@ func (s *Service) refreshRemote(ctx context.Context, id pgtype.UUID, stale strin
 		}
 		return "", fmt.Errorf("connectedapps: refresh token: %w", err)
 	}
-	access, err := s.seal(tokens.AccessToken)
+	access, err := s.seal(tokens.AccessTicket)
 	if err != nil {
 		return "", err
 	}
 	nextRefresh := row.RefreshToken
-	if tokens.RefreshToken != "" {
-		if nextRefresh, err = s.seal(tokens.RefreshToken); err != nil {
+	if tokens.RefreshTicket != "" {
+		if nextRefresh, err = s.seal(tokens.RefreshTicket); err != nil {
 			return "", err
 		}
 	}
@@ -511,25 +511,25 @@ func (s *Service) refreshRemote(ctx context.Context, id pgtype.UUID, stale strin
 	if err := tx.Commit(saveCtx); err != nil {
 		return "", err
 	}
-	return tokens.AccessToken, nil
+	return tokens.AccessTicket, nil
 }
 
 // withRemoteToken runs fn with the account's access token. When the app
 // rejects the token, it refreshes once and retries; a second rejection marks
 // the account expired.
-func (s *Service) withRemoteToken(ctx context.Context, acct account, fn func(token string) error) error {
-	token, err := s.remoteAccessToken(ctx, acct.connectionID, "")
+func (s *Service) withRemoteToken(ctx context.Context, acct account, fn func(ticket string) error) error {
+	ticket, err := s.remoteAccessToken(ctx, acct.connectionID, "")
 	if err != nil {
 		return err
 	}
-	err = fn(token)
+	err = fn(ticket)
 	if !unauthorized(err) {
 		return err
 	}
-	if token, err = s.remoteAccessToken(ctx, acct.connectionID, token); err != nil {
+	if ticket, err = s.remoteAccessToken(ctx, acct.connectionID, ticket); err != nil {
 		return err
 	}
-	err = fn(token)
+	err = fn(ticket)
 	if unauthorized(err) {
 		if setErr := s.q.SetRemoteAppConnectionStatus(ctx, db.SetRemoteAppConnectionStatusParams{ID: acct.connectionID, Status: "expired"}); setErr != nil {
 			return setErr
@@ -556,9 +556,9 @@ func (s *Service) remoteTools(ctx context.Context, app RemoteApp, acct account) 
 		return cached.tools, nil
 	}
 	var raws []json.RawMessage
-	err := s.withRemoteToken(ctx, acct, func(token string) error {
+	err := s.withRemoteToken(ctx, acct, func(ticket string) error {
 		var err error
-		raws, err = s.remote.upstream.ListTools(ctx, app.Endpoint, token)
+		raws, err = s.remote.upstream.ListTools(ctx, app.Endpoint, ticket)
 		return err
 	})
 	if err != nil {

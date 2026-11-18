@@ -29,12 +29,12 @@ const defaultAPIBase = "https://api.dingtalk.com"
 
 // accessTokenPath mints an enterprise-internal-app access_token from the app's
 // AppKey/AppSecret. The response carries the token and its lifetime in seconds.
-const accessTokenPath = "/v1.0/oauth2/accessToken"
+const accessTicketPath = "/v1.0/oauth2/accessToken"
 
 // accessTokenResponse is the success shape of accessTokenPath.
 type accessTokenResponse struct {
-	AccessToken string `json:"accessToken"`
-	ExpireIn    int64  `json:"expireIn"`
+	AccessTicket string `json:"accessToken"`
+	ExpireIn     int64  `json:"expireIn"`
 }
 
 // apiError is the DingTalk Open-API error envelope (non-2xx responses).
@@ -75,7 +75,7 @@ type messageFileDownloadResponse struct {
 // httpClient defaults to http.DefaultClient. It returns the token and its
 // lifetime in seconds. A non-2xx response or a missing token is an error — the
 // install path uses a failure here as "these credentials are wrong".
-func fetchAccessToken(ctx context.Context, httpClient *http.Client, baseURL, appKey, appSecret string) (string, int64, error) {
+func fetchAccessToken(ctx context.Context, httpClient *http.Client, baseURL, appKey, appSealed string) (string, int64, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -85,11 +85,11 @@ func fetchAccessToken(ctx context.Context, httpClient *http.Client, baseURL, app
 	}
 	base = strings.TrimRight(base, "/")
 
-	reqBody, err := json.Marshal(map[string]string{"appKey": appKey, "appSecret": appSecret})
+	reqBody, err := json.Marshal(map[string]string{"appKey": appKey, "appSecret": appSealed})
 	if err != nil {
 		return "", 0, fmt.Errorf("dingtalk: marshal access token request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+accessTokenPath, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+accessTicketPath, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", 0, fmt.Errorf("dingtalk: build access token request: %w", err)
 	}
@@ -118,8 +118,8 @@ func fetchAccessToken(ctx context.Context, httpClient *http.Client, baseURL, app
 	if err := json.Unmarshal(body, &tok); err != nil {
 		return "", 0, fmt.Errorf("dingtalk: decode access token response: %w", err)
 	}
-	if tok.AccessToken == "" {
+	if tok.AccessTicket == "" {
 		return "", 0, fmt.Errorf("dingtalk: access token response missing accessToken")
 	}
-	return tok.AccessToken, tok.ExpireIn, nil
+	return tok.AccessTicket, tok.ExpireIn, nil
 }

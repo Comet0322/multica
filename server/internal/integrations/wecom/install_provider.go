@@ -58,7 +58,7 @@ type QueryResult struct {
 // Neither is logged.
 type BotInfo struct {
 	BotID  string `json:"botid"`
-	Secret string `json:"secret"`
+	Sealed string `json:"secret"`
 }
 
 // HTTPProviderConfig configures the real client. BaseURL defaults to the
@@ -136,7 +136,7 @@ func (p *HTTPProvider) QueryResult(ctx context.Context, scode string) (QueryResu
 		return QueryResult{}, fmt.Errorf("wecom query_result: unknown status %q", out.Status)
 	}
 	if out.Status == QueryStatusSuccess {
-		if out.BotInfo == nil || out.BotInfo.BotID == "" || out.BotInfo.Secret == "" {
+		if out.BotInfo == nil || out.BotInfo.BotID == "" || out.BotInfo.Sealed == "" {
 			return QueryResult{}, errors.New("wecom query_result: success without bot_info")
 		}
 	}

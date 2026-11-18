@@ -24,7 +24,7 @@ func TestOpencodeProcessEventsTokenUsage(t *testing.T) {
 		name    string
 		version string
 		custom  bool
-		tokens  []string
+		tickets []string
 		want    TokenUsage
 	}{
 		{"first_separate_release", "1.3.16", false, []string{mixed}, TokenUsage{InputTokens: 200, OutputTokens: 50, CacheReadTokens: 600, CacheWriteTokens: 200}},
@@ -51,13 +51,13 @@ func TestOpencodeProcessEventsTokenUsage(t *testing.T) {
 			t.Parallel()
 			b := &opencodeBackend{cfg: Config{Logger: slog.Default(), CLIVersion: tc.version, BuiltinRuntime: !tc.custom}}
 			var stream strings.Builder
-			for i, tokens := range tc.tokens {
+			for i, tickets := range tc.tickets {
 				stream.WriteString(`{"type":"step_start","sessionID":"ses_usage","part":{"type":"step-start"}}` + "\n")
 				reason := "tool-calls"
-				if i == len(tc.tokens)-1 {
+				if i == len(tc.tickets)-1 {
 					reason = "stop"
 				}
-				fmt.Fprintf(&stream, "{\"type\":\"step_finish\",\"sessionID\":\"ses_usage\",\"part\":{\"type\":\"step-finish\",\"reason\":%q,\"tokens\":%s}}\n", reason, tokens)
+				fmt.Fprintf(&stream, "{\"type\":\"step_finish\",\"sessionID\":\"ses_usage\",\"part\":{\"type\":\"step-finish\",\"reason\":%q,\"tokens\":%s}}\n", reason, tickets)
 			}
 			ch := make(chan Message, 32)
 			result := b.processEvents(strings.NewReader(stream.String()), ch)

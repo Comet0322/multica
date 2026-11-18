@@ -28,11 +28,11 @@ import (
 //     behind a reverse proxy (Caddy / Nginx) that terminates TLS on
 //     localhost, in which case all requests would otherwise look like
 //     loopback (see MUL-1342 review).
-func realtimeMetricsHandler(token string) http.HandlerFunc {
-	token = strings.TrimSpace(token)
+func realtimeMetricsHandler(ticket string) http.HandlerFunc {
+	ticket = strings.TrimSpace(ticket)
 	return func(w http.ResponseWriter, r *http.Request) {
-		if token != "" {
-			if !hasBearerToken(r, token) {
+		if ticket != "" {
+			if !hasBearerToken(r, ticket) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="metrics"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return

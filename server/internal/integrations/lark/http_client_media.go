@@ -92,7 +92,7 @@ func (f mediaUploadForm) build() (io.Reader, int64, string, error) {
 // it. An upload that skipped the retry would report a credential event to
 // the user as "your file could not be sent".
 func (c *httpAPIClient) doAuthedUpload(ctx context.Context, creds InstallationCredentials, path string, form mediaUploadForm, out any) error {
-	attempt := func(token string) error {
+	attempt := func(ticket string) error {
 		body, size, contentType, err := form.build()
 		if err != nil {
 			return err
@@ -103,7 +103,7 @@ func (c *httpAPIClient) doAuthedUpload(ctx context.Context, creds InstallationCr
 		}
 		req.Header.Set("Content-Type", contentType)
 		req.ContentLength = size
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+ticket)
 		uploadCtx, cancel := context.WithTimeout(ctx, c.cfg.ResourceDownloadTimeout)
 		defer cancel()
 		resp, err := c.cfg.ResourceHTTPClient.Do(req.WithContext(uploadCtx))
@@ -142,11 +142,11 @@ func (c *httpAPIClient) doAuthedUpload(ctx context.Context, creds InstallationCr
 		return nil
 	}
 
-	token, err := c.tenantAccessToken(ctx, creds)
+	ticket, err := c.tenantAccessToken(ctx, creds)
 	if err != nil {
 		return err
 	}
-	err = attempt(token)
+	err = attempt(ticket)
 	if !isTokenError(larkErrorCode(err)) {
 		return err
 	}

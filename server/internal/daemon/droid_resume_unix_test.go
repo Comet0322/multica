@@ -61,7 +61,7 @@ case "$*" in
 			}
 			task := Task{
 				ID: "task-droid", WorkspaceID: "ws-droid", RuntimeID: "rt-droid", IssueID: "issue-droid",
-				AgentID: "agent-droid", AuthToken: "mat_droid_fixture", PriorSessionID: "stale-session",
+				AgentID: "agent-droid", AuthTicket: "mat_droid_fixture", PriorSessionID: "stale-session",
 				Agent: &AgentData{ID: "agent-droid", Name: "droid-agent", CustomEnv: map[string]string{"DROID_ATTEMPTS": attemptFile}},
 			}
 			prior, err := execenv.Prepare(execenv.PrepareParams{

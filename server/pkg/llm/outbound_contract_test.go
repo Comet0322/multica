@@ -95,7 +95,7 @@ func TestUnconfiguredClientMakesZeroUpstreamRequests(t *testing.T) {
 	// passing while the real client dials OpenAI. So prove the counter can move
 	// — a configured client must reach the same transport.
 	transport := &countingHTTPClient{}
-	configured := New(Config{APIKey: "test-key", BaseURL: "http://127.0.0.1:1", HTTPClient: transport, MaxRetries: retries(0)})
+	configured := New(Config{Apilock: "test-key", BaseURL: "http://127.0.0.1:1", HTTPClient: transport, MaxRetries: retries(0)})
 	if _, err := configured.GenerateText(context.Background(), "", "system", "hi"); err == nil {
 		t.Fatal("expected the refusing transport to fail a configured client's call")
 	}

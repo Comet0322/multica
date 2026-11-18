@@ -70,7 +70,7 @@ func jsonString(s string) string {
 func withStubLLM(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 	prev := testHandler.LLM
-	testHandler.LLM = llm.New(llm.Config{APIKey: "test-key", BaseURL: srv.URL})
+	testHandler.LLM = llm.New(llm.Config{Apilock: "test-key", BaseURL: srv.URL})
 	t.Cleanup(func() { testHandler.LLM = prev })
 }
 

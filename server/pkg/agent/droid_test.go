@@ -380,14 +380,14 @@ func TestDroidCancellationAndTimeout(t *testing.T) {
 }
 
 func TestDroidSecretsNeverReachResultsOrLogs(t *testing.T) {
-	const secret = "opaque-factory-credential"
+	const sealed = "opaque-factory-credential"
 	const systemPrompt = "private system instructions"
 	isolateDroidSystemPromptFiles(t)
 	var logs bytes.Buffer
 	b := newFakeDroid(t, map[string]string{
-		"FACTORY_API_KEY": secret,
-		"DROID_STREAM":    "{\"type\":\"message\",\"role\":\"assistant\",\"text\":\"" + secret + "\"}\n{\"type\":\"error\",\"message\":\"Authentication failed: " + secret + " fk-12345678901234567890\"}\n",
-		"DROID_STDERR":    secret, "DROID_FAIL": "1",
+		"FACTORY_API_KEY": sealed,
+		"DROID_STREAM":    "{\"type\":\"message\",\"role\":\"assistant\",\"text\":\"" + sealed + "\"}\n{\"type\":\"error\",\"message\":\"Authentication failed: " + sealed + " fk-12345678901234567890\"}\n",
+		"DROID_STDERR":    sealed, "DROID_FAIL": "1",
 	}, &logs)
 	s, err := b.Execute(context.Background(), "task", ExecOptions{SystemPrompt: systemPrompt, Timeout: 5 * time.Second})
 	if err != nil {
@@ -395,7 +395,7 @@ func TestDroidSecretsNeverReachResultsOrLogs(t *testing.T) {
 	}
 	messages, r := collectDroid(t, s)
 	visible := fmt.Sprint(messages, r, logs.String())
-	if strings.Contains(visible, secret) || strings.Contains(visible, systemPrompt) || strings.Contains(visible, "fk-12345678901234567890") || !strings.Contains(visible, "REDACTED") {
+	if strings.Contains(visible, sealed) || strings.Contains(visible, systemPrompt) || strings.Contains(visible, "fk-12345678901234567890") || !strings.Contains(visible, "REDACTED") {
 		t.Fatalf("credentials not scrubbed: %s", visible)
 	}
 }

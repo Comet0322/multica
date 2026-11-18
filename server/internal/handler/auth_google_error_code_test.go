@@ -287,8 +287,8 @@ func TestGoogleLoginSuccessfulExistingUser(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/auth/google", strings.NewReader(`{"code":"test-code","redirect_uri":"http://localhost/auth/callback"}`))
 	var got LoginResponse
 	resp := testutil.Call(t, h.GoogleLogin, req).Want(http.StatusOK).JSON(&got)
-	if requests != 2 || got.Token == "" || got.User.ID != userID || got.User.Email != email {
-		t.Fatalf("unexpected successful login: requests=%d, token present=%t, user=%+v", requests, got.Token != "", got.User)
+	if requests != 2 || got.Ticket == "" || got.User.ID != userID || got.User.Email != email {
+		t.Fatalf("unexpected successful login: requests=%d, token present=%t, user=%+v", requests, got.Ticket != "", got.User)
 	}
 	var authCookie, csrfCookie *http.Cookie
 	for _, cookie := range resp.Result().Cookies() {
@@ -299,7 +299,7 @@ func TestGoogleLoginSuccessfulExistingUser(t *testing.T) {
 			csrfCookie = cookie
 		}
 	}
-	if authCookie == nil || authCookie.Value != got.Token || csrfCookie == nil || csrfCookie.Value == "" {
+	if authCookie == nil || authCookie.Value != got.Ticket || csrfCookie == nil || csrfCookie.Value == "" {
 		t.Fatal("successful Google login must return matching auth and CSRF cookies")
 	}
 

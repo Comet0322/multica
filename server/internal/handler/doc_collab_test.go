@@ -188,7 +188,7 @@ func TestCollabTicketCarriesTheStateSavedWithTheCurrentRevision(t *testing.T) {
 		t.Helper()
 		var resp DocCollabTicketResponse
 		testutil.Call(t, testHandler.CreateDocCollabTicket, withURLParam(newRequest("POST", "/api/docs/"+doc.ID+"/collab-ticket", body), "id", doc.ID)).Want(http.StatusOK).JSON(&resp)
-		if !resp.Enabled || resp.Token == "" || resp.Document != "doc:"+doc.ID {
+		if !resp.Enabled || resp.Ticket == "" || resp.Document != "doc:"+doc.ID {
 			t.Fatalf("ticket must be issued: %+v", resp)
 		}
 		return resp

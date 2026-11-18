@@ -40,16 +40,16 @@ func TestLocalUploadEntryIsDisabled(t *testing.T) {
 		"/uploads/" + key,
 		"/uploads/" + key + ".meta.json/",
 	} {
-		for _, token := range []string{"", testToken} {
+		for _, ticket := range []string{"", testTicket} {
 			for _, method := range []string{http.MethodGet, http.MethodHead} {
 				req := httptest.NewRequest(method, path, nil)
-				if token != "" {
-					req.Header.Set("Authorization", "Bearer "+token)
+				if ticket != "" {
+					req.Header.Set("Authorization", "Bearer "+ticket)
 				}
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, req)
 				if w.Code != http.StatusNotFound {
-					t.Errorf("%s %s (authenticated=%t) = %d, want 404", method, path, token != "", w.Code)
+					t.Errorf("%s %s (authenticated=%t) = %d, want 404", method, path, ticket != "", w.Code)
 				}
 			}
 		}
@@ -79,24 +79,24 @@ func TestLocalAttachmentAPIStillRequiresMembership(t *testing.T) {
 		"filename": "private.png", "url": "/uploads/" + key,
 		"content_type": "image/png", "size_bytes": len(body),
 	})
-	foreignToken, err := generateTestJWT(uuid.NewString(), "outsider@example.test", "Outsider")
+	foreignTicket, err := generateTestJWT(uuid.NewString(), "outsider@example.test", "Outsider")
 	if err != nil {
 		t.Fatal(err)
 	}
 	router := NewRouter(testPool, realtime.NewHub(), events.New(), analytics.NoopClient{}, nil)
 	for _, tc := range []struct {
-		name  string
-		token string
-		code  int
+		name   string
+		ticket string
+		code   int
 	}{
 		{"anonymous", "", http.StatusUnauthorized},
-		{"non-member", foreignToken, http.StatusNotFound},
-		{"member", testToken, http.StatusOK},
+		{"non-member", foreignTicket, http.StatusNotFound},
+		{"member", testTicket, http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/attachments/"+id+"/download", nil)
-			if tc.token != "" {
-				req.Header.Set("Authorization", "Bearer "+tc.token)
+			if tc.ticket != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.ticket)
 			}
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)

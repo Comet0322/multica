@@ -42,7 +42,7 @@ type VCSConnectionResponse struct {
 // Forgejo/Gitea, the X-Gitlab-Token value for GitLab). Not retrievable after.
 type VCSConnectResponse struct {
 	VCSConnectionResponse
-	WebhookSecret string `json:"webhook_secret"`
+	WebhookSealed string `json:"webhook_secret"`
 }
 
 const vcsWebhookPathPrefix = "/api/webhooks/vcs/"
@@ -148,9 +148,9 @@ func (h *Handler) ListVCSConnections(w http.ResponseWriter, r *http.Request) {
 }
 
 type connectVCSRequest struct {
-	Provider    string `json:"provider"`
-	InstanceURL string `json:"instance_url"`
-	AccessToken string `json:"access_token"`
+	Provider     string `json:"provider"`
+	InstanceURL  string `json:"instance_url"`
+	AccessTicket string `json:"access_token"`
 }
 
 // ConnectVCS (POST /workspaces/{id}/vcs/connections) validates the supplied
@@ -183,8 +183,8 @@ func (h *Handler) ConnectVCS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	instanceURL := vcs.NormalizeInstanceURL(req.InstanceURL)
-	token := strings.TrimSpace(req.AccessToken)
-	if instanceURL == "" || token == "" {
+	ticket := strings.TrimSpace(req.AccessTicket)
+	if instanceURL == "" || ticket == "" {
 		writeError(w, http.StatusBadRequest, "instance_url and access_token are required")
 		return
 	}
@@ -194,7 +194,7 @@ func (h *Handler) ConnectVCS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	account, err := provider.ValidateToken(r.Context(), instanceURL, token)
+	account, err := provider.ValidateToken(r.Context(), instanceURL, ticket)
 	if err != nil {
 		if errors.Is(err, vcs.ErrUnauthorized) {
 			writeError(w, http.StatusBadRequest, "the provider rejected the access token")
@@ -209,17 +209,17 @@ func (h *Handler) ConnectVCS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	webhookSecret, err := newVCSWebhookSecret()
+	webhookSealed, err := newVCSWebhookSecret()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mint webhook secret")
 		return
 	}
-	tokenEnc, err := h.sealVCSSecret(token)
+	ticketEnc, err := h.sealVCSSecret(ticket)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to encrypt token")
 		return
 	}
-	secretEnc, err := h.sealVCSSecret(webhookSecret)
+	sealedEnc, err := h.sealVCSSecret(webhookSealed)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to encrypt webhook secret")
 		return
@@ -235,8 +235,8 @@ func (h *Handler) ConnectVCS(w http.ResponseWriter, r *http.Request) {
 		Provider:               string(provider.Kind()),
 		InstanceUrl:            instanceURL,
 		AccountLogin:           account.Login,
-		AccessTokenEncrypted:   tokenEnc,
-		WebhookSecretEncrypted: secretEnc,
+		AccessTicketEncrypted:  ticketEnc,
+		WebhookSealedEncrypted: sealedEnc,
 		ConnectedByID:          connectedBy,
 	})
 	if err != nil {
@@ -248,7 +248,7 @@ func (h *Handler) ConnectVCS(w http.ResponseWriter, r *http.Request) {
 	h.publish(protocol.EventVCSConnectionCreated, workspaceID, "system", "", map[string]any{"id": resp.ID})
 	writeJSON(w, http.StatusOK, VCSConnectResponse{
 		VCSConnectionResponse: resp,
-		WebhookSecret:         webhookSecret,
+		WebhookSealed:         webhookSealed,
 	})
 }
 
@@ -327,12 +327,12 @@ func (h *Handler) RotateVCSConnectionWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	webhookSecret, err := newVCSWebhookSecret()
+	webhookSealed, err := newVCSWebhookSecret()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mint webhook secret")
 		return
 	}
-	secretEnc, err := h.sealVCSSecret(webhookSecret)
+	sealedEnc, err := h.sealVCSSecret(webhookSealed)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to encrypt webhook secret")
 		return
@@ -341,7 +341,7 @@ func (h *Handler) RotateVCSConnectionWebhook(w http.ResponseWriter, r *http.Requ
 	updated, err := h.Queries.RotateVCSConnectionWebhookSecret(r.Context(), db.RotateVCSConnectionWebhookSecretParams{
 		ID:                     connUUID,
 		WorkspaceID:            wsUUID,
-		WebhookSecretEncrypted: secretEnc,
+		WebhookSealedEncrypted: sealedEnc,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to rotate webhook secret")
@@ -352,7 +352,7 @@ func (h *Handler) RotateVCSConnectionWebhook(w http.ResponseWriter, r *http.Requ
 	h.publish(protocol.EventVCSConnectionCreated, workspaceID, "system", "", map[string]any{"id": resp.ID})
 	writeJSON(w, http.StatusOK, VCSConnectResponse{
 		VCSConnectionResponse: resp,
-		WebhookSecret:         webhookSecret,
+		WebhookSealed:         webhookSealed,
 	})
 }
 

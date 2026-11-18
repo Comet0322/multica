@@ -75,7 +75,7 @@ func TestWorkspaceOwnerListsPrivateProjects(t *testing.T) {
 	}
 
 	// The list reveals names and members only: the content stays closed.
-	req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.secretIssue, nil), testUserID), "id", f.secretIssue)
+	req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.sealedIssue, nil), testUserID), "id", f.sealedIssue)
 	testutil.Call(t, testHandler.GetIssue, req).Want(http.StatusNotFound)
 }
 
@@ -93,7 +93,7 @@ func TestWorkspaceOwnerJoinsPrivateProject(t *testing.T) {
 		return testutil.Call(t, testHandler.JoinPrivateProject, req)
 	}
 	getIssue := func(userID string) *testutil.Response {
-		req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.secretIssue, nil), userID), "id", f.secretIssue)
+		req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.sealedIssue, nil), userID), "id", f.sealedIssue)
 		return testutil.Call(t, testHandler.GetIssue, req)
 	}
 	notices := func(recipient string) int {

@@ -17,7 +17,7 @@ import (
 
 // SecretHeader authenticates the API and the collaboration service to each
 // other.
-const SecretHeader = "X-Collab-Secret"
+const SealedHeader = "X-Collab-Secret"
 
 // ErrUnavailable means the service could not be reached or failed; callers
 // fall back to writing the stored doc directly.
@@ -26,25 +26,25 @@ var ErrUnavailable = errors.New("collaboration service unavailable")
 // Client talks to the collaboration service's internal endpoints.
 type Client struct {
 	baseURL *url.URL
-	secret  string
+	sealed  string
 	http    *http.Client
 }
 
 // NewClient returns nil when either setting is empty: collaboration is off.
-func NewClient(internalURL, secret string) (*Client, error) {
-	internalURL, secret = strings.TrimSpace(internalURL), strings.TrimSpace(secret)
-	if internalURL == "" || secret == "" {
+func NewClient(internalURL, sealed string) (*Client, error) {
+	internalURL, sealed = strings.TrimSpace(internalURL), strings.TrimSpace(sealed)
+	if internalURL == "" || sealed == "" {
 		return nil, nil
 	}
 	u, err := url.Parse(strings.TrimRight(internalURL, "/"))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("invalid COLLAB_INTERNAL_URL %q", internalURL)
 	}
-	return &Client{baseURL: u, secret: secret, http: &http.Client{Timeout: 30 * time.Second}}, nil
+	return &Client{baseURL: u, sealed: sealed, http: &http.Client{Timeout: 30 * time.Second}}, nil
 }
 
 // Secret is the shared secret, for verifying the service's calls back.
-func (c *Client) Secret() string { return c.secret }
+func (c *Client) Secret() string { return c.sealed }
 
 // WriteRequest is a whole-document write. BaseContent is the stored content
 // at BaseRevision, the common ancestor for the three-way merge.
@@ -145,7 +145,7 @@ func (c *Client) Revalidate(ctx context.Context, req RevalidateRequest) error {
 		return err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(SecretHeader, c.secret)
+	httpReq.Header.Set(SealedHeader, c.sealed)
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
@@ -169,7 +169,7 @@ func (c *Client) call(ctx context.Context, document, op string, body any) (Resul
 		return Result{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(SecretHeader, c.secret)
+	req.Header.Set(SealedHeader, c.sealed)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: %v", ErrUnavailable, err)

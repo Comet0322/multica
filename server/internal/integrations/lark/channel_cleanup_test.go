@@ -24,8 +24,8 @@ const (
 	ccUser       = "cc000000-0000-4000-8000-000000000006"
 	ccChatArch   = "cc000000-0000-4000-8000-0000000000c1"
 	ccChatLive   = "cc000000-0000-4000-8000-0000000000c2"
-	ccTokenArch  = "cc_token_archived"
-	ccTokenLive  = "cc_token_live"
+	ccTicketArch = "cc_token_archived"
+	ccTicketLive = "cc_token_live"
 	ccAuditArch  = "ev_cc_archived"
 	ccAuditLive  = "ev_cc_live"
 	ccAppArchive = "cli_cc_archived"
@@ -37,7 +37,7 @@ const (
 	ccRuntimeDel = "cc000000-0000-4000-8000-000000000004"
 	ccAgentDel   = "cc000000-0000-4000-8000-00000000000d"
 	ccChatWs     = "cc000000-0000-4000-8000-0000000000c3"
-	ccTokenWs    = "cc_token_ws"
+	ccTicketWs   = "cc_token_ws"
 	ccAuditWs    = "ev_cc_ws"
 	ccAppWs      = "cli_cc_ws"
 )
@@ -45,7 +45,7 @@ const (
 // seedFullInstallation inserts one active installation plus the full spread of
 // dependents (member link, chat-session binding, pending binding token, inbound
 // audit) so a cleanup path can be shown to sweep all of them.
-func seedFullInstallation(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ws, agent, app, chatSess, tokenHash, auditEvent string) string {
+func seedFullInstallation(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ws, agent, app, chatSess, ticketHash, auditEvent string) string {
 	t.Helper()
 	var id string
 	if err := pool.QueryRow(ctx, `
@@ -65,7 +65,7 @@ VALUES ($1, $2, $3, 'feishu', 'ou_cc_user')`, ws, ccUser, id)
 	exec(`INSERT INTO channel_chat_session_binding (chat_session_id, installation_id, channel_type, channel_chat_id, chat_type)
 VALUES ($1, $2, 'feishu', 'oc_cc_chat', 'p2p')`, chatSess, id)
 	exec(`INSERT INTO channel_binding_token (token_hash, workspace_id, installation_id, channel_type, channel_user_id, expires_at)
-VALUES ($1, $2, $3, 'feishu', 'ou_cc_user', now() + interval '10 minutes')`, tokenHash, ws, id)
+VALUES ($1, $2, $3, 'feishu', 'ou_cc_user', now() + interval '10 minutes')`, ticketHash, ws, id)
 	exec(`INSERT INTO channel_outbound_card_message (chat_session_id, channel_type, channel_chat_id, channel_card_message_id, status)
 VALUES ($1, 'feishu', 'oc_cc_chat', 'om_cc_card', 'final')`, chatSess)
 	exec(`INSERT INTO channel_inbound_message_dedup (installation_id, message_id)
@@ -147,7 +147,7 @@ func TestDeleteChannelInstallationsBySystemRuntimeAgents(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_installation WHERE config->>'app_id' = ANY($1)`, []string{ccAppArchive, ccAppLive})
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_user_binding WHERE multica_user_id = $1`, ccUser)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_chat_session_binding WHERE chat_session_id = ANY($1)`, []string{ccChatArch, ccChatLive})
-		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = ANY($1)`, []string{ccTokenArch, ccTokenLive})
+		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = ANY($1)`, []string{ccTicketArch, ccTicketLive})
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_outbound_card_message WHERE chat_session_id = ANY($1)`, []string{ccChatArch, ccChatLive})
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_message_dedup WHERE message_id = 'msg_cc_dedup'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_audit WHERE channel_event_id = ANY($1)`, []string{ccAuditArch, ccAuditLive})
@@ -169,8 +169,8 @@ VALUES ($1, $2, 'cc system agent', 'local', $3, 'system', 'cc_probe')`, ccAgentA
 	exec(`INSERT INTO agent (id, workspace_id, name, runtime_mode, runtime_id)
 VALUES ($1, $2, 'cc live agent', 'local', $3)`, ccAgentLive, ccWS, ccRuntime)
 
-	systemID := seedFullInstallation(t, ctx, pool, ccWS, ccAgentArch, ccAppArchive, ccChatArch, ccTokenArch, ccAuditArch)
-	liveID := seedFullInstallation(t, ctx, pool, ccWS, ccAgentLive, ccAppLive, ccChatLive, ccTokenLive, ccAuditLive)
+	systemID := seedFullInstallation(t, ctx, pool, ccWS, ccAgentArch, ccAppArchive, ccChatArch, ccTicketArch, ccAuditArch)
+	liveID := seedFullInstallation(t, ctx, pool, ccWS, ccAgentLive, ccAppLive, ccChatLive, ccTicketLive, ccAuditLive)
 
 	if err := q.DeleteChannelInstallationsBySystemRuntimeAgents(ctx, util.MustParseUUID(ccRuntime)); err != nil {
 		t.Fatalf("DeleteChannelInstallationsBySystemRuntimeAgents: %v", err)
@@ -193,7 +193,7 @@ func TestDeleteWorkspace_SweepsChannelInstallations(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_installation WHERE config->>'app_id' = $1`, ccAppWs)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_user_binding WHERE multica_user_id = $1`, ccUser)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_chat_session_binding WHERE chat_session_id = $1`, ccChatWs)
-		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = $1`, ccTokenWs)
+		_, _ = pool.Exec(ctx, `DELETE FROM channel_binding_token WHERE token_hash = $1`, ccTicketWs)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_outbound_card_message WHERE chat_session_id = $1`, ccChatWs)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_message_dedup WHERE message_id = 'msg_cc_dedup'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM channel_inbound_audit WHERE channel_event_id = $1`, ccAuditWs)
@@ -213,7 +213,7 @@ VALUES ($1, $2, 'cc runtime del', 'local', 'multica_daemon')`, ccRuntimeDel, ccW
 	exec(`INSERT INTO agent (id, workspace_id, name, runtime_mode, runtime_id)
 VALUES ($1, $2, 'cc agent del', 'local', $3)`, ccAgentDel, ccWSDel, ccRuntimeDel)
 
-	id := seedFullInstallation(t, ctx, pool, ccWSDel, ccAgentDel, ccAppWs, ccChatWs, ccTokenWs, ccAuditWs)
+	id := seedFullInstallation(t, ctx, pool, ccWSDel, ccAgentDel, ccAppWs, ccChatWs, ccTicketWs, ccAuditWs)
 
 	if err := q.DeleteWorkspace(ctx, util.MustParseUUID(ccWSDel)); err != nil {
 		t.Fatalf("DeleteWorkspace: %v", err)

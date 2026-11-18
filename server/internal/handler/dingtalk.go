@@ -559,7 +559,7 @@ func (h *Handler) ForgetDingTalkGroup(w http.ResponseWriter, r *http.Request) {
 // two credentials the user pasted from their own DingTalk Stream-mode robot.
 type RegisterDingTalkBYORequest struct {
 	ClientID     string `json:"client_id"`     // AppKey
-	ClientSecret string `json:"client_secret"` // AppSecret
+	ClientSealed string `json:"client_secret"` // AppSecret
 }
 
 // RegisterDingTalkBYO (POST /api/workspaces/{id}/dingtalk/install/byo?agent_id=…)
@@ -617,7 +617,7 @@ func (h *Handler) RegisterDingTalkBYO(w http.ResponseWriter, r *http.Request) {
 		AgentID:     agentUUID,
 		InitiatorID: initiatorUUID,
 		AppKey:      body.ClientID,
-		AppSecret:   body.ClientSecret,
+		AppSealed:   body.ClientSealed,
 	})
 	if err != nil {
 		switch {
@@ -715,7 +715,7 @@ func (h *Handler) RevokeDingTalkInstallation(w http.ResponseWriter, r *http.Requ
 // RedeemDingTalkBindingTokenRequest carries the raw token the user clicked
 // through from the bot's "link your account" prompt.
 type RedeemDingTalkBindingTokenRequest struct {
-	Token string `json:"token"`
+	Ticket string `json:"token"`
 }
 
 // RedeemDingTalkBindingTokenResponse echoes the bound workspace/installation/user
@@ -748,7 +748,7 @@ func (h *Handler) RedeemDingTalkBindingToken(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Token == "" {
+	if req.Ticket == "" {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
 	}
@@ -757,7 +757,7 @@ func (h *Handler) RedeemDingTalkBindingToken(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	redeemed, err := h.DingTalkBindingTokens.RedeemAndBind(r.Context(), req.Token, userUUID)
+	redeemed, err := h.DingTalkBindingTokens.RedeemAndBind(r.Context(), req.Ticket, userUUID)
 	if err != nil {
 		switch {
 		case errors.Is(err, dingtalk.ErrBindingTokenInvalid):

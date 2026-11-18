@@ -181,7 +181,7 @@ type BeginResult struct {
 //   - Err             (terminal error)                  → abort the session
 type PollResult struct {
 	ClientID     string
-	ClientSecret string
+	ClientSealed string
 	OpenID       OpenID
 
 	// SwitchedDomain is non-empty when Lark told us "this is the wrong
@@ -331,7 +331,7 @@ func (c *RegistrationClient) Poll(ctx context.Context, domain, deviceCode string
 	}
 	var resp struct {
 		ClientID     string `json:"client_id,omitempty"`
-		ClientSecret string `json:"client_secret,omitempty"`
+		ClientSealed string `json:"client_secret,omitempty"`
 		UserInfo     *struct {
 			OpenID      string `json:"open_id,omitempty"`
 			TenantBrand string `json:"tenant_brand,omitempty"`
@@ -388,7 +388,7 @@ func (c *RegistrationClient) Poll(ctx context.Context, domain, deviceCode string
 	// open_id must be present. Partial responses are treated as a
 	// protocol error so RegistrationService never writes a
 	// half-populated lark_installation row.
-	if resp.ClientID != "" && resp.ClientSecret != "" {
+	if resp.ClientID != "" && resp.ClientSealed != "" {
 		if resp.UserInfo == nil || resp.UserInfo.OpenID == "" {
 			return nil, &RegistrationError{
 				Code:        "invalid_response",
@@ -397,7 +397,7 @@ func (c *RegistrationClient) Poll(ctx context.Context, domain, deviceCode string
 		}
 		return &PollResult{
 			ClientID:     resp.ClientID,
-			ClientSecret: resp.ClientSecret,
+			ClientSealed: resp.ClientSealed,
 			OpenID:       OpenID(resp.UserInfo.OpenID),
 		}, nil
 	}

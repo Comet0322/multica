@@ -56,7 +56,7 @@ func addProjectSubscribers(t *testing.T, projectID string, userIDs ...string) {
 // requestAs calls the real router as userID.
 func requestAs(t *testing.T, userID, email, method, path string) {
 	t.Helper()
-	token, err := generateTestJWT(userID, email, "Project Watcher")
+	ticket, err := generateTestJWT(userID, email, "Project Watcher")
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}
@@ -64,7 +64,7 @@ func requestAs(t *testing.T, userID, email, method, path string) {
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	req.Header.Set("X-Workspace-ID", testWorkspaceID)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

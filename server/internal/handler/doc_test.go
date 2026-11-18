@@ -292,7 +292,7 @@ func TestDocVersionsHideIssuesInPrivateProjects(t *testing.T) {
 		revision = updated.Revision
 		return taskID
 	}
-	secretTask := edit(f.secretIssue, "from the private project")
+	sealedTask := edit(f.sealedIssue, "from the private project")
 	publicTask := edit(f.publicIssue, "from a workspace issue")
 
 	issueOf := func(v DocVersionResponse) string {
@@ -302,9 +302,9 @@ func TestDocVersionsHideIssuesInPrivateProjects(t *testing.T) {
 		return *v.IssueID
 	}
 	for _, tc := range []struct {
-		name, userID, secretIssue string
+		name, userID, sealedIssue string
 	}{
-		{"project member", f.insider, f.secretIssue},
+		{"project member", f.insider, f.sealedIssue},
 		{"workspace member outside the project", f.outsider, ""},
 		{"workspace admin outside the project", f.outsideAdmin, ""},
 	} {
@@ -320,7 +320,7 @@ func TestDocVersionsHideIssuesInPrivateProjects(t *testing.T) {
 			// Newest first: the workspace issue's edit, then the private one.
 			for i, want := range []struct{ number, task, issue string }{
 				{"3", publicTask, f.publicIssue},
-				{"2", secretTask, tc.secretIssue},
+				{"2", sealedTask, tc.sealedIssue},
 			} {
 				listed := history.Versions[i]
 				var single DocVersionResponse

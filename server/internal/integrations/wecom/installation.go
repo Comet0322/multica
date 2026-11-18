@@ -36,7 +36,7 @@ type InstallationParams struct {
 
 	// Secret is the plaintext long-connection secret shown once at bot
 	// creation on the admin console. Sealed at the service boundary.
-	Secret string
+	Sealed string
 
 	// BotDisplayName is the bot's name as it appears in a chat. Optional;
 	// see Installation.BotDisplayName for why it exists and what an empty
@@ -193,11 +193,11 @@ func (s *InstallationService) Upsert(ctx context.Context, p InstallationParams) 
 
 	// Nothing live is at stake now: the slot is free, revoked, orphaned, or
 	// already this caller's own. Prove control before the reclaim acts on it.
-	if err := s.probe.Probe(ctx, p.BotID, p.Secret); err != nil {
+	if err := s.probe.Probe(ctx, p.BotID, p.Sealed); err != nil {
 		return Installation{}, err
 	}
 
-	sealed, err := s.box.Seal([]byte(p.Secret))
+	sealed, err := s.box.Seal([]byte(p.Sealed))
 	if err != nil {
 		return Installation{}, fmt.Errorf("wecom: encrypt secret: %w", err)
 	}
@@ -536,7 +536,7 @@ func validateInstallationParams(p InstallationParams) error {
 		missing = "installer_user_id"
 	case p.BotID == "":
 		missing = "bot_id"
-	case p.Secret == "":
+	case p.Sealed == "":
 		missing = "secret"
 	default:
 		return nil

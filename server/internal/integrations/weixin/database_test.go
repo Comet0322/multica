@@ -90,17 +90,17 @@ func newDatabaseFixture(t *testing.T) *databaseFixture {
 	f.Member(t, f.WorkspaceID, f.UserID, "admin")
 	agent := f.Agent(t, "WeChat test agent", "")
 	x := &databaseFixture{f: f, q: db.New(testPool), agent: testUUID(t, agent), workspace: testUUID(t, f.WorkspaceID), user: testUUID(t, f.UserID)}
-	x.status.Store(qrStatus{Status: "confirmed", BotID: "bot-" + suffix, UserID: "scanner-" + suffix, Token: "test-token", BaseURL: DefaultBaseURL})
+	x.status.Store(qrStatus{Status: "confirmed", BotID: "bot-" + suffix, UserID: "scanner-" + suffix, Ticket: "test-token", BaseURL: DefaultBaseURL})
 	x.provider = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ilink/bot/get_bot_qrcode":
 			var body struct {
-				Tokens []string `json:"local_token_list"`
+				Tickets []string `json:"local_token_list"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Error(err)
 			}
-			x.tokens.Store(body.Tokens)
+			x.tokens.Store(body.Tickets)
 			_ = json.NewEncoder(w).Encode(map[string]string{"qrcode": "private-qr", "qrcode_img_content": "https://weixin.qq.com/test-qr"})
 		case "/ilink/bot/get_qrcode_status":
 			if x.block != nil {
@@ -167,7 +167,7 @@ func TestLoginPersistsEncryptedCredentialsAndIdentity(t *testing.T) {
 		t.Fatalf("token not encrypted: %v", err)
 	}
 	creds, err := decodeCredentials(inst.Config, x.svc.box)
-	if err != nil || creds.Token != "test-token" {
+	if err != nil || creds.Ticket != "test-token" {
 		t.Fatalf("credentials cannot be read: %v", err)
 	}
 	binding, err := x.q.GetChannelUserBindingByUserID(context.Background(), db.GetChannelUserBindingByUserIDParams{InstallationID: inst.ID, ChannelUserID: creds.UserID})
@@ -271,9 +271,9 @@ func TestLoginTokensAreScopedAndBoundRedirectPreservesInstallation(t *testing.T)
 	y := newDatabaseFixture(t)
 	y.connect(t)
 	id := x.begin(t)
-	tokens := x.tokens.Load().([]string)
-	if len(tokens) != 1 || tokens[0] != "test-token" {
-		t.Fatalf("wrong current-agent tokens: count=%d", len(tokens))
+	tickets := x.tokens.Load().([]string)
+	if len(tickets) != 1 || tickets[0] != "test-token" {
+		t.Fatalf("wrong current-agent tokens: count=%d", len(tickets))
 	}
 	x.status.Store(qrStatus{Status: "binded_redirect"})
 	view, err := x.svc.Poll(context.Background(), id, x.workspace, x.user, "")
@@ -288,8 +288,8 @@ func TestLoginTokensAreScopedAndBoundRedirectPreservesInstallation(t *testing.T)
 	if _, err := x.svc.Begin(context.Background(), x.workspace, other, x.user); err != nil {
 		t.Fatal(err)
 	}
-	if tokens := x.tokens.Load().([]string); len(tokens) != 0 {
-		t.Fatalf("another agent received %d tokens", len(tokens))
+	if tickets := x.tokens.Load().([]string); len(tickets) != 0 {
+		t.Fatalf("another agent received %d tokens", len(tickets))
 	}
 }
 
@@ -510,7 +510,7 @@ func TestOutboundDedupUnknownAndRouting(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
 				}
-				if body.Msg.To != info.UserID || body.Msg.ContextToken != "reply-context" {
+				if body.Msg.To != info.UserID || body.Msg.ContextTicket != "reply-context" {
 					t.Error("wrong reply context")
 				}
 				if scenario == "response-lost" {

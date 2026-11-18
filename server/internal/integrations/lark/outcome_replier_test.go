@@ -105,13 +105,13 @@ func (s *stubAPIClientWithRecorder) DeleteMessageReaction(ctx context.Context, p
 }
 
 // stubCredentialsResolver returns a fixed plaintext secret.
-type stubCredentialsResolver struct{ secret string }
+type stubCredentialsResolver struct{ sealed string }
 
 func (s stubCredentialsResolver) DecryptAppSecret(inst Installation) (string, error) {
-	if s.secret == "" {
+	if s.sealed == "" {
 		return "", errors.New("no secret configured")
 	}
-	return s.secret, nil
+	return s.sealed, nil
 }
 
 // stubReplierQueries returns a fixed agent.
@@ -150,7 +150,7 @@ func TestLarkOutcomeReplierFallsBackToNoopWhenStubAPI(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{}, // not nil so we exercise the IsConfigured guard
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -170,7 +170,7 @@ func TestLarkOutcomeReplierFallsBackToNoopWhenNilDep(t *testing.T) {
 		{}, // all nil
 		{APIClient: &stubAPIClientWithRecorder{configured: true}},
 		{APIClient: &stubAPIClientWithRecorder{configured: true}, BindingSvc: &BindingTokenService{}},
-		{APIClient: &stubAPIClientWithRecorder{configured: true}, BindingSvc: &BindingTokenService{}, Credentials: stubCredentialsResolver{secret: "s"}},
+		{APIClient: &stubAPIClientWithRecorder{configured: true}, BindingSvc: &BindingTokenService{}, Credentials: stubCredentialsResolver{sealed: "s"}},
 	}
 	for i, cfg := range cases {
 		cfg.Logger = log
@@ -191,7 +191,7 @@ func TestLarkOutcomeReplierAgentOfflineSendsCard(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{agent: db.Agent{Name: "Trump"}},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -211,8 +211,8 @@ func TestLarkOutcomeReplierAgentOfflineSendsCard(t *testing.T) {
 	if got.InstallationID.AppID != "cli_x" {
 		t.Errorf("AppID = %q", got.InstallationID.AppID)
 	}
-	if got.InstallationID.AppSecret != "s" {
-		t.Errorf("AppSecret = %q", got.InstallationID.AppSecret)
+	if got.InstallationID.AppSealed != "s" {
+		t.Errorf("AppSecret = %q", got.InstallationID.AppSealed)
 	}
 	if !contains(got.CardJSON, "离线") || !contains(got.CardJSON, "Trump") {
 		t.Errorf("CardJSON should embed offline copy and agent name: %s", got.CardJSON)
@@ -226,7 +226,7 @@ func TestLarkOutcomeReplierAgentArchivedSendsCard(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -257,7 +257,7 @@ func TestLarkOutcomeReplierCommandOutcomesSendGuidance(t *testing.T) {
 			log := slog.New(slog.NewTextHandler(io.Discard, nil))
 			stub := &stubAPIClientWithRecorder{configured: true}
 			rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
-				APIClient: stub, BindingSvc: &BindingTokenService{}, Credentials: stubCredentialsResolver{secret: "s"},
+				APIClient: stub, BindingSvc: &BindingTokenService{}, Credentials: stubCredentialsResolver{sealed: "s"},
 				Queries: stubReplierQueries{}, AppURL: "https://multica.test", Logger: log,
 			})
 			rep.Reply(context.Background(), Installation{}, InboundMessage{ChatID: "oc_chat"}, DispatchResult{Outcome: tc.outcome, IssueUsageHadMedia: tc.hadMedia})
@@ -281,7 +281,7 @@ func TestLarkOutcomeReplierIngestedAndDroppedAreSilent(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -306,7 +306,7 @@ func TestLarkOutcomeReplierOfflineSwallowsAPIError(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -327,7 +327,7 @@ func TestLarkOutcomeReplierUsesAppURLForWebLinks(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  fakeBindingMinter{raw: "token with space"},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://app.multica.test/",
 		Logger:      log,
@@ -377,7 +377,7 @@ func TestLarkOutcomeReplierNeedsBindingFallsBackToGroupNoticeWhenPrivateUnavaila
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  fakeBindingMinter{raw: "token"},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -423,7 +423,7 @@ func TestLarkOutcomeReplierNeedsBindingFallsBackForStatusErrorNoAvailabilityCode
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  fakeBindingMinter{raw: "token"},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -452,7 +452,7 @@ func TestLarkOutcomeReplierNeedsBindingDoesNotFallbackForUnstructuredNoAvailabil
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  fakeBindingMinter{raw: "token"},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -495,7 +495,7 @@ func TestLarkOutcomeReplierNeedsBindingSuppressesFallbackOutsideGroupChats(t *te
 			rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 				APIClient:   stub,
 				BindingSvc:  fakeBindingMinter{raw: "token"},
-				Credentials: stubCredentialsResolver{secret: "s"},
+				Credentials: stubCredentialsResolver{sealed: "s"},
 				Queries:     stubReplierQueries{},
 				AppURL:      "https://multica.test",
 				Logger:      log,
@@ -532,7 +532,7 @@ func TestLarkOutcomeReplierNeedsBindingPreservesPromptAndFallbackErrors(t *testi
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  fakeBindingMinter{raw: "token"},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -565,7 +565,7 @@ func TestLarkOutcomeReplierNeedsBindingDoesNotFallbackForNonAvailabilityError(t 
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  fakeBindingMinter{raw: "token"},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -600,7 +600,7 @@ func TestLarkOutcomeReplierIssueCreatedSendsConfirmation(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -650,7 +650,7 @@ func TestLarkOutcomeReplierIssueDuplicateSendsConflict(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -698,7 +698,7 @@ func TestLarkOutcomeReplierIssueLinkOmittedOnDegradedWorkspaceRead(t *testing.T)
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -739,7 +739,7 @@ func TestLarkOutcomeReplierOutcomeIngestedSilentWithoutIssue(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -773,7 +773,7 @@ func TestLarkOutcomeReplierIssueCreatedThreadFallback(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -810,7 +810,7 @@ func TestLarkOutcomeReplierIssueCreatedNoFallbackOnAmbiguous(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -842,7 +842,7 @@ func TestLarkOutcomeReplierNoticeThreadFallback(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{agent: db.Agent{Name: "Trump"}},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -872,7 +872,7 @@ func TestLarkOutcomeReplierNoticeNoFallbackOnAmbiguous(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -914,7 +914,7 @@ func TestLarkOutcomeReplierRepliesNativelyInOrdinaryGroup(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,
@@ -953,7 +953,7 @@ func TestLarkOutcomeReplierSendsToChatWithoutTriggerMessage(t *testing.T) {
 	rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
 		APIClient:   stub,
 		BindingSvc:  &BindingTokenService{},
-		Credentials: stubCredentialsResolver{secret: "s"},
+		Credentials: stubCredentialsResolver{sealed: "s"},
 		Queries:     stubReplierQueries{},
 		AppURL:      "https://multica.test",
 		Logger:      log,

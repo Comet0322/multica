@@ -150,11 +150,11 @@ func (q *Queries) GetRemoteAppOAuthClient(ctx context.Context, arg GetRemoteAppO
 		&i.AppSlug,
 		&i.RedirectUri,
 		&i.AuthorizationEndpoint,
-		&i.TokenEndpoint,
+		&i.TicketEndpoint,
 		&i.Scope,
 		&i.ClientID,
 		&i.ClientSecret,
-		&i.TokenEndpointAuthMethod,
+		&i.TicketEndpointAuthMethod,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -173,11 +173,11 @@ func (q *Queries) GetRemoteAppOAuthClientByID(ctx context.Context, id pgtype.UUI
 		&i.AppSlug,
 		&i.RedirectUri,
 		&i.AuthorizationEndpoint,
-		&i.TokenEndpoint,
+		&i.TicketEndpoint,
 		&i.Scope,
 		&i.ClientID,
 		&i.ClientSecret,
-		&i.TokenEndpointAuthMethod,
+		&i.TicketEndpointAuthMethod,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -195,14 +195,14 @@ RETURNING id, app_slug, redirect_uri, authorization_endpoint, token_endpoint, sc
 `
 
 type InsertRemoteAppOAuthClientParams struct {
-	AppSlug                 string `json:"app_slug"`
-	RedirectUri             string `json:"redirect_uri"`
-	AuthorizationEndpoint   string `json:"authorization_endpoint"`
-	TokenEndpoint           string `json:"token_endpoint"`
-	Scope                   string `json:"scope"`
-	ClientID                string `json:"client_id"`
-	ClientSecret            []byte `json:"client_secret"`
-	TokenEndpointAuthMethod string `json:"token_endpoint_auth_method"`
+	AppSlug                  string `json:"app_slug"`
+	RedirectUri              string `json:"redirect_uri"`
+	AuthorizationEndpoint    string `json:"authorization_endpoint"`
+	TicketEndpoint           string `json:"token_endpoint"`
+	Scope                    string `json:"scope"`
+	ClientID                 string `json:"client_id"`
+	ClientSecret             []byte `json:"client_secret"`
+	TicketEndpointAuthMethod string `json:"token_endpoint_auth_method"`
 }
 
 // A concurrent first connect may have registered already; the caller reads
@@ -212,11 +212,11 @@ func (q *Queries) InsertRemoteAppOAuthClient(ctx context.Context, arg InsertRemo
 		arg.AppSlug,
 		arg.RedirectUri,
 		arg.AuthorizationEndpoint,
-		arg.TokenEndpoint,
+		arg.TicketEndpoint,
 		arg.Scope,
 		arg.ClientID,
 		arg.ClientSecret,
-		arg.TokenEndpointAuthMethod,
+		arg.TicketEndpointAuthMethod,
 	)
 	var i RemoteAppOauthClient
 	err := row.Scan(
@@ -224,11 +224,11 @@ func (q *Queries) InsertRemoteAppOAuthClient(ctx context.Context, arg InsertRemo
 		&i.AppSlug,
 		&i.RedirectUri,
 		&i.AuthorizationEndpoint,
-		&i.TokenEndpoint,
+		&i.TicketEndpoint,
 		&i.Scope,
 		&i.ClientID,
 		&i.ClientSecret,
-		&i.TokenEndpointAuthMethod,
+		&i.TicketEndpointAuthMethod,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -349,7 +349,7 @@ func (q *Queries) TouchRemoteAppConnection(ctx context.Context, id pgtype.UUID) 
 	return err
 }
 
-const updateRemoteAppConnectionTokens = `-- name: UpdateRemoteAppConnectionTokens :exec
+const updateRemoteAppConnectionTickets = `-- name: UpdateRemoteAppConnectionTokens :exec
 UPDATE remote_app_connection
 SET access_token = $2, refresh_token = $3, expires_at = $4, updated_at = now()
 WHERE id = $1
@@ -363,7 +363,7 @@ type UpdateRemoteAppConnectionTokensParams struct {
 }
 
 func (q *Queries) UpdateRemoteAppConnectionTokens(ctx context.Context, arg UpdateRemoteAppConnectionTokensParams) error {
-	_, err := q.db.Exec(ctx, updateRemoteAppConnectionTokens,
+	_, err := q.db.Exec(ctx, updateRemoteAppConnectionTickets,
 		arg.ID,
 		arg.AccessToken,
 		arg.RefreshToken,

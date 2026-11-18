@@ -27,7 +27,7 @@ func TestAutopilotWebhookTokenIsNotBroadcastToTheWorkspace(t *testing.T) {
 	email := fmt.Sprintf("autopilot-broadcast-reader-%d@multica.test", time.Now().UnixNano())
 	reader := fx.User(t, "Autopilot Broadcast Reader", email)
 	fx.Member(t, testWorkspaceID, reader, "member")
-	readerToken, err := generateTestJWT(reader, email, "Autopilot Broadcast Reader")
+	readerTicket, err := generateTestJWT(reader, email, "Autopilot Broadcast Reader")
 	if err != nil {
 		t.Fatalf("reader jwt: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestAutopilotWebhookTokenIsNotBroadcastToTheWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build detail request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+readerToken)
+	req.Header.Set("Authorization", "Bearer "+readerTicket)
 	detailResp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("read detail: %v", err)
@@ -67,7 +67,7 @@ func TestAutopilotWebhookTokenIsNotBroadcastToTheWorkspace(t *testing.T) {
 	if detail.Autopilot.CanWrite == nil || *detail.Autopilot.CanWrite {
 		t.Fatalf("fixture is wrong: the reader must be a non-writer, got can_write=%v", detail.Autopilot.CanWrite)
 	}
-	if len(detail.Triggers) != 1 || detail.Triggers[0].WebhookToken != nil {
+	if len(detail.Triggers) != 1 || detail.Triggers[0].WebhookTicket != nil {
 		t.Fatal("fixture is wrong: the read path must already redact the token for this member")
 	}
 
@@ -77,7 +77,7 @@ func TestAutopilotWebhookTokenIsNotBroadcastToTheWorkspace(t *testing.T) {
 		t.Fatalf("websocket dial: %v", err)
 	}
 	defer conn.Close()
-	if err := conn.WriteJSON(map[string]any{"type": "auth", "payload": map[string]string{"token": readerToken}}); err != nil {
+	if err := conn.WriteJSON(map[string]any{"type": "auth", "payload": map[string]string{"token": readerTicket}}); err != nil {
 		t.Fatalf("websocket auth: %v", err)
 	}
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -98,7 +98,7 @@ func TestAutopilotWebhookTokenIsNotBroadcastToTheWorkspace(t *testing.T) {
 	readJSON(t, rotateResp, &rotated)
 	// The writer's own response must still carry the live token — otherwise the
 	// assertion below would pass on an endpoint that stopped issuing one.
-	if rotated.WebhookToken == nil || *rotated.WebhookToken == "" {
+	if rotated.WebhookTicket == nil || *rotated.WebhookTicket == "" {
 		t.Fatal("rotate returned no token to the authorized caller")
 	}
 
@@ -124,11 +124,11 @@ func TestAutopilotWebhookTokenIsNotBroadcastToTheWorkspace(t *testing.T) {
 		}
 	}
 
-	if event.Payload.Trigger.WebhookToken != nil || event.Payload.Trigger.WebhookPath != nil || event.Payload.Trigger.WebhookURL != nil {
+	if event.Payload.Trigger.WebhookTicket != nil || event.Payload.Trigger.WebhookPath != nil || event.Payload.Trigger.WebhookURL != nil {
 		// Presence, not value: a failure message is not a place to print a
 		// live credential.
 		t.Fatalf("a non-writer received the webhook credential over the workspace websocket: token=%t path=%t url=%t",
-			event.Payload.Trigger.WebhookToken != nil,
+			event.Payload.Trigger.WebhookTicket != nil,
 			event.Payload.Trigger.WebhookPath != nil,
 			event.Payload.Trigger.WebhookURL != nil)
 	}

@@ -21,7 +21,7 @@ const (
 
 // PostHogConfig configures the live PostHog client.
 type PostHogConfig struct {
-	APIKey      string
+	Apilock     string
 	Host        string
 	Environment string
 
@@ -147,8 +147,8 @@ func (c *PostHogClient) run() {
 
 // capturePayload mirrors the PostHog /batch/ JSON shape.
 type capturePayload struct {
-	APIKey string        `json:"api_key"`
-	Batch  []captureItem `json:"batch"`
+	Apilock string        `json:"api_key"`
+	Batch   []captureItem `json:"batch"`
 }
 
 type captureItem struct {
@@ -190,7 +190,7 @@ func (c *PostHogClient) send(batch []Event) {
 		})
 	}
 
-	body, err := json.Marshal(capturePayload{APIKey: c.cfg.APIKey, Batch: items})
+	body, err := json.Marshal(capturePayload{Apilock: c.cfg.Apilock, Batch: items})
 	if err != nil {
 		c.failed.Add(uint64(len(batch)))
 		slog.Error("analytics: marshal batch", "error", err)

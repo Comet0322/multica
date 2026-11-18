@@ -170,7 +170,7 @@ func TestClaimTasksByRuntime_HTTPFollowupDoesNotWaitForRecovery(t *testing.T) {
 		return response, reused.Load()
 	}
 	first, _ := claim()
-	if len(first.Tasks) != 1 || first.Tasks[0].ID != taskA || first.Tasks[0].AuthToken == "" {
+	if len(first.Tasks) != 1 || first.Tasks[0].ID != taskA || first.Tasks[0].AuthTicket == "" {
 		t.Fatalf("first claim lost the successful payload: %+v", first)
 	}
 	select {
@@ -181,7 +181,7 @@ func TestClaimTasksByRuntime_HTTPFollowupDoesNotWaitForRecovery(t *testing.T) {
 	start := time.Now()
 	second, reused := claim()
 	elapsed := time.Since(start)
-	if len(second.Tasks) != 1 || second.Tasks[0].ID != taskB || second.Tasks[0].AuthToken == "" {
+	if len(second.Tasks) != 1 || second.Tasks[0].ID != taskB || second.Tasks[0].AuthTicket == "" {
 		t.Fatalf("follow-up claim lost the recovered payload: %+v", second)
 	}
 	if reused {
@@ -321,7 +321,7 @@ func TestClaimTasksByRuntime_ResponsePrecedesRecoveryNotifications(t *testing.T)
 			if clientErr != nil || elapsed >= 5*time.Second {
 				t.Fatalf("%s payload waited for recovery notifications: elapsed=%s error=%v", transport, elapsed, clientErr)
 			}
-			if len(response.Tasks) != 1 || response.Tasks[0].ID != taskA || response.Tasks[0].AuthToken == "" {
+			if len(response.Tasks) != 1 || response.Tasks[0].ID != taskA || response.Tasks[0].AuthTicket == "" {
 				t.Fatalf("successful payload missing: %+v", response)
 			}
 			if cache.calls.Load() != 2 || rdb.calls.Load() != 1 {

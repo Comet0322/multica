@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-
 	"github.com/multica-ai/multica/server/internal/connectedapps"
 	"github.com/multica-ai/multica/server/internal/entitlement"
 	composio "github.com/multica-ai/multica/server/internal/integrations/composio"
@@ -364,11 +363,11 @@ func TestTeamAppAccountsEnforcedTeamRules(t *testing.T) {
 
 	// Existing configuration keeps working: the team account still runs and
 	// the block rule still applies.
-	token := f.token(t)
-	if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); isErr {
+	ticket := f.token(t)
+	if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); isErr {
 		t.Fatalf("team account send under enforce: %s", text)
 	}
-	if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_DELETE_MESSAGE", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
+	if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_DELETE_MESSAGE", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
 		t.Fatalf("existing block rule under enforce = %s", text)
 	}
 
@@ -434,4 +433,3 @@ func TestTeamAppAccountsClassification(t *testing.T) {
 		}
 	}
 }
-

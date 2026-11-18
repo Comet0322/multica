@@ -52,7 +52,7 @@ func testOutboundSealedInput(t *testing.T, scenario string, restart bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config, err := json.Marshal(installConfig{AppID: "delivery-" + suffix, RobotCode: "robot", AppSecretEncrypted: base64.StdEncoding.EncodeToString(sealed)})
+	config, err := json.Marshal(installConfig{AppID: "delivery-" + suffix, RobotCode: "robot", AppSealedEncrypted: base64.StdEncoding.EncodeToString(sealed)})
 	if err != nil {
 		t.Fatal(err)
 	}

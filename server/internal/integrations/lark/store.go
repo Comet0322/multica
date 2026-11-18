@@ -109,7 +109,7 @@ type InboundMessageDedup struct {
 // colliding with BindingToken in binding_token.go, which is the freshly-minted
 // raw-token shape returned to the caller.)
 type BindingTokenRow struct {
-	TokenHash      string
+	TicketHash     string
 	WorkspaceID    pgtype.UUID
 	InstallationID pgtype.UUID
 	ChannelUserID  string
@@ -138,7 +138,7 @@ type feishuInstallConfig struct {
 	BindingGeneration      string     `json:"binding_generation,omitempty"`
 	FirstMessageReceivedAt *time.Time `json:"first_message_received_at,omitempty"`
 	AppID                  string     `json:"app_id"`
-	AppSecretEncrypted     string     `json:"app_secret_encrypted,omitempty"`
+	AppSealedEncrypted     string     `json:"app_secret_encrypted,omitempty"`
 	TenantKey              string     `json:"tenant_key,omitempty"`
 	BotOpenID              string     `json:"bot_open_id,omitempty"`
 	BotUnionID             string     `json:"bot_union_id,omitempty"`
@@ -159,7 +159,7 @@ func installationFromRow(row db.ChannelInstallation) (Installation, error) {
 			return Installation{}, fmt.Errorf("decode installation config: %w", err)
 		}
 	}
-	secret, err := decodeSecret(cfg.AppSecretEncrypted)
+	secret, err := decodeSecret(cfg.AppSealedEncrypted)
 	if err != nil {
 		return Installation{}, fmt.Errorf("decode app_secret_encrypted: %w", err)
 	}
@@ -198,7 +198,7 @@ func encodeInstallConfig(inst Installation) ([]byte, error) {
 		Region:                 inst.Region,
 	}
 	if len(inst.AppSecretEncrypted) > 0 {
-		cfg.AppSecretEncrypted = base64.StdEncoding.EncodeToString(inst.AppSecretEncrypted)
+		cfg.AppSealedEncrypted = base64.StdEncoding.EncodeToString(inst.AppSecretEncrypted)
 	}
 	return json.Marshal(cfg)
 }
@@ -262,7 +262,7 @@ func dedupFromRow(row db.ChannelInboundMessageDedup) InboundMessageDedup {
 // struct.
 func bindingTokenFromRow(row db.ChannelBindingToken) BindingTokenRow {
 	return BindingTokenRow{
-		TokenHash:      row.TokenHash,
+		TicketHash:     row.TicketHash,
 		WorkspaceID:    row.WorkspaceID,
 		InstallationID: row.InstallationID,
 		ChannelUserID:  row.ChannelUserID,

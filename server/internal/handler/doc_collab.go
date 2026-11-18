@@ -169,7 +169,7 @@ type DocCollabTicketRequest struct {
 
 type DocCollabTicketResponse struct {
 	Enabled   bool   `json:"enabled"`
-	Token     string `json:"token,omitempty"`
+	Ticket    string `json:"token,omitempty"`
 	Document  string `json:"document,omitempty"`
 	ExpiresAt string `json:"expires_at,omitempty"`
 	// State is the base64 Yjs state saved with the doc's current revision.
@@ -204,14 +204,14 @@ func (h *Handler) CreateDocCollabTicket(w http.ResponseWriter, r *http.Request) 
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
 	expires := time.Now().Add(docCollabTicketTTL)
 	document := collab.DocumentName(uuidToString(doc.ID))
-	token := collab.SignTicket(h.Collab.Secret(), collab.Ticket{
+	ticket := collab.SignTicket(h.Collab.Secret(), collab.Ticket{
 		Document:    document,
 		WorkspaceID: workspaceID,
 		Actor:       h.collabActor(r.Context(), actorType, actorID),
 		ExpiresAt:   expires,
 	})
 	resp := DocCollabTicketResponse{
-		Enabled: true, Token: token, Document: document, ExpiresAt: expires.UTC().Format(time.RFC3339),
+		Enabled: true, Ticket: ticket, Document: document, ExpiresAt: expires.UTC().Format(time.RFC3339),
 	}
 	if req.State {
 		resp.State = h.docCollabState(r.Context(), doc)
@@ -497,7 +497,7 @@ func (h *Handler) EditDoc(w http.ResponseWriter, r *http.Request) {
 // RequireCollabSecret admits only the collaboration service.
 func (h *Handler) RequireCollabSecret(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		given := r.Header.Get(collab.SecretHeader)
+		given := r.Header.Get(collab.SealedHeader)
 		if h.Collab == nil || subtle.ConstantTimeCompare([]byte(given), []byte(h.Collab.Secret())) != 1 {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return

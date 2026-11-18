@@ -660,7 +660,7 @@ func TestInstallWorker_SuccessBindsTheBotAndCompletes(t *testing.T) {
 	svc := newInstallService(store, noopTxStarter{}, binder, InstallServiceConfig{
 		Provider: &fakeProvider{gen: issuedScode, query: QueryResult{
 			Status:  QueryStatusSuccess,
-			BotInfo: &BotInfo{BotID: "bot-1", Secret: "sekrit"},
+			BotInfo: &BotInfo{BotID: "bot-1", Sealed: "sekrit"},
 		}},
 		Box: box,
 	})
@@ -685,7 +685,7 @@ func TestInstallWorker_SuccessBindsTheBotAndCompletes(t *testing.T) {
 		t.Fatalf("bind calls = %d, want 1", len(binder.calls))
 	}
 	bind := binder.calls[0]
-	if bind.BotID != "bot-1" || bind.Secret != "sekrit" {
+	if bind.BotID != "bot-1" || bind.Sealed != "sekrit" {
 		t.Errorf("bind params = %+v, want the credentials WeCom returned", bind)
 	}
 	// The installer is the person who started the session, not whoever polled.
@@ -738,7 +738,7 @@ func TestInstallWorker_BindFailureReasons(t *testing.T) {
 			svc := newInstallService(store, noopTxStarter{}, &fakeBotBinder{err: tc.err}, InstallServiceConfig{
 				Provider: &fakeProvider{gen: issuedScode, query: QueryResult{
 					Status:  QueryStatusSuccess,
-					BotInfo: &BotInfo{BotID: "bot-1", Secret: "sekrit"},
+					BotInfo: &BotInfo{BotID: "bot-1", Sealed: "sekrit"},
 				}},
 				Box: box,
 			})
@@ -865,7 +865,7 @@ func TestInstallWorker_LostLeaseDoesNotComplete(t *testing.T) {
 	svc := newInstallService(store, noopTxStarter{}, binder, InstallServiceConfig{
 		Provider: &fakeProvider{gen: issuedScode, query: QueryResult{
 			Status:  QueryStatusSuccess,
-			BotInfo: &BotInfo{BotID: "bot-1", Secret: "sekrit"},
+			BotInfo: &BotInfo{BotID: "bot-1", Sealed: "sekrit"},
 		}},
 		Box: box,
 	})

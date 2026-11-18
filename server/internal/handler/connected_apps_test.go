@@ -185,15 +185,15 @@ func (f *appsFixture) putAgentApps(t *testing.T, userID string, apps []map[strin
 }
 
 // gateway sends one tools/call to the MCP gateway with the run's token.
-func (f *appsFixture) gateway(t *testing.T, token, tool string, args map[string]any) (int, string, bool) {
+func (f *appsFixture) gateway(t *testing.T, ticket, tool string, args map[string]any) (int, string, bool) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
 		"params": map[string]any{"name": tool, "arguments": args},
 	})
 	req := httptest.NewRequest(http.MethodPost, connectedapps.GatewayPath, bytes.NewReader(body))
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if ticket != "" {
+		req.Header.Set("Authorization", "Bearer "+ticket)
 	}
 	w := httptest.NewRecorder()
 	f.h.AppsGateway(w, req)
@@ -216,11 +216,11 @@ func (f *appsFixture) gateway(t *testing.T, token, tool string, args map[string]
 
 func (f *appsFixture) token(t *testing.T) string {
 	t.Helper()
-	token, err := connectedapps.SignTaskToken(connectedapps.DeriveTokenSecret([]byte("apps-test-secret")), f.taskID, time.Now().Add(time.Hour))
+	ticket, err := connectedapps.SignTaskToken(connectedapps.DeriveTokenSecret([]byte("apps-test-secret")), f.taskID, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
-	return token
+	return ticket
 }
 
 func (f *appsFixture) listRequests(t *testing.T, userID string) []AppRequestResponse {
@@ -270,16 +270,16 @@ func TestConnectedApps_LegacyApprovalResumes(t *testing.T) {
 		t.Fatalf("legacy allowlist = %v, want [gmail]", allowlist)
 	}
 
-	token := f.token(t)
+	ticket := f.token(t)
 	if code, _, _ := f.gateway(t, "", "apps_list", nil); code != http.StatusUnauthorized {
 		t.Fatalf("gateway without token: %d, want 401", code)
 	}
-	if _, text, isErr := f.gateway(t, token, "apps_list", nil); isErr || !strings.Contains(text, `"status": "connected"`) {
+	if _, text, isErr := f.gateway(t, ticket, "apps_list", nil); isErr || !strings.Contains(text, `"status": "connected"`) {
 		t.Fatalf("apps_list = %s (error %v)", text, isErr)
 	}
 
 	// A read runs directly.
-	if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_FETCH_EMAILS", "arguments": map[string]any{}}); isErr {
+	if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_FETCH_EMAILS", "arguments": map[string]any{}}); isErr {
 		t.Fatalf("read call failed: %s", text)
 	}
 	if n := len(f.sdk.executions()); n != 1 {
@@ -333,7 +333,7 @@ func TestConnectedApps_LegacyApprovalResumes(t *testing.T) {
 
 	// The token dies with the run.
 	testPool.Exec(context.Background(), `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, f.taskID)
-	if code, _, _ := f.gateway(t, token, "apps_list", nil); code != http.StatusUnauthorized {
+	if code, _, _ := f.gateway(t, ticket, "apps_list", nil); code != http.StatusUnauthorized {
 		t.Fatalf("gateway after run ended: %d, want 401", code)
 	}
 }
@@ -382,18 +382,18 @@ func TestConnectedApps_RunWithoutApproval(t *testing.T) {
 					if err != nil || len(overlay.ConnectedApps) != 1 || overlay.ConnectedApps[0].Level != "write" {
 						t.Fatalf("runtime app metadata = %+v, error %v", overlay.ConnectedApps, err)
 					}
-					token := f.token(t)
-					if _, text, isErr := f.gateway(t, token, "apps_list", nil); isErr || !strings.Contains(text, `"level": "write"`) {
+					ticket := f.token(t)
+					if _, text, isErr := f.gateway(t, ticket, "apps_list", nil); isErr || !strings.Contains(text, `"level": "write"`) {
 						t.Fatalf("runtime app list: %s", text)
 					}
 					for i, tool := range appsFakeGmailTools {
 						for _, discovery := range []string{"apps_get_tool", "apps_search_tools"} {
-							if _, text, isErr := f.gateway(t, token, discovery, map[string]any{"app": "gmail", "tool": tool.Slug, "query": tool.Slug}); isErr || !strings.Contains(text, `"policy": "allow"`) {
+							if _, text, isErr := f.gateway(t, ticket, discovery, map[string]any{"app": "gmail", "tool": tool.Slug, "query": tool.Slug}); isErr || !strings.Contains(text, `"policy": "allow"`) {
 								t.Fatalf("%s %s: %s", discovery, tool.Slug, text)
 							}
 						}
 						args := map[string]any{"user_id": "me", "body": "test message"}
-						if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": tool.Slug, "arguments": args}); isErr || !strings.Contains(text, tool.Slug) || strings.HasPrefix(text, "submitted") {
+						if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": tool.Slug, "arguments": args}); isErr || !strings.Contains(text, tool.Slug) || strings.HasPrefix(text, "submitted") {
 							t.Fatalf("direct call %s: %s (error %v)", tool.Slug, text, isErr)
 						}
 						execs := f.sdk.executions()
@@ -421,10 +421,10 @@ func TestConnectedApps_RulesAndLevels(t *testing.T) {
 	if w := f.putAgentApps(t, testUserID, []map[string]string{{"toolkit_slug": "gmail", "account_scope": "personal", "level": "read"}}); w.Code != http.StatusOK {
 		t.Fatalf("UpdateAgentApps: %d %s", w.Code, w.Body.String())
 	}
-	token := f.token(t)
+	ticket := f.token(t)
 
 	// A read-only agent cannot send, whatever the rules say.
-	if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
+	if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
 		t.Fatalf("send at read level = %s, want blocked", text)
 	}
 
@@ -436,10 +436,10 @@ func TestConnectedApps_RulesAndLevels(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("UpdateAppRules: %d %s", w.Code, w.Body.String())
 	}
-	if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); isErr {
+	if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); isErr {
 		t.Fatalf("allowed send failed: %s", text)
 	}
-	if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_DELETE_MESSAGE", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
+	if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_DELETE_MESSAGE", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
 		t.Fatalf("blocked delete = %s", text)
 	}
 
@@ -543,11 +543,11 @@ func (f *appsFixture) inboxCount(t *testing.T, recipient, notifType string) int 
 func TestConnectedApps_ResultNotifications(t *testing.T) {
 	f := newAppsFixture(t)
 	f.putAgentApps(t, testUserID, []map[string]string{{"toolkit_slug": "gmail", "account_scope": "personal", "level": "read"}})
-	token := f.token(t)
+	ticket := f.token(t)
 
 	// A block tells the person who triggered the run once, not on every retry.
 	for i := 0; i < 2; i++ {
-		if _, text, isErr := f.gateway(t, token, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
+		if _, text, isErr := f.gateway(t, ticket, "apps_run_tool", map[string]any{"tool": "GMAIL_SEND_EMAIL", "arguments": map[string]any{}}); !isErr || !strings.HasPrefix(text, "blocked") {
 			t.Fatalf("send at read level = %s", text)
 		}
 	}

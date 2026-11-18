@@ -79,15 +79,15 @@ func taskCallbackToken(t *testing.T, installationID string, issueID string) stri
 	if issueID != "" {
 		invocation.IssueID = parseUUID(issueID)
 	}
-	token, err := testHandler.PluginService.Callbacks.Issue(context.Background(), invocation)
+	ticket, err := testHandler.PluginService.Callbacks.Issue(context.Background(), invocation)
 	if err != nil {
 		t.Fatalf("issue callback token: %v", err)
 	}
-	return token
+	return ticket
 }
 
-func pluginTaskMessagesRequest(token, taskID, query string) *http.Request {
-	return callbackRequest(token, http.MethodGet, "/v1/tasks/"+taskID+"/messages"+query, nil,
+func pluginTaskMessagesRequest(ticket, taskID, query string) *http.Request {
+	return callbackRequest(ticket, http.MethodGet, "/v1/tasks/"+taskID+"/messages"+query, nil,
 		map[string]string{"task_id": taskID})
 }
 
@@ -269,21 +269,21 @@ func TestPluginTaskMessagesPrivateChatAuthorization(t *testing.T) {
 	testutil.Call(t, testHandler.ReportTaskMessages, batchMessagesRequest(t, taskID, []any{
 		map[string]any{"seq": 1, "type": "text", "content": "private chat content"},
 	})).Want(http.StatusOK)
-	installToken := rotateToken(t, installationID).Token
+	installTicket := rotateToken(t, installationID).Ticket
 
 	for _, tc := range []struct {
-		name, user, token string
-		want              int
+		name, user, ticket string
+		want               int
 	}{
 		{"owner bridge", testUserID, "", http.StatusOK},
 		{"non-owner admin bridge", otherUser, "", http.StatusNotFound},
 		{"owner callback", "", issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(testUserID)}), http.StatusOK},
 		{"non-owner admin callback", "", issueCallbackToken(t, installationID, service.HookActor{Type: "member", ID: parseUUID(otherUser)}), http.StatusNotFound},
-		{"installation token", "", installToken, http.StatusNotFound},
+		{"installation token", "", installTicket, http.StatusNotFound},
 		{"event callback", "", taskCallbackToken(t, installationID, ""), http.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req := pluginTaskMessagesRequest(tc.token, taskID, "")
+			req := pluginTaskMessagesRequest(tc.ticket, taskID, "")
 			if tc.user != "" {
 				req.Header.Del("Authorization")
 				req.Header.Set("X-User-ID", tc.user)
@@ -300,12 +300,12 @@ func TestPluginTaskMessagesIssueScopeRejectsTasksWithoutIssue(t *testing.T) {
 	withCallbackTokens(t)
 	installationID := installTaskReaderPlugin(t)
 	issueTask, issueID := seedTranscript(t, "scoped transcript")
-	token := taskCallbackToken(t, installationID, issueID)
+	ticket := taskCallbackToken(t, installationID, issueID)
 	installation, err := testHandler.PluginService.InstallationForWorkspace(context.Background(), parseUUID(testWorkspaceID), installationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	memberToken, err := testHandler.PluginService.Callbacks.Issue(context.Background(), service.HookInvocation{
+	memberTicket, err := testHandler.PluginService.Callbacks.Issue(context.Background(), service.HookInvocation{
 		Installation: installation, Hook: plugincontract.Hook{Key: "archive"},
 		Trigger: plugincontract.TriggerManual, Actor: service.HookActor{Type: "member", ID: parseUUID(testUserID)},
 		IssueID: parseUUID(issueID),
@@ -313,7 +313,7 @@ func TestPluginTaskMessagesIssueScopeRejectsTasksWithoutIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testutil.Call(t, testHandler.ListPluginTaskMessages, pluginTaskMessagesRequest(token, issueTask, "")).Want(http.StatusOK)
+	testutil.Call(t, testHandler.ListPluginTaskMessages, pluginTaskMessagesRequest(ticket, issueTask, "")).Want(http.StatusOK)
 	runtimeID := dbfx.Runtime(t, "scope runtime")
 	agentID := dbfx.Agent(t, "scope agent", runtimeID)
 	chatID := dbfx.ChatSession(t, agentID)
@@ -327,8 +327,8 @@ func TestPluginTaskMessagesIssueScopeRejectsTasksWithoutIssue(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			taskID := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtimeID, tc.column: tc.id})
-			testutil.Call(t, testHandler.ListPluginTaskMessages, pluginTaskMessagesRequest(token, taskID, "")).Want(http.StatusNotFound)
-			testutil.Call(t, testHandler.ListPluginTaskMessages, pluginTaskMessagesRequest(memberToken, taskID, "")).Want(http.StatusNotFound)
+			testutil.Call(t, testHandler.ListPluginTaskMessages, pluginTaskMessagesRequest(ticket, taskID, "")).Want(http.StatusNotFound)
+			testutil.Call(t, testHandler.ListPluginTaskMessages, pluginTaskMessagesRequest(memberTicket, taskID, "")).Want(http.StatusNotFound)
 		})
 	}
 }
@@ -339,14 +339,14 @@ func TestPluginTaskMessagesLookupFailuresAreRetryable(t *testing.T) {
 	withCallbackTokens(t)
 	installationID := installTaskReaderPlugin(t)
 	taskID, _ := seedTranscript(t, "lookup transcript")
-	token := taskCallbackToken(t, installationID, "")
+	ticket := taskCallbackToken(t, installationID, "")
 	for _, query := range []string{"GetAgentTask", "GetIssue"} {
 		t.Run(query, func(t *testing.T) {
 			fault := &lookupFaultPool{DBTX: testPool, query: query}
 			h := *testHandler
 			h.Queries = db.New(fault)
 			h.TaskService = &service.TaskService{Queries: h.Queries}
-			testutil.Call(t, h.ListPluginTaskMessages, pluginTaskMessagesRequest(token, taskID, "")).Want(http.StatusInternalServerError)
+			testutil.Call(t, h.ListPluginTaskMessages, pluginTaskMessagesRequest(ticket, taskID, "")).Want(http.StatusInternalServerError)
 			if !fault.called {
 				t.Fatal("lookup fault was not exercised")
 			}

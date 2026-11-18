@@ -45,20 +45,20 @@ type DedupeStore interface {
 	// unknown. Atomic across processes. The token is what makes every other
 	// operation here safe to retry: a re-sent command can never act on a
 	// claim that a later owner has since taken.
-	Claim(ctx context.Context, key, token string, ttl time.Duration) (bool, error)
+	Claim(ctx context.Context, key, ticket string, ttl time.Duration) (bool, error)
 	// Release gives back the claim held under token, for a delivery that
 	// provably did not happen: a compare-and-delete. false with a nil error
 	// means the key no longer holds token — the delete already landed, the
 	// claim expired, or somebody else holds it now — and is not a failure.
 	// A non-nil error means the OUTCOME IS UNKNOWN: the delete may or may
 	// not have landed. The caller must not read it as either.
-	Release(ctx context.Context, key, token string) (bool, error)
+	Release(ctx context.Context, key, ticket string) (bool, error)
 	// Settle marks the claim held under token as settled: its holder is about
 	// to record the delivery's outcome. false means the key no longer holds
 	// token — the publisher already resolved it as lost, or it expired — and
 	// the holder must then record nothing, so the reply ends with one record.
 	// Settling an already-settled claim reports true (a retry is safe).
-	Settle(ctx context.Context, key, token string) (bool, error)
+	Settle(ctx context.Context, key, ticket string) (bool, error)
 	// Resolve is the publisher's end-of-grace read, and its fence: a claim
 	// still held by a token at that point is turned into claimLost in the
 	// same operation, so a holder that comes back later finds its Settle
@@ -1134,9 +1134,9 @@ func (r *RelayOutbound) perform(ctx context.Context, item queued) bool {
 		return true
 	}
 	key := dedupeKey(item.eventID)
-	token := r.tokenFor(item.eventID)
+	ticket := r.tokenFor(item.eventID)
 	if r.dedupe != nil {
-		won, err := r.dedupe.Claim(ctx, key, token, r.dedupeTTL)
+		won, err := r.dedupe.Claim(ctx, key, ticket, r.dedupeTTL)
 		if err != nil {
 			// A dedupe store that cannot answer must not silently become an
 			// at-least-once path: a duplicate answer in a room is worse than a
@@ -1188,7 +1188,7 @@ func (r *RelayOutbound) perform(ctx context.Context, item queued) bool {
 		// at the end of its grace — it has a record, so this one must not
 		// be made. That is the whole reason record is a closure rather than
 		// a counter moved inside deliverRelayed.
-		if r.dedupe != nil && !r.settleClaim(ctx, key, token, item.frame) {
+		if r.dedupe != nil && !r.settleClaim(ctx, key, ticket, item.frame) {
 			return true
 		}
 		if res.record != nil {
@@ -1215,7 +1215,7 @@ func (r *RelayOutbound) perform(ctx context.Context, item queued) bool {
 	// end of the grace: held, by nobody who recorded anything, and it
 	// records the loss there, once.
 	if r.dedupe != nil {
-		if released, err := r.dedupe.Release(ctx, key, token); err != nil {
+		if released, err := r.dedupe.Release(ctx, key, ticket); err != nil {
 			r.logger.WarnContext(ctx, "wecom relay: claim release outcome unknown; the next offer re-claims",
 				"error", err, "kind", item.frame.Kind,
 				"installation_id", item.frame.InstallationID, "task_id", item.frame.TaskID)
@@ -1267,7 +1267,7 @@ func (r *RelayOutbound) settleRetryBackoff() time.Duration {
 // exists to prevent, so the miss is the side deliberately taken: a monitoring
 // gap under a store that keeps failing, not a reply the user did not get. The
 // warning below is what makes it visible.
-func (r *RelayOutbound) settleClaim(ctx context.Context, key, token string, f relayFrame) bool {
+func (r *RelayOutbound) settleClaim(ctx context.Context, key, ticket string, f relayFrame) bool {
 	var (
 		lastErr error
 		made    int
@@ -1289,7 +1289,7 @@ func (r *RelayOutbound) settleClaim(ctx context.Context, key, token string, f re
 			}
 		}
 		made++
-		settled, err := r.dedupe.Settle(ctx, key, token)
+		settled, err := r.dedupe.Settle(ctx, key, ticket)
 		switch {
 		case err != nil:
 			lastErr = err

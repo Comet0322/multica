@@ -124,7 +124,7 @@ type RegisterParams struct {
 	WorkspaceID pgtype.UUID
 	AgentID     pgtype.UUID
 	InitiatorID pgtype.UUID
-	BotToken    string
+	BotTicket   string
 }
 
 // Register installs a user-supplied Telegram bot for an agent: validate the
@@ -132,12 +132,12 @@ type RegisterParams struct {
 // detection), encrypt the token at rest, and persist the installation keyed
 // by (workspace, agent) with the bot id in the routing slot.
 func (s *InstallService) Register(ctx context.Context, p RegisterParams) (db.ChannelInstallation, error) {
-	token := strings.TrimSpace(p.BotToken)
-	botID, err := parseBotID(token)
+	ticket := strings.TrimSpace(p.BotTicket)
+	botID, err := parseBotID(ticket)
 	if err != nil {
 		return db.ChannelInstallation{}, err
 	}
-	api := newBotAPI(s.apiBase, token, s.httpClient)
+	api := newBotAPI(s.apiBase, ticket, s.httpClient)
 	me, err := api.GetMe(ctx)
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("telegram getMe: %w", classifyCredentialVerificationError(err))
@@ -153,14 +153,14 @@ func (s *InstallService) Register(ctx context.Context, p RegisterParams) (db.Cha
 		return db.ChannelInstallation{}, ErrWebhookConfigured
 	}
 
-	sealed, err := s.box.Seal([]byte(token))
+	sealed, err := s.box.Seal([]byte(ticket))
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encrypt telegram bot token: %w", err)
 	}
 	cfgJSON, err := json.Marshal(installConfig{
-		AppID:             botID,
-		BotUsername:       me.Username,
-		BotTokenEncrypted: base64.StdEncoding.EncodeToString(sealed),
+		AppID:              botID,
+		BotUsername:        me.Username,
+		BotTicketEncrypted: base64.StdEncoding.EncodeToString(sealed),
 	})
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("encode telegram installation config: %w", err)

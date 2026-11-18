@@ -15,7 +15,7 @@ func TestIssueSubscribersMarkProjectCoveredRows(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM project_subscriber WHERE project_id = $1`, f.projectID)
-		testPool.Exec(context.Background(), `DELETE FROM issue_subscriber WHERE issue_id = $1`, f.secretIssue)
+		testPool.Exec(context.Background(), `DELETE FROM issue_subscriber WHERE issue_id = $1`, f.sealedIssue)
 	})
 	if _, err := testPool.Exec(ctx, `
 		INSERT INTO project_subscriber (workspace_id, project_id, user_id) VALUES ($1, $2, $3)
@@ -25,13 +25,13 @@ func TestIssueSubscribersMarkProjectCoveredRows(t *testing.T) {
 	for _, userID := range []string{f.insider, testUserID} {
 		if _, err := testPool.Exec(ctx, `
 			INSERT INTO issue_subscriber (issue_id, user_type, user_id, reason) VALUES ($1, 'member', $2, 'commenter')
-		`, f.secretIssue, userID); err != nil {
+		`, f.sealedIssue, userID); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	var resp []SubscriberResponse
-	req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.secretIssue+"/subscribers", nil), testUserID), "id", f.secretIssue)
+	req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.sealedIssue+"/subscribers", nil), testUserID), "id", f.sealedIssue)
 	testutil.Call(t, testHandler.ListIssueSubscribers, req).Want(http.StatusOK).JSON(&resp)
 
 	got := map[string][]SubscriberResponse{}

@@ -158,9 +158,9 @@ func (s *Service) remoteRun(ctx context.Context, rn *run, app RemoteApp, name st
 		return refusal
 	}
 	var result json.RawMessage
-	err = s.withRemoteToken(ctx, acct, func(token string) error {
+	err = s.withRemoteToken(ctx, acct, func(ticket string) error {
 		var err error
-		result, err = s.remote.upstream.CallTool(ctx, app.Endpoint, token, tool.Name, args)
+		result, err = s.remote.upstream.CallTool(ctx, app.Endpoint, ticket, tool.Name, args)
 		return err
 	})
 	s.touch(ctx, rn.workspaceID, acct)

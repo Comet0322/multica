@@ -26,8 +26,8 @@ import (
 const AntigravityHookHelperArg = "__multica_antigravity_hook"
 
 const (
-	antigravityHookURLEnv   = "MULTICA_ANTIGRAVITY_HOOK_URL"
-	antigravityHookTokenEnv = "MULTICA_ANTIGRAVITY_HOOK_TOKEN"
+	antigravityHookURLEnv    = "MULTICA_ANTIGRAVITY_HOOK_URL"
+	antigravityHookTicketEnv = "MULTICA_ANTIGRAVITY_HOOK_TOKEN"
 	// antigravityHookName keys Multica's entry in the workspace hooks.json.
 	antigravityHookName           = "multica-steering"
 	antigravityHookTimeoutSeconds = 10
@@ -68,7 +68,7 @@ type antigravityHookRequest struct {
 type antigravitySupplementSession struct {
 	ctx       context.Context
 	logger    *slog.Logger
-	token     string
+	ticket    string
 	url       string
 	server    *http.Server
 	hooksPath string
@@ -100,7 +100,7 @@ func startAntigravitySupplementSession(ctx context.Context, cwd string, hookComm
 	if len(hookCommand) == 0 || strings.TrimSpace(hookCommand[0]) == "" {
 		return nil, errors.New("antigravity hook relay command is not configured")
 	}
-	token, err := randomHex(32)
+	ticket, err := randomHex(32)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func startAntigravitySupplementSession(ctx context.Context, cwd string, hookComm
 	s := &antigravitySupplementSession{
 		ctx:       ctx,
 		logger:    logger,
-		token:     token,
+		ticket:    ticket,
 		hooksPath: filepath.Join(cwd, ".agents", "hooks.json"),
 		hooksData: hooksData,
 	}
@@ -195,7 +195,7 @@ func (s *antigravitySupplementSession) removeHooksFile() {
 
 // env returns the variables agy passes on to the hook relay.
 func (s *antigravitySupplementSession) env() []string {
-	return []string{antigravityHookURLEnv + "=" + s.url, antigravityHookTokenEnv + "=" + s.token}
+	return []string{antigravityHookURLEnv + "=" + s.url, antigravityHookTicketEnv + "=" + s.ticket}
 }
 
 // activate opens delivery once the CLI reports the conversation it is running.
@@ -365,7 +365,7 @@ func (s *antigravitySupplementSession) ServeHTTP(w http.ResponseWriter, r *http.
 		http.NotFound(w, r)
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.token)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.ticket)) != 1 {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -450,5 +450,5 @@ func antigravityHookRelay(stdin io.Reader, getenv func(string) string) string {
 	if err := json.NewDecoder(io.LimitReader(stdin, antigravityHookStdinLimit)).Decode(&req); err != nil {
 		return antigravityHookEmptyReply
 	}
-	return forwardHookRequest(getenv(antigravityHookURLEnv), getenv(antigravityHookTokenEnv), req, antigravityHookEmptyReply)
+	return forwardHookRequest(getenv(antigravityHookURLEnv), getenv(antigravityHookTicketEnv), req, antigravityHookEmptyReply)
 }

@@ -29,8 +29,8 @@ type privateProjectFixture struct {
 	insider       string
 	outsider      string
 	outsideAdmin  string
-	secretIssue   string
-	secretComment string
+	sealedIssue   string
+	sealedComment string
 	publicIssue   string
 	marker        string
 }
@@ -48,8 +48,8 @@ func newPrivateProjectFixture(t *testing.T) privateProjectFixture {
 	// Explicit numbers far above the workspace counter keep these rows clear
 	// of the numbers CreateIssue allocates in the same test.
 	base := 800000 + int(time.Now().UnixNano()%100000)*2
-	f.secretIssue = dbfx.Issue(t, marker+" secret issue", testutil.Cols{"project_id": f.projectID, "number": base})
-	f.secretComment = dbfx.Comment(t, f.secretIssue, marker+" secret comment")
+	f.sealedIssue = dbfx.Issue(t, marker+" secret issue", testutil.Cols{"project_id": f.projectID, "number": base})
+	f.sealedComment = dbfx.Comment(t, f.sealedIssue, marker+" secret comment")
 	f.publicIssue = dbfx.Issue(t, marker+" public issue", testutil.Cols{"number": base + 1})
 	return f
 }
@@ -106,7 +106,7 @@ func TestPrivateProjectIssueDetailMatrix(t *testing.T) {
 		{"workspace member outside the project", f.outsider, http.StatusNotFound},
 		{"workspace admin outside the project", f.outsideAdmin, http.StatusNotFound},
 	} {
-		if got := get(tc.userID, f.secretIssue); got != tc.want {
+		if got := get(tc.userID, f.sealedIssue); got != tc.want {
 			t.Errorf("%s: GET secret issue = %d, want %d", tc.name, got, tc.want)
 		}
 	}
@@ -115,7 +115,7 @@ func TestPrivateProjectIssueDetailMatrix(t *testing.T) {
 	}
 
 	// Sub-resources go through the same loader.
-	req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.secretIssue+"/comments", nil), f.outsider), "id", f.secretIssue)
+	req := withURLParam(asUser(newRequest(http.MethodGet, "/api/issues/"+f.sealedIssue+"/comments", nil), f.outsider), "id", f.sealedIssue)
 	testutil.Call(t, testHandler.ListComments, req).Want(http.StatusNotFound)
 }
 
@@ -136,10 +136,10 @@ func TestPrivateProjectHiddenFromLists(t *testing.T) {
 	}
 	for _, query := range []string{"limit=100", "open_only=true"} {
 		outsider := listIssueIDs(f.outsider, query)
-		if outsider[f.secretIssue] || !outsider[f.publicIssue] {
-			t.Errorf("%s: outsider sees secret=%v public=%v", query, outsider[f.secretIssue], outsider[f.publicIssue])
+		if outsider[f.sealedIssue] || !outsider[f.publicIssue] {
+			t.Errorf("%s: outsider sees secret=%v public=%v", query, outsider[f.sealedIssue], outsider[f.publicIssue])
 		}
-		if insider := listIssueIDs(f.insider, query); !insider[f.secretIssue] {
+		if insider := listIssueIDs(f.insider, query); !insider[f.sealedIssue] {
 			t.Errorf("%s: insider does not see the secret issue", query)
 		}
 	}
@@ -183,10 +183,10 @@ func TestPrivateProjectHiddenFromLists(t *testing.T) {
 		}
 		return ids
 	}
-	if got := search(f.outsider); got[f.secretIssue] || !got[f.publicIssue] {
-		t.Errorf("outsider search: secret=%v public=%v", got[f.secretIssue], got[f.publicIssue])
+	if got := search(f.outsider); got[f.sealedIssue] || !got[f.publicIssue] {
+		t.Errorf("outsider search: secret=%v public=%v", got[f.sealedIssue], got[f.publicIssue])
 	}
-	if !search(f.insider)[f.secretIssue] {
+	if !search(f.insider)[f.sealedIssue] {
 		t.Error("insider search misses the secret issue")
 	}
 
@@ -215,7 +215,7 @@ func TestPrivateProjectSearchProjectFilter(t *testing.T) {
 				t.Fatalf("authorized project search (include_closed=%s) = %+v, want title and comment hits", includeClosed, resp.Issues)
 			}
 			for _, issue := range resp.Issues {
-				if issue.ID != f.secretIssue && issue.ID != commentIssue {
+				if issue.ID != f.sealedIssue && issue.ID != commentIssue {
 					t.Fatalf("project search returned an issue outside the selected project: %+v", issue)
 				}
 			}
@@ -225,10 +225,10 @@ func TestPrivateProjectSearchProjectFilter(t *testing.T) {
 
 func TestPrivateProjectSubtreeRunsAreRedacted(t *testing.T) {
 	f := newPrivateProjectFixture(t)
-	dbfx.Exec(t, "UPDATE issue SET parent_issue_id=$1 WHERE id=$2", f.publicIssue, f.secretIssue)
+	dbfx.Exec(t, "UPDATE issue SET parent_issue_id=$1 WHERE id=$2", f.publicIssue, f.sealedIssue)
 	agentID := dbfx.Agent(t, f.marker+" subtree agent", testRuntimeID, testutil.Cols{"owner_id": f.insider})
 	taskID := dbfx.Task(t, agentID, testutil.Cols{
-		"issue_id": f.secretIssue, "runtime_id": testRuntimeID, "status": "completed",
+		"issue_id": f.sealedIssue, "runtime_id": testRuntimeID, "status": "completed",
 		"result":       testutil.Raw(`'{"output":"private subtree result","comment":"private inline result"}'::jsonb`),
 		"handoff_note": "private handoff",
 	})
@@ -245,7 +245,7 @@ func TestPrivateProjectSubtreeRunsAreRedacted(t *testing.T) {
 				if !run.Restricted || run.IssueID != "" || run.IssueTitle != "" || run.IssueIdentifier != "" || run.Result != nil || run.HandoffNote != "" {
 					t.Fatalf("private descendant run exposed to outsider: %+v", run)
 				}
-			} else if run.Restricted || run.IssueID != f.secretIssue || run.IssueTitle == "" || run.Result == nil {
+			} else if run.Restricted || run.IssueID != f.sealedIssue || run.IssueTitle == "" || run.Result == nil {
 				t.Fatalf("authorized viewer lost descendant run content: %+v", run)
 			}
 		}
@@ -255,7 +255,7 @@ func TestPrivateProjectSubtreeRunsAreRedacted(t *testing.T) {
 func TestPrivateProjectCommentAndAttachmentByID(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	react := func(userID string) int {
-		req := withURLParam(asUser(newRequest(http.MethodPost, "/api/comments/"+f.secretComment+"/reactions", map[string]any{"emoji": "👍"}), userID), "commentId", f.secretComment)
+		req := withURLParam(asUser(newRequest(http.MethodPost, "/api/comments/"+f.sealedComment+"/reactions", map[string]any{"emoji": "👍"}), userID), "commentId", f.sealedComment)
 		rec := httptest.NewRecorder()
 		testHandler.AddReaction(rec, req)
 		return rec.Code
@@ -266,11 +266,11 @@ func TestPrivateProjectCommentAndAttachmentByID(t *testing.T) {
 	if got := react(f.insider); got >= 400 {
 		t.Errorf("insider reaction on secret comment = %d, want success", got)
 	}
-	testPool.Exec(context.Background(), `DELETE FROM comment_reaction WHERE comment_id = $1`, f.secretComment)
+	testPool.Exec(context.Background(), `DELETE FROM comment_reaction WHERE comment_id = $1`, f.sealedComment)
 
 	attachmentID := dbfx.Insert(t, "attachment", testutil.Cols{
 		"workspace_id":  testWorkspaceID,
-		"issue_id":      f.secretIssue,
+		"issue_id":      f.sealedIssue,
 		"uploader_type": "member",
 		"uploader_id":   testUserID,
 		"filename":      "secret.txt",
@@ -288,7 +288,7 @@ func TestPrivateProjectWritesNeedVisibility(t *testing.T) {
 		return testutil.Call(t, testHandler.CreateIssue, asUser(newRequest(http.MethodPost, "/api/issues", body), userID))
 	}
 	create(f.outsider, map[string]any{"title": f.marker + " smuggled", "project_id": f.projectID}).Want(http.StatusBadRequest)
-	create(f.outsider, map[string]any{"title": f.marker + " child", "parent_issue_id": f.secretIssue}).Want(http.StatusBadRequest)
+	create(f.outsider, map[string]any{"title": f.marker + " child", "parent_issue_id": f.sealedIssue}).Want(http.StatusBadRequest)
 
 	var created IssueResponse
 	create(f.insider, map[string]any{"title": f.marker + " insider issue", "project_id": f.projectID}).Want(http.StatusCreated).JSON(&created)
@@ -403,7 +403,7 @@ func TestPrivateProjectTaskTranscriptAndRunHistory(t *testing.T) {
 		t.Fatalf("load seeded agent: %v", err)
 	}
 	taskID := dbfx.Task(t, agentID, testutil.Cols{
-		"issue_id":   f.secretIssue,
+		"issue_id":   f.sealedIssue,
 		"runtime_id": testRuntimeID,
 		"status":     "completed",
 		"result":     testutil.Raw(`'{"output":"secret result"}'::jsonb`),
@@ -441,7 +441,7 @@ func TestPrivateProjectTaskTranscriptAndRunHistory(t *testing.T) {
 			hidden.Restricted, hidden.IssueID, hidden.Result, hidden.Status)
 	}
 	visible := history(f.insider)
-	if visible.Restricted || visible.IssueID != f.secretIssue {
+	if visible.Restricted || visible.IssueID != f.sealedIssue {
 		t.Errorf("insider run = restricted %v issue %q", visible.Restricted, visible.IssueID)
 	}
 }
@@ -452,12 +452,12 @@ func TestPrivateProjectEnqueueNeedsAgentOwnerAccess(t *testing.T) {
 	outsiderAgent := dbfx.Agent(t, f.marker+" outsider agent", testRuntimeID, testutil.Cols{"owner_id": f.outsider})
 	insiderAgent := dbfx.Agent(t, f.marker+" insider agent", testRuntimeID, testutil.Cols{"owner_id": f.insider})
 	t.Cleanup(func() {
-		testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE issue_id = $1`, f.secretIssue)
+		testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE issue_id = $1`, f.sealedIssue)
 	})
 
 	issue := func(agentID string) db.Issue {
-		testPool.Exec(ctx, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, f.secretIssue, agentID)
-		row, err := testHandler.Queries.GetIssue(ctx, parseUUID(f.secretIssue))
+		testPool.Exec(ctx, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, f.sealedIssue, agentID)
+		row, err := testHandler.Queries.GetIssue(ctx, parseUUID(f.sealedIssue))
 		if err != nil {
 			t.Fatalf("load issue: %v", err)
 		}
@@ -474,7 +474,7 @@ func TestPrivateProjectEnqueueNeedsAgentOwnerAccess(t *testing.T) {
 
 	// Assignment surfaces the same rule as an explicit 403.
 	rec := httptest.NewRecorder()
-	req := asUser(newRequest(http.MethodPut, "/api/issues/"+f.secretIssue, nil), f.insider)
+	req := asUser(newRequest(http.MethodPut, "/api/issues/"+f.sealedIssue, nil), f.insider)
 	ok := testHandler.requireAssigneeCanAccessProject(rec, req, parseUUID(testWorkspaceID),
 		pgtype.Text{String: "agent", Valid: true}, parseUUID(outsiderAgent), parseUUID(f.projectID))
 	if ok || rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), string(ReasonProjectAccessBlocked)) {
@@ -492,13 +492,13 @@ func TestPrivateProjectInboxSkipsOutsiders(t *testing.T) {
 			RecipientID:   parseUUID(recipient),
 			Type:          "mentioned",
 			Severity:      "info",
-			IssueID:       parseUUID(f.secretIssue),
+			IssueID:       parseUUID(f.sealedIssue),
 			Title:         f.marker + " secret notification",
 		})
 		return err
 	}
 	t.Cleanup(func() {
-		testPool.Exec(context.Background(), `DELETE FROM inbox_item WHERE issue_id = $1`, f.secretIssue)
+		testPool.Exec(context.Background(), `DELETE FROM inbox_item WHERE issue_id = $1`, f.sealedIssue)
 	})
 	if err := write(f.outsider); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("outsider notification: err = %v, want skipped", err)
@@ -523,15 +523,15 @@ func removeProjectMemberAsOwner(t *testing.T, f privateProjectFixture, userID st
 func TestPrivateProjectIssueUnreadRunReferencesAfterRevocation(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	agentID := dbfx.Agent(t, f.marker+" unread agent", testRuntimeID, testutil.Cols{"owner_id": f.insider})
-	secretTask := dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.secretIssue, "runtime_id": testRuntimeID, "status": "completed"})
+	sealedTask := dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.sealedIssue, "runtime_id": testRuntimeID, "status": "completed"})
 	publicTask := dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.publicIssue, "runtime_id": testRuntimeID, "status": "completed"})
-	secretResult := dbfx.Comment(t, f.secretIssue, "private run result", testutil.Cols{"source_task_id": secretTask})
+	sealedResult := dbfx.Comment(t, f.sealedIssue, "private run result", testutil.Cols{"source_task_id": sealedTask})
 	publicResult := dbfx.Comment(t, f.publicIssue, "public run result", testutil.Cols{"source_task_id": publicTask})
 	dbfx.Cleanup(t, `DELETE FROM issue_unread WHERE user_id = $1`, f.insider)
 	dbfx.Exec(t, `
 INSERT INTO issue_unread (workspace_id, user_id, issue_id, outcome, agent_id, task_id)
 VALUES ($1, $2, $3, 'completed', $4, $5), ($1, $2, $6, 'completed', $4, $7)`,
-		testWorkspaceID, f.insider, f.secretIssue, agentID, secretTask, f.publicIssue, publicTask)
+		testWorkspaceID, f.insider, f.sealedIssue, agentID, sealedTask, f.publicIssue, publicTask)
 
 	before := listIssueUnreadAs(t, f.insider)
 	if len(before) != 2 {
@@ -539,8 +539,8 @@ VALUES ($1, $2, $3, 'completed', $4, $5), ($1, $2, $6, 'completed', $4, $7)`,
 	}
 	for _, item := range before {
 		wantTask, wantComment := publicTask, publicResult
-		if item.IssueID == f.secretIssue {
-			wantTask, wantComment = secretTask, secretResult
+		if item.IssueID == f.sealedIssue {
+			wantTask, wantComment = sealedTask, sealedResult
 		} else if item.IssueID != f.publicIssue {
 			t.Fatalf("unexpected unread issue: %+v", item)
 		}
@@ -564,12 +564,12 @@ func TestPrivateProjectArchivedInboxAndUnreadAfterRevocation(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	dbfx.Insert(t, "inbox_item", testutil.Cols{
 		"workspace_id": testWorkspaceID, "recipient_type": "member", "recipient_id": f.insider,
-		"type": "mentioned", "severity": "info", "title": f.marker + " archived secret", "issue_id": f.secretIssue,
+		"type": "mentioned", "severity": "info", "title": f.marker + " archived secret", "issue_id": f.sealedIssue,
 		"archived": true,
 	})
 	unreadID := dbfx.Insert(t, "inbox_item", testutil.Cols{
 		"workspace_id": testWorkspaceID, "recipient_type": "member", "recipient_id": f.insider,
-		"type": "mentioned", "severity": "info", "title": f.marker + " unread secret", "issue_id": f.secretIssue,
+		"type": "mentioned", "severity": "info", "title": f.marker + " unread secret", "issue_id": f.sealedIssue,
 	})
 	countUnread := func() int64 {
 		req := asUser(newRequest(http.MethodGet, "/api/inbox/unread-count", nil), f.insider)
@@ -596,7 +596,7 @@ func TestPrivateProjectArchivedInboxAndUnreadAfterRevocation(t *testing.T) {
 	} {
 		req := asUser(newRequest(http.MethodGet, "/api/inbox/archived", nil), f.insider)
 		body := testutil.Call(t, inboxWorkspaceHandler(tc.handler), req).Want(http.StatusOK).Text()
-		if strings.Contains(body, f.secretIssue) || strings.Contains(body, f.marker) {
+		if strings.Contains(body, f.sealedIssue) || strings.Contains(body, f.marker) {
 			t.Errorf("%s still returns the private notification after removal: %s", tc.name, body)
 		}
 	}
@@ -626,7 +626,7 @@ func TestPrivateProjectLeadChangeCannotGrantAccess(t *testing.T) {
 
 	// An agent run of a project member cannot hand the project to an outsider.
 	agent := dbfx.Agent(t, f.marker+" insider agent", testRuntimeID, testutil.Cols{"owner_id": f.insider})
-	task := dbfx.Task(t, agent, testutil.Cols{"runtime_id": testRuntimeID, "issue_id": f.secretIssue, "status": "running",
+	task := dbfx.Task(t, agent, testutil.Cols{"runtime_id": testRuntimeID, "issue_id": f.sealedIssue, "status": "running",
 		"originator_user_id": f.insider, "accountable_user_id": f.insider})
 	req := asUser(newRequest(http.MethodPut, "/api/projects/"+f.projectID, body), f.insider)
 	req.Header.Set("X-Actor-Source", "task_token")
@@ -776,7 +776,7 @@ func TestPrivateProjectQuickCreateNeedsAgentOwnerAccess(t *testing.T) {
 	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE agent_id = $1`, agent) })
 	for _, body := range []map[string]any{
 		{"prompt": "Create a task in this project", "agent_id": agent, "project_id": f.projectID},
-		{"prompt": "Create a sub-issue", "agent_id": agent, "parent_issue_id": f.secretIssue},
+		{"prompt": "Create a sub-issue", "agent_id": agent, "parent_issue_id": f.sealedIssue},
 	} {
 		rec := httptest.NewRecorder()
 		testHandler.QuickCreateIssue(rec, newRequest(http.MethodPost, "/api/issues/quick-create", body))
@@ -794,7 +794,7 @@ func TestPrivateProjectQuickCreateNeedsAgentOwnerAccess(t *testing.T) {
 func TestPrivateProjectCommentSubIssuePreviewHidden(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	preview := func(userID string) *testutil.Response {
-		req := withURLParam(asUser(newRequest(http.MethodGet, "/api/comments/"+f.secretComment+"/sub-issue/preview", nil), userID), "commentId", f.secretComment)
+		req := withURLParam(asUser(newRequest(http.MethodGet, "/api/comments/"+f.sealedComment+"/sub-issue/preview", nil), userID), "commentId", f.sealedComment)
 		return testutil.Call(t, testHandler.PreviewCommentSubIssue, req)
 	}
 	if body := preview(f.outsider).Text(); strings.Contains(body, f.marker) {
@@ -809,13 +809,13 @@ func TestPrivateProjectCommentSubIssuePreviewHidden(t *testing.T) {
 func TestPrivateProjectWakeupListsSkipOutsiders(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	agent := dbfx.Agent(t, f.marker+" wake target", testRuntimeID)
-	dbfx.Cleanup(t, "DELETE FROM activity_log WHERE issue_id=$1", f.secretIssue)
-	dbfx.Cleanup(t, "DELETE FROM issue_wakeup WHERE issue_id=$1", f.secretIssue)
-	dbfx.Cleanup(t, "DELETE FROM issue_wakeup_receipt WHERE wakeup_id IN (SELECT id FROM issue_wakeup WHERE issue_id=$1)", f.secretIssue)
+	dbfx.Cleanup(t, "DELETE FROM activity_log WHERE issue_id=$1", f.sealedIssue)
+	dbfx.Cleanup(t, "DELETE FROM issue_wakeup WHERE issue_id=$1", f.sealedIssue)
+	dbfx.Cleanup(t, "DELETE FROM issue_wakeup_receipt WHERE wakeup_id IN (SELECT id FROM issue_wakeup WHERE issue_id=$1)", f.sealedIssue)
 	svc := service.IssueWakeupService{Tasks: testHandler.TaskService}
 	create := func() string {
 		t.Helper()
-		w, err := svc.Create(context.Background(), parseUUID(f.secretIssue), parseUUID(testUserID), pgtype.UUID{}, service.WakeupInput{
+		w, err := svc.Create(context.Background(), parseUUID(f.sealedIssue), parseUUID(testUserID), pgtype.UUID{}, service.WakeupInput{
 			AgentID: agent, Kind: "event", Mode: "continuous", EventTypes: []string{"comment.created"}, Instruction: "check",
 		})
 		if err != nil {
@@ -827,8 +827,8 @@ func TestPrivateProjectWakeupListsSkipOutsiders(t *testing.T) {
 	paused := create()
 	dbfx.Exec(t, "UPDATE issue_wakeup SET enabled=false,paused_reason='rate',disabled_at=now() WHERE id=$1", paused)
 	// An open sub-issue makes the secret issue's child-done system rule listable.
-	dbfx.Issue(t, f.marker+" secret child", testutil.Cols{"project_id": f.projectID, "parent_issue_id": f.secretIssue})
-	if w := putChildDoneRule(t, f.secretIssue, map[string]any{"instruction": "Advance."}); w.Code != http.StatusOK {
+	dbfx.Issue(t, f.marker+" secret child", testutil.Cols{"project_id": f.projectID, "parent_issue_id": f.sealedIssue})
+	if w := putChildDoneRule(t, f.sealedIssue, map[string]any{"instruction": "Advance."}); w.Code != http.StatusOK {
 		t.Fatalf("create system rule: %d %s", w.Code, w.Body.String())
 	}
 
@@ -840,7 +840,7 @@ func TestPrivateProjectWakeupListsSkipOutsiders(t *testing.T) {
 		testutil.Call(t, list, asUser(newRequest(http.MethodGet, path, nil), userID)).Want(http.StatusOK).JSON(&rows)
 		n := 0
 		for _, row := range rows {
-			if row.IssueID == f.secretIssue {
+			if row.IssueID == f.sealedIssue {
 				n++
 			}
 		}
@@ -894,7 +894,7 @@ func TestPrivateProjectRunCancelNeedsVisibility(t *testing.T) {
 		t.Fatalf("load seeded agent: %v", err)
 	}
 	queuedRun := func() string {
-		return dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.secretIssue, "runtime_id": testRuntimeID})
+		return dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.sealedIssue, "runtime_id": testRuntimeID})
 	}
 
 	taskID := queuedRun()
@@ -903,7 +903,7 @@ func TestPrivateProjectRunCancelNeedsVisibility(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("outsider cancel = %d, want 404", rec.Code)
 	}
-	if strings.Contains(rec.Body.String(), f.secretIssue) {
+	if strings.Contains(rec.Body.String(), f.sealedIssue) {
 		t.Errorf("outsider cancel response names the private issue: %s", rec.Body.String())
 	}
 	if got := taskStatus(t, taskID); got != "queued" {
@@ -945,8 +945,8 @@ func TestPrivateProjectChildProgressSkipsHiddenSubIssues(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	dbfx.Issue(t, f.marker+" public child", testutil.Cols{"parent_issue_id": f.publicIssue})
 	dbfx.Issue(t, f.marker+" secret child", testutil.Cols{"project_id": f.projectID, "parent_issue_id": f.publicIssue, "status": "done"})
-	secretOnlyParent := dbfx.Issue(t, f.marker+" parent of one secret child")
-	dbfx.Issue(t, f.marker+" lone secret child", testutil.Cols{"project_id": f.projectID, "parent_issue_id": secretOnlyParent})
+	sealedOnlyParent := dbfx.Issue(t, f.marker+" parent of one secret child")
+	dbfx.Issue(t, f.marker+" lone secret child", testutil.Cols{"project_id": f.projectID, "parent_issue_id": sealedOnlyParent})
 
 	type counts struct{ Total, Done int64 }
 	progress := func(userID string) map[string]counts {
@@ -981,8 +981,8 @@ func TestPrivateProjectChildProgressSkipsHiddenSubIssues(t *testing.T) {
 		if got[f.publicIssue] != tc.mixed {
 			t.Errorf("%s: parent with a public and a secret sub-issue = %+v, want %+v", tc.name, got[f.publicIssue], tc.mixed)
 		}
-		if got[secretOnlyParent] != tc.secretOnly {
-			t.Errorf("%s: parent with only a secret sub-issue = %+v, want %+v", tc.name, got[secretOnlyParent], tc.secretOnly)
+		if got[sealedOnlyParent] != tc.secretOnly {
+			t.Errorf("%s: parent with only a secret sub-issue = %+v, want %+v", tc.name, got[sealedOnlyParent], tc.secretOnly)
 		}
 	}
 }
@@ -1002,15 +1002,15 @@ func TestPrivateProjectPullRequestSummariesSkipHiddenIssues(t *testing.T) {
 		return prID
 	}
 	publicPR := linkGitHub(f.publicIssue, 1)
-	secretGitHubPR := linkGitHub(f.secretIssue, 2)
-	secretGitLabPR := dbfx.Insert(t, "vcs_pull_request", testutil.Cols{
+	sealedGitHubPR := linkGitHub(f.sealedIssue, 2)
+	sealedGitLabPR := dbfx.Insert(t, "vcs_pull_request", testutil.Cols{
 		"workspace_id": testWorkspaceID, "connection_id": testWorkspaceID, "provider": "gitlab",
 		"repo_owner": "acme", "repo_name": f.marker, "pr_number": 3,
 		"title": "mr", "state": "open", "html_url": "https://gitlab.test/mr",
 		"pr_created_at": now, "pr_updated_at": now,
 	})
-	dbfx.InsertNoID(t, "issue_vcs_pull_request", testutil.Cols{"issue_id": f.secretIssue, "pull_request_id": secretGitLabPR},
-		"pull_request_id = $1", secretGitLabPR)
+	dbfx.InsertNoID(t, "issue_vcs_pull_request", testutil.Cols{"issue_id": f.sealedIssue, "pull_request_id": sealedGitLabPR},
+		"pull_request_id = $1", sealedGitLabPR)
 
 	visible := func(userID string) map[string]bool {
 		t.Helper()
@@ -1039,7 +1039,7 @@ func TestPrivateProjectPullRequestSummariesSkipHiddenIssues(t *testing.T) {
 		if !got[publicPR] {
 			t.Errorf("%s: missing the PR linked to a public issue", tc.name)
 		}
-		for _, prID := range []string{secretGitHubPR, secretGitLabPR} {
+		for _, prID := range []string{sealedGitHubPR, sealedGitLabPR} {
 			if got[prID] != tc.seesSecret {
 				t.Errorf("%s: sees PR %s on a private-project issue = %v, want %v", tc.name, prID, got[prID], tc.seesSecret)
 			}
@@ -1050,7 +1050,7 @@ func TestPrivateProjectPullRequestSummariesSkipHiddenIssues(t *testing.T) {
 func TestPrivateProjectWorkingAgentsHiddenFromOutsiders(t *testing.T) {
 	f := newPrivateProjectFixture(t)
 	agentID := createHandlerTestAgent(t, f.marker+" working agent", []byte(`{}`))
-	dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.secretIssue, "runtime_id": testRuntimeID, "status": "running", "started_at": time.Now()})
+	dbfx.Task(t, agentID, testutil.Cols{"issue_id": f.sealedIssue, "runtime_id": testRuntimeID, "status": "running", "started_at": time.Now()})
 	for _, userID := range []string{f.outsider, f.outsideAdmin, f.insider} {
 		req := asUser(newRequest(http.MethodGet, "/api/working-agents?type=issue&project="+f.projectID, nil), userID)
 		var agents []WorkspaceWorkingAgent

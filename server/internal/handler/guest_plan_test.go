@@ -89,7 +89,7 @@ func TestGuestsFeatureLockedAddsNoGuests(t *testing.T) {
 
 	path := "/api/workspaces/" + testWorkspaceID + "/members/" + f.guestMember
 	widen := withURLParams(newRequest(http.MethodPut, path+"/projects",
-		SetMemberProjectsRequest{ProjectIDs: []string{f.shared, f.other, f.secret}}), "id", testWorkspaceID, "memberId", f.guestMember)
+		SetMemberProjectsRequest{ProjectIDs: []string{f.shared, f.other, f.sealed}}), "id", testWorkspaceID, "memberId", f.guestMember)
 	// The requester is a member of the private project, so sharing it is
 	// allowed by permissions and refused only by the plan.
 	wantGuestsLocked(t, testutil.Call(t, testHandler.SetMemberProjects, widen))

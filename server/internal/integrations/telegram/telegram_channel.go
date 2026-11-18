@@ -275,11 +275,11 @@ func newTelegramFactory(deps ChannelDeps) channel.Factory {
 		if err := json.Unmarshal(cfg.Raw, &ic); err != nil {
 			return nil, fmt.Errorf("telegram: decode installation config: %w", err)
 		}
-		token, err := decryptToken(ic.BotTokenEncrypted, deps.Decrypt)
+		ticket, err := decryptToken(ic.BotTicketEncrypted, deps.Decrypt)
 		if err != nil {
 			return nil, fmt.Errorf("telegram: decrypt bot token: %w", err)
 		}
-		if token == "" {
+		if ticket == "" {
 			return nil, errors.New("telegram: installation has no bot token")
 		}
 		botID, err := strconv.ParseInt(ic.AppID, 10, 64)
@@ -289,7 +289,7 @@ func newTelegramFactory(deps ChannelDeps) channel.Factory {
 		return &telegramChannel{
 			botID:        botID,
 			botUsername:  ic.BotUsername,
-			api:          newBotAPI(deps.APIBase, token, deps.HTTPClient),
+			api:          newBotAPI(deps.APIBase, ticket, deps.HTTPClient),
 			handler:      cfg.Handler,
 			logger:       logger,
 			recent:       newRecentContextBuffer(deps.RecentContextSize),

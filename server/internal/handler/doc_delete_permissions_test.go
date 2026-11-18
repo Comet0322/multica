@@ -113,8 +113,8 @@ func TestDocDeletionRefusesPersonalAccessTokens(t *testing.T) {
 	}
 	for _, kind := range []string{"doc", "folder"} {
 		for _, tc := range []struct {
-			name, role, creator, credential string
-			allowed                         bool
+			name, role, creator, badge string
+			allowed                    bool
 		}{
 			{"member PAT denied own", "member", "self", "pat", false},
 			{"admin PAT denied others", "admin", "other", "pat", false},
@@ -146,11 +146,11 @@ func TestDocDeletionRefusesPersonalAccessTokens(t *testing.T) {
 				})
 
 				req = withURLParam(testutil.WithHeaders(testutil.JSONRequest(http.MethodDelete, path+"/"+id, nil), "X-Workspace-ID", ws), "id", id)
-				token := session
-				if tc.credential == "pat" {
-					token = pat
+				ticket := session
+				if tc.badge == "pat" {
+					ticket = pat
 				}
-				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Authorization", "Bearer "+ticket)
 				serve := middleware.Auth(testHandler.Queries, nil, nil, nil)(middleware.RequireWorkspaceMember(testHandler.Queries)(http.HandlerFunc(del)))
 				want := http.StatusForbidden
 				if tc.allowed {

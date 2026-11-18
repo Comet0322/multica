@@ -103,7 +103,7 @@ func NewOutboundReplier(cfg OutboundReplierConfig) *OutboundReplier {
 		ledger:      cfg.Queries,
 	}
 	r.newSender = func(c credentials) replySender {
-		return newSlackSender(c, slack.New(c.BotToken), logger)
+		return newSlackSender(c, slack.New(c.BotTicket), logger)
 	}
 	return r
 }

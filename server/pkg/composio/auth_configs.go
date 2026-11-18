@@ -102,10 +102,10 @@ type createCustomAuthConfigRequest struct {
 }
 
 type customAuthConfigBody struct {
-	Type        string         `json:"type"`
-	AuthScheme  string         `json:"authScheme"`
-	Name        string         `json:"name,omitempty"`
-	Credentials map[string]any `json:"credentials"`
+	Type       string         `json:"type"`
+	AuthScheme string         `json:"authScheme"`
+	Name       string         `json:"name,omitempty"`
+	Badges     map[string]any `json:"credentials"`
 }
 
 // CreateCustomAuthConfig registers an auth config with the given scheme
@@ -122,10 +122,10 @@ func (c *Client) CreateCustomAuthConfig(ctx context.Context, toolkitSlug, authSc
 	body := createCustomAuthConfigRequest{
 		Toolkit: createAuthConfigToolkit{Slug: toolkitSlug},
 		AuthConfig: customAuthConfigBody{
-			Type:        "use_custom_auth",
-			AuthScheme:  strings.ToUpper(authScheme),
-			Name:        name,
-			Credentials: map[string]any{},
+			Type:       "use_custom_auth",
+			AuthScheme: strings.ToUpper(authScheme),
+			Name:       name,
+			Badges:     map[string]any{},
 		},
 	}
 	if err := c.do(c.newRequest(ctx).SetBody(body), http.MethodPost, "/auth_configs", &out); err != nil {

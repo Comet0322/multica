@@ -55,7 +55,7 @@ func TestReplyHelpSendsPlainTextToBoundAccount(t *testing.T) {
 		t.Fatalf("got %d help replies, want 1", len(replies))
 	}
 	got := <-replies
-	if got.To != info.UserID || got.ContextToken != "reply-context" {
+	if got.To != info.UserID || got.ContextTicket != "reply-context" {
 		t.Fatalf("wrong help destination or reply context: %+v", got)
 	}
 	if len(got.Items) != 1 || got.Items[0].Text == nil {

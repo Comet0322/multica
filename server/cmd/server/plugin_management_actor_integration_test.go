@@ -73,9 +73,9 @@ func newPluginConsentFixture(t *testing.T) *pluginConsentFixture {
 	cloud := "mcn_" + uuid.NewString()
 	fleet := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
-			Token string `json:"token"`
+			Ticket string `json:"token"`
 		}
-		if r.URL.Path != "/api/v1/pat/verify" || json.NewDecoder(r.Body).Decode(&request) != nil || request.Token != cloud {
+		if r.URL.Path != "/api/v1/pat/verify" || json.NewDecoder(r.Body).Decode(&request) != nil || request.Ticket != cloud {
 			http.Error(w, "invalid verification request", http.StatusBadRequest)
 			return
 		}
@@ -154,9 +154,9 @@ func newPluginConsentFixture(t *testing.T) *pluginConsentFixture {
 		upload: upload.String(), contentType: mw.FormDataContentType()}
 }
 
-func (f *pluginConsentFixture) request(method, path, token string, body any) *http.Request {
+func (f *pluginConsentFixture) request(method, path, ticket string, body any) *http.Request {
 	req := dbfx.JSONRequest(method, path, body)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+ticket)
 	req.Header.Set("X-Workspace-ID", f.db.WorkspaceID)
 	// Auth must discard this client assertion for both machine auth branches.
 	req.Header.Set("X-Actor-Source", "member")
@@ -210,11 +210,11 @@ func TestPluginManagementRejectsMachineCredentials(t *testing.T) {
 	}
 	for _, role := range []string{"owner", "admin"} {
 		f.db.Exec(t, `UPDATE member SET role = $1 WHERE workspace_id = $2 AND user_id = $3`, role, f.db.WorkspaceID, f.db.UserID)
-		for name, token := range map[string]string{"task": f.task, "cloud": f.cloud} {
+		for name, ticket := range map[string]string{"task": f.task, "cloud": f.cloud} {
 			for _, tc := range cases {
 				t.Run(role+"/"+name+"/"+tc.method+tc.path, func(t *testing.T) {
 					before := f.snapshot(t)
-					dbfx.Call(t, f.router.ServeHTTP, f.request(tc.method, tc.path, token, tc.body)).Want(http.StatusForbidden)
+					dbfx.Call(t, f.router.ServeHTTP, f.request(tc.method, tc.path, ticket, tc.body)).Want(http.StatusForbidden)
 					if f.snapshot(t) != before {
 						t.Fatal("rejected management request changed plugin state")
 					}
@@ -222,7 +222,7 @@ func TestPluginManagementRejectsMachineCredentials(t *testing.T) {
 			}
 			for _, path := range []string{base, base + "/packages", installation + "/surfaces/panel/launch", "/api/plugin-bridge/v1/context"} {
 				t.Run(role+"/"+name+"/read"+path, func(t *testing.T) {
-					dbfx.Call(t, f.router.ServeHTTP, f.request(http.MethodGet, path, token, nil)).Want(http.StatusOK)
+					dbfx.Call(t, f.router.ServeHTTP, f.request(http.MethodGet, path, ticket, nil)).Want(http.StatusOK)
 				})
 			}
 		}
@@ -230,24 +230,24 @@ func TestPluginManagementRejectsMachineCredentials(t *testing.T) {
 }
 
 func TestPluginManagementPreservesHumanAuthorization(t *testing.T) {
-	for _, credential := range []string{"jwt", "pat"} {
-		t.Run(credential, func(t *testing.T) {
+	for _, badge := range []string{"jwt", "pat"} {
+		t.Run(badge, func(t *testing.T) {
 			f := newPluginConsentFixture(t)
-			token := testToken
-			if credential == "pat" {
-				token = f.pat
+			ticket := testTicket
+			if badge == "pat" {
+				ticket = f.pat
 			}
 			base, installation := f.base(), f.base()+"/"+f.installationID
 			do := func(method, path string, body any, status int) *dbfx.Response {
-				return dbfx.Call(t, f.router.ServeHTTP, f.request(method, path, token, body)).Want(status)
+				return dbfx.Call(t, f.router.ServeHTTP, f.request(method, path, ticket, body)).Want(status)
 			}
 			outsiderID := f.db.User(t, "Outside plugin workspace", uuid.NewString()+"@example.test")
-			outsiderToken, err := generateTestJWT(outsiderID, "outside@example.test", "Outside")
+			outsiderTicket, err := generateTestJWT(outsiderID, "outside@example.test", "Outside")
 			if err != nil {
 				t.Fatal(err)
 			}
 			before := f.snapshot(t)
-			dbfx.Call(t, f.router.ServeHTTP, f.request(http.MethodPost, installation+"/token", outsiderToken, nil)).Want(http.StatusNotFound)
+			dbfx.Call(t, f.router.ServeHTTP, f.request(http.MethodPost, installation+"/token", outsiderTicket, nil)).Want(http.StatusNotFound)
 			if f.snapshot(t) != before {
 				t.Fatal("user outside the workspace changed plugin state")
 			}
@@ -276,10 +276,10 @@ func TestPluginManagementPreservesHumanAuthorization(t *testing.T) {
 			do(http.MethodPost, installation+"/disable", nil, http.StatusOK)
 			do(http.MethodPost, installation+"/enable", nil, http.StatusOK)
 			var credentials struct {
-				Token string `json:"token"`
+				Ticket string `json:"token"`
 			}
 			do(http.MethodPost, installation+"/token", nil, http.StatusOK).JSON(&credentials)
-			dbfx.Call(t, f.router.ServeHTTP, f.request(http.MethodGet, "/v1/context", credentials.Token, nil)).Want(http.StatusOK)
+			dbfx.Call(t, f.router.ServeHTTP, f.request(http.MethodGet, "/v1/context", credentials.Ticket, nil)).Want(http.StatusOK)
 			workspaceID, _ := util.ParseUUID(f.db.WorkspaceID)
 			installed, err := f.h.PluginService.InstallationForWorkspace(context.Background(), workspaceID, f.installationID)
 			if err != nil {

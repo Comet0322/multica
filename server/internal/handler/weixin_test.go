@@ -23,9 +23,9 @@ func TestWeixinPublicInstallationOmitsCredentials(t *testing.T) {
 	if !strings.Contains(string(raw), "public-bot") || !strings.Contains(string(raw), "public-user") {
 		t.Fatal("public identity missing")
 	}
-	for _, secret := range []string{"private-ciphertext", "bot_token", "base_url", "ws_lease"} {
-		if strings.Contains(string(raw), secret) {
-			t.Fatalf("public response exposes %s", secret)
+	for _, sealed := range []string{"private-ciphertext", "bot_token", "base_url", "ws_lease"} {
+		if strings.Contains(string(raw), sealed) {
+			t.Fatalf("public response exposes %s", sealed)
 		}
 	}
 }

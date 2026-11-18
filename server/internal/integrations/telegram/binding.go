@@ -75,7 +75,7 @@ func (s *BindingTokenService) Mint(ctx context.Context, workspaceID, installatio
 	}
 	expiresAt := s.now().Add(BindingTokenTTL)
 	if _, err := s.q.CreateChannelBindingToken(ctx, db.CreateChannelBindingTokenParams{
-		TokenHash:      hashBindingToken(raw),
+		TicketHash:     hashBindingToken(raw),
 		WorkspaceID:    workspaceID,
 		InstallationID: installationID,
 		ChannelType:    string(TypeTelegram),

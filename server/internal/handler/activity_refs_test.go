@@ -49,8 +49,8 @@ func TestActivityRefsToHiddenIssuesAreRedacted(t *testing.T) {
 			VALUES ($1, $2, 'member', $3, $4, $5::jsonb)
 		`, testWorkspaceID, issueID, testUserID, action, string(body))
 	}
-	insertActivity(openIssue, "duplicate_marked", map[string]string{"original_id": f.secretIssue, "original_identifier": "SECRET-1"})
-	insertActivity(f.publicIssue, "duplicate_added", map[string]string{"duplicate_id": f.secretIssue, "duplicate_identifier": "SECRET-1"})
+	insertActivity(openIssue, "duplicate_marked", map[string]string{"original_id": f.sealedIssue, "original_identifier": "SECRET-1"})
+	insertActivity(f.publicIssue, "duplicate_added", map[string]string{"duplicate_id": f.sealedIssue, "duplicate_identifier": "SECRET-1"})
 	insertActivity(f.publicIssue, "duplicate_removed", map[string]string{"duplicate_id": openIssue, "duplicate_identifier": "OPEN-1"})
 
 	projectFeed := func(userID string) map[string]map[string]string {
@@ -116,10 +116,10 @@ func TestActivityRefsToHiddenIssuesAreRedacted(t *testing.T) {
 	}
 
 	t.Run("insider", func(t *testing.T) {
-		if d := projectFeed(f.insider)["duplicate_marked"]; d["original_id"] != f.secretIssue || d["original_identifier"] != "SECRET-1" {
+		if d := projectFeed(f.insider)["duplicate_marked"]; d["original_id"] != f.sealedIssue || d["original_identifier"] != "SECRET-1" {
 			t.Errorf("project feed duplicate_marked = %v, want the original kept", d)
 		}
-		if d := timeline(f.insider, f.publicIssue)["duplicate_added"]; d["duplicate_id"] != f.secretIssue || d["duplicate_identifier"] != "SECRET-1" {
+		if d := timeline(f.insider, f.publicIssue)["duplicate_added"]; d["duplicate_id"] != f.sealedIssue || d["duplicate_identifier"] != "SECRET-1" {
 			t.Errorf("timeline duplicate_added = %v, want the duplicate kept", d)
 		}
 	})

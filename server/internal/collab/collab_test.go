@@ -65,11 +65,11 @@ func TestNewClientDisabledWithoutSettings(t *testing.T) {
 }
 
 func TestClientMapsServiceResponses(t *testing.T) {
-	var gotPath, gotSecret string
+	var gotPath, gotSealed string
 	var gotBody map[string]any
 	status, body := http.StatusOK, `{"status":"ok","revision":7,"content":"x","merged":true}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath, gotSecret = r.URL.Path, r.Header.Get(SecretHeader)
+		gotPath, gotSealed = r.URL.Path, r.Header.Get(SealedHeader)
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
@@ -86,8 +86,8 @@ func TestClientMapsServiceResponses(t *testing.T) {
 	if err != nil || result.Status != StatusOK || result.Revision != 7 || !result.Merged {
 		t.Fatalf("write = %+v, %v", result, err)
 	}
-	if gotPath != "/internal/documents/doc:abc/write" || gotSecret != "s3cret" || gotBody["content"] != "new" {
-		t.Fatalf("request = %s %q %v", gotPath, gotSecret, gotBody)
+	if gotPath != "/internal/documents/doc:abc/write" || gotSealed != "s3cret" || gotBody["content"] != "new" {
+		t.Fatalf("request = %s %q %v", gotPath, gotSealed, gotBody)
 	}
 
 	status, body = http.StatusConflict, `{"error":"edit_failed","status":"edit_failed","revision":3,"content":"c","failure":{"reason":"ambiguous","index":0,"matches":2}}`
@@ -124,11 +124,11 @@ func TestClientMapsServiceResponses(t *testing.T) {
 }
 
 func TestRevalidate(t *testing.T) {
-	var gotPath, gotSecret string
+	var gotPath, gotSealed string
 	var got RevalidateRequest
 	status := http.StatusOK
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath, gotSecret = r.URL.Path, r.Header.Get(SecretHeader)
+		gotPath, gotSealed = r.URL.Path, r.Header.Get(SealedHeader)
 		_ = json.NewDecoder(r.Body).Decode(&got)
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"asked":1}`))
@@ -143,8 +143,8 @@ func TestRevalidate(t *testing.T) {
 	if err := client.Revalidate(ctx, req); err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/internal/revalidate" || gotSecret != "s3cret" || got.WorkspaceID != "ws-1" || got.Actor == nil || got.Actor.ID != "u-1" {
-		t.Fatalf("request = %s %q %+v", gotPath, gotSecret, got)
+	if gotPath != "/internal/revalidate" || gotSealed != "s3cret" || got.WorkspaceID != "ws-1" || got.Actor == nil || got.Actor.ID != "u-1" {
+		t.Fatalf("request = %s %q %+v", gotPath, gotSealed, got)
 	}
 
 	status = http.StatusBadRequest
