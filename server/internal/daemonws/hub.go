@@ -347,9 +347,9 @@ func NewHub() *Hub {
 			// Daemon clients authenticate with Authorization headers before the
 			// upgrade. Browsers cannot set those headers through the native WS API,
 			// and DaemonAuth does not accept cookies, so cookie-based CSWSH does
-			// not apply to this endpoint. Re-evaluate this if DaemonAuth ever
-			// grows cookie fallback.
-			CheckOrigin: func(r *http.Request) bool { return true },
+			// not apply to this endpoint. Native daemon clients send no Origin
+			// header, so any request that carries one is a browser and is refused.
+			CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" },
 		},
 		clients:            make(map[*client]bool),
 		byRuntime:          make(map[string]map[*client]bool),
