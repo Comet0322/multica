@@ -10,13 +10,13 @@ import { buildScrollBridge } from "../packages/views/editor/utils/iframe-scroll-
  * re-positions after a delayed content append.
  */
 
-const TOKEN = "chrometok";
+const FRAME_PROOF = "chrometok";
 
 function pageWithIframe(bodyHtml: string): string {
   // p{height:1200px} plus a 5000px bottom spacer so scroll targets like 600
   // are reachable regardless of the test viewport's height.
   const userHtml = `<style>body{margin:0} p{height:1200px}</style>${bodyHtml}<div style="height:5000px"></div>`;
-  const srcDoc = userHtml + buildScrollBridge(TOKEN);
+  const srcDoc = userHtml + buildScrollBridge(FRAME_PROOF);
   const attr = srcDoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   return `<!doctype html><html><body style="margin:0">
 <iframe id="f" sandbox="allow-scripts" srcdoc="${attr}" style="width:100vw;height:100vh;border:0"></iframe>
@@ -77,7 +77,7 @@ test.describe("iframe scroll bridge (real Chromium, sandboxed srcdoc)", () => {
         },
         { timeout: 5000 },
       )
-      .toMatchObject({ y: 400, token: TOKEN, kind: "scroll" });
+      .toMatchObject({ y: 400, token: FRAME_PROOF, kind: "scroll" });
   });
 
   test("restores scroll position on a parent restore message", async ({
@@ -92,7 +92,7 @@ test.describe("iframe scroll bridge (real Chromium, sandboxed srcdoc)", () => {
           "*",
         );
       },
-      [TOKEN],
+      [FRAME_PROOF],
     );
     await expect
       .poll(async () => frame.evaluate(() => window.scrollY), { timeout: 5000 })
@@ -112,7 +112,7 @@ test.describe("iframe scroll bridge (real Chromium, sandboxed srcdoc)", () => {
           "*",
         );
       },
-      [TOKEN],
+      [FRAME_PROOF],
     );
     // Wait > 33ms so a "2 stable frames then end session" (v3 bug) would
     // already have terminated the restoring session.
@@ -240,7 +240,7 @@ test.describe("iframe scroll bridge (real Chromium, sandboxed srcdoc)", () => {
             }, 400);
           }, 600);
         }),
-      [TOKEN, targetTop],
+      [FRAME_PROOF, targetTop],
     );
 
     // No messages were added in the 400ms observation window → no loop.

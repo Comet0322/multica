@@ -10,8 +10,8 @@ cd "$ROOT_DIR"
 # throwaway export covers them. The make-driven recipes below additionally
 # include .env and bare-`export` it to the recipe environment, clobbering
 # this value, so run_recipe seeds it into the recipe .env as well.
-export JWT_SECRET=test-secret-for-config-test
-export POSTGRES_PASSWORD=test-pg-for-config-test
+export JWT_SECRET="$(openssl rand -hex 16)"
+export POSTGRES_PASSWORD="$(openssl rand -hex 16)"
 
 require_config() {
   local config=$1

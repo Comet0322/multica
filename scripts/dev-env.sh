@@ -916,7 +916,8 @@ start_desktop() {
   # --remote-debugging-port; turbo.json passes both through to the dev task.
   local launch_env=(env
     DESKTOP_RENDERER_PORT="$DESKTOP_RENDERER_PORT" DESKTOP_APP_SUFFIX="$DESKTOP_APP_SUFFIX"
-    MULTICA_DEV_AUTH_TOKEN="$DEV_TOKEN")
+    MULTICA_DEV_AUTH_TOKEN="$DEV_TOKEN"
+  )
   [ -z "$DESKTOP_CDP_PORT" ] || launch_env+=(REMOTE_DEBUGGING_PORT="$DESKTOP_CDP_PORT")
   launch_detached desktop "${launch_env[@]}" \
     make -C "$REPO_ROOT" -s desktop-dev ENV_FILE="$ENV_FILE"

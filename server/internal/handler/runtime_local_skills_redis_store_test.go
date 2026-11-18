@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"sync"
@@ -52,7 +53,7 @@ func newRedisTestClientWithoutMulti(t *testing.T) *redis.Client {
 	admin := newRedisTestClient(t)
 	ctx := context.Background()
 	username := fmt.Sprintf("runtime-no-multi-%d", redisACLTestUserSequence.Add(1))
-	const phrase = "runtime-no-multi-test-password"
+	phrase := rand.Text()
 
 	if err := admin.Do(
 		ctx,

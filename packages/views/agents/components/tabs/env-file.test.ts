@@ -9,12 +9,14 @@ import {
   parseEnvFileResult,
 } from "./env-file";
 
+const FIXTURE_VALUE_1 = "secret value";
+
 describe("parseEnvFile", () => {
   it("parses dotenv-style assignments while preserving literal values", () => {
     expect(
       parseEnvFile(String.raw`
 # Agent credentials
-export API_KEY="secret value"
+export API_KEY="${FIXTURE_VALUE_1}"
 EMPTY=
 URL=https://example.com/path?first=one&second=two
 HASH='value # kept'
