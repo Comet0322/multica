@@ -26,7 +26,7 @@ import type { Logger } from "../logger";
  * session, and that path already exists (ApiClient's 401 handling).
  */
 
-const TOKEN_STORAGE_KEY = "multica_token";
+const SESSION_STORAGE_SLOT = "multica_token";
 
 /**
  * How long to wait after a FAILED check before another is allowed, by
@@ -131,7 +131,7 @@ export function createSessionRenewal({
     // The session this attempt is FOR. Everything applied at the end is
     // checked against it: an attempt that outlives its own session must not
     // write anything back.
-    const startedFrom = storage.getItem(TOKEN_STORAGE_KEY);
+    const startedFrom = storage.getItem(SESSION_STORAGE_SLOT);
     if (!startedFrom) return;
     if (!isRenewableSessionToken(startedFrom)) return;
 
@@ -163,12 +163,12 @@ export function createSessionRenewal({
         // over any of those would resurrect a session the app has already
         // torn down.
         if (!isAuthenticated()) return;
-        if (storage.getItem(TOKEN_STORAGE_KEY) !== startedFrom) return;
+        if (storage.getItem(SESSION_STORAGE_SLOT) !== startedFrom) return;
 
         // Order matters: persist before the in-memory client, so a crash
         // between the two lines leaves the newer credential on disk rather
         // than an older one that requests have already stopped using.
-        storage.setItem(TOKEN_STORAGE_KEY, result.token);
+        storage.setItem(SESSION_STORAGE_SLOT, result.token);
         api.setToken(result.token);
         logger?.info("session renewed", { expiresAt: result.expires_at });
       })

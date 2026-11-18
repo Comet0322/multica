@@ -7,6 +7,8 @@ import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY, WORKSPACE_GUESTS_CA
 import { setApiRequestObserver } from "./request-observer";
 import { EMPTY_PLUGIN_PACKAGE_LIST, EMPTY_PLUGIN_PREVIEW, EMPTY_PLUGIN_SURFACE_LAUNCH } from "./schemas";
 
+const FIXTURE_VALUE_1 = "token-v2";
+
 afterEach(() => {
   configStore.getState().setAgentConversationStartersSupported(false);
   vi.unstubAllGlobals();
@@ -3215,7 +3217,7 @@ describe("ApiClient sliding session renewal", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         jsonResponse({
-          token: "token-v2",
+          token: FIXTURE_VALUE_1,
           expires_at: "2026-10-16T00:00:00Z",
           renewed: true,
           check_again_in_seconds: 259200,
@@ -3226,7 +3228,7 @@ describe("ApiClient sliding session renewal", () => {
     const result = await new ApiClient("https://api.example.test").refreshSession();
 
     expect(result).toMatchObject({
-      token: "token-v2",
+      token: FIXTURE_VALUE_1,
       renewed: true,
       check_again_in_seconds: 259200,
     });

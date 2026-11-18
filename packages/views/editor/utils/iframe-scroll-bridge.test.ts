@@ -4,13 +4,13 @@ import {
   buildScrollBridge,
 } from "./iframe-scroll-bridge";
 
-const TOKEN = "abc123";
+const FRAME_PROOF = "abc123";
 
 // The bridge ships as a <script> string injected into a srcdoc iframe. Like
 // iframe-fragment-nav.test.ts we evaluate the inner script against the current
 // jsdom document and stub the bits jsdom doesn't implement (scrollTo,
 // ResizeObserver, parent.postMessage).
-function loadBridge(token = TOKEN) {
+function loadBridge(token = FRAME_PROOF) {
   // jsdom runs the script in the same window whose `parent` is itself; the
   // bridge posts to `parent`, which is reachable. Stub postMessage.
   const postMessage = vi.fn();
@@ -31,7 +31,7 @@ function loadBridge(token = TOKEN) {
 
 describe("buildScrollBridge", () => {
   it("wraps the script in <script> tags", () => {
-    const out = buildScrollBridge(TOKEN);
+    const out = buildScrollBridge(FRAME_PROOF);
     expect(out.startsWith("<script>")).toBe(true);
     expect(out.endsWith("</script>")).toBe(true);
   });
@@ -72,7 +72,7 @@ describe("scroll bridge runtime", () => {
     expect(ready).toBeTruthy();
     expect(ready?.[0]).toMatchObject({
       __multica: "__multica",
-      token: TOKEN,
+      token: FRAME_PROOF,
       y: expect.any(Number),
       height: expect.any(Number),
     });
@@ -92,7 +92,7 @@ describe("scroll bridge runtime", () => {
     );
     expect(report?.[0]).toMatchObject({
       kind: "scroll",
-      token: TOKEN,
+      token: FRAME_PROOF,
       y: 432,
     });
   });
@@ -102,7 +102,7 @@ describe("scroll bridge runtime", () => {
     postMessage.mockClear();
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { __multica: "__multica", kind: "request-sync", token: TOKEN },
+        data: { __multica: "__multica", kind: "request-sync", token: FRAME_PROOF },
       }),
     );
     expect(
@@ -122,7 +122,7 @@ describe("scroll bridge runtime", () => {
     // And it must not have posted anything in response either.
     expect(
       postMessage.mock.calls.some(
-        (c) => c[0]?.kind === "ready" && c[0]?.token === TOKEN,
+        (c) => c[0]?.kind === "ready" && c[0]?.token === FRAME_PROOF,
       ),
     ).toBe(true); // only the initial announce
   });
@@ -159,7 +159,7 @@ describe("scroll bridge runtime", () => {
             __multica: "__multica",
             kind: "restore",
             y,
-            token: TOKEN,
+            token: FRAME_PROOF,
           },
         }),
       );

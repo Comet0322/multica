@@ -14,7 +14,7 @@ import {
   watchSessionActivity,
 } from "./session-renewal";
 
-const TOKEN_KEY = "multica_token";
+const SESSION_STORAGE_SLOT = "multica_token";
 // Shaped like the server's session JWTs; renewal only runs for that shape.
 const SESSION_V1 = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2MSJ9.c2lnLXYx";
 const SESSION_V2 = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2MiJ9.c2lnLXYy";
@@ -64,7 +64,7 @@ interface Harness {
 function makeHarness(initialToken: string | null = SESSION_V1): Harness {
   return {
     api: { refreshSession: vi.fn(), setToken: vi.fn() },
-    storage: makeStorage(initialToken ? { [TOKEN_KEY]: initialToken } : {}),
+    storage: makeStorage(initialToken ? { [SESSION_STORAGE_SLOT]: initialToken } : {}),
     authenticated: { value: true },
   };
 }
@@ -88,7 +88,7 @@ describe("createSessionRenewal", () => {
 
     await renewalFor(h).renewNow();
 
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(SESSION_V2);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(SESSION_V2);
     expect(h.api.setToken).toHaveBeenCalledWith(SESSION_V2);
   });
 
@@ -100,7 +100,7 @@ describe("createSessionRenewal", () => {
 
     await renewalFor(h).renewNow();
 
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(SESSION_V1);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(SESSION_V1);
     expect(h.api.setToken).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe("createSessionRenewal", () => {
     await Promise.all([first, second]);
 
     expect(h.api.refreshSession).toHaveBeenCalledTimes(1);
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(SESSION_V2);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(SESSION_V2);
   });
 
   // The whole point of the design: an app nobody is touching does not keep
@@ -321,7 +321,7 @@ describe("createSessionRenewal", () => {
 
     await renewalFor(h).renewNow();
 
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(SESSION_V1);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(SESSION_V1);
     expect(h.api.setToken).not.toHaveBeenCalled();
   });
 
@@ -338,7 +338,7 @@ describe("createSessionRenewal", () => {
 
     expect(h.api.setToken).not.toHaveBeenCalled();
     // Storage is the auth store's to clear, and it already did.
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(SESSION_V1);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(SESSION_V1);
   });
 
   // Log out while a renewal is in flight and the response lands afterwards.
@@ -355,13 +355,13 @@ describe("createSessionRenewal", () => {
     const pending = renewalFor(h).renewNow();
 
     // Logout, exactly as the auth store does it.
-    h.storage.removeItem(TOKEN_KEY);
+    h.storage.removeItem(SESSION_STORAGE_SLOT);
     h.authenticated.value = false;
 
     resolve(renewedResponse(SESSION_V2));
     await pending;
 
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBeUndefined();
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBeUndefined();
     expect(h.api.setToken).not.toHaveBeenCalled();
   });
 
@@ -377,12 +377,12 @@ describe("createSessionRenewal", () => {
     );
 
     const pending = renewalFor(h).renewNow();
-    h.storage.setItem(TOKEN_KEY, "someone-elses-token");
+    h.storage.setItem(SESSION_STORAGE_SLOT, "someone-elses-token");
 
     resolve(renewedResponse(SESSION_V2));
     await pending;
 
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe("someone-elses-token");
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe("someone-elses-token");
     expect(h.api.setToken).not.toHaveBeenCalled();
   });
 
@@ -422,7 +422,7 @@ describe("createSessionRenewal", () => {
 
     expect(h.api.refreshSession).not.toHaveBeenCalled();
     expect(h.api.setToken).not.toHaveBeenCalled();
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(token);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(token);
   });
 
   // The decision is made per attempt, not once: signing in with a real session
@@ -435,11 +435,11 @@ describe("createSessionRenewal", () => {
     await renewal.renewNow();
     expect(h.api.refreshSession).not.toHaveBeenCalled();
 
-    h.storage.setItem(TOKEN_KEY, SESSION_V1);
+    h.storage.setItem(SESSION_STORAGE_SLOT, SESSION_V1);
     await renewal.renewNow();
 
     expect(h.api.refreshSession).toHaveBeenCalledTimes(1);
-    expect(h.storage.snapshot()[TOKEN_KEY]).toBe(SESSION_V2);
+    expect(h.storage.snapshot()[SESSION_STORAGE_SLOT]).toBe(SESSION_V2);
   });
 
   // A skipped attempt must not consume the interval, or a check that landed

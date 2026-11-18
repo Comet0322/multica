@@ -10,6 +10,8 @@ import { useHtmlPreviewScrollRestore } from "./use-html-preview-scroll-restore";
 import { buildScrollBridge } from "../editor/utils/iframe-scroll-bridge";
 import { hashString } from "../editor/utils/hash-string";
 
+const FIXTURE_VALUE_1 = "old-token";
+
 function makeAdapter(initial?: ScrollRestorationEntry): {
   adapter: ScrollRestorationAdapter;
   registered: Map<string, ExternalScrollSource | null>;
@@ -109,7 +111,7 @@ describe("useHtmlPreviewScrollRestore", () => {
           kind: "scroll",
           y: 9999,
           height: 1,
-          token: "old-token",
+          token: FIXTURE_VALUE_1,
         },
       }),
     );

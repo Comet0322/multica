@@ -50,11 +50,11 @@ const (
 
 	// HTTP status layer.
 	KindAuthRequired // 401
-	// KindTaskTokenRejected is a 401 on a task-scoped token. HTTPError.Kind()
+	// KindTaskTicketRejected is a 401 on a task-scoped token. HTTPError.Kind()
 	// never returns it — the status code alone cannot tell the two apart — so
 	// it is selected in userMessage, where the credential the request actually
 	// sent is known. Exit classification is unchanged: still an auth failure.
-	KindTaskTokenRejected
+	KindTaskTicketRejected
 	KindForbidden   // 403
 	KindNotFound    // 404
 	KindConflict    // 409
@@ -109,7 +109,7 @@ func (k ErrorKind) String() string {
 		return "network_incomplete_response"
 	case KindAuthRequired:
 		return "auth_required"
-	case KindTaskTokenRejected:
+	case KindTaskTicketRejected:
 		return "task_token_rejected"
 	case KindForbidden:
 		return "forbidden"
@@ -443,7 +443,7 @@ var kindMessages = map[ErrorKind][2]string{
 		"Your session has expired or you are not signed in. Run `multica login` to sign in again. On a self-hosted or non-OAuth setup, ask your administrator for valid credentials.",
 		"登录已过期或尚未登录。请运行 `multica login` 重新登录。自托管或非 OAuth 场景请联系管理员获取有效凭证。",
 	},
-	KindTaskTokenRejected: {
+	KindTaskTicketRejected: {
 		"This task token was rejected and is no longer usable. Stop here: do not retry, and do not fall back to a profile or member credential, because anything done with one would run as that person rather than as this task. Only the runtime that started this task can supply a valid task token.",
 		"这个 task token 已被拒绝，不再可用。请到此为止：不要重试，也不要改用 profile 或成员凭证 —— 用它们执行的任何操作都会以那个成员的身份运行，而不是以这次 task 的身份运行。只有启动这次 task 的运行时才能提供有效的 task token。",
 	},
@@ -508,7 +508,7 @@ var serverMessagePrefixes = map[ErrorKind][2]string{
 // client (the local daemon's environment routes) and want to append the same
 // guidance to the endpoint's own explanation, so there is one copy of it.
 func TaskTokenRejectedMessage() string {
-	return messageFor(KindTaskTokenRejected, DetectLanguage())
+	return messageFor(KindTaskTicketRejected, DetectLanguage())
 }
 
 // messageFor returns the localized message for a kind.
@@ -578,7 +578,7 @@ func userMessage(err error, lang Language) string {
 		// cleanup. "Stop" is true in every one of those cases; "the task
 		// finished" is not.
 		if kind == KindAuthRequired && httpErr.TaskScoped {
-			return messageFor(KindTaskTokenRejected, lang)
+			return messageFor(KindTaskTicketRejected, lang)
 		}
 		// Validation and conflict errors carry a useful server-provided
 		// message; surface it instead of the generic line. A body we cannot
