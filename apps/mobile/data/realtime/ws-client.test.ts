@@ -2,6 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WSClient } from "./ws-client";
 
+const FIXTURE_VALUE_1 = "token-v1";
+const FIXTURE_VALUE_2 = "token-only";
+const FIXTURE_VALUE_3 = "token";
+
 class MockWebSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -42,7 +46,7 @@ class MockWebSocket {
 function connectAuthenticatedClient() {
   const client = new WSClient({
     url: "wss://example.test/ws",
-    token: "token",
+    token: FIXTURE_VALUE_3,
     workspaceSlug: "workspace",
   });
   client.connect();
@@ -70,7 +74,7 @@ describe("WSClient application heartbeat", () => {
     const { client, socket } = connectAuthenticatedClient();
 
     expect(socket.sent.map((frame) => JSON.parse(frame))).toEqual([
-      { type: "auth", payload: { token: "token" } },
+      { type: "auth", payload: { token: FIXTURE_VALUE_3 } },
       { type: "ping" },
     ]);
 
@@ -111,7 +115,7 @@ describe("WSClient session renewal", () => {
     let current = "token-v1";
     const client = new WSClient({
       url: "wss://example.test/ws",
-      token: "token-v1",
+      token: FIXTURE_VALUE_1,
       workspaceSlug: "workspace",
       getToken: () => current,
     });
@@ -120,7 +124,7 @@ describe("WSClient session renewal", () => {
     MockWebSocket.instances[0].open();
     expect(JSON.parse(MockWebSocket.instances[0].sent[0])).toEqual({
       type: "auth",
-      payload: { token: "token-v1" },
+      payload: { token: FIXTURE_VALUE_1 },
     });
 
     current = "token-v2";
@@ -137,7 +141,7 @@ describe("WSClient session renewal", () => {
   it("falls back to the constructor token when no reader is supplied", () => {
     const client = new WSClient({
       url: "wss://example.test/ws",
-      token: "token-only",
+      token: FIXTURE_VALUE_2,
       workspaceSlug: "workspace",
     });
 
@@ -146,7 +150,7 @@ describe("WSClient session renewal", () => {
 
     expect(JSON.parse(MockWebSocket.instances[0].sent[0])).toEqual({
       type: "auth",
-      payload: { token: "token-only" },
+      payload: { token: FIXTURE_VALUE_2 },
     });
   });
 });
