@@ -297,8 +297,8 @@ func backgroundServices(h *handler.Handler) (*service.TaskService, *service.Auto
 // jwtSecretBootError returns a non-nil error when the combination of
 // JWT_SECRET and APP_ENV is unsafe to boot with: production must never run
 // on an empty or publicly-known default secret (auth.ValidateJWTSecret).
-// Non-production keeps the historical dev fallback (see auth.JWTSecret)
-// and only warns.
+// Outside production an empty secret only warns: auth.JWTSecret signs with a
+// random per-process key.
 func jwtSecretBootError(jwtSealed, appEnv string) error {
 	isProduction := strings.EqualFold(strings.TrimSpace(appEnv), "production")
 	if !isProduction {
@@ -340,7 +340,7 @@ func main() {
 		os.Exit(1)
 	}
 	if os.Getenv("JWT_SECRET") == "" {
-		slog.Warn("JWT_SECRET is not set — using insecure dev default (allowed only because APP_ENV is not production).")
+		slog.Warn("JWT_SECRET is not set — signing with a random key, so sessions end when the server stops (allowed only because APP_ENV is not production).")
 	}
 	if os.Getenv("RESEND_API_KEY") == "" && strings.TrimSpace(os.Getenv("SMTP_HOST")) == "" {
 		slog.Warn("no email backend configured (RESEND_API_KEY and SMTP_HOST both empty) — verification codes will be printed to the log instead of emailed.")
@@ -378,7 +378,8 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		slog.Error("refusing to start: DATABASE_URL is not set")
+		os.Exit(1)
 	}
 
 	startupSettings := dbstartup.SettingsFromEnv()

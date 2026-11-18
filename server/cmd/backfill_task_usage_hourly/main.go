@@ -73,7 +73,7 @@ func run() error {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		return fmt.Errorf("DATABASE_URL is not set")
 	}
 
 	// SIGINT/SIGTERM cancels ctx so an in-flight slice stops cleanly —

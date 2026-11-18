@@ -11,7 +11,9 @@ import (
 	"sync"
 )
 
-const defaultJWTSealed = "multica-dev-secret-change-in-production"
+// publishedJWTSealed is the dev default earlier releases signed with when
+// JWT_SECRET was unset; it is public, so it stays on the denylist.
+const publishedJWTSealed = "multica-dev-secret-change-in-production"
 
 var (
 	jwtSecret     []byte
@@ -22,7 +24,14 @@ func JWTSecret() []byte {
 	jwtSecretOnce.Do(func() {
 		sealed := os.Getenv("JWT_SECRET")
 		if sealed == "" {
-			sealed = defaultJWTSealed
+			// No built-in key: sign with a random one for this process, so
+			// sessions end when it stops. Production refuses to boot first.
+			key := make([]byte, 32)
+			if _, err := rand.Read(key); err != nil {
+				panic("auth: no random key for JWT_SECRET: " + err.Error())
+			}
+			jwtSecret = key
+			return
 		}
 		jwtSecret = []byte(sealed)
 	})
@@ -37,13 +46,13 @@ func JWTSecret() []byte {
 var ErrInsecureJWTSecret = errors.New("JWT_SECRET is empty or a known insecure default")
 
 // insecureJWTSecrets is the denylist of values that must never reach a
-// production deployment. The empty string is covered by JWTSecret()'s
-// dev-only fallback; "change-me-in-production" was historically shipped by
+// production deployment. Outside production an empty JWT_SECRET gets a random
+// per-process key from JWTSecret(); "change-me-in-production" was historically shipped by
 // docker-compose.selfhost.yml and .env.example. Add any placeholder a template
 // ships with to this list before publishing it.
 var insecureJWTSealeds = map[string]struct{}{
 	"":                        {},
-	defaultJWTSealed:          {},
+	publishedJWTSealed:        {},
 	"change-me-in-production": {},
 }
 
