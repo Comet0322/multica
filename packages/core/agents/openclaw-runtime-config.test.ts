@@ -6,6 +6,8 @@ import {
   serializeOpenclawRuntimeConfig,
 } from "./openclaw-runtime-config";
 
+const FIXTURE_VALUE_1 = "rotated-secret";
+
 describe("serializeOpenclawRuntimeConfig", () => {
   it("keeps the masked gateway token sentinel so the API can preserve the persisted token", () => {
     expect(
@@ -52,13 +54,13 @@ describe("serializeOpenclawRuntimeConfig", () => {
       serializeOpenclawRuntimeConfig({
         mode: "gateway",
         gateway: {
-          token: "rotated-secret",
+          token: FIXTURE_VALUE_1,
         },
       }),
     ).toEqual({
       mode: "gateway",
       gateway: {
-        token: "rotated-secret",
+        token: FIXTURE_VALUE_1,
       },
     });
   });

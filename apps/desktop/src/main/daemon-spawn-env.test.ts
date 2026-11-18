@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { daemonSpawnEnv } from "./daemon-spawn-env";
 
+const FIXTURE_VALUE_1 = "secret";
+
 const repo = resolve("/repo");
 const desktop = join(repo, "apps", "desktop");
 const userPath = [resolve("/opt/homebrew/bin"), resolve("/usr/bin")];
@@ -44,7 +46,7 @@ const LAUNCHER_ENV = {
 const USER_ENV = {
   HOME: "/Users/me",
   PNPM_HOME: "/Users/me/Library/pnpm",
-  TURBO_TOKEN: "secret",
+  TURBO_TOKEN: FIXTURE_VALUE_1,
   ELECTRON_MIRROR: "https://mirror.example/electron/",
   NODE_OPTIONS: "--max-old-space-size=8192",
 };

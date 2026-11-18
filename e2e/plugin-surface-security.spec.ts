@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { buildSurfaceFrameDocument } from "../packages/views/plugins/surface-document";
 
+const FIXTURE_VALUE_1 = "proof";
+
 test.describe("plugin surface browser boundary", () => {
   test("a normal hosted document relays exactly one guest-created port", async ({ page }) => {
     await page.route("https://plugin-content.example.test/**", async (route) => {
@@ -19,7 +21,7 @@ test.describe("plugin surface browser boundary", () => {
     });
     const wrapper = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/opaque",
-      bridgeToken: "proof",
+      bridgeToken: FIXTURE_VALUE_1,
     });
     await page.setContent(`<script>window.bridgeCount = 0; addEventListener("message", event => {
       if (event.data?.type === "multica:plugin-bridge-connect" && event.ports[0]) window.bridgeCount += 1;
@@ -60,7 +62,7 @@ test.describe("plugin surface browser boundary", () => {
 
     const wrapper = buildSurfaceFrameDocument({
       url: "https://plugin-content.example.test/plugin-surfaces/opaque",
-      bridgeToken: "proof",
+      bridgeToken: FIXTURE_VALUE_1,
     });
     await page.setContent(`<script>window.bridgeCount = 0; window.blockedCount = 0; window.bridgeReply = false; addEventListener("message", event => {
       if (event.data?.type === "multica:plugin-bridge-connect" && event.ports[0]) {

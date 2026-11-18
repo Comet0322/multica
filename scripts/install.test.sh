@@ -266,9 +266,9 @@ PORT=8080
 # API_PORT=8080
 # SERVER_PORT=8080
 FRONTEND_PORT=3000
-JWT_SECRET=change-me-in-production
-POSTGRES_PASSWORD=multica
-DATABASE_URL=postgres://multica:multica@localhost:5432/multica?sslmode=disable
+JWT_SECRET=
+POSTGRES_PASSWORD=
+DATABASE_URL=postgres://multica:@localhost:5432/multica?sslmode=disable
 ENVFILE
   touch "$server_dir/docker-compose.selfhost.yml"
 

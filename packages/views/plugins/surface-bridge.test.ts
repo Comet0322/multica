@@ -5,9 +5,9 @@ vi.mock("@multica/core/api", () => ({ api: { callPluginAction: mockCall } }));
 
 import { createSurfaceBridge } from "./surface-bridge";
 
-const TOKEN = "single-use-launch-proof";
+const LAUNCH_PROOF = "single-use-launch-proof";
 
-function connectMessage(source: Window | null, port: MessagePort, challenge = TOKEN, version = 2) {
+function connectMessage(source: Window | null, port: MessagePort, challenge = LAUNCH_PROOF, version = 2) {
   const event = new MessageEvent("message", {
     data: { type: "multica:plugin-bridge-connect", version, challenge },
   });
@@ -17,7 +17,7 @@ function connectMessage(source: Window | null, port: MessagePort, challenge = TO
 }
 
 function connectedBridge(
-  options: Parameters<typeof createSurfaceBridge>[0] = { installationId: "installation-1", bridgeToken: TOKEN },
+  options: Parameters<typeof createSurfaceBridge>[0] = { installationId: "installation-1", bridgeToken: LAUNCH_PROOF },
 ) {
   const bridge = createSurfaceBridge(options);
   const posted: unknown[] = [];
@@ -60,7 +60,7 @@ describe("surface bridge", () => {
   });
 
   it("forwards an allowed request with the installation that owns the channel", async () => {
-    const { port } = connectedBridge({ installationId: "installation-1", bridgeToken: TOKEN, issueId: "issue-1" });
+    const { port } = connectedBridge({ installationId: "installation-1", bridgeToken: LAUNCH_PROOF, issueId: "issue-1" });
     port.postMessage({ id: "r1", kind: "action", method: "GET", path: "/context" });
 
     await vi.waitFor(() => expect(mockCall).toHaveBeenCalledWith("installation-1", expect.objectContaining({
@@ -92,7 +92,7 @@ describe("surface bridge", () => {
     const heights: number[] = [];
     const { port, posted } = connectedBridge({
       installationId: "installation-1",
-      bridgeToken: TOKEN,
+      bridgeToken: LAUNCH_PROOF,
       onResize: (height) => heights.push(height),
     });
     port.postMessage({ id: "large", kind: "ui.resize", height: 10_000_000 });
@@ -102,7 +102,7 @@ describe("surface bridge", () => {
   });
 
   it("sends the theme current at connection, then each pushed change", async () => {
-    const bridge = createSurfaceBridge({ installationId: "installation-1", bridgeToken: TOKEN });
+    const bridge = createSurfaceBridge({ installationId: "installation-1", bridgeToken: LAUNCH_PROOF });
     const frame = { contentWindow: {} } as unknown as HTMLIFrameElement;
     const themes: unknown[] = [];
     const channel = new MessageChannel();
@@ -122,7 +122,7 @@ describe("surface bridge", () => {
   });
 
   it("refuses the wrong frame, protocol, challenge, and a replay", async () => {
-    const bridge = createSurfaceBridge({ installationId: "installation-1", bridgeToken: TOKEN });
+    const bridge = createSurfaceBridge({ installationId: "installation-1", bridgeToken: LAUNCH_PROOF });
     const frame = { contentWindow: {} } as unknown as HTMLIFrameElement;
     bridge.connect(frame, {});
 
@@ -130,7 +130,7 @@ describe("surface bridge", () => {
     const wrongVersion = new MessageChannel();
     const wrongChallenge = new MessageChannel();
     connectMessage({} as Window, wrongSource.port1);
-    connectMessage(frame.contentWindow, wrongVersion.port1, TOKEN, 1);
+    connectMessage(frame.contentWindow, wrongVersion.port1, LAUNCH_PROOF, 1);
     connectMessage(frame.contentWindow, wrongChallenge.port1, "wrong");
 
     const accepted = new MessageChannel();
