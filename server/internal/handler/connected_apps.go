@@ -16,6 +16,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/connectedapps"
 	"github.com/multica-ai/multica/server/internal/integrations/composio"
 	"github.com/multica-ai/multica/server/internal/logger"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -669,7 +670,7 @@ func (h *Handler) ListAppActivity(w http.ResponseWriter, r *http.Request) {
 	slug := connectedapps.NormalizeSlug(r.URL.Query().Get("toolkit_slug"))
 	limit := int32(50)
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 200 {
-		limit = int32(v)
+		limit = util.SatInt32(v)
 	}
 	var rows []db.AppToolCall
 	var err error

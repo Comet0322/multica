@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 	"github.com/multica-ai/multica/server/pkg/redact"
@@ -245,7 +246,7 @@ func (h *Handler) ReportTaskEnvironments(w http.ResponseWriter, r *http.Request)
 			StartedAt:    pgtype.Timestamptz{Time: env.StartedAt, Valid: true},
 		}
 		if env.Port > 0 {
-			params.Port = pgtype.Int4{Int32: int32(env.Port), Valid: true}
+			params.Port = pgtype.Int4{Int32: util.SatInt32(env.Port), Valid: true}
 		}
 		if env.ExpiresAt != nil {
 			params.ExpiresAt = pgtype.Timestamptz{Time: *env.ExpiresAt, Valid: true}

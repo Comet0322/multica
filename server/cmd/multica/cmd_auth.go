@@ -308,7 +308,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 		jwtCh <- ticket
 	})
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
 			errCh <- err
