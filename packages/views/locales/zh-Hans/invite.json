@@ -1,0 +1,35 @@
+{
+  "header": {
+    "back": "返回",
+    "log_out": "退出登录"
+  },
+  "list": {
+    "title": "你被邀请加入工作区",
+    "subtitle": "加入后直接进入该工作区，其余邀请会保留。",
+    "workspace_fallback": "工作区",
+    "inviter_fallback": "某人",
+    "invited_admin": "{{inviter}} 邀请你以管理员身份加入",
+    "invited_member": "{{inviter}} 邀请你以成员身份加入",
+    "accept": "加入",
+    "joining": "加入中...",
+    "decline": "拒绝",
+    "declining": "拒绝中...",
+    "skip": "跳过，创建我自己的工作区"
+  },
+  "empty": {
+    "title": "没有待处理的邀请",
+    "hint": "继续创建你自己的工作区。",
+    "continue": "继续创建",
+    "go_to_dashboard": "前往主页"
+  },
+  "linked": {
+    "not_found": "此邀请可能已过期、已被撤销，或不属于你的账号。",
+    "accepted": "此邀请已被接受。",
+    "declined": "此邀请已被拒绝。",
+    "expired": "此邀请已过期。"
+  },
+  "errors": {
+    "accept_failed": "接受邀请失败",
+    "decline_failed": "拒绝邀请失败"
+  }
+}
