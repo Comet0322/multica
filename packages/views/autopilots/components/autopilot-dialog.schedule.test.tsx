@@ -110,6 +110,8 @@ vi.mock("./pickers/timezone-picker", () => ({
 
 import { AutopilotDialog } from "./autopilot-dialog";
 
+const FIXTURE_VALUE_1 = "tok-1";
+
 const AUTOPILOT_ID = "ap-1";
 
 function trigger(overrides: Partial<AutopilotTrigger> = {}): AutopilotTrigger {
@@ -342,7 +344,7 @@ describe("AutopilotDialog webhook section", () => {
       kind: "webhook",
       cron_expression: null,
       timezone: null,
-      webhook_token: "tok-1",
+      webhook_token: FIXTURE_VALUE_1,
       event_filters: [{ event: "pull_request" }],
       ...overrides,
     });

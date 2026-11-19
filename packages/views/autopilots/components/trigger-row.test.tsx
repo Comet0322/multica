@@ -50,6 +50,8 @@ vi.mock("./pickers/timezone-picker", () => ({
 
 import { TriggerRow } from "./autopilot-detail-page";
 
+const FIXTURE_VALUE_1 = "tok-1";
+
 const AUTOPILOT_ID = "ap-1";
 
 function trigger(overrides: Partial<AutopilotTrigger> = {}): AutopilotTrigger {
@@ -142,7 +144,7 @@ describe("TriggerRow on a webhook", () => {
       cron_expression: null,
       timezone: null,
       next_run_at: null,
-      webhook_token: "tok-1",
+      webhook_token: FIXTURE_VALUE_1,
       ...overrides,
     });
   }
