@@ -21,6 +21,8 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { EditWebhookTriggerDialog } from "./edit-webhook-trigger-dialog";
 
+const FIXTURE_VALUE_1 = "tok-1";
+
 const AUTOPILOT_ID = "ap-1";
 
 function trigger(overrides: Partial<AutopilotTrigger> = {}): AutopilotTrigger {
@@ -32,7 +34,7 @@ function trigger(overrides: Partial<AutopilotTrigger> = {}): AutopilotTrigger {
     cron_expression: null,
     timezone: null,
     next_run_at: null,
-    webhook_token: "tok-1",
+    webhook_token: FIXTURE_VALUE_1,
     label: null,
     event_filters: [{ event: "pull_request", actions: ["opened"] }],
     last_fired_at: null,

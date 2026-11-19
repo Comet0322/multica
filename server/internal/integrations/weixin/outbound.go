@@ -330,7 +330,7 @@ func (o *Outbound) deliverReply(ctx context.Context, reply outboundReply) error 
 			_ = settle("send_result_unknown")
 			return sendErr
 		}
-		rows, err = o.q.RecordChannelReplyDeliveryChunk(record, db.RecordChannelReplyDeliveryChunkParams{TurnID: turn.TurnID, OwnerToken: owner, MessageID: messageID, ChunksSent: int32(i + 1)})
+		rows, err = o.q.RecordChannelReplyDeliveryChunk(record, db.RecordChannelReplyDeliveryChunkParams{TurnID: turn.TurnID, OwnerToken: owner, MessageID: messageID, ChunksSent: util.SatInt32(i + 1)})
 		if err == nil && rows == 1 {
 			err = o.q.RecordChannelOutboundMessage(record, db.RecordChannelOutboundMessageParams{OutboundInstallationID: inst.ID, OutboundChannelType: string(TypeWeixin), OutboundMessageID: messageID, OutboundBindingID: delivery.BindingID, OutboundRouteRevision: delivery.RouteRevision, OutboundTaskID: taskID, OutboundKind: "task_reply"})
 		}
