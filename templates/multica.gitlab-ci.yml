@@ -9,7 +9,8 @@
 #   IMAGE_REPO            where built images go (default: this project's registry)
 #   PUSH_REGISTRY, PUSH_USER, PUSH_PASSWORD  optional credentials for IMAGE_REPO
 #   KANIKO_EXTRA          optional extra Kaniko flags, e.g. for a plain-HTTP registry
-#   GO_TEST_P, VITEST_WORKERS  test parallelism, from the runner's CPU limit
+#   GO_TEST_P, VITEST_WORKERS  test parallelism per job, from the runner's CPU
+#                         limit; VITEST_WORKERS applies to each frontend shard
 
 include:
   - local: company/ci/images.yml
@@ -111,19 +112,29 @@ sqlc-check:
   script:
     - make sqlc && git diff --exit-code
 
-frontend:
+# mobile and desktop are not shipped by the company
+frontend-check:
   stage: test
   cache: *pnpm-cache
-  <<: *reports
   script:
-    # mobile and desktop are not shipped by the company
     - pnpm install --frozen-lockfile
     - pnpm exec turbo typecheck lint --filter='!@multica/mobile' --filter='!@multica/desktop'
+
+# Vitest split into shards that run in parallel; views alone takes most of the
+# time. Each shard runs its share of every package and writes its own reports.
+frontend:
+  stage: test
+  parallel: 3
+  cache: { <<: *pnpm-cache, policy: pull }
+  <<: *reports
+  script:
+    - pnpm install --frozen-lockfile
     - |
+      s=$CI_NODE_INDEX/$CI_NODE_TOTAL; n=$CI_NODE_INDEX
       for p in core ui web views; do
-        pnpm --filter @multica/$p exec vitest run --maxWorkers=$VITEST_WORKERS --reporter=default \
-          --reporter=junit --outputFile.junit=$CI_PROJECT_DIR/reports/$p.xml \
-          --reporter=json --outputFile.json=$CI_PROJECT_DIR/reports/$p.vitest.json || echo $p >> failed-pkgs
+        pnpm --filter @multica/$p exec vitest run --shard=$s --passWithNoTests --maxWorkers=$VITEST_WORKERS --reporter=default \
+          --reporter=junit --outputFile.junit=$CI_PROJECT_DIR/reports/$p-$n.xml \
+          --reporter=json --outputFile.json=$CI_PROJECT_DIR/reports/$p-$n.vitest.json || echo $p >> failed-pkgs
       done
     # rerun only failed files, and only when every one is on the flaky list
     - |
@@ -191,7 +202,7 @@ test-changes-recorded:
 
 frozen-tests:
   stage: check
-  needs: [go-test, frontend]
+  needs: [go-test, frontend]   # every frontend shard
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
@@ -202,6 +213,7 @@ frozen-tests:
 images:
   extends: .kaniko
   stage: build
+  needs: []   # independent of the tests: build while they run
   rules:
     - if: $CI_COMMIT_BRANCH =~ /^(company|baseline)\//
   script:

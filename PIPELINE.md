@@ -35,7 +35,7 @@ The template also carries jobs for later stages (`protected-changes` and `frozen
 
    If `pnpm install` fails on blocked versions, add the pins as a second commit (Blocked npm versions).
 3. **Make it green.** The `ci-tools` job builds the CI image first, then the test jobs and `images` run. Fix each red job with Known problems below. A red job that is none of these is a real failure of the snapshot: report it back to stage 1.
-4. **Make it stable.** Run the pipeline three times, once while other pipelines run. Add to `flaky-tests.txt` only tests that pass when run alone (Flaky list).
+4. **Make it stable.** Run the pipeline three times, once while other pipelines run: starting all three at once covers both (`POST /projects/:id/pipeline?ref=baseline/$NEW`, or Run pipeline in the UI). Add to `flaky-tests.txt` only tests that pass when run alone (Flaky list).
 5. **Record** the green pipeline URL; PORTING.md step 1 needs it. Write every deviation from the template, and why, in `company/ci/environment.md`.
 
 Done when: the baseline pipeline is green three times in a row and its URL is recorded.
@@ -49,10 +49,11 @@ The template does each of these; keep them when adapting it.
 - **ci-tools**: builds the CI image (non-root user, git >= 2.40, the toolchain) when its recipe or `images.yml` changes.
 - **go-test**: a PostgreSQL + pgvector service of the chart's major version; migrations, then every Go package. One rerun, allowed only for tests on the flaky list. Writes `reports/go.json` and JUnit XML.
 - **sqlc-check**: `make sqlc` leaves no diff.
-- **frontend**: typecheck and lint (mobile and desktop excluded), vitest for `core`, `ui`, `web`, `views`; failed files rerun only when all are on the flaky list. Writes `reports/<pkg>.vitest.json` and JUnit XML.
+- **frontend-check**: typecheck and lint (mobile and desktop excluded).
+- **frontend**: vitest for `core`, `ui`, `web`, `views`, split into parallel shards (`parallel:`, `vitest --shard`); in each shard, failed files rerun only when all are on the flaky list. Writes `reports/<pkg>-<shard>.vitest.json` and JUnit XML. More shards shorten the pipeline only while the runner has free slots or pods.
 - **helm**: `scripts/helm-config.test.sh` (lint and render; deploys nothing).
 - **scripts**: `scripts/*.test.sh`; drop the ones the company does not use, and say so in `environment.md`.
-- **images**: backend and web images from upstream's Dockerfiles, untouched in the repo; fails when a `FROM` is not mapped in `images.yml`. Building the web image runs `next build`.
+- **images**: backend and web images from upstream's Dockerfiles, untouched in the repo; fails when a `FROM` is not mapped in `images.yml`. Building the web image runs `next build`. It runs alongside the tests (`needs: []`); a red test job still makes the pipeline red.
 
 Compare with upstream's `.github/workflows/ci.yml` on each version and record in `environment.md` which of its checks the company also runs. Not in the template: `-race`, `go vet -tags agentintegration`, `govulncheck`, the repo-script and UI checks (`pnpm test:scripts`, knip, catalog, radius, wildcard exports), the generated-file checks (reserved slugs, text-preview whitelist), and running `pkg/agent` on its own with low parallelism (`scripts/test-go.sh --only agent`).
 
@@ -95,6 +96,7 @@ packages/views/inbox/components/inbox-snooze-menu.test.tsx
 packages/views/issues/components/annotation-reply-interactions.test.tsx
 packages/views/issues/components/pickers/custom-property-picker.select.test.tsx
 packages/views/search/search-command.test.tsx
+packages/views/common/date-only-picker.test.tsx
 ```
 
 ## Blocked npm versions
