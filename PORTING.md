@@ -3,9 +3,10 @@
 Stage 3 of the upgrade flow, run **inside the company** by a person in their own Claude Code session (SKILL.md), with the agent account for git and GitLab. Produce an **impact report** for a person to review. This stage analyses and trial-ports only: implementation is IMPLEMENT.md, after the review.
 
 ```bash
-OLD_BASE=security/v0.11.0-clean   # fork snapshot the company is on
-NEW_BASE=security/v0.12.0-clean   # new snapshot, already through stages 1 and 2
-COMPANY=company/main              # OLD_BASE plus the customizations
+git fetch origin                         # compare the remote branches, not stale local ones
+OLD_BASE=origin/security/v0.11.0-clean   # fork snapshot the company is on
+NEW_BASE=origin/security/v0.12.0-clean   # new snapshot, already through stages 1 and 2
+COMPANY=origin/company/main              # OLD_BASE plus the customizations
 NEW=v0.12.0                       # names the report files and branches
 ```
 

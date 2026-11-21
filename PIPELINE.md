@@ -26,8 +26,9 @@ The template also carries jobs for later stages (`protected-changes` and `frozen
 2. **Baseline branch**, a person's step:
 
    ```bash
-   git switch -c baseline/$NEW security/$NEW-clean
-   git checkout company/main -- company/ci          # or templates/ the first time
+   git fetch origin                                 # a local company/main can be stale
+   git switch -c baseline/$NEW origin/security/$NEW-clean
+   git checkout origin/company/main -- company/ci   # or templates/ the first time
    # replace company/ci/images.yml with the one for this version
    git commit -m "ci: pipeline for the $NEW baseline"
    git push origin baseline/$NEW
@@ -81,10 +82,11 @@ Each was a red pipeline in the simulation. Symptom, cause, fix:
 | pnpm install: `ERR_PNPM_FETCH_403` | the security policy blocks that version | Blocked npm versions |
 | views tests time out at 5 s, a different file each run | too many vitest workers for the pod's CPU | `VITEST_WORKERS`, `GO_TEST_P` from the CPU limit (DIAGNOSE.md) |
 | a different `pkg/agent` test fails each run | subprocess tests with hard deadlines under load | the package prefix on the flaky list, or upstream's throttled `test-go.sh --only agent` |
+| several `internal/handler` `TestClaimTask*` fail with "expected task in response" (more than 5 failures, so nothing is rerun) | the test runtime's heartbeat is refreshed only now and then, and a claim needs one within 150 s (`RuntimeClaimFreshnessSeconds`); the package ran slowly under load (over 5 min) | lower `GO_TEST_P`, or fewer pipelines at once on the runner; they pass alone |
 
 ## Flaky list
 
-`company/ci/flaky-tests.txt`: one entry per line, matched as a substring against the Go rerun report (`pkg.TestName: 2 runs, 1 failures`) and the failed vitest file paths. An entry is a Go test name, a test file path, or a package prefix such as `github.com/multica-ai/multica/server/pkg/agent.`. Add one only after the test passes when run alone (`go test ./<pkg> -run '<name>' -count=5`, `pnpm exec vitest run <file>`). The list depends on the runner's load, not on the code. Entries seen in the simulation, as a start:
+`company/ci/flaky-tests.txt`: one entry per line, matched as a substring against the Go rerun report (`pkg.TestName: 2 runs, 1 failures`) and the failed vitest file paths. An entry is a Go test name, a test file path, or a package prefix such as `github.com/multica-ai/multica/server/pkg/agent.`. Add one only after the test passes when run alone (`go test ./<pkg> -run '<name>' -count=5`, `pnpm exec vitest run <file>`). A Go test that needs PostgreSQL can be run alone in CI instead of locally: start a pipeline on the branch with `GO_TEST_PKGS=./internal/<pkg>`, `GO_TEST_RUN=<regex>` and `GO_TEST_COUNT=5` (only go-test and the cheap checks run). Do not start a local database for it on a shared machine. The list depends on the runner's load, not on the code. Entries seen in the simulation, as a start:
 
 ```text
 github.com/multica-ai/multica/server/pkg/agent.

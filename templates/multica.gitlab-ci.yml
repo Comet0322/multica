@@ -99,10 +99,13 @@ go-test:
   script:
     - export DATABASE_URL="postgres://multica:$PG_PASSWORD@postgres:5432/multica?sslmode=disable"
     - cd server && go run ./cmd/migrate up
+    # GO_TEST_PKGS, GO_TEST_RUN, GO_TEST_COUNT (set on a pipeline started by
+    # hand) run one package or test alone, e.g. to check that a test passes
+    # alone before it goes on the flaky list; the frontend and images jobs skip.
     - >-
       gotestsum --junitfile ../reports/go.xml --jsonfile ../reports/go.json
       --rerun-fails=1 --rerun-fails-max-failures=5 --rerun-fails-report=../reports/go-rerun.txt
-      --packages=./... -- -p $GO_TEST_P
+      --packages="${GO_TEST_PKGS:-./...}" -- -p $GO_TEST_P ${GO_TEST_RUN:+-run=$GO_TEST_RUN} ${GO_TEST_COUNT:+-count=$GO_TEST_COUNT}
     # a rerun is allowed only for tests on the flaky list
     - if [ -s ../reports/go-rerun.txt ] && grep -vFf ../company/ci/flaky-tests.txt ../reports/go-rerun.txt; then exit 1; fi
 
@@ -113,8 +116,15 @@ sqlc-check:
     - make sqlc && git diff --exit-code
 
 # mobile and desktop are not shipped by the company
+.not-alone: &not-alone
+  rules:
+    - if: $GO_TEST_PKGS
+      when: never
+    - when: on_success
+
 frontend-check:
   stage: test
+  <<: *not-alone
   cache: *pnpm-cache
   script:
     - pnpm install --frozen-lockfile
@@ -125,6 +135,7 @@ frontend-check:
 frontend:
   stage: test
   parallel: 3
+  <<: *not-alone
   cache: { <<: *pnpm-cache, policy: pull }
   <<: *reports
   script:
@@ -215,6 +226,8 @@ images:
   stage: build
   needs: []   # independent of the tests: build while they run
   rules:
+    - if: $GO_TEST_PKGS
+      when: never
     - if: $CI_COMMIT_BRANCH =~ /^(company|baseline)\//
   script:
     - sh company/ci/prepare-dockerfile.sh Dockerfile .ci-Dockerfile

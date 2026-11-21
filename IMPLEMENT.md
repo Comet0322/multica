@@ -16,9 +16,10 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 0. **Integration branch**, a person's step (or an agent session started with `MULTICA_FROZEN_UNLOCK=1`): start from the baseline, carry `company/` and every acceptance test over (they may live outside `company/`), apply what the review approved, and bring the Carry list across:
 
    ```bash
-   git switch -c company/$NEW baseline/$NEW
-   git checkout company/main -- company .claude/settings.json   # the guard hook lives outside company/
-   git checkout company/main -- $(yq -r '.features[].acceptance[]' company/customizations.yaml)
+   git fetch origin                     # a local branch can be stale: use origin/
+   git switch -c company/$NEW origin/baseline/$NEW
+   git checkout origin/company/main -- company .claude/settings.json   # the guard hook lives outside company/
+   git checkout origin/company/main -- $(yq -r '.features[].acceptance[]' company/customizations.yaml)
    # apply the approved frozen-test changes and inventory updates here, then:
    bash ~/.claude/skills/multica-fork/scripts/frozen-tests.sh gen .
    git add -A -f .claude/settings.json
