@@ -1,0 +1,10 @@
+# Upstream tests the company changed, one entry per file, with why. Copy to
+# company/upstream-test-changes.yaml. The `test-changes-recorded` job fails an
+# MR that changes a test (other than a frozen one) without an entry here;
+# PORTING.md re-checks every entry on each new version.
+changes: []
+#  - file: apps/web/app/font-stacks.test.ts
+#    feature: offline-fonts          # inventory id, or the stage 1 fix
+#    why: the fonts now come from @fontsource-variable, so the test reads the
+#      CSS imports instead of the next/font calls; it still checks that the
+#      font stacks match the CSS variables.

@@ -1,0 +1,473 @@
+From ccd6a120ded11fc3e875cada756d24ff17b809a1 Mon Sep 17 00:00:00 2001
+From: Comet0322 <maint@sim.invalid>
+Date: Sun, 22 Nov 2026 00:00:40 +0800
+Subject: [PATCH] fix(web): load fonts from @fontsource-variable instead of
+ next/font/google
+
+next/font/google downloads the faces from the Google Fonts CDN during
+`next build`, so the web image cannot be built on a network without
+internet access. Load the same fontsource packages and files the desktop
+renderer already uses; globals.css maps the families onto the existing
+--font-inter / --font-geist-mono / --font-jetbrains-mono /
+--font-source-serif variables, so every stack built on them is unchanged.
+
+The geist-mono, jetbrains-mono and source-serif-4 versions move into the
+pnpm catalog so web and desktop stay on the same files.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ apps/desktop/package.json                 |  6 +-
+ apps/desktop/src/renderer/src/globals.css |  8 +--
+ apps/desktop/src/renderer/src/main.tsx    | 11 ++-
+ apps/web/app/font-stacks.test.ts          | 58 ++++++++++++----
+ apps/web/app/globals.css                  | 21 +++---
+ apps/web/app/layout.tsx                   | 85 ++++++++---------------
+ apps/web/fontsource.d.ts                  |  3 +
+ apps/web/package.json                     |  4 ++
+ pnpm-lock.yaml                            | 29 +++++++-
+ pnpm-workspace.yaml                       |  3 +
+ 10 files changed, 133 insertions(+), 95 deletions(-)
+ create mode 100644 apps/web/fontsource.d.ts
+
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+index 5c705e5..90f08b5 100644
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -40,10 +40,10 @@
+     "@dnd-kit/utilities": "catalog:",
+     "@electron-toolkit/preload": "^3.0.2",
+     "@electron-toolkit/utils": "^4.0.0",
+-    "@fontsource-variable/geist-mono": "^5.3.0",
++    "@fontsource-variable/geist-mono": "catalog:",
+     "@fontsource-variable/inter": "catalog:",
+-    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+-    "@fontsource-variable/source-serif-4": "^5.2.9",
++    "@fontsource-variable/jetbrains-mono": "catalog:",
++    "@fontsource-variable/source-serif-4": "catalog:",
+     "@multica/core": "workspace:*",
+     "@multica/ee": "workspace:*",
+     "@multica/ui": "workspace:*",
+diff --git a/apps/desktop/src/renderer/src/globals.css b/apps/desktop/src/renderer/src/globals.css
+index ae2f93a..e91f15c 100644
+--- a/apps/desktop/src/renderer/src/globals.css
++++ b/apps/desktop/src/renderer/src/globals.css
+@@ -9,11 +9,9 @@
+ @custom-variant dark (&:is(.dark *));
+ 
+ /* Font stack: Inter for Latin UI text + system CJK fonts for localized content.
+-   Web app uses the same stack via next/font/google in apps/web/app/layout.tsx —
+-   keep the CJK fallback tail in sync across both files. The Inter primary family
+-   differs by design: next/font produces `__Inter_xxx` (with a synthetic size-adjusted
+-   fallback face to prevent FOUT layout shift); desktop uses fontsource's "Inter Variable".
+-   Both resolve to Inter glyphs, so rendering is identical in practice.
++   Web app loads the same fontsource packages (apps/web/app/layout.tsx) and
++   builds the same stack in apps/web/app/globals.css — keep the CJK fallback tail
++   in sync across both files.
+    Per-character fallback: Latin chars render with Inter, CJK chars render with
+    the platform-native Chinese/Korean fallback when needed. Chinese fonts must stay
+    before Korean fonts so zh users do not receive Korean Hanja glyph shapes.
+diff --git a/apps/desktop/src/renderer/src/main.tsx b/apps/desktop/src/renderer/src/main.tsx
+index 7442f5f..29ddcc1 100644
+--- a/apps/desktop/src/renderer/src/main.tsx
++++ b/apps/desktop/src/renderer/src/main.tsx
+@@ -7,21 +7,20 @@ import { launchWorkspaceSlug } from "./platform/workspace-windows";
+ import { useTabStore } from "./stores/tab-store";
+ // Inter variable font covers all weights (100-900) in a single file.
+ // CJK is handled by system font fallback (see globals.css --font-sans chain).
+-// Keep font stack in sync with apps/web/app/layout.tsx.
++// Keep font imports in sync with apps/web/app/layout.tsx, which loads the same files.
+ // The opsz files carry the optical-size axis on top of weight, so headings get
+-// Inter Display's cut while body text keeps the text cut — web loads the same
+-// axis via next/font `axes: ["opsz"]`.
++// Inter Display's cut while body text keeps the text cut.
+ // The italic axis ships as a separate file — without it the ~20 semantic italic
+ // labels and every markdown <em>/blockquote render as synthesized oblique.
+ import "@fontsource-variable/inter/opsz.css";
+ import "@fontsource-variable/inter/opsz-italic.css";
+-// Editorial serif — matches web's next/font Source_Serif_4. Loaded app-wide so
++// Editorial serif, same as web. Loaded app-wide so
+ // onboarding headings and any future editorial surface can use `font-serif`
+ // (see tokens.css @theme inline). Variable font = one file covers all weights.
+ import "@fontsource-variable/source-serif-4";
+ import "@fontsource-variable/source-serif-4/wght-italic.css";
+-// Mono must be the variable cut, not discrete 400/700: web gets a variable Geist
+-// Mono from next/font, so any weight desktop does not load silently snaps to the
++// Mono must be the variable cut, not discrete 400/700: web loads the variable
++// Geist Mono too, so any weight desktop does not load silently snaps to the
+ // nearest one it has and the same shared component renders at two different
+ // weights. That was already true for `font-mono font-medium` (500 -> 400) in
+ // chart.tsx, webhook-event-filter-section.tsx and keyboard-shortcuts-tab.tsx, and
+diff --git a/apps/web/app/font-stacks.test.ts b/apps/web/app/font-stacks.test.ts
+index dea05e9..c8f0f91 100644
+--- a/apps/web/app/font-stacks.test.ts
++++ b/apps/web/app/font-stacks.test.ts
+@@ -1,5 +1,6 @@
+ // @vitest-environment node
+ import { readFileSync } from "node:fs";
++import { createRequire } from "node:module";
+ import { resolve } from "node:path";
+ import { describe, expect, it } from "vitest";
+ 
+@@ -7,6 +8,8 @@ const read = (path: string) => readFileSync(resolve(__dirname, path), "utf8");
+ const webCss = read("./globals.css");
+ const desktopCss = read("../../desktop/src/renderer/src/globals.css");
+ const layout = read("./layout.tsx");
++const desktopMain = read("../../desktop/src/renderer/src/main.tsx");
++const requireFromWeb = createRequire(resolve(__dirname, "../package.json"));
+ 
+ const GENERIC = /^(?:serif|sans-serif|monospace|cursive|fantasy|system-ui|math|emoji|fangsong|ui-[a-z-]+)$/;
+ 
+@@ -16,37 +19,64 @@ function rootVariable(css: string, name: string): string {
+   return match[1];
+ }
+ 
+-/** The families next/font writes into `variable`: the face, its metric fallback and `fallback`. */
+-function nextFontFamilies(variable: string): string[] {
+-  const call = layout.split(/\n(?=const \w+ = \w+\()/).find((block) => block.includes(`variable: "${variable}"`));
+-  if (!call) throw new Error(`no next/font call declares ${variable}`);
+-  const fallback = call.match(/fallback:\s*\[([^\]]*)\]/)?.[1] ?? "";
+-  return ["<face>", "<face> Fallback", ...[...fallback.matchAll(/"([^"]+)"/g)].map((m) => m[1]!)];
+-}
+-
+-function families(stack: string): string[] {
++/** Families of a stack, with `var(--x)` references resolved against the same stylesheet. */
++function families(css: string, stack: string): string[] {
+   return stack.split(",").flatMap((part) => {
+     const family = part.trim().replace(/^["']|["']$/g, "");
+     const variable = family.match(/^var\((--[\w-]+)\)$/)?.[1];
+-    return variable ? nextFontFamilies(variable) : [family];
++    return variable ? families(css, rootVariable(css, variable)) : [family];
+   });
+ }
+ 
++function fontsourceImports(source: string): string[] {
++  return [...source.matchAll(/^import "(@fontsource-variable\/[^"]+)";$/gm)].map((m) => m[1]!).sort();
++}
++
++/** The `font-family` names declared by the stylesheets of the given imports. */
++function declaredFamilies(imports: string[]): Set<string> {
++  return new Set(
++    imports.flatMap((spec) => {
++      const css = readFileSync(requireFromWeb.resolve(spec), "utf8");
++      return [...css.matchAll(/font-family:\s*['"]([^'"]+)['"]/g)].map((m) => m[1]!);
++    }),
++  );
++}
++
+ describe("Appearance Latin faces", () => {
+   // The CJK choice follows these in --font-sans and --font-content, so a
+   // generic family here would draw Han before the CJK font is reached.
+   const names = ["--font-ui-inter", "--font-ui-serif", "--font-ui-mono"];
+ 
+   it.each(names)("web %s names families only", (name) => {
+-    expect(families(rootVariable(webCss, name)).filter((f) => GENERIC.test(f))).toEqual([]);
++    expect(families(webCss, rootVariable(webCss, name)).filter((f) => GENERIC.test(f))).toEqual([]);
+   });
+ 
+   it.each(names)("desktop %s names families only", (name) => {
+-    expect(families(rootVariable(desktopCss, name)).filter((f) => GENERIC.test(f))).toEqual([]);
++    expect(families(desktopCss, rootVariable(desktopCss, name)).filter((f) => GENERIC.test(f))).toEqual([]);
+   });
+ 
+   it("keeps the onboarding serif ending with its generic fallbacks", () => {
+-    expect(families(rootVariable(webCss, "--font-serif")).slice(-2)).toEqual(["Times New Roman", "serif"]);
+-    expect(families(rootVariable(webCss, "--font-serif"))).toContain("ui-serif");
++    expect(families(webCss, rootVariable(webCss, "--font-serif")).slice(-2)).toEqual(["Times New Roman", "serif"]);
++    expect(families(webCss, rootVariable(webCss, "--font-serif"))).toContain("ui-serif");
+   });
+ });
++
++describe("web font loading", () => {
++  // next/font/google downloads from the Google Fonts CDN during `next build`,
++  // which fails on networks without internet access.
++  it("needs no network at build time", () => {
++    expect(layout).not.toMatch(/from "next\/font\/google"/);
++  });
++
++  it("loads the same font files as desktop", () => {
++    expect(fontsourceImports(layout)).toEqual(fontsourceImports(desktopMain));
++  });
++
++  it.each(["--font-inter", "--font-geist-mono", "--font-jetbrains-mono", "--font-source-serif"])(
++    "%s names a family the layout loads",
++    (name) => {
++      const loaded = declaredFamilies(fontsourceImports(layout));
++      expect(families(webCss, rootVariable(webCss, name)).filter((f) => !loaded.has(f))).toEqual([]);
++    },
++  );
++});
+diff --git a/apps/web/app/globals.css b/apps/web/app/globals.css
+index d3b5401..84c0197 100644
+--- a/apps/web/app/globals.css
++++ b/apps/web/app/globals.css
+@@ -18,12 +18,12 @@
+ @source "../../../packages/views/**/*.{ts,tsx}";
+ @source "../../../packages/ee/**/*.{ts,tsx}";
+ 
+-/* Font stack. `--font-inter` is the next/font Inter family (+ its synthetic
+-   size-adjusted fallback), set on <html> by inter.variable in app/layout.tsx.
+-   We compose `--font-sans` here in static CSS — rather than baking the CJK tail
+-   into next/font's `fallback` — so it can be overridden per `<html lang>` and
+-   stays CSP-safe (no inline <style>). Tailwind's `font-sans` utility resolves
+-   `var(--font-sans)` (see packages/ui/styles/tokens.css `@theme inline`).
++/* Font stack. The faces come from the @fontsource-variable packages imported in
++   app/layout.tsx; the `--font-inter` family of variables below names them.
++   We compose `--font-sans` here in static CSS so it can be overridden per
++   `<html lang>` and stays CSP-safe (no inline <style>). Tailwind's `font-sans`
++   utility resolves `var(--font-sans)` (see packages/ui/styles/tokens.css
++   `@theme inline`).
+ 
+    Default (en / zh / ko): Latin chars render with Inter; CJK chars fall through
+    to the platform Chinese fonts, then Korean. Chinese MUST stay before Korean so
+@@ -31,6 +31,11 @@
+    block, so ko users still get Korean fonts for Hangul). Kept in sync with
+    apps/desktop/src/renderer/src/globals.css. */
+ :root {
++  /* Families declared by the @fontsource-variable packages. */
++  --font-inter: "Inter Variable";
++  --font-geist-mono: "Geist Mono Variable";
++  --font-jetbrains-mono: "JetBrains Mono Variable";
++  --font-source-serif: "Source Serif 4 Variable";
+   /* --font-ui and --font-cjk are set by the Appearance settings
+      (packages/core/appearance); unset, the stack is Inter + the CJK chain. */
+   --font-sans: var(--font-ui, var(--font-inter)), var(--font-cjk, var(--font-cjk-sans));
+@@ -41,8 +46,8 @@
+     monospace;
+   --font-serif: var(--font-source-serif), ui-serif, "Iowan Old Style", "Apple Garamond",
+     Baskerville, "Times New Roman", serif;
+-  /* Latin-only faces the Appearance settings can pick, over the next/font
+-     families from app/layout.tsx. Desktop defines the same names. The CJK
++  /* Latin-only faces the Appearance settings can pick, over the fontsource
++     families above. Desktop defines the same names. The CJK
+      font follows them, so they name families only: a generic family would
+      match Han first. */
+   --font-ui-inter: var(--font-inter);
+diff --git a/apps/web/app/layout.tsx b/apps/web/app/layout.tsx
+index 1662d7e..bed7cdb 100644
+--- a/apps/web/app/layout.tsx
++++ b/apps/web/app/layout.tsx
+@@ -1,9 +1,7 @@
+ import type { Metadata, Viewport } from "next";
+ import Script from "next/script";
+-import { Inter, Geist_Mono, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+ import { ThemeProvider } from "@/components/theme-provider";
+ import { Toaster } from "@multica/ui/components/ui/sonner";
+-import { cn } from "@multica/ui/lib/utils";
+ import { WebProviders } from "@/components/web-providers";
+ import { getRequestLocale } from "@/lib/request-locale";
+ import { HTML_LANG } from "@/lib/html-lang";
+@@ -15,63 +13,38 @@ import {
+ } from "@/config/runtime-urls";
+ import { resolveGoogleAnalyticsId } from "@/config/google-analytics";
+ import { GoogleAnalytics } from "@/components/google-analytics";
+-import "./globals.css";
+ 
+-// Inter is the Latin UI face. next/font produces a hashed family (`__Inter_xxx`)
+-// plus a synthetic size-adjusted fallback face to prevent FOUT layout shift —
+-// both are exposed under the `--font-inter` CSS variable.
++// Fonts ship as npm packages and are bundled at build time, so `next build`
++// needs no network access (next/font/google downloads from the Google Fonts
++// CDN during the build). Same packages and files as the desktop renderer
++// (apps/desktop/src/renderer/src/main.tsx); keep both lists in sync.
+ //
+-// The full `--font-sans` stack (Inter + the per-locale CJK fallback chain) is
+-// assembled in static CSS in ./globals.css, not here: it must be overridable per
+-// `<html lang>` (Japanese Kanji are Han ideographs and need a Japanese-first CJK
+-// stack), and a hashed family name can only be referenced from CSS via a variable.
+-// Keeping the CJK chain in CSS also keeps it CSP-safe and in sync with the desktop
+-// app, which defines the same chain in apps/desktop/src/renderer/src/globals.css.
++// ./globals.css maps each family onto the variable the stacks use
++// (`--font-inter`, `--font-geist-mono`, `--font-jetbrains-mono`,
++// `--font-source-serif`) and composes `--font-sans` with the per-locale CJK
++// chain there, so it can be overridden per `<html lang>` and stays CSP-safe.
+ //
+-// Italic is loaded explicitly: `style` defaults to `["normal"]`, and without a real
+-// italic face the ~20 semantic italic labels (chat empty states, model-picker's
+-// "Managed by runtime", dashboard/squad placeholders) plus every markdown <em> and
+-// blockquote rendered as browser-synthesized oblique. Keep in sync with desktop's
+-// `@fontsource-variable/inter/opsz-italic.css` import.
++// Every face declares all subsets with `unicode-range`; the browser fetches a
++// file only once a rendered character needs it, so the optional JetBrains Mono
++// code font and the editorial serif cost nothing on routes that do not use them.
+ //
+-// The `opsz` axis lets Inter draw each size with its own cut: 14px and below
+-// keep the open text design, while titles and headings get Inter Display's
+-// tighter spacing and finer details automatically (`font-optical-sizing: auto`
+-// is the CSS default). Keep in sync with desktop's `opsz.css` import.
+-const inter = Inter({
+-  subsets: ["latin"],
+-  style: ["normal", "italic"],
+-  axes: ["opsz"],
+-  variable: "--font-inter",
+-});
+-// Mono font has no explicit CJK fallback: CJK chars in code blocks are inherently
+-// non-aligned with a mono grid (Chinese is proportional), so listing CJK fonts
+-// here would falsely signal alignment guarantees. Browser default fallback handles
+-// the rare mixed case correctly. `--font-mono` itself is composed in
+-// ./globals.css so the Appearance code font can replace it without losing the
+-// Geist family, which the monospace UI font still uses.
+-const geistMono = Geist_Mono({
+-  subsets: ["latin"],
+-  variable: "--font-geist-mono",
+-});
+-// Optional code font from the Appearance settings. Not preloaded: the face is
+-// only fetched once something renders with it.
+-const jetbrainsMono = JetBrains_Mono({
+-  subsets: ["latin"],
+-  variable: "--font-jetbrains-mono",
+-  preload: false,
+-});
+-// Editorial serif used for onboarding headlines and the Appearance "Serif"
+-// font. Italic support for h1 em accents (e.g. "...on one shared board.").
+-// Only loaded on routes that render the font; layout-shift-prevention handled
+-// by next/font's synthetic fallback metrics, same as Inter. No `fallback`:
+-// next/font writes it into the variable, and the stacks built on it in
+-// ./globals.css differ in whether they may end with a generic family.
+-const sourceSerif = Source_Serif_4({
+-  subsets: ["latin"],
+-  style: ["normal", "italic"],
+-  variable: "--font-source-serif",
+-});
++// Inter: the `opsz` files add the optical-size axis on top of weight, so 14px
++// and below keep the open text cut while headings get Inter Display's tighter
++// spacing (`font-optical-sizing: auto` is the CSS default). Italic is its own
++// file; without it semantic italic labels, markdown <em> and blockquotes render
++// as browser-synthesized oblique.
++import "@fontsource-variable/inter/opsz.css";
++import "@fontsource-variable/inter/opsz-italic.css";
++// Mono has no explicit CJK fallback: CJK chars in code blocks cannot align to a
++// mono grid anyway, so the browser default fallback handles the rare mixed case.
++import "@fontsource-variable/geist-mono";
++// Optional code font from the Appearance settings.
++import "@fontsource-variable/jetbrains-mono";
++// Editorial serif for onboarding headlines and the Appearance "Serif" font,
++// with italic for h1 em accents.
++import "@fontsource-variable/source-serif-4";
++import "@fontsource-variable/source-serif-4/wght-italic.css";
++import "./globals.css";
+ 
+ export const viewport: Viewport = {
+   width: "device-width",
+@@ -159,7 +132,7 @@ export default async function RootLayout({
+     <html
+       lang={HTML_LANG[locale]}
+       suppressHydrationWarning
+-      className={cn("antialiased font-sans h-full", inter.variable, geistMono.variable, jetbrainsMono.variable, sourceSerif.variable)}
++      className="antialiased font-sans h-full"
+     >
+       <body className="h-full overflow-hidden">
+         {/*
+diff --git a/apps/web/fontsource.d.ts b/apps/web/fontsource.d.ts
+new file mode 100644
+index 0000000..df33abf
+--- /dev/null
++++ b/apps/web/fontsource.d.ts
+@@ -0,0 +1,3 @@
++// The package root ships no CSS type stub (its subpath .css imports are
++// covered by Next's `*.css` declaration). Desktop declares it the same way.
++declare module "@fontsource-variable/source-serif-4";
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 105c9da..7e48f40 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -14,6 +14,10 @@
+     "postinstall": "fumadocs-mdx"
+   },
+   "dependencies": {
++    "@fontsource-variable/geist-mono": "catalog:",
++    "@fontsource-variable/inter": "catalog:",
++    "@fontsource-variable/jetbrains-mono": "catalog:",
++    "@fontsource-variable/source-serif-4": "catalog:",
+     "@multica/core": "workspace:*",
+     "@multica/ee": "workspace:*",
+     "@multica/ui": "workspace:*",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index cdecbf8..b3fce10 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -21,9 +21,18 @@ catalogs:
+     '@dnd-kit/utilities':
+       specifier: ^3.2.2
+       version: 3.2.2
++    '@fontsource-variable/geist-mono':
++      specifier: ^5.3.0
++      version: 5.3.0
+     '@fontsource-variable/inter':
+       specifier: ^5.2.5
+       version: 5.2.8
++    '@fontsource-variable/jetbrains-mono':
++      specifier: ^5.3.0
++      version: 5.3.0
++    '@fontsource-variable/source-serif-4':
++      specifier: ^5.2.9
++      version: 5.2.9
+     '@formatjs/intl-localematcher':
+       specifier: ^0.8.4
+       version: 0.8.4
+@@ -326,16 +335,16 @@ importers:
+         specifier: ^4.0.0
+         version: 4.0.0(electron@44.9.3)
+       '@fontsource-variable/geist-mono':
+-        specifier: ^5.3.0
++        specifier: 'catalog:'
+         version: 5.3.0
+       '@fontsource-variable/inter':
+         specifier: 'catalog:'
+         version: 5.2.8
+       '@fontsource-variable/jetbrains-mono':
+-        specifier: ^5.3.0
++        specifier: 'catalog:'
+         version: 5.3.0
+       '@fontsource-variable/source-serif-4':
+-        specifier: ^5.2.9
++        specifier: 'catalog:'
+         version: 5.2.9
+       '@multica/core':
+         specifier: workspace:*
+@@ -797,6 +806,18 @@ importers:
+ 
+   apps/web:
+     dependencies:
++      '@fontsource-variable/geist-mono':
++        specifier: 'catalog:'
++        version: 5.3.0
++      '@fontsource-variable/inter':
++        specifier: 'catalog:'
++        version: 5.2.8
++      '@fontsource-variable/jetbrains-mono':
++        specifier: 'catalog:'
++        version: 5.3.0
++      '@fontsource-variable/source-serif-4':
++        specifier: 'catalog:'
++        version: 5.2.9
+       '@multica/core':
+         specifier: workspace:*
+         version: link:../../packages/core
+@@ -15386,7 +15407,9 @@ snapshots:
+       metro-runtime: 0.84.6
+     transitivePeerDependencies:
+       - '@babel/core'
++      - bufferutil
+       - supports-color
++      - utf-8-validate
+ 
+   '@react-native/normalize-colors@0.74.89': {}
+ 
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 9491871..3e97cbf 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -8,7 +8,10 @@ catalog:
+   '@dnd-kit/modifiers': ^9.0.0
+   '@dnd-kit/sortable': ^10.0.0
+   '@dnd-kit/utilities': ^3.2.2
++  '@fontsource-variable/geist-mono': ^5.3.0
+   '@fontsource-variable/inter': ^5.2.5
++  '@fontsource-variable/jetbrains-mono': ^5.3.0
++  '@fontsource-variable/source-serif-4': ^5.2.9
+   '@formatjs/intl-localematcher': ^0.8.4
+   '@tailwindcss/postcss': ^4
+   '@tailwindcss/vite': ^4
+-- 
+2.53.0
+

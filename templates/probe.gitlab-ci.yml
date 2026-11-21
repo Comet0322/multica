@@ -1,0 +1,203 @@
+# Environment probe for the company pipeline (DIAGNOSE.md). Runs on a
+# throwaway branch `probe/env` as that branch's company/ci/multica.gitlab-ci.yml.
+# Every job writes probe/<job>.txt; `report` joins them into probe-report.md.
+# A job that cannot start (image not in the registry, pod refused) leaves no
+# file, and the report lists it as "did not run": its job log says why.
+#
+# Inputs: company/ci/images.yml (from required-images.sh), CI/CD variables
+# GOPROXY, npm_config_registry, COREPACK_NPM_REGISTRY, and optionally APT_MIRROR,
+# APK_MIRROR, BUILD_PROXY, PUSH_REGISTRY/PUSH_USER/PUSH_PASSWORD.
+include:
+  - local: company/ci/images.yml
+
+stages: [probe, report]
+
+.probe:
+  stage: probe
+  needs: []
+  allow_failure: true
+  artifacts:
+    when: always
+    paths: [probe/]
+  before_script:
+    - mkdir -p probe
+    - out=probe/$CI_JOB_NAME_SLUG.txt
+    - 'say() { printf "%s: %s\n" "$1" "$2" | tee -a "$out"; }'
+
+# --- each image: can the runner pull it, and what is inside -----------------
+.image:
+  extends: .probe
+  script:
+    - say image "$PROBE_IMAGE"
+    - say user "$(id -u):$(id -g)"
+    - say arch "$(uname -m)"
+    - say os "$( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo unknown)"
+    - say version "$(sh -c "$PROBE_VERSION" 2>&1 | head -1)"
+image:go-build:
+  extends: .image
+  image: $IMG_GO_BUILD
+  variables: { PROBE_IMAGE: $IMG_GO_BUILD, PROBE_VERSION: "go version" }
+image:alpine-runtime:
+  extends: .image
+  image: $IMG_ALPINE_RUNTIME
+  variables: { PROBE_IMAGE: $IMG_ALPINE_RUNTIME, PROBE_VERSION: "cat /etc/alpine-release" }
+image:node-alpine:
+  extends: .image
+  image: $IMG_NODE_ALPINE
+  variables: { PROBE_IMAGE: $IMG_NODE_ALPINE, PROBE_VERSION: "node --version" }
+image:go-release:
+  extends: .image
+  image: $IMG_GO_RELEASE
+  variables: { PROBE_IMAGE: $IMG_GO_RELEASE, PROBE_VERSION: "go version" }
+image:helm:
+  extends: .image
+  image: { name: $IMG_HELM, entrypoint: [""] }
+  variables: { PROBE_IMAGE: $IMG_HELM, PROBE_VERSION: "helm version --short" }
+image:kaniko:
+  extends: .image
+  image: { name: $IMG_KANIKO, entrypoint: [""] }
+  variables: { PROBE_IMAGE: $IMG_KANIKO, PROBE_VERSION: "/kaniko/executor version" }
+
+# --- the runner: resources, user, capabilities, server ----------------------
+runner:
+  extends: .probe
+  image: $IMG_GO_CI
+  script:
+    - say gitlab "$CI_SERVER_VERSION ($CI_SERVER_HOST)"
+    - say runner "${CI_RUNNER_DESCRIPTION:-?} tags=${CI_RUNNER_TAGS:-none} arch=${CI_RUNNER_EXECUTABLE_ARCH:-?}"
+    - say k8s-pod "$( [ -n "${KUBERNETES_SERVICE_HOST:-}" ] && echo yes || echo no)"
+    - say nproc "$(nproc)"
+    - say cpu-limit "$(cat /sys/fs/cgroup/cpu.max 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo unknown)"
+    - say memory-limit "$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo unknown)"
+    - say user "$(id -u):$(id -g) home=$HOME writable=$( [ -w "$HOME" ] && echo yes || echo no)"
+    - say capabilities "CapEff=$(awk '/CapEff/{print $2}' /proc/self/status) (000001ffffffffff or more = privileged)"
+    - say project-dir-owner "$(stat -c %u:%g "$CI_PROJECT_DIR")"
+    - say proxy-env "$(env | grep -iE '^(https?|no)_proxy=' | cut -d= -f1 | tr '\n' ' ' || true)"
+    - say ca-bundle "$(ls /etc/ssl/certs/ca-certificates.crt 2>/dev/null || echo none)"
+
+# The same job asking for more CPU and memory: does the runner let a project
+# raise its limits? (Kubernetes executor; ignored elsewhere.)
+runner:bigger:
+  extends: runner
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "8"
+    KUBERNETES_MEMORY_REQUEST: 8Gi
+    KUBERNETES_MEMORY_LIMIT: 16Gi
+
+# --- a service container (go-test needs PostgreSQL) -------------------------
+service:
+  extends: .probe
+  image: $IMG_GO_CI
+  services:
+    - name: $IMG_POSTGRES
+      alias: postgres
+      variables: { POSTGRES_USER: probe, POSTGRES_PASSWORD: probe-not-secret, POSTGRES_DB: probe }
+  script:
+    - |
+      for h in postgres localhost; do
+        r=no; for i in $(seq 30); do (exec 3<>/dev/tcp/$h/5432) 2>/dev/null && { r=yes; break; }; sleep 2; done
+        say "postgres-at-$h" "$r"
+      done
+
+# --- network: what is reachable, and what the mirrors can do ----------------
+network:
+  extends: .probe
+  image: $IMG_GO_CI
+  script:
+    - 'code() { c=$(curl -s -o /dev/null -m 10 -w "%{http_code}" "$@"); [ "$c" = 000 ] && echo unreachable || echo "$c"; }'
+    - |
+      for u in https://proxy.golang.org https://sum.golang.org/lookup/golang.org/x/text@v0.3.0 \
+               https://registry.npmjs.org/react https://dl-cdn.alpinelinux.org/alpine/ \
+               https://deb.debian.org/debian/ https://nodejs.org/dist/ https://github.com \
+               https://vuln.go.dev/index/db.json https://index.docker.io/v2/ \
+               https://fonts.googleapis.com/css2?family=Inter; do
+        say "direct $u" "$(code "$u")"
+      done
+    - say "GOPROXY" "${GOPROXY:-unset}"
+    - '[ -z "${GOPROXY:-}" ] || say "GOPROXY module list" "$(code "${GOPROXY%%,*}/github.com/google/uuid/@v/list")"'
+    - '[ -z "${GOPROXY:-}" ] || say "GOPROXY proxies sum.golang.org" "$(code "${GOPROXY%%,*}/sumdb/sum.golang.org/supported") (200 = yes)"'
+    - say "npm registry" "${npm_config_registry:-unset}"
+    - |
+      if [ -n "${npm_config_registry:-}" ]; then
+        curl -s -m 60 -o /tmp/react.json "${npm_config_registry%/}/react" || true
+        say "npm metadata has publish times" "$(grep -q '"time"' /tmp/react.json 2>/dev/null && echo yes || echo no) (needed by min-release-age)"
+      fi
+    - '[ -z "${COREPACK_NPM_REGISTRY:-}" ] || say "pnpm tarball via COREPACK_NPM_REGISTRY" "$(code "${COREPACK_NPM_REGISTRY%/}/pnpm/-/pnpm-10.28.2.tgz")"'
+    - |
+      if [ -n "${APT_MIRROR:-}" ]; then
+        for d in debian/dists/bookworm debian/dists/trixie ubuntu/dists/jammy ubuntu/dists/noble ubuntu/dists/resolute; do
+          say "APT_MIRROR $d" "$(code "${APT_MIRROR%/}/$d/Release")"
+        done
+      fi
+      if [ -n "${APK_MIRROR:-}" ]; then
+        for v in v3.20 v3.21 v3.22 v3.23 v3.24; do
+          say "APK_MIRROR $v" "$(code "${APK_MIRROR%/}/$v/main/x86_64/APKINDEX.tar.gz")"
+        done
+      fi
+    - '[ -z "${BUILD_PROXY:-}" ] || say "BUILD_PROXY to dl-cdn" "$(code -x "$BUILD_PROXY" https://dl-cdn.alpinelinux.org/alpine/)"'
+
+# --- npm: can the lockfile be installed from the company mirror as it is? ---
+# Lists every package version the mirror lacks or refuses. Those are the
+# versions stage 1 (outside) must avoid, not something to patch in here.
+npm-lockfile:
+  extends: .probe
+  image: $IMG_NODE_CI
+  script:
+    - npm install -g pnpm@$(node -p 'require("./package.json").packageManager.split("@")[1]') >/dev/null 2>&1 || true
+    - say "pnpm" "$(pnpm --version 2>&1 | head -1)"
+    - |
+      if pnpm install --frozen-lockfile --ignore-scripts --reporter=append-only > probe/npm-install.log 2>&1; then
+        say "frozen-lockfile install" "ok"
+      else
+        say "frozen-lockfile install" "FAILED"
+        grep -oE '(ERR_PNPM_[A-Z_]+|E40[0-9]|E50[0-9]|ETIMEDOUT|ECONNREFUSED)[^"]*' probe/npm-install.log | sort -u | head -20 | while read -r l; do say "error" "$l"; done
+        grep -oE 'https?://[^ ]+\.tgz' probe/npm-install.log | sort -u | head -40 | while read -r u; do say "failed tarball" "$u"; done
+      fi
+
+# --- GitLab features the pipeline uses --------------------------------------
+gitlab:
+  extends: .probe
+  image: $IMG_GO_CI
+  script:
+    - echo probe > probe.txt
+    - |
+      say "package registry upload with CI_JOB_TOKEN" "$(curl -s -o /dev/null -w '%{http_code}' --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file probe.txt "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/probe/0.0.0/probe.txt") (201 = yes; delete package 'probe' afterwards)"
+    - say "container registry" "${CI_REGISTRY:-disabled}"
+
+# --- build the CI image: pulls every tool image, the apt/Go/npm mirrors, push --
+ci-tools:
+  extends: .probe
+  image: { name: $IMG_KANIKO, entrypoint: [""] }
+  script:
+    - REG=${PUSH_REGISTRY:-$CI_REGISTRY}; USER_=${PUSH_USER:-$CI_REGISTRY_USER}; PASS=${PUSH_PASSWORD:-$CI_REGISTRY_PASSWORD}
+    - mkdir -p /kaniko/.docker && echo "{\"auths\":{\"$REG\":{\"username\":\"$USER_\",\"password\":\"$PASS\"}}}" > /kaniko/.docker/config.json
+    - |
+      args=
+      for k in IMG_CI_BASE IMG_GO_CI IMG_NODE_CI IMG_HELM IMG_YQ IMG_COMPOSE IMG_DOCKER_CLI GOPROXY npm_config_registry APT_MIRROR; do
+        eval v=\${$k:-}; [ -n "$v" ] && args="$args --build-arg $k=$v"
+      done
+      [ -n "${BUILD_PROXY:-}" ] && args="$args --build-arg HTTP_PROXY=$BUILD_PROXY --build-arg HTTPS_PROXY=$BUILD_PROXY --build-arg NO_PROXY=${NO_PROXY_HOSTS:-} --build-arg http_proxy=$BUILD_PROXY --build-arg https_proxy=$BUILD_PROXY --build-arg no_proxy=${NO_PROXY_HOSTS:-}"
+      if /kaniko/executor --context company/ci --dockerfile company/ci/ci-tools.Dockerfile \
+           --destination "${IMG_CI_TOOLS%:*}:probe" $args ${KANIKO_EXTRA:-}; then say "ci-tools build and push" "ok -> ${IMG_CI_TOOLS%:*}:probe"
+      else say "ci-tools build and push" "FAILED (see job log)"; exit 1; fi
+
+report:
+  stage: report
+  image: $IMG_GO_CI
+  when: always
+  script:
+    - |
+      {
+        echo "# Probe report ($CI_COMMIT_SHORT_SHA, pipeline $CI_PIPELINE_URL)"
+        for j in image:go-build image:alpine-runtime image:node-alpine image:go-release image:helm image:kaniko \
+                 runner runner:bigger service network npm-lockfile gitlab ci-tools; do
+          f=probe/$(echo "$j" | tr ':' '-').txt
+          echo; echo "## $j"
+          if [ -f "$f" ]; then sed 's/^/- /' "$f"; else echo "- did not run: see the job log (image pull, pod or permission error)"; fi
+        done
+      } > probe-report.md
+    - cat probe-report.md
+  artifacts:
+    when: always
+    paths: [probe-report.md]

@@ -1,0 +1,65 @@
+# Semgrep / gosec rules accepted for the Multica fork, as of v0.11.0.
+# One `tool:rule` per line, reason after `#`. scripts/new-rules.py reports any
+# rule a scan finds that is not listed here. Add a rule only after reviewing
+# every hit, and write why it is acceptable.
+
+# --- gosec ---
+gosec:G101   # constant names and SQL migration names, not credentials
+gosec:G104   # unchecked errors on Close/Write in cleanup paths
+gosec:G117   # JSON field names required by third-party APIs (api_key, clientSecret)
+gosec:G118   # goroutines intentionally outliving the request context
+gosec:G119   # Slack media redirect policy re-adds auth for the same host only
+gosec:G120   # form parsing on bounded bodies
+gosec:G122   # daemon GC and local-skill walks over daemon-owned directories
+gosec:G124   # cookie attributes set by the double-submit CSRF design
+gosec:G204   # daemon launches agent CLIs by design
+gosec:G301   # directory modes are a documented compatibility contract (daemon work dirs)
+gosec:G302   # file modes: same contract
+gosec:G304   # paths from the user's own config / daemon work dirs
+gosec:G306   # file modes: same contract (uploads readable by the web server user)
+gosec:G401   # CloudFront signing requires SHA-1; WeChat iLink upload requires MD5
+gosec:G402   # SMTP TLS: MinVersion 1.2; InsecureSkipVerify only from explicit config
+gosec:G501   # MD5 import for the WeChat iLink upload checksum
+gosec:G505   # SHA-1 import for CloudFront signing
+gosec:G703   # path taint into daemon-owned files (same as G304)
+gosec:G704   # outbound requests to admin-configured endpoints
+gosec:G705   # reviewed: output is escaped or not HTML
+gosec:G706   # log lines with request data, no secrets
+gosec:G710   # redirects to signed-state targets
+
+# --- semgrep ---
+semgrep:cookie-missing-httponly          # CSRF double-submit cookie must be readable by JS
+semgrep:cookie-missing-secure            # Secure set from config so local HTTP dev works
+semgrep:dangerous-command-write          # daemon writes to agent CLI stdin by design
+semgrep:dangerous-exec-command           # daemon launches agent CLIs by design
+semgrep:detect-insecure-websocket        # ws:// only for localhost/dev URLs
+semgrep:detect-non-literal-regexp        # patterns built from escaped input
+semgrep:detect-replaceall-sanitization   # not used as an HTML sanitizer
+semgrep:detected-github-token            # split fixtures in redact-secrets tests
+semgrep:detected-jwt-token               # split fixtures in session/redact tests
+semgrep:detected-private-key             # split fixture in redact-secrets tests
+semgrep:github-actions-mutable-action-tag   # upstream GitHub workflows; not run in GitLab
+semgrep:import-text-template             # CLI help text, not HTML
+semgrep:incomplete-sanitization          # reviewed: not a security boundary
+semgrep:insufficient-postmessage-origin-validation   # sandboxed iframe bridge checks source window
+semgrep:invalid-usage-of-modified-variable   # reviewed false positive
+semgrep:iterate-over-empty-map           # reviewed false positive
+semgrep:missing-healthcheck              # health checks are defined by Helm/compose probes
+semgrep:missing-unlock-before-return     # unlock happens via defer
+semgrep:no-direct-write-to-responsewriter   # JSON/plain responses, not HTML
+semgrep:no-direct-write-to-responsewriter-taint   # same
+semgrep:open-redirect                    # redirects to signed-state / allow-listed targets
+semgrep:open-redirect-deepsemgrep        # same
+semgrep:path-join-resolve-traversal      # paths are validated or daemon-owned
+semgrep:pgx-sqli                         # test helper creating isolated test databases
+semgrep:prototype-pollution-loop         # keys come from typed config, not user input
+semgrep:react-dangerouslysetinnerhtml    # sanitized markdown/KaTeX output
+semgrep:react-dangerouslysetinnerhtml-prop   # same
+semgrep:spawn-shell-true                 # desktop/dev scripts with fixed commands
+semgrep:unknown-value-with-script-tag    # iframe bridge test fixtures
+semgrep:unsafe-formatstring              # log formatting, not user-controlled format strings
+semgrep:use-of-md5                       # WeChat iLink upload checksum
+semgrep:use-of-sha1                      # CloudFront signing
+semgrep:use-of-unsafe-block              # generated code / reviewed unsafe usage
+semgrep:websocket-missing-origin-check   # daemon hub refuses browser origins (CheckOrigin)
+semgrep:wildcard-postmessage-configuration   # sandboxed iframe, origin is opaque

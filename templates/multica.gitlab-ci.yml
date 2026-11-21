@@ -1,0 +1,252 @@
+# Company pipeline for the Multica fork (GitLab Free). Copy to
+# company/ci/multica.gitlab-ci.yml, next to images.yml (required-images.sh),
+# ci-tools.Dockerfile and prepare-dockerfile.sh. DIAGNOSE.md decides the values.
+# CI/CD variables (gitlab-settings.sh sets them):
+#   PG_PASSWORD (masked)  test database password
+#   GOPROXY, npm_config_registry, COREPACK_NPM_REGISTRY  company Go / npm mirrors
+#   APT_MIRROR, APK_MIRROR  optional Debian / Alpine package mirrors
+#   BUILD_PROXY, NO_PROXY_HOSTS  optional outbound proxy for image builds
+#   IMAGE_REPO            where built images go (default: this project's registry)
+#   PUSH_REGISTRY, PUSH_USER, PUSH_PASSWORD  optional credentials for IMAGE_REPO
+#   KANIKO_EXTRA          optional extra Kaniko flags, e.g. for a plain-HTTP registry
+#   GO_TEST_P, VITEST_WORKERS  test parallelism, from the runner's CPU limit
+
+include:
+  - local: company/ci/images.yml
+
+workflow:
+  rules:
+    # One pipeline per change: MR pipelines for MRs, branch pipelines otherwise.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    # Release tags: full test suite, then the CLI job below.
+    - if: $CI_COMMIT_TAG
+
+default:
+  image: $IMG_CI_TOOLS
+  interruptible: true
+
+variables:
+  # Caches live in the project dir so `cache:` works on every executor,
+  # Kubernetes included (no host volume needed).
+  GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
+  GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+  npm_config_store_dir: $CI_PROJECT_DIR/.cache/pnpm-store
+  # protected-changes diffs against the merge base of the target branch
+  GIT_DEPTH: "0"
+  GO_TEST_P: "4"
+  VITEST_WORKERS: "6"
+  IMAGE_REPO: $CI_REGISTRY_IMAGE
+
+stages: [build-ci-image, test, check, build]
+
+.go-cache: &go-cache
+  key: go-$CI_COMMIT_REF_SLUG
+  fallback_keys: [go-$CI_DEFAULT_BRANCH]
+  paths: [.cache/go-mod, .cache/go-build]
+.pnpm-cache: &pnpm-cache
+  key: { files: [pnpm-lock.yaml] }
+  paths: [.cache/pnpm-store]
+
+.reports: &reports
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths: [reports/]
+    reports:
+      junit: reports/*.xml
+
+.kaniko:
+  image: { name: $IMG_KANIKO, entrypoint: [""] }
+  before_script:
+    - REG=${PUSH_REGISTRY:-$CI_REGISTRY}; U=${PUSH_USER:-$CI_REGISTRY_USER}; PW=${PUSH_PASSWORD:-$CI_REGISTRY_PASSWORD}
+    - mkdir -p /kaniko/.docker && echo "{\"auths\":{\"$REG\":{\"username\":\"$U\",\"password\":\"$PW\"}}}" > /kaniko/.docker/config.json
+    - |
+      KANIKO_ARGS="${KANIKO_EXTRA:-}"
+      for k in GOPROXY npm_config_registry COREPACK_NPM_REGISTRY APT_MIRROR APK_MIRROR; do
+        eval v=\${$k:-}; [ -n "$v" ] && KANIKO_ARGS="$KANIKO_ARGS --build-arg $k=$v"
+      done
+      [ -n "${BUILD_PROXY:-}" ] && KANIKO_ARGS="$KANIKO_ARGS --build-arg HTTP_PROXY=$BUILD_PROXY --build-arg HTTPS_PROXY=$BUILD_PROXY --build-arg NO_PROXY=${NO_PROXY_HOSTS:-} --build-arg http_proxy=$BUILD_PROXY --build-arg https_proxy=$BUILD_PROXY --build-arg no_proxy=${NO_PROXY_HOSTS:-}"
+
+# The CI image the other jobs run in: rebuilt when its recipe or the image list
+# changes, or by hand.
+ci-tools:
+  extends: .kaniko
+  stage: build-ci-image
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^(company|baseline)\//
+      changes: [company/ci/ci-tools.Dockerfile, company/ci/images.yml]
+    - when: manual
+      allow_failure: true
+  script:
+    - for k in IMG_CI_BASE IMG_GO_CI IMG_NODE_CI IMG_HELM IMG_YQ IMG_COMPOSE IMG_DOCKER_CLI; do eval v=\${$k}; KANIKO_ARGS="$KANIKO_ARGS --build-arg $k=$v"; done
+    - /kaniko/executor --context company/ci --dockerfile company/ci/ci-tools.Dockerfile --destination "$IMG_CI_TOOLS" $KANIKO_ARGS
+
+go-test:
+  stage: test
+  services:
+    - name: $IMG_POSTGRES
+      alias: postgres
+      variables:
+        POSTGRES_USER: multica
+        POSTGRES_PASSWORD: $PG_PASSWORD
+        POSTGRES_DB: multica
+  cache: *go-cache
+  <<: *reports
+  script:
+    - export DATABASE_URL="postgres://multica:$PG_PASSWORD@postgres:5432/multica?sslmode=disable"
+    - cd server && go run ./cmd/migrate up
+    - >-
+      gotestsum --junitfile ../reports/go.xml --jsonfile ../reports/go.json
+      --rerun-fails=1 --rerun-fails-max-failures=5 --rerun-fails-report=../reports/go-rerun.txt
+      --packages=./... -- -p $GO_TEST_P
+    # a rerun is allowed only for tests on the flaky list
+    - if [ -s ../reports/go-rerun.txt ] && grep -vFf ../company/ci/flaky-tests.txt ../reports/go-rerun.txt; then exit 1; fi
+
+sqlc-check:
+  stage: test
+  cache: { <<: *go-cache, policy: pull }
+  script:
+    - make sqlc && git diff --exit-code
+
+frontend:
+  stage: test
+  cache: *pnpm-cache
+  <<: *reports
+  script:
+    # mobile and desktop are not shipped by the company
+    - pnpm install --frozen-lockfile
+    - pnpm exec turbo typecheck lint --filter='!@multica/mobile' --filter='!@multica/desktop'
+    - |
+      for p in core ui web views; do
+        pnpm --filter @multica/$p exec vitest run --maxWorkers=$VITEST_WORKERS --reporter=default \
+          --reporter=junit --outputFile.junit=$CI_PROJECT_DIR/reports/$p.xml \
+          --reporter=json --outputFile.json=$CI_PROJECT_DIR/reports/$p.vitest.json || echo $p >> failed-pkgs
+      done
+    # rerun only failed files, and only when every one is on the flaky list
+    - |
+      if [ -s failed-pkgs ]; then
+        jq -r '.testResults[] | select(.status=="failed") | .name' reports/*.vitest.json > failed.txt
+        grep -vFf company/ci/flaky-tests.txt failed.txt && exit 1
+        for f in $(cat failed.txt); do
+          pkg=$(echo "$f" | sed -E 's#^(.*/(packages|apps)/[^/]+)/.*#\1#')
+          (cd "$pkg" && pnpm exec vitest run "$f") || exit 1
+        done
+      fi
+
+helm:
+  stage: test
+  script:
+    - bash scripts/helm-config.test.sh
+
+scripts:
+  stage: test
+  script:
+    - for f in scripts/*.test.sh; do bash "$f" || exit 1; done
+
+protected-changes:
+  stage: check
+  needs: []
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - git diff --name-only "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD" > changed.txt
+    # Warns (allow_failure) for a person to look at: frozen paths, which need
+    # approval, and any other test file, which a port may change only when it
+    # must, never to make a failing test pass.
+    - |
+      { cat company/ci/frozen-files.txt; echo .gitlab-ci.yml; echo company/customizations.yaml; echo .claude/settings.json; echo .claude/settings.local.json; } > frozen.txt
+      hits=$( { grep -xFf frozen.txt changed.txt; grep '^company/ci/' changed.txt; } | sort -u || true)
+      tests=$(grep -E '(_test\.go|\.(test|spec)\.[cm]?[jt]sx?)$' changed.txt | grep -vxFf frozen.txt || true)
+      if [ -n "$hits" ]; then echo "frozen paths changed, needs a person's approval:"; echo "$hits"; fi
+      if [ -n "$tests" ]; then echo "other tests changed, check each is needed by the change and not weakened to pass:"; echo "$tests"; fi
+      [ -z "$hits$tests" ]
+
+# Blocks: every changed test that is not frozen (upstream's own tests, mostly)
+# must be recorded in company/upstream-test-changes.yaml with its reason, so
+# the change is reviewed now and re-checked on every later port.
+test-changes-recorded:
+  stage: check
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - git diff --name-only --diff-filter=AMR "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD" > changed.txt
+    - |
+      { cat company/ci/frozen-files.txt; echo .gitlab-ci.yml; } > frozen.txt
+      tests=$(grep -E '(_test\.go|\.(test|spec)\.[cm]?[jt]sx?)$' changed.txt | grep -vxFf frozen.txt || true)
+      [ -n "$tests" ] || { echo "no unfrozen test changed"; exit 0; }
+      rec=company/upstream-test-changes.yaml
+      recorded=$( [ -f $rec ] && yq -r '.changes[] | select((.why // "") != "") | .file' $rec || true)
+      missing=$(printf '%s\n' "$tests" | grep -vxF -f <(printf '%s\n' "$recorded") || true)
+      if [ -n "$missing" ]; then
+        echo "tests changed without an entry (file, feature, why) in $rec:"; echo "$missing"; exit 1
+      fi
+      echo "every changed test is recorded in $rec:"; echo "$tests"
+
+frozen-tests:
+  stage: check
+  needs: [go-test, frontend]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - bash company/ci/frozen-tests.sh check company/ci reports
+
+# Application images. Upstream Dockerfiles stay untouched: prepare-dockerfile.sh
+# writes build copies with company base images and mirror settings.
+images:
+  extends: .kaniko
+  stage: build
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^(company|baseline)\//
+  script:
+    - sh company/ci/prepare-dockerfile.sh Dockerfile .ci-Dockerfile
+    - sh company/ci/prepare-dockerfile.sh Dockerfile.web .ci-Dockerfile.web
+    - /kaniko/executor --context . --dockerfile .ci-Dockerfile     --destination $IMAGE_REPO/multica-backend:$CI_COMMIT_SHORT_SHA $KANIKO_ARGS
+    - /kaniko/executor --context . --dockerfile .ci-Dockerfile.web --destination $IMAGE_REPO/multica-web:$CI_COMMIT_SHORT_SHA $KANIKO_ARGS
+
+# CLI release: only on a protected version tag (vX.Y.Z or vX.Y.Z-suffix),
+# after the tests of the same pipeline. Same toolchain and ldflags as
+# upstream's .goreleaser.yml; published to the Generic Package Registry and a
+# Release. tar.gz for every OS (Windows 10+ ships tar).
+cli:
+  stage: build
+  image: $IMG_GO_RELEASE
+  needs: [go-test]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+  variables:
+    CLI_PLATFORMS: "linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - VERSION=${CI_COMMIT_TAG#v}
+    - LDFLAGS="-s -w -X main.version=$VERSION -X main.commit=$CI_COMMIT_SHORT_SHA -X main.buildCommit=$CI_COMMIT_SHA -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    - mkdir -p dist
+    - |
+      for p in $CLI_PLATFORMS; do
+        os=${p%/*}; arch=${p#*/}; ext=; [ "$os" = windows ] && ext=.exe
+        work=$(mktemp -d)
+        (cd server && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$LDFLAGS" -o "$work/multica$ext" ./cmd/multica)
+        cp LICENSE README.md NOTICE "$work/"
+        tar -czf "dist/multica-cli-$VERSION-$os-$arch.tar.gz" -C "$work" .
+      done
+    - (cd dist && sha256sum * > checksums.txt && cat checksums.txt)
+    - |
+      PKG="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/multica-cli/$VERSION"
+      links=; sep=
+      for f in dist/*; do
+        n=$(basename "$f")
+        curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "$f" "$PKG/$n" >/dev/null
+        links="$links$sep{\"name\":\"$n\",\"url\":\"$PKG/$n\",\"link_type\":\"package\"}"; sep=,
+      done
+      curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --header "Content-Type: application/json" \
+        --data "{\"tag_name\":\"$CI_COMMIT_TAG\",\"name\":\"Multica CLI $CI_COMMIT_TAG\",\"assets\":{\"links\":[$links]}}" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/releases" >/dev/null
+  artifacts:
+    paths: [dist/]
+    expire_in: 1 week
