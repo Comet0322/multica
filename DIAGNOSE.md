@@ -2,7 +2,7 @@
 
 Run **inside the company**, before the first baseline (PIPELINE.md) and again when the runner, the registry or the mirrors change. The company environment cannot be known from outside: which images the registry (Harbor) holds and under which paths, what the Kubernetes runner allows, what the mirrors can do. This stage finds out by running things there, and turns the answers into `company/ci/images.yml`, CI/CD variables and a short `company/ci/environment.md`.
 
-Nothing here needs a person's approval: it runs on a throwaway branch `probe/env` that has no frozen files.
+Nothing here needs a person's approval: it runs on a throwaway branch `probe/env`.
 
 ```bash
 NEW=v0.12.0                               # the version the pipeline is for

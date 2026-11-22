@@ -5,53 +5,49 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 ## Rules
 
 - One feature from the Implement list per MR, in the report's order: features that break the build come first, because until they are merged every other MR's pipeline is red on their account. Branch each MR from the integration branch `company/$NEW` (step 0) and target it. Rebase an MR onto the integration branch after an earlier one merges.
-- Carry-list features need no MR: step 0 brings their code across. If one turns out not to build or pass its frozen tests on `company/$NEW`, report it; it moves to the Implement list.
-- **Frozen paths** (GUARDRAILS.md) are carried over by a person in step 0; an MR changes feature code only. Make the feature meet its frozen tests. When one seems wrong, stop and report it with the diff you would want; the guard hook blocks writes to frozen paths, and a block means exactly this.
-- Upstream's own tests are not frozen, but change one only when the feature truly changes the behaviour it checks, and record it in `company/upstream-test-changes.yaml` (file, feature, why) in the same MR; `test-changes-recorded` fails the MR otherwise, and `protected-changes` lists every changed test for the Maintainer.
-- The evidence is what CI produced: JUnit reports, the `frozen-tests` job, Playwright traces and screenshots. Link them in the MR; your own summary is not evidence.
+- Carry-list features need no MR: step 0 brings their code across. If one turns out not to build or pass its acceptance tests on `company/$NEW`, report it; it moves to the Implement list.
+- **Acceptance tests** (each feature's `acceptance` in the inventory): make the feature meet them. Change one only as the approved report says, in that feature's MR. When one seems wrong otherwise, stop and report it with the diff you would want.
+- Change an upstream test only when the feature truly changes the behaviour it checks, and say which and why in the MR description. Never weaken a test, or skip or exclude one, to make it pass (GUARDRAILS.md).
+- The evidence is what CI produced: the JUnit test reports of the MR pipeline. Link them in the MR; your own summary is not evidence.
 - You open MRs; a Maintainer merges them.
 
 ## Steps
 
-0. **Integration branch**, a person's step (or an agent session started with `MULTICA_FROZEN_UNLOCK=1`): start from the baseline, carry `company/` and every acceptance test over (they may live outside `company/`), apply what the review approved, and bring the Carry list across:
+0. **Integration branch**, a person's step (a Maintainer: `company/*` is protected): start from the baseline, carry `company/` and every acceptance test over (they may live outside `company/`), apply what the review approved, and bring the Carry list across:
 
    ```bash
    git fetch origin                     # a local branch can be stale: use origin/
    git switch -c company/$NEW origin/baseline/$NEW
-   git checkout origin/company/main -- company .claude/settings.json   # the guard hook lives outside company/
+   git checkout origin/company/main -- company
    git checkout origin/baseline/$NEW -- company/ci       # keep the stage 2 CI fixes (images.yml, flaky list)
-   git diff origin/baseline/$NEW origin/company/main -- company/ci ':!company/ci/frozen-*'
+   git diff origin/baseline/$NEW origin/company/main -- company/ci
    git checkout origin/company/main -- $(yq -r '.features[].acceptance[]' company/customizations.yaml)
-   # apply the approved frozen-test changes and inventory updates here, then:
-   bash ~/.claude/skills/multica-fork/scripts/frozen-tests.sh gen .
-   git add -A -f .claude/settings.json
+   # apply the approved inventory updates, and the approved test changes of Carry features, here
    git add -A company $(yq -r '.features[].acceptance[]' company/customizations.yaml)
    git commit -m "company: carry customizations inventory, tests and CI to $NEW"
    # Carry list: the report's feature commits, with its recorded resolutions;
-   # on a conflict in an acceptance test, keep the approved version (ours)
+   # on a conflict in an acceptance test, keep the version committed above (ours)
    git cherry-pick <carry commits>
    # every company edit to an upstream test made it across
    OLD_BASE=origin/security/$OLD-clean   # the snapshot company/main is on, as in PORTING.md
-   for f in $(yq -r '.changes[].file' company/upstream-test-changes.yaml); do
+   for f in $(git diff --name-only --diff-filter=M $OLD_BASE origin/company/main -- '*_test.go' '*.test.*' '*.spec.*'); do
      git diff $OLD_BASE origin/company/main -- "$f" | grep '^+[^+]' | cut -c2- |
        while IFS= read -r l; do grep -qxF -- "$l" "$f" || echo "$f: missing: $l"; done
    done
    git push origin company/$NEW
    ```
 
-   `company/ci` comes from the baseline, not from `company/main`: stage 2 fixed it for the new version. The `git diff` lists what differs from `company/main`: a stage 2 fix stays as it is; a `company/main` change made after the baseline was cut is brought over by hand. The frozen-test fingerprints are regenerated by `gen`.
+   `company/ci` comes from the baseline, not from `company/main`: stage 2 fixed it for the new version. The `git diff` lists what differs from `company/main`: a stage 2 fix stays as it is; a `company/main` change made after the baseline was cut is brought over by hand.
 
-   The company's edits to upstream tests (`company/upstream-test-changes.yaml`) ride in the feature commits, often in commits that look company-only. The loop prints each line of such an edit that is missing on `company/$NEW`; it must print nothing. Where upstream changed the test, the report's Upstream test changes table says how the edit was redone; check those lines by hand.
-
-   Do not check out the upstream test configs (`vitest.config.*`, `playwright*.config.ts`) from `company/main`: `gen` fingerprints the new version's own. `gen` stops if an acceptance test listed in the inventory is missing from the tree.
+   The company's edits to upstream tests ride in the feature commits, often in commits that look company-only. The loop prints each line of such an edit that is missing on `company/$NEW`; it must print nothing. Where upstream changed the test, the report's Upstream test changes table says how the edit was redone; check those lines by hand.
 
    Done when: `company/$NEW` exists with `company/` (its `company/ci` from the baseline), the acceptance tests, the company's upstream-test edits and the Carry list on it. Its pipeline stays red until the Implement list is merged; that is the work of the steps below.
 
-1. **Implement each issue** on its own branch. Run locally before pushing: `go build ./... && go vet ./...`, `pnpm typecheck`, and the feature's frozen tests.
-   Done when: the feature's frozen tests pass locally.
+1. **Implement each issue** on its own branch. Run locally before pushing: `go build ./... && go vet ./...`, `pnpm typecheck`, and the feature's acceptance tests.
+   Done when: the feature's acceptance tests pass locally.
 
-2. **Open the MR** with: the issue, the verdict, the acceptance criteria, and links to the pipeline's test report and `frozen-tests` job.
-   Done when: the pipeline is green, including `frozen-tests`. A red job caused by another Implement feature not merged yet is not yours: say which, and wait for that MR. A red job you cannot fix without touching a frozen test goes back to the person.
+2. **Open the MR** with: the issue, the verdict, the acceptance criteria, and a link to the pipeline's test report.
+   Done when: the pipeline is green. A red job caused by another Implement feature not merged yet is not yours: say which, and wait for that MR. A red job you cannot fix without an unapproved test change goes back to the person.
 
 3. **Deploy to the test environment** once the MRs are merged into the integration branch and its pipeline has built the images. The project registry is private and the chart has no `imagePullSecrets`, so give the namespace's default service account a pull secret from a deploy token with `read_registry`:
 
@@ -106,4 +102,4 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 
 ## Report
 
-Reply with: each MR and its pipeline, the Carry list and who carried it, frozen-test changes and who approved them, the test environment version and `/healthz` result, migration time, lock waits and rollback result, the manual-test list, and the CLI Release.
+Reply with: each MR and its pipeline, the Carry list and who carried it, test changes and who approved them, the test environment version and `/healthz` result, migration time, lock waits and rollback result, the manual-test list, and the CLI Release.

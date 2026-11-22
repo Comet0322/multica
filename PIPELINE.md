@@ -18,7 +18,7 @@ In GitLab: CI/CD file path `company/ci/multica.gitlab-ci.yml`, a masked `PG_PASS
 
 Only if the company's npm policy blocks package versions: a pins commit made by `scripts/npm-unblock.sh` (Blocked npm versions, below).
 
-The template also carries jobs for later stages (`protected-changes` and `frozen-tests` run only in MR pipelines, `cli` only on tags); on the baseline they stay idle.
+The template also carries the `cli` job for stage 4, which runs only on tags; on the baseline it stays idle.
 
 ## Steps
 

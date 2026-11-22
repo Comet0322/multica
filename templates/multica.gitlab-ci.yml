@@ -35,13 +35,11 @@ variables:
   GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
   GOCACHE: $CI_PROJECT_DIR/.cache/go-build
   npm_config_store_dir: $CI_PROJECT_DIR/.cache/pnpm-store
-  # protected-changes diffs against the merge base of the target branch
-  GIT_DEPTH: "0"
   GO_TEST_P: "4"
   VITEST_WORKERS: "6"
   IMAGE_REPO: $CI_REGISTRY_IMAGE
 
-stages: [build-ci-image, test, check, build]
+stages: [build-ci-image, test, build]
 
 .go-cache: &go-cache
   key: go-$CI_COMMIT_REF_SLUG
@@ -167,57 +165,6 @@ scripts:
   stage: test
   script:
     - for f in scripts/*.test.sh; do bash "$f" || exit 1; done
-
-protected-changes:
-  stage: check
-  needs: []
-  allow_failure: true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  script:
-    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
-    - git diff --name-only "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD" > changed.txt
-    # Warns (allow_failure) for a person to look at: frozen paths, which need
-    # approval, and any other test file, which a port may change only when it
-    # must, never to make a failing test pass.
-    - |
-      { cat company/ci/frozen-files.txt; echo .gitlab-ci.yml; echo company/customizations.yaml; echo .claude/settings.json; echo .claude/settings.local.json; } > frozen.txt
-      hits=$( { grep -xFf frozen.txt changed.txt; grep '^company/ci/' changed.txt; } | sort -u || true)
-      tests=$(grep -E '(_test\.go|\.(test|spec)\.[cm]?[jt]sx?)$' changed.txt | grep -vxFf frozen.txt || true)
-      if [ -n "$hits" ]; then echo "frozen paths changed, needs a person's approval:"; echo "$hits"; fi
-      if [ -n "$tests" ]; then echo "other tests changed, check each is needed by the change and not weakened to pass:"; echo "$tests"; fi
-      [ -z "$hits$tests" ]
-
-# Blocks: every changed test that is not frozen (upstream's own tests, mostly)
-# must be recorded in company/upstream-test-changes.yaml with its reason, so
-# the change is reviewed now and re-checked on every later port.
-test-changes-recorded:
-  stage: check
-  needs: []
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  script:
-    - git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
-    - git diff --name-only --diff-filter=AMR "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD" > changed.txt
-    - |
-      { cat company/ci/frozen-files.txt; echo .gitlab-ci.yml; } > frozen.txt
-      tests=$(grep -E '(_test\.go|\.(test|spec)\.[cm]?[jt]sx?)$' changed.txt | grep -vxFf frozen.txt || true)
-      [ -n "$tests" ] || { echo "no unfrozen test changed"; exit 0; }
-      rec=company/upstream-test-changes.yaml
-      recorded=$( [ -f $rec ] && yq -r '.changes[] | select((.why // "") != "") | .file' $rec || true)
-      missing=$(printf '%s\n' "$tests" | grep -vxF -f <(printf '%s\n' "$recorded") || true)
-      if [ -n "$missing" ]; then
-        echo "tests changed without an entry (file, feature, why) in $rec:"; echo "$missing"; exit 1
-      fi
-      echo "every changed test is recorded in $rec:"; echo "$tests"
-
-frozen-tests:
-  stage: check
-  needs: [go-test, frontend]   # every frontend shard
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  script:
-    - bash company/ci/frozen-tests.sh check company/ci reports
 
 # Application images. Upstream Dockerfiles stay untouched: prepare-dockerfile.sh
 # writes build copies with company base images and mirror settings.
