@@ -10,10 +10,11 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 - Change an upstream test only when the feature truly changes the behaviour it checks, and say which and why in the MR description. Never weaken a test, or skip or exclude one, to make it pass (GUARDRAILS.md).
 - The evidence is what CI produced: the JUnit test reports of the MR pipeline. Link them in the MR; your own summary is not evidence.
 - You open MRs; a Maintainer merges them.
+- Stop background processes you started (load loops, port-forwards) by their PID, not with `pkill -f`: a pattern also matches the port-forward to the copy and other people's processes.
 
 ## Steps
 
-0. **Integration branch**, a person's step (a Maintainer: `company/*` is protected): start from the baseline, carry `company/` and the Carry features with their acceptance tests (they may live outside `company/`), apply what the review approved for them, and nothing of the Implement features:
+0. **Integration branch**, a person's step (a Maintainer: `company/*` is protected). First bring the report MR up to the review's decisions (Carry and Implement lists, approved test changes, issue drafts) and merge it into `company/main`, so the report reaches `company/$NEW` with `company/` and the agent can read it there. Then start from the baseline, carry `company/` and the Carry features with their acceptance tests (they may live outside `company/`), apply what the review approved for them, and nothing of the Implement features:
 
    ```bash
    git fetch origin                     # a local branch can be stale: use origin/
@@ -51,7 +52,19 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 2. **Open the MR** with: the issue, the verdict, the acceptance criteria, and a link to the pipeline's test report.
    Done when: the pipeline is green. The integration branch is green, so every red job is this MR's; a red job you cannot fix without an unapproved test change goes back to the person.
 
-3. **Deploy to the test environment** once the MRs are merged into the integration branch and its pipeline has built the images. The project registry is private and the chart has no `imagePullSecrets`, so give the namespace's default service account a pull secret from a deploy token with `read_registry`:
+3. **Back up the copy and rehearse the migration** on a production-like copy, never production, from `company/$NEW` once the MRs are merged. Do it before step 4: the backend runs `migrate up` when it starts, so a deploy against the copy would migrate it before there is a backup. Lock waits only show under traffic, so run a write load against the copy while migrating (for example the app's own load test, or a loop of issue inserts and updates):
+
+   ```bash
+   pg_dump -Fc "$COPY_URL" -f before-$NEW.dump
+   time (cd server && DATABASE_URL="$COPY_URL" go run ./cmd/migrate up)
+   # meanwhile, in another shell, every second: waiting locks
+   psql "$COPY_URL" -c "select pid, mode, relation::regclass, now()-query_start age
+                        from pg_locks join pg_stat_activity using (pid) where not granted;"
+   ```
+
+   Record the time of each migration the report's cross-feature risks flag as costly (a `VALIDATE`, a rewrite or a full-table scan on a large table), not only the total. Done when: the migration time and any lock waits under load are recorded.
+
+4. **Deploy to the test environment** once the MRs are merged into the integration branch and its pipeline has built the images. The project registry is private and the chart has no `imagePullSecrets`, so give the namespace's default service account a pull secret from a deploy token with `read_registry`:
 
    ```bash
    NS=multica-test; TAG=<image tag CI built>
@@ -70,31 +83,19 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
    curl -s localhost:8080/healthz
    ```
 
-   Use the chart of the version being deployed (`deploy/helm/multica` from that branch). Done when: all pods Ready and `/healthz` reports the database and migrations ok.
-
-4. **Rehearse the migration** on a production-like copy, never production. Lock waits only show under traffic, so run a write load against the copy while migrating (for example the app's own load test, or a loop of issue inserts and updates):
+   Use the chart of the version being deployed (`deploy/helm/multica` from that branch). Then rehearse the rollback from the backup, not with `migrate down`. Restore into an empty schema: `pg_restore --clean` drops only what the dump contains, so the tables the new migrations created stay behind while `schema_migrations` goes back, and the next `migrate up` fails on them (`relation ... already exists`). Stop the backend before touching the schema and start the old one only on a complete restore: a backend that starts on an empty or half-restored schema migrates it.
 
    ```bash
-   pg_dump -Fc "$COPY_URL" -f before-$NEW.dump
-   time (cd server && DATABASE_URL="$COPY_URL" go run ./cmd/migrate up)
-   # meanwhile, in another shell, every second: waiting locks
-   psql "$COPY_URL" -c "select pid, mode, relation::regclass, now()-query_start age
-                        from pg_locks join pg_stat_activity using (pid) where not granted;"
-   ```
-
-   Roll back from the backup, not with `migrate down`. Restore into an empty schema: `pg_restore --clean` drops only what the dump contains, so the tables the new migrations created stay behind while `schema_migrations` goes back, and the next `migrate up` fails on them (`relation ... already exists`).
-
-   ```bash
-   helm rollback multica <previous revision> -n $NS --wait
    kubectl -n $NS scale deploy/multica-backend --replicas=0
    psql "$COPY_URL" -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
-   pg_restore --no-owner --exit-on-error -d "$COPY_URL" before-$NEW.dump
-   kubectl -n $NS scale deploy/multica-backend --replicas=1
+   pg_restore --no-owner --exit-on-error -d "$COPY_URL" before-$NEW.dump || exit 1   # on failure: fix, drop and restore again
+   helm rollback multica <previous revision> -n $NS --wait
+   kubectl -n $NS scale deploy/multica-backend --replicas=1 && kubectl -n $NS rollout status deploy/multica-backend
    ```
 
-   Then run `migrate up` once more on the restored copy: it must apply the new migrations cleanly, as the real upgrade will after a rollback.
+   Then run `migrate up` once more on the restored copy: it must apply the new migrations cleanly, as the real upgrade will after a rollback. Deploy the new version again.
 
-   Done when: the migration time and any lock waits under load are recorded, the rollback brought the old version back up against the restored data, and the second `migrate up` succeeded.
+   Done when: all pods Ready and `/healthz` reports the database and migrations ok, the rollback brought the old version back up against the restored data, the second `migrate up` succeeded, and the new version runs again.
 
 5. **Hand over for manual testing**: list what the automated tests do not cover, per feature. Each problem found by hand becomes a new automated test in a follow-up MR.
 
