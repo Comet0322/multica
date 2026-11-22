@@ -101,14 +101,14 @@ NEW=v0.12.0                       # names the report files and branches
 
    Done when: every inventory feature has a verdict with evidence, and every feature not `unaffected` has acceptance criteria.
 
-   Then sort features into two lists for IMPLEMENT.md:
-   - **Carry**: the code ports as the trial port left it (`unaffected`, `mechanical` with the recorded resolution, a `behavioral` one whose code needs no change once its tests change, `unmapped` changes marked `carry`). A person carries these in step 0; they get no implementation MR.
-   - **Implement**: features whose code must change. Order them so that features breaking the build come first: until they are fixed, every other MR's pipeline is red too.
+   Then sort features into two lists for IMPLEMENT.md. Each feature is on exactly one:
+   - **Carry**: the code ports as the trial port left it and passes its tests (`unaffected`, `mechanical` with the recorded resolution, a `behavioral` one whose code needs no change once its approved test change is made, `unmapped` changes marked `carry`). A person carries these in step 0; they get no implementation MR. Together they must leave the integration branch green.
+   - **Implement**: every feature whose code must change, even by one line, or whose tests fail on the trial port. All of its commits go to its own MR, not to step 0, so each MR is red or green on its own account only.
 
 6. **Cross-feature risks.** New migrations (reversible? cost at production data size? touching customized tables?), added/renamed/removed env vars and settings, removed or changed APIs, CLI commands and webhook formats that outside systems use.
    Done when: every new migration is listed with its impact, "none" included.
 
-7. **Write the report, then stop.** Write `company/porting/reports/$NEW.md` from the template below, and one issue draft per feature on the Implement list in `company/porting/reports/$NEW-issues/` (verdict and evidence, acceptance criteria and test files, expected files to change, dependency order). Commit them on `port-report/$NEW` and open one MR into `company/main` so the review happens on it (push with `-o merge_request.create -o merge_request.target=company/main`, so no separate branch pipeline runs). Drafts only: create no issues, open no implementation MRs.
+7. **Write the report, then stop.** Write `company/porting/reports/$NEW.md` from the template below, and one issue draft per feature on the Implement list in `company/porting/reports/$NEW-issues/` (verdict and evidence, the feature's commits on `company/main`, acceptance criteria and test files, expected files to change). Commit them on `port-report/$NEW` and open one MR into `company/main` so the review happens on it (push with `-o merge_request.create -o merge_request.target=company/main`, so no separate branch pipeline runs). Drafts only: create no issues, open no implementation MRs.
    Done when: report and drafts are on the review MR. End with the decisions a person must make: every `blocked` feature, whether to drop each `superseded` one, every acceptance-test change proposal.
 
 ## Report template
@@ -123,10 +123,10 @@ Trial port: <N> commits, <M> conflicts; build <ok/failed>, typecheck <ok/failed>
 - [ ] <feature id>: <why blocked / drop superseded? / acceptance-test change>
 
 ## Carry in step 0
-<commits per feature, with conflict resolutions; unmapped changes marked carry>
+<commits per feature, with conflict resolutions; unmapped changes marked carry; together they leave the branch green>
 
-## Implement, in this order
-1. <feature id>: <why first, e.g. breaks the build>
+## Implement (one MR each, any order)
+- <feature id>: <commits, and the code change needed>
 
 ## Verdicts
 | Feature | Verdict | Changed seams | Evidence |
