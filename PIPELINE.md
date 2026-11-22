@@ -14,7 +14,7 @@ In the repo, under `company/ci/` (start from `templates/` in this skill):
 | `prepare-dockerfile.sh` | writes build copies of upstream's Dockerfiles with company base images and mirrors |
 | `flaky-tests.txt` | tests allowed one rerun |
 
-In GitLab: CI/CD file path `company/ci/multica.gitlab-ci.yml`, a masked `PG_PASSWORD`, and the mirror variables (`GOPROXY`, `npm_config_registry`, `COREPACK_NPM_REGISTRY`, plus an apt/apk mirror or `BUILD_PROXY` for image builds). `templates/gitlab-settings.sh` sets them from an env file.
+In GitLab: CI/CD file path `company/ci/multica.gitlab-ci.yml`, a masked `PG_PASSWORD`, and the mirror variables (`GOPROXY`, `npm_config_registry`, `COREPACK_NPM_REGISTRY`, plus an apt/apk mirror or `BUILD_PROXY` for image builds). GUARDRAILS.md lists every project setting and where it is.
 
 Only if the company's npm policy blocks package versions: a pins commit made by `scripts/npm-unblock.sh` (Blocked npm versions, below).
 
@@ -26,9 +26,9 @@ The template also carries the `cli` job for stage 4, which runs only on tags; on
 2. **Baseline branch**, a person's step:
 
    ```bash
-   git fetch origin                                 # a local company/main can be stale
+   git fetch origin                         # a local dev can be stale
    git switch -c baseline/$NEW origin/security/$NEW-clean
-   git checkout origin/company/main -- company/ci   # or templates/ the first time
+   git checkout origin/dev -- company/ci    # or templates/ the first time
    # replace company/ci/images.yml with the one for this version
    git commit -m "ci: pipeline for the $NEW baseline"
    git push origin baseline/$NEW

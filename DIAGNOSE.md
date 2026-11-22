@@ -34,7 +34,7 @@ cp $FORK/templates/ci-tools.Dockerfile company/ci/
 git add company && git commit -m "ci: environment probe" && git push -u origin probe/env
 ```
 
-Set the mirror variables you know of first (Settings → CI/CD → Variables, or `gitlab-settings.sh`): `GOPROXY`, `npm_config_registry`, `COREPACK_NPM_REGISTRY`, and if they exist `APT_MIRROR`, `APK_MIRROR`, `BUILD_PROXY`, `NO_PROXY_HOSTS`, `PUSH_REGISTRY`/`PUSH_USER`/`PUSH_PASSWORD`. Then read the `report` job's `probe-report.md`, and the log of every job it lists as "did not run".
+Set the mirror variables you know of first (Settings → CI/CD → Variables): `GOPROXY`, `npm_config_registry`, `COREPACK_NPM_REGISTRY`, and if they exist `APT_MIRROR`, `APK_MIRROR`, `BUILD_PROXY`, `NO_PROXY_HOSTS`, `PUSH_REGISTRY`/`PUSH_USER`/`PUSH_PASSWORD`. Then read the `report` job's `probe-report.md`, and the log of every job it lists as "did not run".
 
 Change `images.yml` or the variables and push again until the report has no open item. Each run takes a few minutes.
 
@@ -66,7 +66,7 @@ Done when: every report item is either fine or has a decision written in `enviro
 ## 4. Keep the result
 
 - `company/ci/images.yml` goes on the baseline branch with the rest of `company/ci/` (PIPELINE.md).
-- The variables go into `gitlab-settings.env` (`templates/gitlab-settings.sh` applies them).
+- The variables go into Settings → CI/CD → Variables (GUARDRAILS.md, GitLab settings).
 - `company/ci/environment.md`: the report's key facts (registry paths, runner limits, uid, services, mirrors), every substitute and every open request. The next upgrade starts from it and reruns only steps 1 to 3.
 - Delete the branch `probe/env` and the package `probe`.
 

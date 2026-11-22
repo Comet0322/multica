@@ -1,7 +1,7 @@
 # Company pipeline for the Multica fork (GitLab Free). Copy to
 # company/ci/multica.gitlab-ci.yml, next to images.yml (required-images.sh),
 # ci-tools.Dockerfile and prepare-dockerfile.sh. DIAGNOSE.md decides the values.
-# CI/CD variables (gitlab-settings.sh sets them):
+# CI/CD variables (set by hand, GUARDRAILS.md):
 #   PG_PASSWORD (masked)  test database password
 #   GOPROXY, npm_config_registry, COREPACK_NPM_REGISTRY  company Go / npm mirrors
 #   APT_MIRROR, APK_MIRROR  optional Debian / Alpine package mirrors

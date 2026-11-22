@@ -4,7 +4,7 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 
 ## Rules
 
-- One feature from the Implement list per MR. Branch each MR from the integration branch `company/$NEW` (step 0), which is green, and target it; the MR brings the feature's commits from `company/main`, its acceptance tests (with the approved changes) and the code change. MRs do not depend on each other, so they can merge in any order; rebase an open MR after another one merges.
+- One feature from the Implement list per MR. Branch each MR from the integration branch `company/$NEW` (step 0), which is green, and target it; the MR brings the feature's commits from `dev`, its acceptance tests (with the approved changes) and the code change. MRs do not depend on each other, so they can merge in any order; rebase an open MR after another one merges.
 - Carry-list features need no MR: step 0 brings their code across. If one turns out not to build or pass its tests on `company/$NEW`, leave it out of step 0 and report it; it moves to the Implement list.
 - **Acceptance tests** (each feature's `acceptance` in the inventory): make the feature meet them. Change one only as the approved report says, in that feature's MR. When one seems wrong otherwise, stop and report it with the diff you would want.
 - Change an upstream test only when the feature truly changes the behaviour it checks, and say which and why in the MR description. Never weaken a test, or skip or exclude one, to make it pass (GUARDRAILS.md).
@@ -14,17 +14,17 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 
 ## Steps
 
-0. **Integration branch**, a person's step (a Maintainer: `company/*` is protected). First bring the report MR up to the review's decisions (Carry and Implement lists, approved test changes, issue drafts) and merge it into `company/main`, so the report reaches `company/$NEW` with `company/` and the agent can read it there. Then start from the baseline, carry `company/` and the Carry features with their acceptance tests (they may live outside `company/`), apply what the review approved for them, and nothing of the Implement features:
+0. **Integration branch**, a person's step (a Maintainer: `company/*` is protected). First bring the report MR up to the review's decisions (Carry and Implement lists, approved test changes, issue drafts) and merge it into `dev`, so the report reaches `company/$NEW` with `company/` and the agent can read it there. Then start from the baseline, carry `company/` and the Carry features with their acceptance tests (they may live outside `company/`), apply what the review approved for them, and nothing of the Implement features:
 
    ```bash
    git fetch origin                     # a local branch can be stale: use origin/
    git switch -c company/$NEW origin/baseline/$NEW
-   git checkout origin/company/main -- company
+   git checkout origin/dev -- company
    git checkout origin/baseline/$NEW -- company/ci       # keep the stage 2 CI fixes (images.yml, flaky list)
-   git diff origin/baseline/$NEW origin/company/main -- company/ci
+   git diff origin/baseline/$NEW origin/dev -- company/ci
    CARRY="<Carry feature ids, space-separated>"
    tests=$(CARRY=$CARRY yq -r '.features[] | select(.id as $i | strenv(CARRY) | split(" ") | any_c(. == $i)) | .acceptance[]' company/customizations.yaml)
-   git checkout origin/company/main -- $tests
+   git checkout origin/dev -- $tests
    # apply the approved inventory updates, and the approved test changes of Carry features, here
    git add -A company $tests
    git commit -m "company: carry customizations inventory, tests and CI to $NEW"
@@ -32,15 +32,15 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
    # on a conflict in an acceptance test, keep the version committed above (ours)
    git cherry-pick <carry commits>
    # every company edit to an upstream test made it across
-   OLD_BASE=origin/security/$OLD-clean   # the snapshot company/main is on, as in PORTING.md
-   for f in $(git diff --name-only --diff-filter=M $OLD_BASE origin/company/main -- '*_test.go' '*.test.*' '*.spec.*'); do
-     git diff $OLD_BASE origin/company/main -- "$f" | grep '^+[^+]' | cut -c2- |
+   OLD_BASE=origin/security/$OLD-clean   # the snapshot dev is on, as in PORTING.md
+   for f in $(git diff --name-only --diff-filter=M $OLD_BASE origin/dev -- '*_test.go' '*.test.*' '*.spec.*'); do
+     git diff $OLD_BASE origin/dev -- "$f" | grep '^+[^+]' | cut -c2- |
        while IFS= read -r l; do grep -qxF -- "$l" "$f" || echo "$f: missing: $l"; done
    done
    git push origin company/$NEW
    ```
 
-   `company/ci` comes from the baseline, not from `company/main`: stage 2 fixed it for the new version. The `git diff` lists what differs from `company/main`: a stage 2 fix stays as it is; a `company/main` change made after the baseline was cut is brought over by hand.
+   `company/ci` comes from the baseline, not from `dev`: stage 2 fixed it for the new version. The `git diff` lists what differs from `dev`: a stage 2 fix stays as it is; a `dev` change made after the baseline was cut is brought over by hand.
 
    The company's edits to upstream tests ride in the feature commits, often in commits that look company-only. The loop prints each line of such an edit that is missing on `company/$NEW`; every line it prints must belong to an Implement feature, whose MR brings it. Where upstream changed the test, the report's Upstream test changes table says how the edit was redone; check those lines by hand.
 
@@ -99,9 +99,26 @@ Stage 4 of the upgrade flow, run **inside the company** by a person in their own
 
 5. **Hand over for manual testing**: list what the automated tests do not cover, per feature. Each problem found by hand becomes a new automated test in a follow-up MR.
 
-6. **Go live and release the CLI**, a person's step: move `company/main` to `company/$NEW` (keep the old tip as the tag `company/vOLD-final`), then tag the live commit `v$NEW-company.<n>` (e.g. `v0.11.0-company.1`). The tag pipeline runs the tests and the `cli` job, which builds the `multica` CLI for the platforms in `CLI_PLATFORMS` with upstream's release toolchain and `-ldflags`, and publishes the archives and `checksums.txt` to the Package Registry and a Release. The upstream `.goreleaser.yml` stays unused: it publishes to GitHub and Homebrew. A fix to the pipeline needs a new commit and a new tag; retrying an old tag's pipeline reuses that commit's pipeline file. `multica update` asks GitHub for upstream releases and cannot reach it behind the firewall, so installed CLIs are updated from the company Release.
+6. **Go live and release the CLI**, a person's step: move `dev` to `company/$NEW` (keep the old tip as the tag `company/vOLD-final`), then tag the live commit `v$NEW-company.<n>`, with `<n>` one above the highest existing `v$NEW-company.*` tag (`.1` for the first). `company/$NEW` grew from the baseline, not from `dev`, so the move is a force push to a protected branch: allow it on the `dev` rule only for that push. Work goes on on `dev` during the upgrade, and the force push drops whatever `company/$NEW` lacks: stop merging into `dev` for this step, and list what landed after the analysed commit (the report's `Analysed:` line). Each of those changes must be on `company/$NEW` first, through an MR like step 1; the report's own merge (step 0) needs nothing. Both commits are already tested, so push the branch and the `-final` tag without a pipeline:
 
-   Done when: the Release exists, and the downloaded binary for one platform reports that version (`multica version`).
+   ```bash
+   git fetch origin --tags
+   git log --oneline <analysed commit>..origin/dev           # each change must already be on company/$NEW
+   git ls-remote --tags origin "v$NEW-company.*"          # pick <n>
+   git tag -a company/v$OLD-final -m "dev before $NEW" origin/dev
+   git push -o ci.skip origin company/v$OLD-final
+   GITLAB=<GitLab URL>; PROJECT=<project id>; TOKEN=$(cat <your token file>)
+   P="$GITLAB/api/v4/projects/$PROJECT/protected_branches/dev"
+   curl -sf -X PATCH -H "PRIVATE-TOKEN: $TOKEN" "$P" -d allow_force_push=true
+   git push -o ci.skip --force origin origin/company/$NEW:refs/heads/dev
+   curl -sf -X PATCH -H "PRIVATE-TOKEN: $TOKEN" "$P" -d allow_force_push=false
+   git tag -a v$NEW-company.<n> -m "v$NEW-company.<n>" origin/company/$NEW
+   git push origin v$NEW-company.<n>                      # this one runs the tag pipeline
+   ```
+
+   Check afterwards that the rule allows no force push again. Never move or delete a tag that already has a Release. Done when: the tag pipeline is green, the Release lists every platform's archive, and one downloaded archive matches `checksums.txt` and prints the new version with `multica version`.
+
+   The tag pipeline runs the tests and the `cli` job, which builds the `multica` CLI for the platforms in `CLI_PLATFORMS` with upstream's release toolchain and `-ldflags`, and publishes the archives and `checksums.txt` to the Package Registry and a Release. The upstream `.goreleaser.yml` stays unused: it publishes to GitHub and Homebrew. A fix to the pipeline needs a new commit and a new tag; retrying an old tag's pipeline reuses that commit's pipeline file. `multica update` asks GitHub for upstream releases and cannot reach it behind the firewall, so installed CLIs are updated from the company Release.
 
 ## Report
 

@@ -28,7 +28,7 @@ In the company project:
 - `baseline/vX.Y.Z`: the clean snapshot plus `company/ci/`, the stage 2 run.
 - `port-report/vX.Y.Z`: the stage 3 report, reviewed as an MR.
 - `company/vX.Y.Z`: the integration branch, baseline plus `company/` carried over; `port/vX.Y.Z/<feature id>` MRs target it.
-- `company/main`: what runs in production. Each clean snapshot is a parentless commit, so a new version shares no history with the old one: going live moves `company/main` to `company/vX.Y.Z`, and the old tip is kept as the tag `company/vOLD-final`. Customizations carry across by being ported again, which is why the inventory must stay complete.
+- `dev`: the company's working branch, where day-to-day changes merge, and what runs in production. Each clean snapshot is a parentless commit, so a new version shares no history with the old one: going live moves `dev` to `company/vX.Y.Z`, and the old tip is kept as the tag `company/vOLD-final`. Customizations carry across by being ported again, which is why the inventory must stay complete.
 
 ## Installing
 
@@ -51,4 +51,3 @@ Update it with `git -C ~/.claude/skills/multica-fork pull`. Changes are committe
   - `multica.gitlab-ci.yml`: the pipeline; `ci-tools.Dockerfile`: the CI image it runs in; `prepare-dockerfile.sh`: build copies of upstream Dockerfiles with company base images and mirrors.
   - `required-images.sh`: the images a version needs, with substitute rules; drafts `images.yml`.
   - `probe.gitlab-ci.yml`: the environment probe of DIAGNOSE.md.
-  - `gitlab-settings.sh` and `gitlab-settings.env`: apply or audit the GitLab project settings.

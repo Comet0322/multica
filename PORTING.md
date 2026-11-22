@@ -6,7 +6,7 @@ Stage 3 of the upgrade flow, run **inside the company** by a person in their own
 git fetch origin                         # compare the remote branches, not stale local ones
 OLD_BASE=origin/security/v0.11.0-clean   # fork snapshot the company is on
 NEW_BASE=origin/security/v0.12.0-clean   # new snapshot, already through stages 1 and 2
-COMPANY=origin/company/main              # OLD_BASE plus the customizations
+COMPANY=origin/dev                       # OLD_BASE plus the customizations; the report records its commit
 NEW=v0.12.0                       # names the report files and branches
 ```
 
@@ -76,7 +76,7 @@ NEW=v0.12.0                       # names the report files and branches
    For each, find its feature from the commit that changed it, and check what upstream did to the test between the two versions (`git diff $OLD_BASE $NEW_BASE -- <file>`). Unchanged upstream: the company change carries with its feature. Changed upstream: the company change must be redone on the new test, and its reason checked against the new test. Deleted or renamed: say where the change goes now, or that it is dropped.
    Done when: every seam of every feature is recorded as unchanged or changed, each change with `file:line` on both sides, and every upstream test the company changed is marked carry, redo, or drop.
 
-4. **Trial port**, in a separate worktree, so this checkout stays on `company/main` for the report:
+4. **Trial port**, in a separate worktree, so this checkout stays on `dev` for the report:
 
    ```bash
    git worktree add -b port-trial ../port-trial $NEW_BASE && cd ../port-trial
@@ -108,7 +108,7 @@ NEW=v0.12.0                       # names the report files and branches
 6. **Cross-feature risks.** New migrations (reversible? cost at production data size? touching customized tables?), added/renamed/removed env vars and settings, removed or changed APIs, CLI commands and webhook formats that outside systems use.
    Done when: every new migration is listed with its impact, "none" included.
 
-7. **Write the report, then stop.** Write `company/porting/reports/$NEW.md` from the template below, and one issue draft per feature on the Implement list in `company/porting/reports/$NEW-issues/` (verdict and evidence, the feature's commits on `company/main`, acceptance criteria and test files, expected files to change). Commit them on `port-report/$NEW` and open one MR into `company/main` so the review happens on it (push with `-o merge_request.create -o merge_request.target=company/main`, so no separate branch pipeline runs). Drafts only: create no issues, open no implementation MRs.
+7. **Write the report, then stop.** Write `company/porting/reports/$NEW.md` from the template below, and one issue draft per feature on the Implement list in `company/porting/reports/$NEW-issues/` (verdict and evidence, the feature's commits on `dev`, acceptance criteria and test files, expected files to change). Commit them on `port-report/$NEW` and open one MR into `dev` so the review happens on it (push with `-o merge_request.create -o merge_request.target=dev`, so no separate branch pipeline runs). Drafts only: create no issues, open no implementation MRs.
    Done when: report and drafts are on the review MR. End with the decisions a person must make: every `blocked` feature, whether to drop each `superseded` one, every acceptance-test change proposal.
 
 ## Report template
@@ -117,6 +117,7 @@ NEW=v0.12.0                       # names the report files and branches
 # Port report: COMPANY → NEW_BASE
 
 Baseline pipeline: <URL> (green)
+Analysed: dev at <commit>
 Trial port: <N> commits, <M> conflicts; build <ok/failed>, typecheck <ok/failed>
 
 ## Decisions needed
