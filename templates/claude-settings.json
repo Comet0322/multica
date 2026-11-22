@@ -3,7 +3,12 @@
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
-        "hooks": [{ "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/company/ci/guard-frozen.py\"" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/company/ci/guard-frozen.py\"; if [ -f \"$f\" ]; then exec python3 \"$f\"; fi; if [ -f \"$CLAUDE_PROJECT_DIR/company/ci/frozen-files.txt\" ]; then echo \"guard-frozen.py is missing but frozen-files.txt is not: restore company/ci\" >&2; exit 2; fi"
+          }
+        ]
       }
     ]
   }

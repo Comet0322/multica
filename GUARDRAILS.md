@@ -36,7 +36,7 @@ git add -f .claude/settings.json company/ci/guard-frozen.py   # upstream's .giti
 git commit -m "company: guard hook in the project settings"
 ```
 
-`.claude/settings.json` registers `python3 "$CLAUDE_PROJECT_DIR/company/ci/guard-frozen.py"` for Edit, Write, MultiEdit, NotebookEdit and Bash. Both files are frozen, so the hook protects itself. It is outside `company/`, so IMPLEMENT.md step 0 carries it to each new integration branch. When a company needs a guarantee that holds even against someone editing settings by hand, the same command can also go into the managed settings (`/etc/claude-code/managed-settings.json`, root-owned); that is optional.
+`.claude/settings.json` runs `company/ci/guard-frozen.py` for Edit, Write, MultiEdit, NotebookEdit and Bash. On a checkout without `company/ci` (a branch made from a clean snapshot) the command allows everything, like the guard itself; with `frozen-files.txt` present but the script gone, it blocks every call. Without that check, switching to such a branch blocks every tool call, `git switch` back included. Both files are frozen, so the hook protects itself. It is outside `company/`, so IMPLEMENT.md step 0 carries it to each new integration branch. When a company needs a guarantee that holds even against someone editing settings by hand, the same command can also go into the managed settings (`/etc/claude-code/managed-settings.json`, root-owned); that is optional.
 
 A person who approved a change and wants an agent session to make it starts that session with `MULTICA_FROZEN_UNLOCK=1`; an `export` inside the session does not unlock it.
 

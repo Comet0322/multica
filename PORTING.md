@@ -70,20 +70,24 @@ NEW=v0.12.0                       # names the report files and branches
    Then the upstream tests the company changed: for each entry in `company/upstream-test-changes.yaml`, check what upstream did to that test between the two versions (`git diff $OLD_BASE $NEW_BASE -- <file>`). Unchanged upstream: the company change carries with its feature. Changed upstream: the company change must be redone on the new test, and the entry's `why` checked against it. Deleted or renamed: propose the entry's removal or new path.
    Done when: every seam of every feature is recorded as unchanged or changed, each change with `file:line` on both sides, and every entry in `upstream-test-changes.yaml` is marked unchanged, redo, or drop.
 
-4. **Trial port**, local only:
+4. **Trial port**, in a separate worktree, so this checkout keeps the guard hook (`company/ci/guard-frozen.py`, which NEW_BASE does not have):
 
    ```bash
-   git switch -c port-trial $NEW_BASE
+   git worktree add -b port-trial ../port-trial $NEW_BASE && cd ../port-trial
    git cherry-pick $(git rev-list --reverse $OLD_BASE..$COMPANY)   # per conflict: note feature, files, resolution
    (cd server && go build ./... && go vet ./...)
    pnpm install --frozen-lockfile && pnpm typecheck
    # each feature's frozen tests; failures here are evidence for `behavioral`
    (cd server && go test ./internal/<pkg>/ -run '<TestName>' -count=1)
    (cd packages/<pkg> && pnpm exec vitest run <file relative to the package>)
-   git switch - && git branch -D port-trial
+   cd - && git worktree remove --force ../port-trial && git branch -D port-trial
    ```
 
-   Done when: every commit is applied, resolved, or marked unappliable with the reason; build, typecheck and frozen-test results are recorded; the trial branch is gone.
+   A commit that mixes feature code with `company/` files (inventory, fingerprints): keep the code, drop the `company/` part; step 0 carries `company/`. A generated file that conflicts (sqlc's `server/pkg/db/generated/`): regenerate it with `make sqlc` instead of resolving by hand.
+
+   A frozen Go test that needs PostgreSQL (most handler and `cmd/server` tests skip or exit without `DATABASE_URL`): do not start a database on a shared machine. Push the trial branch without a pipeline (`git push -o ci.skip origin port-trial:port-trial/$NEW`), start one pipeline on it with `GO_TEST_PKGS`, `GO_TEST_RUN` and `GO_TEST_COUNT=1` (PIPELINE.md, Flaky list), record the result, then delete the branch.
+
+   Done when: every commit is applied, resolved, or marked unappliable with the reason; build, typecheck and frozen-test results are recorded; the trial worktree and branches are gone.
 
 5. **Verdicts and acceptance criteria.**
    - `unaffected`, `mechanical`: the existing frozen tests stand.

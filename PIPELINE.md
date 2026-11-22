@@ -36,7 +36,7 @@ The template also carries jobs for later stages (`protected-changes` and `frozen
 
    If `pnpm install` fails on blocked versions, add the pins as a second commit (Blocked npm versions).
 3. **Make it green.** The `ci-tools` job builds the CI image first, then the test jobs and `images` run. Fix each red job with Known problems below. A red job that is none of these is a real failure of the snapshot: report it back to stage 1.
-4. **Make it stable.** Run the pipeline three times, once while other pipelines run: starting all three at once covers both (`POST /projects/:id/pipeline?ref=baseline/$NEW`, or Run pipeline in the UI). Add to `flaky-tests.txt` only tests that pass when run alone (Flaky list).
+4. **Make it stable.** Run the pipeline three times, one after another (`POST /projects/:id/pipeline?ref=baseline/$NEW`, or Run pipeline in the UI); start one of them while another pipeline is still running, so it runs under load. Do not start all three at once: they queue for runner slots and overload a shared runner, and the extra timeouts say nothing about the snapshot. Add to `flaky-tests.txt` only tests that pass when run alone (Flaky list).
 5. **Record** the green pipeline URL; PORTING.md step 1 needs it. Write every deviation from the template, and why, in `company/ci/environment.md`.
 
 Done when: the baseline pipeline is green three times in a row and its URL is recorded.
