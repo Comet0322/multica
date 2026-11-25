@@ -979,7 +979,7 @@ oneline_up() (
   fi
   export MULTICA_DEV_HOME="$tmp_dir/dev-$(basename "$checkout")" MULTICA_DEV_TMPDIR="$tmp_dir/dev-tmp"
   export PATH="$oneline_bin:$PATH"
-  export PORT=8080 FRONTEND_PORT=3000 FRONTEND_ORIGIN=http://localhost:3000 POSTGRES_DB=multica
+  export PORT=8080 FRONTEND_PORT=3000 FRONTEND_ORIGIN=http://localhost:3000 POSTGRES_DB=multica POSTGRES_PASSWORD=multica
   export MULTICA_PUBLIC_URL=http://localhost:8080 LOCAL_UPLOAD_BASE_URL=http://localhost:8080 GOOGLE_REDIRECT_URI=http://localhost:3000/auth/callback
   export DATABASE_URL="$(slot_url multica)"
   for assignment in "$@"; do export "${assignment?}"; done
