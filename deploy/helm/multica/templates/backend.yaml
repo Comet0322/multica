@@ -104,7 +104,7 @@ spec:
             - name: COLLAB_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.existingSecret }}
+                  name: {{ include "multica.secretName" . }}
                   key: COLLAB_SECRET
                   optional: true
             {{- end }}

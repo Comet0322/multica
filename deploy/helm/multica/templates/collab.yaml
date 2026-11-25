@@ -24,7 +24,7 @@ spec:
     metadata:
       annotations:
         # Same lookup as the backend: both must roll when COLLAB_SECRET rotates.
-        checksum/secret: {{ (lookup "v1" "Secret" .Release.Namespace .Values.existingSecret).data | toYaml | sha256sum }}
+        checksum/secret: {{ (lookup "v1" "Secret" .Release.Namespace (include "multica.secretName" .)).data | toYaml | sha256sum }}
       labels:
         {{- include "multica.labels" . | nindent 8 }}
         app.kubernetes.io/component: collab
@@ -48,7 +48,7 @@ spec:
             - name: COLLAB_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.existingSecret }}
+                  name: {{ include "multica.secretName" . }}
                   key: COLLAB_SECRET
           readinessProbe:
             httpGet:
