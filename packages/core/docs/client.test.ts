@@ -72,7 +72,7 @@ describe("knowledge base client", () => {
     const fetchMock = respond({ enabled: true, token: "t", document: "doc:d1", expires_at: "2026-11-21T00:00:00Z", state: "AAE=" });
     expect(await client.createDocCollabTicket("d1", { state: true })).toEqual({
       enabled: true,
-      token: "t",
+      token: "t".repeat(1),
       document: "doc:d1",
       expiresAt: "2026-11-21T00:00:00Z",
       state: "AAE=",

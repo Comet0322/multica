@@ -316,7 +316,7 @@ jobs:
         env:
           POSTGRES_DB: multica
           POSTGRES_USER: multica
-          POSTGRES_PASSWORD: multica
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         ports:
           - 5432:5432
         options: >-
@@ -325,7 +325,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://multica:multica@localhost:5432/multica?sslmode=disable
+      DATABASE_URL: postgres://multica:${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/multica?sslmode=disable
       PORT: "8080"
       FRONTEND_PORT: "3000"
       FRONTEND_ORIGIN: http://localhost:3000

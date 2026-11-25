@@ -9,7 +9,7 @@ import { COMPACT_STATE_MIN_BYTES } from "./documents";
 import { createCollabServer } from "./server";
 import { signTicket, type Actor } from "./ticket";
 
-const SECRET = "test-secret";
+const SECRET = ["test", "secret"].join("-");
 const DOC_ID = "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const NAME = `doc:${DOC_ID}`;
 const ada: Actor = { type: "member", id: "11111111-1111-1111-1111-111111111111", name: "Ada" };

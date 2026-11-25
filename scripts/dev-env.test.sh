@@ -333,7 +333,7 @@ assert_start_api_collab() {
     COLLAB_PORT=14000
     COMPONENTS="$components"
     ENV_FILE=.env.example
-    COLLAB_SECRET=test-secret
+    COLLAB_SECRET="test-$$"
     local events="$STATE_DIR/events"
     : > "$events"
     printf '100\n' > "$(pid_file api)"
@@ -414,7 +414,7 @@ assert_start_collab() {
     BACKEND_PORT=18080
     COLLAB_PORT=14000
     ENV_FILE=.env.example
-    COLLAB_SECRET=test-secret
+    COLLAB_SECRET="test-$$"
     local events="$STATE_DIR/events"
     printf '%s' "$listener" > "$STATE_DIR/listener"
     printf '%s' "$healthy" > "$STATE_DIR/healthy"

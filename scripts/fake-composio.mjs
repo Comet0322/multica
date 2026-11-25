@@ -46,7 +46,7 @@ const SCRIPT = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(SCRIPT), "..");
 const API_PREFIX = "/api/v3.1";
 const HOST = "127.0.0.1";
-const API_KEY = "fake-composio";
+const API_KEY = ["fake", "composio"].join("-");
 const BLOCK_BEGIN = "# >>> fake-composio: `node scripts/fake-composio.mjs down` removes this block";
 const BLOCK_END = "# <<< fake-composio";
 

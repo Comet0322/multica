@@ -103,8 +103,8 @@ catalogs:
       specifier: ^16.17.8
       version: 16.17.8
     i18next:
-      specifier: ^26.0.8
-      version: 26.0.8
+      specifier: ^26.3.4
+      version: 26.7.2
     jsdom:
       specifier: ^29.0.1
       version: 29.0.1
@@ -699,7 +699,7 @@ importers:
         version: 57.0.4(expo@57.0.27)(react-native-web@0.21.2(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3))
       i18next:
         specifier: 'catalog:'
-        version: 26.0.8(typescript@6.0.3)
+        version: 26.7.2(typescript@6.0.3)
       input-otp-native:
         specifier: ^0.5.0
         version: 0.5.0(react-native@0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)
@@ -723,7 +723,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       react-i18next:
         specifier: 'catalog:'
-        version: 17.0.6(i18next@26.0.8(typescript@6.0.3))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+        version: 17.0.6(i18next@26.7.2(typescript@6.0.3))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react-native:
         specifier: 0.86.3
         version: 0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3)
@@ -975,7 +975,7 @@ importers:
         version: 6.0.1
       i18next:
         specifier: 'catalog:'
-        version: 26.0.8(@typescript/typescript6@6.0.2)
+        version: 26.7.2(@typescript/typescript6@6.0.2)
       mdast-util-from-markdown:
         specifier: 'catalog:'
         version: 2.0.3
@@ -987,7 +987,7 @@ importers:
         version: 1.369.3
       react-i18next:
         specifier: 'catalog:'
-        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.0.8(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.7.2(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -1048,7 +1048,7 @@ importers:
         version: 5.96.2(react@19.2.3)
       i18next:
         specifier: 'catalog:'
-        version: 26.0.8(@typescript/typescript6@6.0.2)
+        version: 26.7.2(@typescript/typescript6@6.0.2)
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -1057,7 +1057,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       react-i18next:
         specifier: 'catalog:'
-        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.0.8(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.7.2(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       sonner:
         specifier: 'catalog:'
         version: 2.0.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1189,7 +1189,7 @@ importers:
         version: 5.6.0
       i18next:
         specifier: 'catalog:'
-        version: 26.0.8(@typescript/typescript6@6.0.2)
+        version: 26.7.2(@typescript/typescript6@6.0.2)
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1216,7 +1216,7 @@ importers:
         version: 19.2.3(react@19.2.3)
       react-i18next:
         specifier: 'catalog:'
-        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.0.8(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.7.2(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react-markdown:
         specifier: 'catalog:'
         version: 10.1.0(@types/react@19.2.14)(react@19.2.3)
@@ -1421,7 +1421,7 @@ importers:
         version: 9.0.5
       i18next:
         specifier: 'catalog:'
-        version: 26.0.8(@typescript/typescript6@6.0.2)
+        version: 26.7.2(@typescript/typescript6@6.0.2)
       katex:
         specifier: 0.18.2
         version: 0.18.2
@@ -1466,7 +1466,7 @@ importers:
         version: 6.2.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react-i18next:
         specifier: 'catalog:'
-        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.0.8(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 17.0.6(@typescript/typescript6@6.0.2)(i18next@26.7.2(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react-markdown:
         specifier: 'catalog:'
         version: 10.1.0(@types/react@19.2.14)(react@19.2.3)
@@ -8689,10 +8689,10 @@ packages:
   hyphenate-style-name@1.1.0:
     resolution: {integrity: sha512-WDC/ui2VVRrz3jOVi+XtjqkDjiVjTtFaAGiW37k6b+ohyQ5wYDOGkvCZa8+H0nx3gyvv0+BST9xuOgIyGQ00gw==}
 
-  i18next@26.0.8:
-    resolution: {integrity: sha512-BRzLom0mhDhV9v0QhgUUHWQJuwFmnr1194xEcNLYD6ym8y8s542n4jXUvRLnhNTbh9PmpU6kGZamyuGHQMsGjw==}
+  i18next@26.7.2:
+    resolution: {integrity: sha512-RsOY3BeaCDdkk52NeJSFAXELQ2rQXBO/tOub6L8ue2ICPfR/FRDWDOfEDg4xMPd1SqO5goVYQ6i72qWEUB/PPw==}
     peerDependencies:
-      typescript: ^5 || ^6
+      typescript: ^5 || ^6 || ^7
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -20273,11 +20273,11 @@ snapshots:
 
   hyphenate-style-name@1.1.0: {}
 
-  i18next@26.0.8(@typescript/typescript6@6.0.2):
+  i18next@26.7.2(@typescript/typescript6@6.0.2):
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
 
-  i18next@26.0.8(typescript@6.0.3):
+  i18next@26.7.2(typescript@6.0.3):
     optionalDependencies:
       typescript: 6.0.3
 
@@ -22916,22 +22916,22 @@ snapshots:
     dependencies:
       react: 19.2.3
 
-  react-i18next@17.0.6(@typescript/typescript6@6.0.2)(i18next@26.0.8(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+  react-i18next@17.0.6(@typescript/typescript6@6.0.2)(i18next@26.7.2(@typescript/typescript6@6.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       '@babel/runtime': 7.29.2
       html-parse-stringify: 3.0.1
-      i18next: 26.0.8(@typescript/typescript6@6.0.2)
+      i18next: 26.7.2(@typescript/typescript6@6.0.2)
       react: 19.2.3
       use-sync-external-store: 1.6.0(react@19.2.3)
     optionalDependencies:
       react-dom: 19.2.3(react@19.2.3)
       typescript: '@typescript/typescript6@6.0.2'
 
-  react-i18next@17.0.6(i18next@26.0.8(typescript@6.0.3))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)(typescript@6.0.3):
+  react-i18next@17.0.6(i18next@26.7.2(typescript@6.0.3))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.6)(@react-native/metro-config@0.86.3(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)(typescript@6.0.3):
     dependencies:
       '@babel/runtime': 7.29.2
       html-parse-stringify: 3.0.1
-      i18next: 26.0.8(typescript@6.0.3)
+      i18next: 26.7.2(typescript@6.0.3)
       react: 19.2.3
       use-sync-external-store: 1.6.0(react@19.2.3)
     optionalDependencies:

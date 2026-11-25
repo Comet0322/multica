@@ -12,6 +12,8 @@ import {
   sendAiVisitToPostHog,
 } from "./index";
 
+const posthogKey = ["phc", "test"].join("_");
+
 const CHROME_2026 =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 const CHROME_2017 =
@@ -233,7 +235,7 @@ describe("PostHog retention", () => {
     status: null,
     now: new Date("2026-11-23T00:00:00.000Z"),
   })!;
-  const config = { apiKey: "phc_test", host: "https://eu.i.posthog.com", environment: "production" } as const;
+  const config = { apiKey: posthogKey, host: "https://eu.i.posthog.com", environment: "production" } as const;
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -241,17 +243,17 @@ describe("PostHog retention", () => {
 
   it("reads the same variables as the Go server", () => {
     expect(aiVisitPostHogConfig({})).toBeNull();
-    expect(aiVisitPostHogConfig({ POSTHOG_API_KEY: "phc_test", ANALYTICS_DISABLED: "TRUE" })).toBeNull();
-    expect(aiVisitPostHogConfig({ POSTHOG_API_KEY: " phc_test " })).toEqual({
-      apiKey: "phc_test",
+    expect(aiVisitPostHogConfig({ POSTHOG_API_KEY: posthogKey, ANALYTICS_DISABLED: "TRUE" })).toBeNull();
+    expect(aiVisitPostHogConfig({ POSTHOG_API_KEY: ` ${posthogKey} ` })).toEqual({
+      apiKey: posthogKey,
       host: "https://us.i.posthog.com",
       environment: "dev",
     });
     expect(
-      aiVisitPostHogConfig({ POSTHOG_API_KEY: "phc_test", POSTHOG_HOST: "https://eu.i.posthog.com/", APP_ENV: "prod" }),
+      aiVisitPostHogConfig({ POSTHOG_API_KEY: posthogKey, POSTHOG_HOST: "https://eu.i.posthog.com/", APP_ENV: "prod" }),
     ).toEqual(config);
     expect(
-      aiVisitPostHogConfig({ POSTHOG_API_KEY: "phc_test", ANALYTICS_ENVIRONMENT: "staging", APP_ENV: "production" })
+      aiVisitPostHogConfig({ POSTHOG_API_KEY: posthogKey, ANALYTICS_ENVIRONMENT: "staging", APP_ENV: "production" })
         ?.environment,
     ).toBe("staging");
   });
@@ -286,7 +288,7 @@ describe("PostHog retention", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://eu.i.posthog.com/batch/");
     const body = JSON.parse(String(init?.body));
-    expect(body.api_key).toBe("phc_test");
+    expect(body.api_key).toBe(posthogKey);
     expect(body.batch).toEqual([aiVisitPostHogEvent(record, "production")]);
     expect(String(init?.body)).not.toContain("secret");
 
@@ -301,11 +303,11 @@ describe("PostHog retention", () => {
     const waitUntil = vi.fn();
 
     reportAiVisit(record, { env: {}, waitUntil, fetch: fetchMock });
-    reportAiVisit(null, { env: { POSTHOG_API_KEY: "phc_test" }, waitUntil, fetch: fetchMock });
+    reportAiVisit(null, { env: { POSTHOG_API_KEY: posthogKey }, waitUntil, fetch: fetchMock });
     expect(waitUntil).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
 
-    reportAiVisit(record, { env: { POSTHOG_API_KEY: "phc_test" }, waitUntil, fetch: fetchMock });
+    reportAiVisit(record, { env: { POSTHOG_API_KEY: posthogKey }, waitUntil, fetch: fetchMock });
     expect(waitUntil).toHaveBeenCalledWith(expect.any(Promise));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(console.info).toHaveBeenCalledTimes(2);

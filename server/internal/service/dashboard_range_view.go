@@ -81,12 +81,12 @@ func (v DashboardRangeViews) Record(ctx context.Context, view DashboardRangeView
 	outcome := DashboardRangeOutcomeFor(view.Decision, view.RequestedDays)
 	var limit pgtype.Int4
 	if view.Decision.Gate.Action != entitlement.ActionOff && view.Decision.Gate.Limit != nil {
-		limit = pgtype.Int4{Int32: int32(*view.Decision.Gate.Limit), Valid: true}
+		limit = pgtype.Int4{Int32: util.SatInt32(*view.Decision.Gate.Limit), Valid: true}
 	}
 	err := v.Queries.RecordDashboardRangeView(ctx, db.RecordDashboardRangeViewParams{
 		WorkspaceID:   view.WorkspaceID,
-		RequestedDays: int32(view.RequestedDays),
-		ReturnedDays:  int32(view.ReturnedDays),
+		RequestedDays: util.SatInt32(view.RequestedDays),
+		ReturnedDays:  util.SatInt32(view.ReturnedDays),
 		Outcome:       string(outcome),
 		LimitDays:     limit,
 		Action:        string(view.Decision.Gate.Action),

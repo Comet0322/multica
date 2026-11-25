@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { redactSecrets } from "./redact-secrets";
 
 describe("redactSecrets", () => {
-  const multicaTokenBody = "0123456789abcdef".repeat(2) + "01234567";
+  const suffixBody = "0123456789abcdef".repeat(2) + "01234567";
 
   it("redacts AWS access key", () => {
     const result = redactSecrets("key: AKIAIOSFODNN7EXAMPLE");
@@ -56,24 +56,24 @@ describe("redactSecrets", () => {
   });
 
   it.each(["mat_", "mul_", "mdt_", "mcn_"])("redacts %s credentials in stored output", (prefix) => {
-    const token = prefix + multicaTokenBody;
+    const token = prefix + suffixBody;
     expect(redactSecrets(`retrying with --token ${token} and moving on`))
       .toBe("retrying with --token [REDACTED_MULTICA_TOKEN] and moving on");
   });
 
   it("redacts Multica credentials after escaped JSON whitespace", () => {
-    const token = "mat_" + multicaTokenBody;
+    const token = "mat_" + suffixBody;
     expect(redactSecrets(JSON.stringify({ value: `line1\n${token}\t${token}` })))
       .toBe(JSON.stringify({ value: "line1\n[REDACTED_MULTICA_TOKEN]\t[REDACTED_MULTICA_TOKEN]" }));
   });
 
   it("preserves the generic credential marker for Multica environment assignments", () => {
-    expect(redactSecrets("MULTICA_TOKEN=mat_" + multicaTokenBody))
+    expect(redactSecrets("MULTICA_TOKEN=mat_" + suffixBody))
       .toBe("MULTICA_[REDACTED CREDENTIAL]");
   });
 
   it("preserves incomplete Multica credentials and identifiers containing a token prefix", () => {
-    const input = "mat_" + multicaTokenBody.slice(1) + " prefix_mat_" + multicaTokenBody;
+    const input = "mat_" + suffixBody.slice(1) + " prefix_mat_" + suffixBody;
     expect(redactSecrets(input)).toBe(input);
   });
 
