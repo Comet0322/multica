@@ -1,0 +1,24 @@
+{
+  "role": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "card": {
+    "unavailable": "Member unavailable",
+    "agents_section": "Agents ({{count}})",
+    "detail_link": "Detail →",
+    "more_agents_one": "and {{count}} other agent",
+    "more_agents_other": "and {{count}} other agents"
+  },
+  "detail": {
+    "members_breadcrumb": "Members",
+    "role": "Role",
+    "email": "Email",
+    "joined": "Joined",
+    "relation": "Relation",
+    "breadcrumb_fallback": "Member",
+    "not_found_title": "Member not found",
+    "not_found_description": "This member may have left the workspace."
+  }
+}

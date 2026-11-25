@@ -1,0 +1,1244 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/multica-ai/multica/server/internal/cli"
+)
+
+var autopilotCmd = &cobra.Command{
+	Use:   "autopilot",
+	Short: "Manage autopilots (scheduled/triggered agent automations)",
+}
+
+var autopilotListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List autopilots in the workspace",
+	RunE:  runAutopilotList,
+}
+
+var autopilotGetCmd = &cobra.Command{
+	Use:   "get <id>",
+	Short: "Get autopilot details (webhook credentials redacted by default)",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotGet,
+}
+
+var autopilotCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new autopilot",
+	RunE:  runAutopilotCreate,
+}
+
+var autopilotUpdateCmd = &cobra.Command{
+	Use:   "update <id>",
+	Short: "Update an autopilot",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotUpdate,
+}
+
+var autopilotDeleteCmd = &cobra.Command{
+	Use:   "delete <id>",
+	Short: "Delete an autopilot",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotDelete,
+}
+
+var autopilotTriggerCmd = &cobra.Command{
+	Use:   "trigger <id>",
+	Short: "Manually trigger an autopilot to run once",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotTrigger,
+}
+
+var autopilotRunsCmd = &cobra.Command{
+	Use:   "runs <id>",
+	Short: "List execution history for an autopilot",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotRuns,
+}
+
+var autopilotTriggerAddCmd = &cobra.Command{
+	Use:   "trigger-add <autopilot-id>",
+	Short: "Add a schedule or webhook trigger to an autopilot",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotTriggerAdd,
+}
+
+var autopilotTriggerListCmd = &cobra.Command{
+	Use:   "trigger-list <autopilot-id>",
+	Short: "List an autopilot's triggers (ids for trigger-update/-delete/-rotate-url)",
+	Args:  exactArgs(1),
+	RunE:  runAutopilotTriggerList,
+}
+
+var autopilotTriggerUpdateCmd = &cobra.Command{
+	Use:   "trigger-update <autopilot-id> <trigger-id>",
+	Short: "Update an existing trigger",
+	Args:  exactArgs(2),
+	RunE:  runAutopilotTriggerUpdate,
+}
+
+var autopilotTriggerDeleteCmd = &cobra.Command{
+	Use:   "trigger-delete <autopilot-id> <trigger-id>",
+	Short: "Delete a trigger",
+	Args:  exactArgs(2),
+	RunE:  runAutopilotTriggerDelete,
+}
+
+var autopilotTriggerRotateURLCmd = &cobra.Command{
+	Use:   "trigger-rotate-url <autopilot-id> <trigger-id>",
+	Short: "Rotate the webhook URL of a webhook trigger",
+	Args:  exactArgs(2),
+	RunE:  runAutopilotTriggerRotateURL,
+}
+
+func init() {
+	autopilotCmd.AddCommand(autopilotListCmd)
+	autopilotCmd.AddCommand(autopilotGetCmd)
+	autopilotCmd.AddCommand(autopilotCreateCmd)
+	autopilotCmd.AddCommand(autopilotUpdateCmd)
+	autopilotCmd.AddCommand(autopilotDeleteCmd)
+	autopilotCmd.AddCommand(autopilotTriggerCmd)
+	autopilotCmd.AddCommand(autopilotRunsCmd)
+	autopilotCmd.AddCommand(autopilotTriggerAddCmd)
+	autopilotCmd.AddCommand(autopilotTriggerListCmd)
+	autopilotCmd.AddCommand(autopilotTriggerUpdateCmd)
+	autopilotCmd.AddCommand(autopilotTriggerDeleteCmd)
+	autopilotCmd.AddCommand(autopilotTriggerRotateURLCmd)
+
+	// list
+	autopilotListCmd.Flags().String("status", "", "Filter by status (active, paused)")
+	autopilotListCmd.Flags().String("output", "table", "Output format: table or json")
+	autopilotListCmd.Flags().Bool("full-id", false, "Show full UUIDs in table output")
+
+	// get
+	autopilotGetCmd.Flags().String("output", "json", "Output format: table or json")
+	autopilotGetCmd.Flags().Bool("show-secrets", false, "Include live webhook credentials in JSON output (unsafe for logs)")
+
+	// create
+	autopilotCreateCmd.Flags().String("title", "", "Autopilot title (required)")
+	autopilotCreateCmd.Flags().String("description", "", "Autopilot description (used as the run prompt)")
+	autopilotCreateCmd.Flags().String("agent", "", "Assignee agent (name or ID)")
+	autopilotCreateCmd.Flags().String("squad", "", "Assignee squad (name or ID)")
+	autopilotCreateCmd.Flags().String("squad-id", "", "Assignee squad ID (canonical UUID)")
+	autopilotCreateCmd.Flags().String("mode", "", "Execution mode: create_issue or run_only (required)")
+	autopilotCreateCmd.Flags().String("project", "", "Project ID (optional)")
+	autopilotCreateCmd.Flags().String("issue-title-template", "", "Template for issue titles (create_issue mode). Only {{date}} (UTC, YYYY-MM-DD) is interpolated; any other {{...}} token is rejected at create-time.")
+	autopilotCreateCmd.Flags().StringArray("subscriber", nil, "Member subscriber to notify for issues this autopilot creates (name or user ID; repeatable)")
+	autopilotCreateCmd.Flags().String("output", "json", "Output format: table or json")
+
+	// update
+	autopilotUpdateCmd.Flags().String("title", "", "New title")
+	autopilotUpdateCmd.Flags().String("description", "", "New description")
+	autopilotUpdateCmd.Flags().String("agent", "", "New assignee agent (name or ID)")
+	autopilotUpdateCmd.Flags().String("squad", "", "New assignee squad (name or ID)")
+	autopilotUpdateCmd.Flags().String("squad-id", "", "New assignee squad ID (canonical UUID)")
+	autopilotUpdateCmd.Flags().String("project", "", "New project ID (use empty string to clear)")
+	autopilotUpdateCmd.Flags().String("status", "", "New status (active, paused)")
+	autopilotUpdateCmd.Flags().String("mode", "", "New execution mode (create_issue or run_only)")
+	autopilotUpdateCmd.Flags().String("issue-title-template", "", "New issue title template. Only {{date}} (UTC, YYYY-MM-DD) is interpolated; any other {{...}} token is rejected.")
+	autopilotUpdateCmd.Flags().StringArray("subscriber", nil, "Replace subscribers with this member (name or user ID; repeatable)")
+	autopilotUpdateCmd.Flags().Bool("clear-subscribers", false, "Remove all autopilot subscribers")
+	autopilotUpdateCmd.Flags().String("output", "json", "Output format: table or json")
+
+	// delete
+	// (no flags)
+
+	// trigger (manual run)
+	autopilotTriggerCmd.Flags().String("output", "json", "Output format: table or json")
+
+	// runs
+	autopilotRunsCmd.Flags().Int("limit", 20, "Max number of runs to return")
+	autopilotRunsCmd.Flags().Int("offset", 0, "Pagination offset")
+	autopilotRunsCmd.Flags().String("output", "table", "Output format: table or json")
+
+	// trigger-add — supports schedule and webhook
+	autopilotTriggerAddCmd.Flags().String("kind", "schedule", "Trigger kind: schedule or webhook")
+	autopilotTriggerAddCmd.Flags().String("cron", "", "Cron expression (required for --kind schedule)")
+	autopilotTriggerAddCmd.Flags().String("timezone", "", "IANA timezone (default UTC; schedule only)")
+	autopilotTriggerAddCmd.Flags().String("label", "", "Optional human-readable label")
+	autopilotTriggerAddCmd.Flags().String("event-filters-file", "", "Read webhook event/action filters from a JSON array file (webhook only)")
+	autopilotTriggerAddCmd.Flags().String("output", "json", "Output format: table or json")
+
+	// trigger-list
+	autopilotTriggerListCmd.Flags().String("output", "table", "Output format: table or json")
+	autopilotTriggerListCmd.Flags().Bool("full-id", false, "Show full UUIDs in table output")
+
+	// trigger-rotate-url — webhook only
+	autopilotTriggerRotateURLCmd.Flags().String("output", "json", "Output format: table or json")
+	autopilotTriggerRotateURLCmd.Flags().BoolP("yes", "y", false, "Skip the interactive confirmation prompt")
+
+	// trigger-update
+	autopilotTriggerUpdateCmd.Flags().Bool("enabled", true, "Enable or disable the trigger")
+	autopilotTriggerUpdateCmd.Flags().String("cron", "", "New cron expression")
+	autopilotTriggerUpdateCmd.Flags().String("timezone", "", "New IANA timezone")
+	autopilotTriggerUpdateCmd.Flags().String("label", "", "New label")
+	autopilotTriggerUpdateCmd.Flags().String("event-filters-file", "", "Replace webhook event/action filters from a JSON array file (webhook only)")
+	autopilotTriggerUpdateCmd.Flags().Bool("clear-event-filters", false, "Remove webhook filters and accept all events (webhook only)")
+	autopilotTriggerUpdateCmd.Flags().String("output", "json", "Output format: table or json")
+}
+
+// Autopilot commands
+
+func runAutopilotList(cmd *cobra.Command, _ []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	if _, err := requireWorkspaceID(cmd); err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	path := "/api/autopilots"
+	if status, _ := cmd.Flags().GetString("status"); status != "" {
+		path += "?" + url.Values{"status": {status}}.Encode()
+	}
+
+	var resp struct {
+		Autopilots []map[string]any `json:"autopilots"`
+		Total      int              `json:"total"`
+	}
+	if err := client.GetJSON(ctx, path, &resp); err != nil {
+		return fmt.Errorf("list autopilots: %w", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, resp)
+	}
+
+	fullID, _ := cmd.Flags().GetBool("full-id")
+	actors := loadActorDisplayLookup(ctx, client)
+	// NEXT_RUN is what distinguishes a scheduled autopilot from one with no
+	// trigger at all. The list payload has carried next_run_at all along, but
+	// the table dropped it, leaving the two indistinguishable here (MUL-6680).
+	headers := []string{"ID", "TITLE", "STATUS", "LAST_STATUS", "MODE", "ASSIGNEE", "NEXT_RUN", "LAST_RUN"}
+	rows := make([][]string, 0, len(resp.Autopilots))
+	for _, a := range resp.Autopilots {
+		rows = append(rows, []string{
+			displayID(strVal(a, "id"), fullID),
+			strVal(a, "title"),
+			strVal(a, "status"),
+			displayLastRunStatus(strVal(a, "last_run_status")),
+			strVal(a, "execution_mode"),
+			formatAutopilotAssignee(a, actors),
+			relativeTimestamp(strVal(a, "next_run_at")),
+			relativeTimestamp(strVal(a, "last_run_at")),
+		})
+	}
+	cli.PrintTable(os.Stdout, headers, rows)
+	return nil
+}
+
+func displayLastRunStatus(status string) string {
+	trimmed := strings.TrimSpace(status)
+	if trimmed == "" {
+		return "—"
+	}
+	return trimmed
+}
+
+func runAutopilotGet(cmd *cobra.Command, args []string) error {
+	output, _ := cmd.Flags().GetString("output")
+	showSecrets, _ := cmd.Flags().GetBool("show-secrets")
+	if showSecrets && output != "json" {
+		return fmt.Errorf("--show-secrets requires --output json")
+	}
+
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	var resp map[string]any
+	if err := client.GetJSON(ctx, "/api/autopilots/"+autopilotRef.ID, &resp); err != nil {
+		return fmt.Errorf("get autopilot: %w", err)
+	}
+
+	if showSecrets {
+		fmt.Fprintln(os.Stderr, "Warning: --show-secrets exposes live webhook credentials; keep this output out of logs and shared transcripts.")
+	} else {
+		redactAutopilotWebhookCredentials(resp)
+	}
+
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, resp)
+	}
+
+	ap, _ := resp["autopilot"].(map[string]any)
+	actors := loadActorDisplayLookup(ctx, client)
+	headers := []string{"ID", "TITLE", "STATUS", "MODE", "ASSIGNEE", "LAST_RUN"}
+	rows := [][]string{{
+		strVal(ap, "id"),
+		strVal(ap, "title"),
+		strVal(ap, "status"),
+		strVal(ap, "execution_mode"),
+		formatAutopilotAssignee(ap, actors),
+		strVal(ap, "last_run_at"),
+	}}
+	cli.PrintTable(os.Stdout, headers, rows)
+	return nil
+}
+
+func redactAutopilotWebhookCredentials(resp map[string]any) {
+	triggers, ok := resp["triggers"].([]any)
+	if !ok {
+		return
+	}
+	for _, raw := range triggers {
+		trigger, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		_, hasTokenField := trigger["webhook_token"]
+		_, hasPathField := trigger["webhook_path"]
+		_, hasURLField := trigger["webhook_url"]
+		if !hasTokenField && !hasPathField && !hasURLField {
+			continue
+		}
+
+		ticket := strVal(trigger, "webhook_token")
+		hasToken, _ := trigger["has_webhook_token"].(bool)
+		hasToken = hasToken ||
+			strVal(trigger, "kind") == "webhook" ||
+			ticket != "" ||
+			strVal(trigger, "webhook_path") != "" ||
+			strVal(trigger, "webhook_url") != ""
+		trigger["has_webhook_token"] = hasToken
+		if hint := webhookTokenHint(ticket); hint != "" {
+			trigger["webhook_token_hint"] = hint
+		} else {
+			trigger["webhook_token_hint"] = nil
+		}
+		trigger["webhook_token"] = nil
+		trigger["webhook_path"] = nil
+		trigger["webhook_url"] = nil
+	}
+}
+
+// relativeTimestamp renders an RFC3339 timestamp as a short, fixed-width-ish
+// relative string ("in 2h", "3d ago", "—" when absent or unparseable). Table
+// columns use this instead of the raw timestamp so NEXT_RUN fits alongside the
+// existing columns on a narrow terminal, and so "never scheduled" reads as a
+// visibly different value rather than an empty cell (MUL-6680).
+func relativeTimestamp(ts string) string {
+	return relativeTimestampAt(ts, time.Now())
+}
+
+func relativeTimestampAt(ts string, now time.Time) string {
+	trimmed := strings.TrimSpace(ts)
+	if trimmed == "" {
+		return "—"
+	}
+	t, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return "—"
+	}
+
+	d := t.Sub(now)
+	suffix := " ago"
+	if d >= 0 {
+		suffix = ""
+	} else {
+		d = -d
+	}
+
+	var magnitude string
+	switch {
+	case d < time.Minute:
+		magnitude = fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		magnitude = fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		magnitude = fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		magnitude = fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+
+	if suffix == "" {
+		return "in " + magnitude
+	}
+	return magnitude + suffix
+}
+
+func webhookTokenHint(ticket string) string {
+	if len(ticket) < 4 {
+		return ""
+	}
+	return ticket[len(ticket)-4:]
+}
+
+func runAutopilotCreate(cmd *cobra.Command, _ []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	if _, err := requireWorkspaceID(cmd); err != nil {
+		return err
+	}
+
+	title, _ := cmd.Flags().GetString("title")
+	if title == "" {
+		return fmt.Errorf("--title is required")
+	}
+	mode, _ := cmd.Flags().GetString("mode")
+	if mode == "" {
+		return fmt.Errorf("--mode is required (create_issue or run_only)")
+	}
+	if mode != "create_issue" && mode != "run_only" {
+		return fmt.Errorf("--mode must be create_issue or run_only")
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	assigneeType, assigneeID, hasAssignee, err := resolveAutopilotAssigneeFromFlags(ctx, client, cmd, true)
+	if err != nil {
+		return err
+	}
+	if !hasAssignee {
+		return fmt.Errorf("--agent, --squad, or --squad-id is required")
+	}
+
+	body := map[string]any{
+		"title":          title,
+		"assignee_type":  assigneeType,
+		"assignee_id":    assigneeID,
+		"execution_mode": mode,
+	}
+	if v, _ := cmd.Flags().GetString("description"); v != "" {
+		body["description"] = v
+	}
+	if v, _ := cmd.Flags().GetString("project"); v != "" {
+		projectRef, err := resolveProjectIDForNewWork(ctx, client, v)
+		if err != nil {
+			return fmt.Errorf("resolve project: %w", err)
+		}
+		body["project_id"] = projectRef.ID
+	}
+	if v, _ := cmd.Flags().GetString("issue-title-template"); v != "" {
+		body["issue_title_template"] = v
+	}
+	if subscriberRefs, _ := cmd.Flags().GetStringArray("subscriber"); len(subscriberRefs) > 0 {
+		subscribers, err := resolveAutopilotSubscriberInputs(ctx, client, subscriberRefs)
+		if err != nil {
+			return err
+		}
+		body["subscribers"] = subscribers
+	}
+
+	var result map[string]any
+	if err := client.PostJSON(ctx, "/api/autopilots", body, &result); err != nil {
+		return autopilotWriteRequestError("create autopilot", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+	fmt.Printf("Autopilot created: %s (%s)\n", strVal(result, "title"), strVal(result, "id"))
+	return nil
+}
+
+func runAutopilotUpdate(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	body := map[string]any{}
+	if cmd.Flags().Changed("title") {
+		v, _ := cmd.Flags().GetString("title")
+		body["title"] = v
+	}
+	if cmd.Flags().Changed("description") {
+		v, _ := cmd.Flags().GetString("description")
+		body["description"] = v
+	}
+	assigneeType, assigneeID, hasAssignee, err := resolveAutopilotAssigneeFromFlags(ctx, client, cmd, false)
+	if err != nil {
+		return err
+	}
+	if hasAssignee {
+		body["assignee_type"] = assigneeType
+		body["assignee_id"] = assigneeID
+	}
+	if cmd.Flags().Changed("project") {
+		v, _ := cmd.Flags().GetString("project")
+		if v == "" {
+			body["project_id"] = nil
+		} else {
+			// Keeping a paused autopilot on its archived project is allowed;
+			// the server refuses a switch into one or a resume.
+			projectRef, err := resolveProjectID(ctx, client, v)
+			if err != nil {
+				return fmt.Errorf("resolve project: %w", err)
+			}
+			body["project_id"] = projectRef.ID
+		}
+	}
+	if cmd.Flags().Changed("status") {
+		v, _ := cmd.Flags().GetString("status")
+		body["status"] = v
+	}
+	if cmd.Flags().Changed("mode") {
+		v, _ := cmd.Flags().GetString("mode")
+		if v != "create_issue" && v != "run_only" {
+			return fmt.Errorf("--mode must be create_issue or run_only")
+		}
+		body["execution_mode"] = v
+	}
+	if cmd.Flags().Changed("issue-title-template") {
+		v, _ := cmd.Flags().GetString("issue-title-template")
+		body["issue_title_template"] = v
+	}
+	clearSubscribers, _ := cmd.Flags().GetBool("clear-subscribers")
+	subscriberRefs, _ := cmd.Flags().GetStringArray("subscriber")
+	if clearSubscribers && len(subscriberRefs) > 0 {
+		return fmt.Errorf("--subscriber and --clear-subscribers are mutually exclusive")
+	}
+	if clearSubscribers {
+		body["subscribers"] = []map[string]string{}
+	} else if cmd.Flags().Changed("subscriber") {
+		subscribers, err := resolveAutopilotSubscriberInputs(ctx, client, subscriberRefs)
+		if err != nil {
+			return err
+		}
+		body["subscribers"] = subscribers
+	}
+
+	if len(body) == 0 {
+		return fmt.Errorf("no fields to update; use flags like --title, --description, --agent, --status, --mode, etc.")
+	}
+
+	var result map[string]any
+	if err := client.PatchJSON(ctx, "/api/autopilots/"+autopilotRef.ID, body, &result); err != nil {
+		return autopilotWriteRequestError("update autopilot", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+	fmt.Printf("Autopilot updated: %s (%s)\n", strVal(result, "title"), strVal(result, "id"))
+	return nil
+}
+
+func runAutopilotDelete(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	if err := client.DeleteJSON(ctx, "/api/autopilots/"+autopilotRef.ID); err != nil {
+		return autopilotWriteRequestError("delete autopilot", err)
+	}
+	fmt.Printf("Autopilot %s deleted.\n", autopilotRef.Display)
+	return nil
+}
+
+func runAutopilotTrigger(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), cli.AtLeastAPITimeout(30*time.Second))
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	var run map[string]any
+	if err := client.PostJSON(ctx, "/api/autopilots/"+autopilotRef.ID+"/trigger", nil, &run); err != nil {
+		return autopilotTriggerRequestError(err)
+	}
+
+	status := strVal(run, "status")
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		// Print the run either way: a caller parsing JSON still wants the row,
+		// including its failure_reason, before the non-zero exit below.
+		if err := cli.PrintJSON(os.Stdout, run); err != nil {
+			return err
+		}
+	} else if autopilotRunStarted(status) {
+		fmt.Printf("Autopilot triggered: run %s (status: %s)\n", strVal(run, "id"), status)
+	}
+	if autopilotRunStarted(status) {
+		return nil
+	}
+	// The server recorded a run but dispatched nothing. Reporting exit 0 with
+	// "Autopilot triggered" is what made #8078 look like a silent no-op for a
+	// day: the operator, and any agent running this on their behalf, read
+	// success and moved on. Surface it as the failure it is.
+	msg := fmt.Sprintf("autopilot did not run (status: %s)", status)
+	if reason := strVal(run, "failure_reason"); reason != "" {
+		msg += ": " + reason
+	}
+	if code := strVal(run, "reason_code"); code != "" {
+		msg += " [" + code + "]"
+	}
+	return errors.New(msg)
+}
+
+// autopilotTriggerRequestError turns a failed trigger request into what the
+// user should read.
+//
+// FormatError deliberately collapses every 403 into generic "no access" copy so
+// a refusal cannot confirm that a resource exists. For a manual trigger that
+// hides the one refusal a workspace can actually act on — the calling run having
+// no originating human — which is exactly the silence #8078 was about. These two
+// refusals opt out by carrying a stable server code; the branch is on that code,
+// never on the English sentence, which changes with copy edits and disappears
+// under translation.
+func autopilotTriggerRequestError(err error) error {
+	switch cli.ServerErrorCode(err) {
+	case "autopilot_trigger_no_originator":
+		return cli.WithUserMessage("this run has no originating human, so it cannot trigger an autopilot on anyone's behalf: a manual trigger is authorized as the person who asked for it", err)
+	case "autopilot_trigger_forbidden":
+		return cli.WithUserMessage("the person this run acts for cannot trigger this autopilot: triggering requires its creator, a workspace admin, or a granted collaborator", err)
+	}
+	return fmt.Errorf("trigger autopilot: %w", err)
+}
+
+// autopilotWriteRequestError turns a refused autopilot write into what the user
+// should read, for the same reason autopilotTriggerRequestError exists: an
+// autopilot write is authorized as the human who asked for it, so when YOU are
+// the one running this, "no access" is about them and not about you — and
+// FormatError's generic 403 copy cannot say which (MUL-7108). The branch is on
+// the server's stable code, never on the English sentence.
+func autopilotWriteRequestError(action string, err error) error {
+	switch cli.ServerErrorCode(err) {
+	case "autopilot_no_originator":
+		return cli.WithUserMessage("this run has no originating human, so it cannot change an autopilot on anyone's behalf: an autopilot write is authorized as the person who asked for it", err)
+	case "autopilot_forbidden":
+		return cli.WithUserMessage("the person this run acts for cannot manage this autopilot: it requires its creator, a workspace admin, or a granted collaborator", err)
+	case "autopilot_actor_not_member":
+		return cli.WithUserMessage("the person this run acts for is not a member of this workspace, so nothing can be created on their behalf", err)
+	}
+	return fmt.Errorf("%s: %w", action, err)
+}
+
+// autopilotRunStarted reports whether a manual trigger actually dispatched work.
+//
+// Mirrors the web client's runNowToastKind whitelist (packages/views/autopilots):
+// success is an explicit start status, never "anything that is not skipped or
+// failed". The run schema accepts any status string for forward compatibility, so
+// a future or anomalous-but-parseable status must read as "did not start" rather
+// than be reported as a successful trigger.
+func autopilotRunStarted(status string) bool {
+	return status == "issue_created" || status == "running"
+}
+
+func runAutopilotRuns(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	params := url.Values{}
+	if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
+		params.Set("limit", fmt.Sprintf("%d", v))
+	}
+	if v, _ := cmd.Flags().GetInt("offset"); v > 0 {
+		params.Set("offset", fmt.Sprintf("%d", v))
+	}
+	path := "/api/autopilots/" + autopilotRef.ID + "/runs"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+
+	var resp struct {
+		Runs  []map[string]any `json:"runs"`
+		Total int              `json:"total"`
+	}
+	if err := client.GetJSON(ctx, path, &resp); err != nil {
+		return fmt.Errorf("list runs: %w", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, resp)
+	}
+
+	headers := []string{"ID", "SOURCE", "STATUS", "ISSUE", "TRIGGERED_AT", "COMPLETED_AT"}
+	rows := make([][]string, 0, len(resp.Runs))
+	for _, r := range resp.Runs {
+		rows = append(rows, []string{
+			strVal(r, "id"),
+			strVal(r, "source"),
+			strVal(r, "status"),
+			strVal(r, "issue_id"),
+			strVal(r, "triggered_at"),
+			strVal(r, "completed_at"),
+		})
+	}
+	cli.PrintTable(os.Stdout, headers, rows)
+	return nil
+}
+
+func runAutopilotTriggerList(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	// The detail endpoint already returns triggers as a top-level sibling of
+	// "autopilot"; this command exists so the ids that trigger-update /
+	// trigger-delete / trigger-rotate-url require are discoverable without
+	// knowing that envelope shape (MUL-6680).
+	var resp map[string]any
+	if err := client.GetJSON(ctx, "/api/autopilots/"+autopilotRef.ID, &resp); err != nil {
+		return fmt.Errorf("get autopilot: %w", err)
+	}
+	redactAutopilotWebhookCredentials(resp)
+
+	triggersRaw, _ := resp["triggers"].([]any)
+	triggers := make([]map[string]any, 0, len(triggersRaw))
+	for _, raw := range triggersRaw {
+		if t, ok := raw.(map[string]any); ok {
+			triggers = append(triggers, t)
+		}
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, map[string]any{"triggers": triggers, "total": len(triggers)})
+	}
+
+	fullID, _ := cmd.Flags().GetBool("full-id")
+	headers := []string{"ID", "KIND", "ENABLED", "SCHEDULE", "NEXT_RUN", "LABEL"}
+	rows := make([][]string, 0, len(triggers))
+	for _, t := range triggers {
+		enabled := "no"
+		if b, ok := t["enabled"].(bool); ok && b {
+			enabled = "yes"
+		}
+		schedule := strVal(t, "cron_expression")
+		if tz := strVal(t, "timezone"); schedule != "" && tz != "" {
+			schedule += " (" + tz + ")"
+		}
+		rows = append(rows, []string{
+			displayID(strVal(t, "id"), fullID),
+			strVal(t, "kind"),
+			enabled,
+			schedule,
+			relativeTimestamp(strVal(t, "next_run_at")),
+			strVal(t, "label"),
+		})
+	}
+	cli.PrintTable(os.Stdout, headers, rows)
+	return nil
+}
+
+func runAutopilotTriggerAdd(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	kind, _ := cmd.Flags().GetString("kind")
+	if kind == "" {
+		kind = "schedule"
+	}
+	if kind != "schedule" && kind != "webhook" {
+		return fmt.Errorf("--kind must be schedule or webhook")
+	}
+	cron, _ := cmd.Flags().GetString("cron")
+	if kind == "schedule" && cron == "" {
+		return fmt.Errorf("--cron is required for --kind schedule")
+	}
+	if kind == "webhook" {
+		if v, _ := cmd.Flags().GetString("timezone"); v != "" {
+			return fmt.Errorf("--timezone is only valid with --kind schedule")
+		}
+		if cron != "" {
+			return fmt.Errorf("--cron is only valid with --kind schedule")
+		}
+	}
+
+	body := map[string]any{"kind": kind}
+	filters, err := autopilotEventFiltersInput(cmd)
+	if err != nil {
+		return err
+	}
+	if filters != nil {
+		if kind != "webhook" {
+			return fmt.Errorf("--event-filters-file is only valid with --kind webhook")
+		}
+		body["event_filters"] = filters
+	}
+	if kind == "schedule" {
+		body["cron_expression"] = cron
+		if v, _ := cmd.Flags().GetString("timezone"); v != "" {
+			body["timezone"] = v
+		}
+	}
+	if v, _ := cmd.Flags().GetString("label"); v != "" {
+		body["label"] = v
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	if err := requireWebhookPayloadConditionsSupport(ctx, client, filters); err != nil {
+		return err
+	}
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+
+	var result map[string]any
+	if err := client.PostJSON(ctx, "/api/autopilots/"+autopilotRef.ID+"/triggers", body, &result); err != nil {
+		return autopilotWriteRequestError("create trigger", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+	fmt.Printf("Trigger created: %s (kind=%s)\n", strVal(result, "id"), strVal(result, "kind"))
+	if kind == "webhook" {
+		printWebhookURL(client, result)
+	}
+	return nil
+}
+
+// printWebhookURL emits the webhook URL with the priority webhook_url >
+// composed-from-base. Keeps the table-output flow useful — without this the
+// table renderer drops the most important new piece of information.
+func printWebhookURL(client *cli.APIClient, trigger map[string]any) {
+	if u := strVal(trigger, "webhook_url"); u != "" {
+		fmt.Printf("Webhook URL: %s\n", u)
+		return
+	}
+	if path := strVal(trigger, "webhook_path"); path != "" {
+		base := strings.TrimRight(client.BaseURL, "/")
+		fmt.Printf("Webhook URL: %s%s\n", base, path)
+	}
+}
+
+func runAutopilotTriggerRotateURL(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	resolveCtx, cancelResolve := cli.APIContext(context.Background())
+
+	autopilotRef, err := resolveAutopilotID(resolveCtx, client, args[0])
+	if err != nil {
+		cancelResolve()
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+	triggerRef, err := resolveAutopilotTriggerID(resolveCtx, client, autopilotRef.ID, args[1])
+	cancelResolve()
+	if err != nil {
+		return fmt.Errorf("resolve trigger: %w", err)
+	}
+
+	// Confirmation: rotation invalidates the current URL immediately. The UI
+	// version uses an AlertDialog; the CLI mirrors that with a y/N prompt
+	// unless --yes was passed for scripted use. Style matches confirmOverwrite
+	// in cmd_setup.go.
+	yes, _ := cmd.Flags().GetBool("yes")
+	if !yes {
+		fmt.Fprintln(os.Stderr, "This will invalidate the current webhook URL immediately. Continue? [y/N] ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" {
+			fmt.Fprintln(os.Stderr, "Aborted.")
+			return nil
+		}
+	}
+
+	// Waiting for confirmation must not consume the rotation request's timeout.
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	var result map[string]any
+	path := "/api/autopilots/" + autopilotRef.ID + "/triggers/" + triggerRef.ID + "/rotate-webhook-token"
+	if err := client.PostJSON(ctx, path, nil, &result); err != nil {
+		return autopilotWriteRequestError("rotate webhook url", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+	fmt.Printf("Webhook URL rotated for trigger %s\n", strVal(result, "id"))
+	printWebhookURL(client, result)
+	return nil
+}
+
+func runAutopilotTriggerUpdate(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	body := map[string]any{}
+	filters, err := autopilotEventFiltersInput(cmd)
+	if err != nil {
+		return err
+	}
+	if filters != nil {
+		body["event_filters"] = filters
+	}
+	if cmd.Flags().Changed("enabled") {
+		v, _ := cmd.Flags().GetBool("enabled")
+		body["enabled"] = v
+	}
+	if cmd.Flags().Changed("cron") {
+		v, _ := cmd.Flags().GetString("cron")
+		body["cron_expression"] = v
+	}
+	if cmd.Flags().Changed("timezone") {
+		v, _ := cmd.Flags().GetString("timezone")
+		body["timezone"] = v
+	}
+	if cmd.Flags().Changed("label") {
+		v, _ := cmd.Flags().GetString("label")
+		body["label"] = v
+	}
+	if len(body) == 0 {
+		return fmt.Errorf("no fields to update; use --enabled, --cron, --timezone, --label, --event-filters-file, or --clear-event-filters")
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	if err := requireWebhookPayloadConditionsSupport(ctx, client, filters); err != nil {
+		return err
+	}
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+	triggerRef, err := resolveAutopilotTriggerID(ctx, client, autopilotRef.ID, args[1])
+	if err != nil {
+		return fmt.Errorf("resolve trigger: %w", err)
+	}
+
+	var result map[string]any
+	path := "/api/autopilots/" + autopilotRef.ID + "/triggers/" + triggerRef.ID
+	if err := client.PatchJSON(ctx, path, body, &result); err != nil {
+		return autopilotWriteRequestError("update trigger", err)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+	fmt.Printf("Trigger updated: %s\n", strVal(result, "id"))
+	return nil
+}
+
+type autopilotEventFilter struct {
+	Event      string                      `json:"event"`
+	Actions    []string                    `json:"actions,omitempty"`
+	Conditions []autopilotPayloadCondition `json:"conditions,omitempty"`
+}
+
+type autopilotPayloadCondition struct {
+	Path       string `json:"path"`
+	Op         string `json:"op"`
+	Value      any    `json:"value,omitempty"`
+	Values     []any  `json:"values,omitempty"`
+	IgnoreCase bool   `json:"ignore_case,omitempty"`
+}
+
+func requireWebhookPayloadConditionsSupport(ctx context.Context, client *cli.APIClient, filters []autopilotEventFilter) error {
+	for _, filter := range filters {
+		if len(filter.Conditions) == 0 {
+			continue
+		}
+		var config struct {
+			Supported bool `json:"webhook_payload_conditions_supported"`
+		}
+		if err := client.GetJSON(ctx, "/api/config", &config); err != nil {
+			return fmt.Errorf("check webhook payload condition support: %w", err)
+		}
+		if !config.Supported {
+			return fmt.Errorf("this server version does not support webhook payload conditions; update the server before saving them")
+		}
+		break
+	}
+	return nil
+}
+
+func autopilotEventFiltersInput(cmd *cobra.Command) ([]autopilotEventFilter, error) {
+	clear, _ := cmd.Flags().GetBool("clear-event-filters")
+	fromFile := cmd.Flags().Changed("event-filters-file")
+	if clear && fromFile {
+		return nil, fmt.Errorf("--event-filters-file and --clear-event-filters cannot be combined")
+	}
+	if clear {
+		return []autopilotEventFilter{}, nil
+	}
+	if !fromFile {
+		return nil, nil
+	}
+	path, _ := cmd.Flags().GetString("event-filters-file")
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("read --event-filters-file: %w", err)
+	}
+	defer file.Close()
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	var filters []autopilotEventFilter
+	if err := decoder.Decode(&filters); err != nil {
+		return nil, fmt.Errorf("invalid --event-filters-file: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return nil, fmt.Errorf("--event-filters-file must contain one JSON array")
+	}
+	if filters == nil {
+		return nil, fmt.Errorf("--event-filters-file must contain a JSON array, not null")
+	}
+	if len(filters) == 0 {
+		return nil, fmt.Errorf("--event-filters-file must not be empty; use --clear-event-filters on trigger-update to accept all events")
+	}
+	for i, filter := range filters {
+		if strings.TrimSpace(filter.Event) == "" {
+			return nil, fmt.Errorf("--event-filters-file: event_filters[%d].event must not be empty", i)
+		}
+		for j, action := range filter.Actions {
+			if strings.TrimSpace(action) == "" {
+				return nil, fmt.Errorf("--event-filters-file: event_filters[%d].actions[%d] must not be empty", i, j)
+			}
+		}
+	}
+	return filters, nil
+}
+
+func runAutopilotTriggerDelete(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	autopilotRef, err := resolveAutopilotID(ctx, client, args[0])
+	if err != nil {
+		return fmt.Errorf("resolve autopilot: %w", err)
+	}
+	triggerRef, err := resolveAutopilotTriggerID(ctx, client, autopilotRef.ID, args[1])
+	if err != nil {
+		return fmt.Errorf("resolve trigger: %w", err)
+	}
+
+	path := "/api/autopilots/" + autopilotRef.ID + "/triggers/" + triggerRef.ID
+	if err := client.DeleteJSON(ctx, path); err != nil {
+		return autopilotWriteRequestError("delete trigger", err)
+	}
+	fmt.Printf("Trigger %s deleted.\n", triggerRef.ID)
+	return nil
+}
+
+func resolveAutopilotSubscriberInputs(ctx context.Context, client *cli.APIClient, refs []string) ([]map[string]string, error) {
+	inputs := make([]map[string]string, 0, len(refs))
+	seen := map[string]struct{}{}
+	memberOnly := assigneeKinds{member: true}
+	for _, ref := range refs {
+		if strings.TrimSpace(ref) == "" {
+			return nil, fmt.Errorf("--subscriber cannot be empty")
+		}
+		userType, userID, err := resolveAssignee(ctx, client, ref, memberOnly)
+		if err != nil {
+			return nil, fmt.Errorf("resolve subscriber %q: %w", ref, err)
+		}
+		if userType != "member" {
+			return nil, fmt.Errorf("subscriber %q resolved to %s; autopilot subscribers must be members", ref, userType)
+		}
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		inputs = append(inputs, map[string]string{
+			"user_type": "member",
+			"user_id":   userID,
+		})
+	}
+	return inputs, nil
+}
+
+func resolveAutopilotAssigneeFromFlags(ctx context.Context, client *cli.APIClient, cmd *cobra.Command, required bool) (string, string, bool, error) {
+	agentSet := cmd.Flags().Changed("agent")
+	squadSet := cmd.Flags().Changed("squad")
+	squadIDSet := cmd.Flags().Changed("squad-id")
+
+	setCount := 0
+	for _, set := range []bool{agentSet, squadSet, squadIDSet} {
+		if set {
+			setCount++
+		}
+	}
+	if setCount > 1 {
+		return "", "", false, fmt.Errorf("--agent, --squad, and --squad-id are mutually exclusive")
+	}
+	if setCount == 0 {
+		if required {
+			return "", "", false, fmt.Errorf("--agent, --squad, or --squad-id is required")
+		}
+		return "", "", false, nil
+	}
+
+	if agentSet {
+		ref, _ := cmd.Flags().GetString("agent")
+		if strings.TrimSpace(ref) == "" {
+			return "", "", true, fmt.Errorf("--agent cannot be empty")
+		}
+		agentID, err := resolveAgent(ctx, client, ref)
+		if err != nil {
+			return "", "", true, fmt.Errorf("resolve agent: %w", err)
+		}
+		return "agent", agentID, true, nil
+	}
+
+	if squadIDSet {
+		id, _ := cmd.Flags().GetString("squad-id")
+		id = strings.TrimSpace(id)
+		if !uuidRegexp.MatchString(id) {
+			return "", "", true, fmt.Errorf("--squad-id must be a canonical UUID")
+		}
+		return "squad", id, true, nil
+	}
+
+	ref, _ := cmd.Flags().GetString("squad")
+	if strings.TrimSpace(ref) == "" {
+		return "", "", true, fmt.Errorf("--squad cannot be empty")
+	}
+	squadID, err := resolveSquad(ctx, client, ref)
+	if err != nil {
+		return "", "", true, fmt.Errorf("resolve squad: %w", err)
+	}
+	return "squad", squadID, true, nil
+}
+
+// Helpers
+
+// uuidRegexp matches a canonical UUID (8-4-4-4-12 hex).
+var uuidRegexp = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// resolveAgent passes UUIDs through and otherwise resolves workspace agents
+// using the shared ID, exact-name, and substring matching rules.
+func resolveAgent(ctx context.Context, client *cli.APIClient, nameOrID string) (string, error) {
+	if uuidRegexp.MatchString(nameOrID) {
+		return nameOrID, nil
+	}
+	if client.WorkspaceID == "" {
+		return "", fmt.Errorf("workspace ID is required to resolve agents; use --workspace-id or set MULTICA_WORKSPACE_ID")
+	}
+
+	var agents []map[string]any
+	agentPath := "/api/agents?" + url.Values{"workspace_id": {client.WorkspaceID}}.Encode()
+	if err := client.GetJSON(ctx, agentPath, &agents); err != nil {
+		return "", fmt.Errorf("fetch agents: %w", err)
+	}
+
+	candidates := make([]assigneeCandidate, 0, len(agents))
+	for _, a := range agents {
+		candidates = append(candidates, assigneeCandidate{assigneeMatch: assigneeMatch{
+			Type: "agent", ID: strVal(a, "id"), Name: strVal(a, "name"),
+		}})
+	}
+
+	_, agentID, err := matchAssignee(nameOrID, assigneeKinds{agent: true}, candidates)
+	return agentID, err
+}
+
+// resolveSquad accepts either a UUID or a squad name (case-insensitive, with
+// exact matches preferred by resolveAssignee) and returns the squad UUID.
+func resolveSquad(ctx context.Context, client *cli.APIClient, nameOrID string) (string, error) {
+	if uuidRegexp.MatchString(nameOrID) {
+		return nameOrID, nil
+	}
+	squadOnly := assigneeKinds{squad: true}
+	kind, id, err := resolveAssignee(ctx, client, nameOrID, squadOnly)
+	if err != nil {
+		return "", err
+	}
+	if kind != "squad" {
+		return "", fmt.Errorf("%q resolved to %s; autopilot assignee must be an agent or squad", nameOrID, kind)
+	}
+	return id, nil
+}
+
+func formatAutopilotAssignee(autopilot map[string]any, actors actorDisplayLookup) string {
+	aID := strVal(autopilot, "assignee_id")
+	if aID == "" {
+		return ""
+	}
+	aType := strVal(autopilot, "assignee_type")
+	if aType == "" {
+		aType = "agent"
+	}
+	return actors.actor(aType, aID)
+}

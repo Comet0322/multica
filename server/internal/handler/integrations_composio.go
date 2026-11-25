@@ -1,0 +1,354 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/connectedapps"
+	"github.com/multica-ai/multica/server/internal/featureflags"
+	composio "github.com/multica-ai/multica/server/internal/integrations/composio"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
+)
+
+// Composio integration handlers (MUL-3720, Stage 2 MVP). A Composio connection
+// belongs to a user, not a workspace, so these handlers live outside the
+// workspace-membership group. The four management endpoints (connect/init,
+// toolkits, connections, delete) are user-scoped (requireUserID) and sit under
+// the Auth middleware. ComposioCallback is the exception: it is a public route
+// (outside the Auth group, see router.go / MUL-3843) because the browser often
+// arrives without a session cookie — its identity comes from the signed state,
+// not requireUserID. The whole block returns 403 when h.Composio is nil
+// (COMPOSIO_API_KEY unset), matching the Lark/GitHub "integration not
+// configured" convention. A missing deployment capability is a non-retryable
+// 403, not a transient 503.
+
+// ComposioConnectInitRequest is the POST /connect/init body.
+type ComposioConnectInitRequest struct {
+	ToolkitSlug string `json:"toolkit_slug"`
+}
+
+// ComposioConnectInitResponse carries the hosted Composio Connect Link the
+// frontend redirects the user to.
+type ComposioConnectInitResponse struct {
+	RedirectURL string `json:"redirect_url"`
+}
+
+// ComposioConnectionResponse is the wire shape for one connection row.
+type ComposioConnectionResponse struct {
+	ID          string  `json:"id"`
+	ToolkitSlug string  `json:"toolkit_slug"`
+	Status      string  `json:"status"`
+	ConnectedAt string  `json:"connected_at"`
+	LastUsedAt  *string `json:"last_used_at"`
+}
+
+// ComposioToolkitResponse is the wire shape for one toolkit in the catalog.
+// Since MUL-4009 the catalog only contains connectable toolkits, so
+// `connectable` is always true. The field is retained for backward
+// compatibility with older desktop clients that branch on it (dropping it would
+// make them treat every entry as non-connectable and hide the Connect button).
+type ComposioToolkitResponse struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Logo        string `json:"logo,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Connectable bool   `json:"connectable"`
+}
+
+func (h *Handler) composioMCPAppsEnabled(ctx context.Context) bool {
+	return featureflags.ComposioMCPAppsEnabled(ctx, h.FeatureFlags)
+}
+
+// ComposioConnectInit starts hosted auth for a toolkit with an enabled project
+// auth config. An unsupported toolkit slug returns 400.
+func (h *Handler) ComposioConnectInit(w http.ResponseWriter, r *http.Request) {
+	if h.Composio == nil || !h.composioMCPAppsEnabled(r.Context()) {
+		writeFeatureDisabled(w, "composio_not_configured", "composio integration not configured")
+		return
+	}
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	userUUID, ok := parseUUIDOrBadRequest(w, userID, "user id")
+	if !ok {
+		return
+	}
+	var req ComposioConnectInitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.ToolkitSlug) == "" {
+		writeError(w, http.StatusBadRequest, "toolkit_slug is required")
+		return
+	}
+
+	redirectURL, err := h.Composio.BeginConnect(r.Context(), userUUID, req.ToolkitSlug)
+	if err != nil {
+		if errors.Is(err, composio.ErrToolkitNotSupported) {
+			writeError(w, http.StatusBadRequest, "toolkit not supported")
+			return
+		}
+		writeError(w, http.StatusBadGateway, "failed to start composio connect")
+		return
+	}
+	writeJSON(w, http.StatusOK, ComposioConnectInitResponse{RedirectURL: redirectURL})
+}
+
+// ComposioCallback (GET /api/integrations/composio/callback) is the browser
+// redirect target Composio sends the user back to after the hosted flow. It is
+// registered as a PUBLIC route (outside the Auth middleware group — see
+// router.go / MUL-3843), because the browser frequently lands here without a
+// session cookie (expired session, SameSite/ITP stripping, private window,
+// self-hosted callback subdomain). Identity therefore comes solely from the
+// HMAC-signed `state` query param, which CompleteCallback verifies before
+// doing anything. On success the row is upserted, connection requests waiting
+// on this account resume their agents, and the browser is redirected to where
+// the flow started (the settings page by default); any failure redirects to the same page with a stable
+// error code so the user is never left on a blank API response.
+func (h *Handler) ComposioCallback(w http.ResponseWriter, r *http.Request) {
+	if h.Composio == nil || !h.composioMCPAppsEnabled(r.Context()) {
+		writeFeatureDisabled(w, "composio_not_configured", "composio integration not configured")
+		return
+	}
+	q := r.URL.Query()
+	state := q.Get("state")
+	status := q.Get("status")
+	connectedAccountID := q.Get("connected_account_id")
+
+	result, err := h.Composio.CompleteCallback(r.Context(), state, status, connectedAccountID)
+	if errors.Is(err, composio.ErrTeamConnectRefused) {
+		// The handshake was verified and only the workspace's plan refused
+		// the account: say so, so the page offers the upgrade instead of a
+		// retry that would fail the same way.
+		http.Redirect(w, r, h.Composio.CallbackRedirectFailure(result, composio.CallbackFeatureLockedReason), http.StatusFound)
+		return
+	}
+	if err != nil {
+		// Every other failure (tampered/expired state, non-success status,
+		// write error) collapses to the generic failure redirect — we never
+		// tell the browser which check failed.
+		http.Redirect(w, r, h.Composio.CallbackRedirect(result, false), http.StatusFound)
+		return
+	}
+	if h.ConnectedApps != nil && !result.Team() {
+		userID, uerr := parseUUIDStrict(result.UserID)
+		workspaceID, werr := parseUUIDStrict(result.PersonalWorkspaceID)
+		if uerr == nil && werr == nil {
+			h.ConnectedApps.ResolveConnectRequests(r.Context(), workspaceID, userID, result.ToolkitSlug)
+		}
+	}
+	if h.ConnectedApps != nil && result.Team() {
+		workspaceID, werr := parseUUIDStrict(result.WorkspaceID)
+		adminID, aerr := parseUUIDStrict(result.ConnectedBy)
+		if werr == nil && aerr == nil {
+			h.ConnectedApps.ResolveTeamConnectRequests(r.Context(), workspaceID, adminID, result.ToolkitSlug)
+		}
+	}
+	http.Redirect(w, r, h.Composio.CallbackRedirect(result, true), http.StatusFound)
+}
+
+// ComposioImpactAgent is one agent that acts through a personal account.
+type ComposioImpactAgent struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	WorkspaceID   string `json:"workspace_id"`
+	WorkspaceName string `json:"workspace_name"`
+	// Running is true while a run the caller started on the agent is active.
+	Running bool `json:"running"`
+}
+
+// GetComposioConnectionImpact (GET
+// /api/integrations/composio/connections/{id}/impact) is what disconnecting
+// one of the caller's personal accounts would stop: the agents in the
+// account's workspace (every workspace, for an account made before accounts
+// belonged to one) that act through it when the caller runs them.
+func (h *Handler) GetComposioConnectionImpact(w http.ResponseWriter, r *http.Request) {
+	if h.Composio == nil || !h.composioMCPAppsEnabled(r.Context()) {
+		writeFeatureDisabled(w, "composio_not_configured", "composio integration not configured")
+		return
+	}
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	userUUID, ok := parseUUIDOrBadRequest(w, userID, "user id")
+	if !ok {
+		return
+	}
+	connUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "connection id")
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	var slug string
+	var workspaceID pgtype.UUID
+	if conn, err := h.Queries.GetUserComposioConnection(ctx, db.GetUserComposioConnectionParams{ID: connUUID, UserID: userUUID}); err == nil {
+		slug, workspaceID = connectedapps.NormalizeSlug(conn.ToolkitSlug), conn.WorkspaceID
+	} else if remote, rerr := h.remotePersonalConnection(ctx, connUUID, userUUID); rerr == nil {
+		// Personal remote app accounts are disconnected through this API too.
+		slug, workspaceID = remote.AppSlug, remote.WorkspaceID
+	} else {
+		writeError(w, http.StatusNotFound, "composio connection not found")
+		return
+	}
+	rows, err := h.Queries.ListPersonalAppAgentsForUser(ctx, db.ListPersonalAppAgentsForUserParams{
+		UserID: userUUID, ToolkitSlug: slug,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list agents")
+		return
+	}
+	agents := make([]ComposioImpactAgent, 0, len(rows))
+	ids := make([]pgtype.UUID, 0, len(rows))
+	for _, row := range rows {
+		if workspaceID.Valid && row.WorkspaceID != workspaceID {
+			continue
+		}
+		if !h.CanActFor(ctx, row.WorkspaceID, row.ID, userUUID) {
+			continue
+		}
+		ids = append(ids, row.ID)
+		agents = append(agents, ComposioImpactAgent{
+			ID: uuidToString(row.ID), Name: row.Name,
+			WorkspaceID: uuidToString(row.WorkspaceID), WorkspaceName: row.WorkspaceName,
+		})
+	}
+	if len(ids) > 0 {
+		running, err := h.Queries.ListAgentsWithActiveTasksForOriginator(ctx, db.ListAgentsWithActiveTasksForOriginatorParams{
+			AgentIds: ids, OriginatorUserID: userUUID,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list active runs")
+			return
+		}
+		active := make(map[string]bool, len(running))
+		for _, id := range running {
+			active[uuidToString(id)] = true
+		}
+		for i := range agents {
+			agents[i].Running = active[agents[i].ID]
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"agents": agents})
+}
+
+func (h *Handler) remotePersonalConnection(ctx context.Context, id, userID pgtype.UUID) (db.RemoteAppConnection, error) {
+	if h.ConnectedApps == nil {
+		return db.RemoteAppConnection{}, pgx.ErrNoRows
+	}
+	return h.Queries.GetRemoteAppConnectionForOwner(ctx, db.GetRemoteAppConnectionForOwnerParams{
+		ID: id, Scope: connectedapps.ScopePersonal, OwnerID: userID,
+	})
+}
+
+// ListComposioConnections (GET /api/integrations/composio/connections) returns
+// the caller's active connections.
+func (h *Handler) ListComposioConnections(w http.ResponseWriter, r *http.Request) {
+	if h.Composio == nil || !h.composioMCPAppsEnabled(r.Context()) {
+		writeFeatureDisabled(w, "composio_not_configured", "composio integration not configured")
+		return
+	}
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	userUUID, ok := parseUUIDOrBadRequest(w, userID, "user id")
+	if !ok {
+		return
+	}
+	conns, err := h.Composio.ListConnections(r.Context(), userUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list composio connections")
+		return
+	}
+	out := make([]ComposioConnectionResponse, 0, len(conns))
+	for _, c := range conns {
+		out = append(out, ComposioConnectionResponse{
+			ID:          c.ID,
+			ToolkitSlug: c.ToolkitSlug,
+			Status:      c.Status,
+			ConnectedAt: c.ConnectedAt,
+			LastUsedAt:  c.LastUsedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// ListComposioToolkits (GET /api/integrations/composio/toolkits) returns the
+// connectable Composio toolkits for the Settings UI to render. Since MUL-4009
+// the service filters out toolkits with no enabled auth config in the project,
+// so every entry here is connectable; the `connectable` flag is kept on the
+// wire for backward compatibility. The catalog itself is project-global (not
+// per-user), but the route is user-scoped (requireUser) like the rest of the
+// block. A resolver/upstream failure is a 502, letting the UI show its
+// load-failed state rather than a misleading empty catalog.
+func (h *Handler) ListComposioToolkits(w http.ResponseWriter, r *http.Request) {
+	if h.Composio == nil || !h.composioMCPAppsEnabled(r.Context()) {
+		writeFeatureDisabled(w, "composio_not_configured", "composio integration not configured")
+		return
+	}
+	if _, ok := requireUserID(w, r); !ok {
+		return
+	}
+	toolkits, err := h.Composio.ListToolkits(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to list composio toolkits")
+		return
+	}
+	out := make([]ComposioToolkitResponse, 0, len(toolkits))
+	for _, tk := range toolkits {
+		out = append(out, ComposioToolkitResponse{
+			Slug:        tk.Slug,
+			Name:        tk.Name,
+			Logo:        tk.LogoURL,
+			Category:    tk.Category,
+			Connectable: tk.Connectable,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// DeleteComposioConnection (DELETE /api/integrations/composio/connections/{id})
+// disconnects a connection the caller owns. Idempotent at the service layer;
+// a connection that does not belong to the caller is a 404.
+func (h *Handler) DeleteComposioConnection(w http.ResponseWriter, r *http.Request) {
+	if h.Composio == nil || !h.composioMCPAppsEnabled(r.Context()) {
+		writeFeatureDisabled(w, "composio_not_configured", "composio integration not configured")
+		return
+	}
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	userUUID, ok := parseUUIDOrBadRequest(w, userID, "user id")
+	if !ok {
+		return
+	}
+	connUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "connection id")
+	if !ok {
+		return
+	}
+	err := h.Composio.Disconnect(r.Context(), userUUID, connUUID)
+	if errors.Is(err, composio.ErrConnectionNotFound) && h.ConnectedApps != nil {
+		// Personal remote app accounts are listed with these and removed
+		// through the same endpoint.
+		_, err = h.ConnectedApps.DisconnectRemote(r.Context(), connUUID, connectedapps.ScopePersonal, userUUID)
+	}
+	if err != nil {
+		if errors.Is(err, composio.ErrConnectionNotFound) {
+			writeError(w, http.StatusNotFound, "composio connection not found")
+			return
+		}
+		writeError(w, http.StatusBadGateway, "failed to disconnect composio connection")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+.next
+dist
+server/bin
+server/tmp
+
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+e2e/test-results
+coverage
+
+# Docs
+/docs/
+*.md
+
+# Dockerfile.web and Dockerfile.collab need their workspaces and root
+# dependency patch inputs. Default-exclude other app files so they do not
+# enter the build context.
+/apps/*
+!/apps/web/
+!/apps/collab/
+!/apps/mobile
+/apps/mobile/*
+!/apps/mobile/patches
+!/apps/mobile/patches/**
+
+# Repository-only tooling
+/.github/
+/deploy/
+/scripts/
