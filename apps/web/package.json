@@ -15,6 +15,10 @@
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
+    "@fontsource-variable/geist-mono": "catalog:",
+    "@fontsource-variable/inter": "catalog:",
+    "@fontsource-variable/jetbrains-mono": "catalog:",
+    "@fontsource-variable/source-serif-4": "catalog:",
     "@multica/core": "workspace:*",
     "@multica/ee": "workspace:*",
     "@multica/ui": "workspace:*",

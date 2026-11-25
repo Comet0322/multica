@@ -18,12 +18,12 @@
 @source "../../../packages/views/**/*.{ts,tsx}";
 @source "../../../packages/ee/**/*.{ts,tsx}";
 
-/* Font stack. `--font-inter` is the next/font Inter family (+ its synthetic
-   size-adjusted fallback), set on <html> by inter.variable in app/layout.tsx.
-   We compose `--font-sans` here in static CSS — rather than baking the CJK tail
-   into next/font's `fallback` — so it can be overridden per `<html lang>` and
-   stays CSP-safe (no inline <style>). Tailwind's `font-sans` utility resolves
-   `var(--font-sans)` (see packages/ui/styles/tokens.css `@theme inline`).
+/* Font stack. The faces come from the @fontsource-variable packages imported in
+   app/layout.tsx; the `--font-inter` family of variables below names them.
+   We compose `--font-sans` here in static CSS so it can be overridden per
+   `<html lang>` and stays CSP-safe (no inline <style>). Tailwind's `font-sans`
+   utility resolves `var(--font-sans)` (see packages/ui/styles/tokens.css
+   `@theme inline`).
 
    Default (en / zh / ko): Latin chars render with Inter; CJK chars fall through
    to the platform Chinese fonts, then Korean. Chinese MUST stay before Korean so
@@ -31,6 +31,11 @@
    block, so ko users still get Korean fonts for Hangul). Kept in sync with
    apps/desktop/src/renderer/src/globals.css. */
 :root {
+  /* Families declared by the @fontsource-variable packages. */
+  --font-inter: "Inter Variable";
+  --font-geist-mono: "Geist Mono Variable";
+  --font-jetbrains-mono: "JetBrains Mono Variable";
+  --font-source-serif: "Source Serif 4 Variable";
   /* --font-ui and --font-cjk are set by the Appearance settings
      (packages/core/appearance); unset, the stack is Inter + the CJK chain. */
   --font-sans: var(--font-ui, var(--font-inter)), var(--font-cjk, var(--font-cjk-sans));
@@ -41,8 +46,8 @@
     monospace;
   --font-serif: var(--font-source-serif), ui-serif, "Iowan Old Style", "Apple Garamond",
     Baskerville, "Times New Roman", serif;
-  /* Latin-only faces the Appearance settings can pick, over the next/font
-     families from app/layout.tsx. Desktop defines the same names. The CJK
+  /* Latin-only faces the Appearance settings can pick, over the fontsource
+     families above. Desktop defines the same names. The CJK
      font follows them, so they name families only: a generic family would
      match Han first. */
   --font-ui-inter: var(--font-inter);
